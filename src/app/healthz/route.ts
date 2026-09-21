@@ -14,24 +14,45 @@
  */
 import { NextResponse } from "next/server";
 
-const REQUIRED = [
-  "RELAY_AUTH",
-  "UPSTASH_REDIS_REST_URL",
-  "UPSTASH_REDIS_REST_TOKEN",
-] as const;
+/**
+ * Accept BOTH common Upstash env-var naming conventions:
+ *   - UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN  (Upstash SDK default)
+ *   - KV_REST_API_URL / KV_REST_API_TOKEN                (Vercel Upstash Marketplace injects these)
+ *
+ * Required at runtime:
+ *   - RELAY_AUTH
+ *   - One of the Upstash pairs (URL + TOKEN, both populated, non-empty)
+ */
+const REQUIRED_KEYS = ["RELAY_AUTH"] as const;
+
+function readUpstashUrl(): string | undefined {
+  return process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL;
+}
+function readUpstashToken(): string | undefined {
+  return process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN;
+}
 
 export const dynamic = "force-dynamic";
 
 export async function GET(): Promise<Response> {
-  const missing = REQUIRED.filter(
-    (k) => !process.env[k] || !process.env[k]!.trim(),
-  );
+  const upstashUrl = readUpstashUrl();
+  const upstashToken = readUpstashToken();
+  const upstashOk = Boolean(upstashUrl?.trim() && upstashToken?.trim());
 
-  const configured = REQUIRED.length - missing.length;
+  const missing: string[] = [];
+  if (!process.env.RELAY_AUTH?.trim()) missing.push("RELAY_AUTH");
+  if (!upstashUrl?.trim()) missing.push("UPSTASH_REDIS_REST_URL (or KV_REST_API_URL)");
+  if (!upstashToken?.trim()) missing.push("UPSTASH_REDIS_REST_TOKEN (or KV_REST_API_TOKEN)");
+
+  // Total "required" slots = 3 (RELAY_AUTH + URL + TOKEN). When either Upstash
+  // var is missing we count both as missing, so the math matches the legacy
+  // "configured / required" reporting shape.
+  const totalRequired = 3;
+  const configured = totalRequired - missing.length;
   const status =
     missing.length === 0
       ? "ok"
-      : missing.length === REQUIRED.length
+      : missing.length === totalRequired
       ? "unconfigured"
       : "degraded";
 
@@ -40,7 +61,7 @@ export async function GET(): Promise<Response> {
     data: {
       status,
       env: {
-        required: REQUIRED.length,
+        required: totalRequired,
         configured,
         missing: missing.length > 0 ? missing : undefined,
       },

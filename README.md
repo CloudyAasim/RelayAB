@@ -15,8 +15,10 @@
 1. **点击按钮** → 打开 `vercel.com/new/clone`。Vercel 先让你点 "Continue with GitHub" 完成授权（已登录会自动跳过）。
 2. **New Project 页** 出现，向下滚动到 "Add Environment Variables" 区 — **只有一个输入框 `RELAY_AUTH`**。填一个**高熵字符串**（32+ 字节的随机字符；具体值由你定，这是 root secret）。点 **Deploy**。
 3. 等 `Ready` 出现，记下 `*.vercel.app` URL。
-4. **Storage → Create Database → Upstash** → Free → Create。Vercel 自动注入 `UPSTASH_REDIS_REST_URL` 和 `UPSTASH_REDIS_REST_TOKEN` 到环境变量。
+4. **Storage → Create Database → Upstash** → Free → Create。
 5. **Deployments** → 顶部最新一条 → **⋯** → **Redeploy** —— 这次 Upstash 凭证就生效了。
+
+> ⚠️ **Vercel Upstash Marketplace 注入的变量名是 `KV_REST_API_URL` / `KV_REST_API_TOKEN`**（Vercel KV 时代遗留命名），不是 `UPSTASH_REDIS_REST_*`。RelayAB 的代码和 `/healthz` 同时认这两套名字——`UPSTASH_*` 优先，`KV_*` 兜底。所以不管 Vercel 注入哪套，部署都成功。
 
 ### 验证
 
