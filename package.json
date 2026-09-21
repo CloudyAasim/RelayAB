@@ -1,26 +1,4 @@
 {
-  "name": "relay-ab",
-  "version": "0.1.0",
-  "private": true,
-  "description": "RelayAB - A self-hosted AI API relay/gateway for sharing upstream provider keys with quota and permission control.",
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
-    "type-check": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:e2e": "playwright test",
-    "test:unit": "vitest run tests/unit",
-    "test:integration": "vitest run tests/integration",
-    "smoke": "bash scripts/smoke-local.sh",
-    "bootstrap-admin": "tsx scripts/bootstrap-admin.ts",
-    "reset-password": "tsx scripts/reset-user-password.ts",
-    "rotate-key": "tsx scripts/rotate-master-key.ts",
-    "list-usage": "tsx scripts/list-usage.ts",
-    "prebuild": "tsx scripts/check-env.ts"
-  },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.0.0",
     "@ai-sdk/openai": "^1.0.0",
@@ -41,6 +19,7 @@
     "tailwind-merge": "^2.5.0",
     "zod": "^3.23.0"
   },
+  "description": "RelayAB - A self-hosted AI API relay/gateway for sharing upstream provider keys with quota and permission control.",
   "devDependencies": {
     "@playwright/test": "^1.48.0",
     "@tailwindcss/forms": "^0.5.9",
@@ -56,8 +35,26 @@
     "typescript": "^5.7.0",
     "vitest": "^2.1.0"
   },
-  "engines": {
-    "node": ">=20.0.0",
-    "pnpm": ">=9"
-  }
+  "name": "relay-ab",
+  "packageManager": "pnpm@10.28.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "smoke": "bash scripts/smoke-local.sh",
+    "bootstrap-admin": "tsx scripts/bootstrap-admin.ts",
+    "reset-password": "tsx scripts/reset-user-password.ts",
+    "rotate-key": "tsx scripts/rotate-master-key.ts",
+    "list-usage": "tsx scripts/list-usage.ts",
+    "prebuild": "tsx scripts/check-env.ts"
+  },
+  "version": "0.1.0"
 }

@@ -8,9 +8,9 @@
 
 点下面按钮，Vercel 会**预填三个必填环境变量表单**让你填，再也不会出现"部署完才发现没配变量"的情况。
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2F%3Cyour-username%3E%2Frelayab&env=RELAY_AUTH%2CUPSTASH_REDIS_REST_URL%2CUPSTASH_REDIS_REST_TOKEN&envDescription=Master%20password%20%2B%20Upstash%20for%20Redis%20credentials%20(required)&envLink=https%3A%2F%2Fgithub.com%2F%3Cyour-username%3E%2Frelayab%23readme)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FCloudyAasim%2FRelayAB&env=RELAY_AUTH%2CUPSTASH_REDIS_REST_URL%2CUPSTASH_REDIS_REST_TOKEN&envDescription=Master%20password%20%2B%20Upstash%20for%20Redis%20credentials%20(required)&envLink=https%3A%2F%2Fgithub.com%2FCloudyAasim%2FRelayAB%23readme)
 
-> ⚠️ **第一次发布前**：把上面链接里的 `<your-username>/relayab` 换成你自己的 GitHub 仓库路径（push 到 GitHub 之后才会有这个仓库地址）。
+> ✅ 仓库地址已配置为 `CloudyAasim/RelayAB`。其他人想 fork 一键部署时，把 README 里这一行的仓库路径改成自己的即可。
 
 部署时 Vercel 会让你填：
 
