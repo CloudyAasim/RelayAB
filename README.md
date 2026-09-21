@@ -4,6 +4,34 @@
 > 安全、可控地分享给少数人，并实现精细的权限和用量管理。
 > 一键部署到 Vercel。
 
+## 一键部署到 Vercel
+
+点下面按钮，Vercel 会**预填三个必填环境变量表单**让你填，再也不会出现"部署完才发现没配变量"的情况。
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2F%3Cyour-username%3E%2Frelayab&env=RELAY_AUTH%2CUPSTASH_REDIS_REST_URL%2CUPSTASH_REDIS_REST_TOKEN&envDescription=Master%20password%20%2B%20Upstash%20for%20Redis%20credentials%20(required)&envLink=https%3A%2F%2Fgithub.com%2F%3Cyour-username%3E%2Frelayab%23readme)
+
+> ⚠️ **第一次发布前**：把上面链接里的 `<your-username>/relayab` 换成你自己的 GitHub 仓库路径（push 到 GitHub 之后才会有这个仓库地址）。
+
+部署时 Vercel 会让你填：
+
+| 变量 | 说明 |
+|---|---|
+| `RELAY_AUTH` | 主密码 + 管理员首次登录密码。生成：`openssl rand -hex 32` |
+| `UPSTASH_REDIS_REST_URL` | Upstash REST 端点（也可用 Vercel Marketplace 一键注入） |
+| `UPSTASH_REDIS_REST_TOKEN` | Upstash REST Token（同上） |
+
+**填完三个变量后**，构建期还有一个独立的安全网：`scripts/check-env.ts` 会在 `next build` 之前再校验一次。**任何一个变量缺失，构建立刻 abort** 并打印明确的修复指引——你绝不会再看到那种运行时抛 `Required: RELAY_AUTH, UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN` 的页面。
+
+部署完成后，建议先去 Vercel Dashboard → **Storage** → 创建 Upstash for Redis（免费层够用），它会自动注入上面那两个 Upstash 变量，你刚才填的占位值会被覆盖。
+
+冒烟测试：在终端跑 `curl https://<your-app>.vercel.app/healthz` 应该看到：
+
+```json
+{"ok":true,"data":{"status":"ok","env":{"required":3,"configured":3}}}
+```
+
+更多细节（部署保护绕过、自托管密钥轮换、备份策略）见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。
+
 ## 功能
 
 - **多用户 + 角色**（admin / user），密码 bcrypt 散列存储（**单向不可逆**）

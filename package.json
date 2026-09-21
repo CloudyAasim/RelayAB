@@ -18,7 +18,8 @@
     "bootstrap-admin": "tsx scripts/bootstrap-admin.ts",
     "reset-password": "tsx scripts/reset-user-password.ts",
     "rotate-key": "tsx scripts/rotate-master-key.ts",
-    "list-usage": "tsx scripts/list-usage.ts"
+    "list-usage": "tsx scripts/list-usage.ts",
+    "prebuild": "tsx scripts/check-env.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.0.0",
