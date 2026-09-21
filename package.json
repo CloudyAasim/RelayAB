@@ -53,8 +53,7 @@
     "bootstrap-admin": "tsx scripts/bootstrap-admin.ts",
     "reset-password": "tsx scripts/reset-user-password.ts",
     "rotate-key": "tsx scripts/rotate-master-key.ts",
-    "list-usage": "tsx scripts/list-usage.ts",
-    "prebuild": "tsx scripts/check-env.ts"
+    "list-usage": "tsx scripts/list-usage.ts"
   },
   "version": "0.1.0"
 }

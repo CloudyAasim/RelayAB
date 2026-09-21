@@ -1,14 +1,14 @@
 /**
  * scripts/check-env.ts
  *
- * Build-time validator for required environment variables.
+ * Optional environment-variable validator (manual diagnostic only).
  *
- * Wired via the `prebuild` npm script (see package.json), so it runs
- * automatically before `next build` on Vercel (and locally). If any
- * required env var is missing, the build is aborted with a clear,
- * actionable error — this prevents the runtime
- *   "[relayab] Invalid configuration. ... Required: RELAY_AUTH, ..."
- * error you would otherwise see after deployment.
+ * No longer wired into any automatic build hook. Run manually with:
+ *     pnpm tsx scripts/check-env.ts
+ *
+ * Use /healthz or Vercel Dashboard Environment Variables for the canonical
+ * setup path; this script is only useful as a local diagnostic tool.
+ *
  *
  * Skipped in `NODE_ENV === "test"` because the test suite supplies its
  * own deterministic defaults via tests/setup.ts.

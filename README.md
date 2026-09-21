@@ -6,29 +6,64 @@
 
 ## 一键部署到 Vercel
 
-点下面按钮，Vercel 会**预填三个必填环境变量表单**让你填，再也不会出现"部署完才发现没配变量"的情况。
+点下面按钮，Vercel 会在"创建项目"那一步**图形化界面让你填 3 个必填环境变量**，然后才开始真正的部署。**不会有构建到一半才发现没配变量然后 abort 的情况。**
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FCloudyAasim%2FRelayAB&env=RELAY_AUTH%2CUPSTASH_REDIS_REST_URL%2CUPSTASH_REDIS_REST_TOKEN&envDescription=Master%20password%20%2B%20Upstash%20for%20Redis%20credentials%20(required)&envLink=https%3A%2F%2Fgithub.com%2FCloudyAasim%2FRelayAB%23readme)
 
-> ✅ 仓库地址已配置为 `CloudyAasim/RelayAB`。其他人想 fork 一键部署时，把 README 里这一行的仓库路径改成自己的即可。
+**两条部署路径**（按需选一个）：
 
-部署时 Vercel 会让你填：
+<details>
+<summary><strong>访客路径（点击上面的 Deploy with Vercel 按钮）</strong></summary>
 
-| 变量 | 说明 |
+1. 点击按钮 → 打开 `vercel.com/new/clone`
+2. Vercel 已经预填好仓库 URL，并在 "Add Environment Variables" 区显示 3 个输入框：
+
+| Key | 填什么 |
 |---|---|
-| `RELAY_AUTH` | 主密码 + 管理员首次登录密码。生成：`openssl rand -hex 32` |
-| `UPSTASH_REDIS_REST_URL` | Upstash REST 端点（也可用 Vercel Marketplace 一键注入） |
-| `UPSTASH_REDIS_REST_TOKEN` | Upstash REST Token（同上） |
+| `RELAY_AUTH` | 终端跑 `openssl rand -hex 32`，粘输出 |
+| `UPSTASH_REDIS_REST_URL` | 临时填占位 `https://placeholder.upstash.io`（下一步被覆盖） |
+| `UPSTASH_REDIS_REST_TOKEN` | 临时填占位 `placeholder`（下一步被覆盖） |
 
-**填完三个变量后**，构建期还有一个独立的安全网：`scripts/check-env.ts` 会在 `next build` 之前再校验一次。**任何一个变量缺失，构建立刻 abort** 并打印明确的修复指引——你绝不会再看到那种运行时抛 `Required: RELAY_AUTH, UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN` 的页面。
+3. 点 **Deploy** → 构建完成即上线
+4. 然后去 **Storage → Create Database → Upstash for Redis**，Marketplace 自动注入上面两个 Upstash 变量（覆盖占位）
+5. 触发一次 Redeploy，Upstash 凭证就生效
 
-部署完成后，建议先去 Vercel Dashboard → **Storage** → 创建 Upstash for Redis（免费层够用），它会自动注入上面那两个 Upstash 变量，你刚才填的占位值会被覆盖。
+</details>
 
-冒烟测试：在终端跑 `curl https://<your-app>.vercel.app/healthz` 应该看到：
+<details>
+<summary><strong>Owner 路径（你自己往私有仓库 push 后，标准 Vercel 流程）</strong></summary>
+
+如果你是仓库 owner 自己导入项目（不是从 Deploy Button 走），**Vercel 不会**自动弹出变量表单 —— 因为你已经在 Vercel Dashboard 里了，你需要主动去填：
+
+1. 第一次 import 完成后，**先别让它自动部署**（如果已开始，先 Cancel）
+2. 进入 **Project → Settings → Environment Variables**
+3. 对 Production（以及按需 Preview / Development）添加上面那 3 个变量，值同左
+4. 之后 push 代码或 Redeploy
+5. 最后接 Upstash Marketplace（自动注入那 2 个 Upstash 变量）
+
+> **不要**让构建在变量缺失时跑起来然后报错 —— 这正是 ai-relay 用 Deploy Button 避免的反模式。如果你不确定有没有填好，部署完先 `curl https://<your-app>/healthz`，看 `data.env.configured` 是不是 3。
+
+</details>
+
+### 验证
+
+部署完成后，终端跑：
+
+```bash
+curl -s https://<your-app>.vercel.app/healthz
+```
+
+期望输出（说明 3 个变量都生效）：
 
 ```json
 {"ok":true,"data":{"status":"ok","env":{"required":3,"configured":3}}}
 ```
+
+如果你看到 `status: "degraded"` 或 `"unconfigured"`，响应里的 `env.missing` 数组会告诉你具体哪个没生效 —— 去 Vercel Dashboard 对应环境补上即可。
+
+### 失败模式说明（重要）
+
+RelayAB **不再在构建期 abort** 你的部署。如果你填漏了变量，构建会成功，但运行时第一次碰到 config 校验时会抛 `[relayab] Invalid configuration`。所以验证步骤就是上面那条 `curl /healthz`。
 
 更多细节（部署保护绕过、自托管密钥轮换、备份策略）见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。
 
