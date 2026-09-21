@@ -1,0 +1,56 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# testing
+coverage/
+playwright-report/
+test-results/
+.nyc_output
+
+# next.js
+.next/
+out/
+build/
+
+# production
+dist/
+
+# misc
+.DS_Store
+Thumbs.db
+*.pem
+*.swp
+*.swo
+.vscode/
+.idea/
+.eslintcache
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# local env files
+# Must be the ONLY env file that gets tracked: copy → .env (which IS ignored).
+# Next.js convention files (.env.development / .env.production / .env.test)
+# are also ignored so they cannot leak real keys by accident.
+.env
+.env.*
+!.env.example
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# emulator runtime
+.emulate/
+
+# Vercel
+.vercel
+
+# tooling caches (defense in depth)
+.cache/
+.turbo/

@@ -1,0 +1,62 @@
+{
+  "name": "relay-ab",
+  "version": "0.1.0",
+  "private": true,
+  "description": "RelayAB - A self-hosted AI API relay/gateway for sharing upstream provider keys with quota and permission control.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "smoke": "bash scripts/smoke-local.sh",
+    "bootstrap-admin": "tsx scripts/bootstrap-admin.ts",
+    "reset-password": "tsx scripts/reset-user-password.ts",
+    "rotate-key": "tsx scripts/rotate-master-key.ts",
+    "list-usage": "tsx scripts/list-usage.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^1.0.0",
+    "@ai-sdk/openai": "^1.0.0",
+    "@emulators/adapter-next": "0.11.2",
+    "@emulators/core": "0.11.2",
+    "@emulators/vercel": "0.11.2",
+    "@upstash/redis": "^1.34.0",
+    "@vercel/sdk": "^1.0.0",
+    "ai": "^4.0.0",
+    "bcryptjs": "^2.4.3",
+    "clsx": "^2.1.1",
+    "iron-session": "^8.0.0",
+    "jose": "^5.9.0",
+    "lucide-react": "^0.460.0",
+    "next": "^15.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^2.5.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "@tailwindcss/forms": "^0.5.9",
+    "@tailwindcss/typography": "^0.5.15",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.15",
+    "tsx": "^4.23.13",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9"
+  }
+}
