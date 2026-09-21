@@ -15,6 +15,13 @@ const PatchSchema = z.object({
   displayName: z.string().optional(),
   role: z.enum(["admin", "user"]).optional(),
   disabled: z.boolean().optional(),
+  // Admin-controlled policy. `quotaLimit` is the size of the user's pool;
+  // `quotaUsed` lets an admin top someone up or reset consumption.
+  quotaType: z.enum(["credits", "tokens"]).optional(),
+  quotaLimit: z.number().int().nonnegative().optional(),
+  quotaUsed: z.number().int().nonnegative().optional(),
+  maxActiveKeys: z.number().int().nonnegative().optional(),
+  allowedModels: z.array(z.string()).optional(),
 });
 
 export async function PATCH(

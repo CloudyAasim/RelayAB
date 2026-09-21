@@ -2,22 +2,147 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  color-scheme: light dark;
+/*
+ * Design tokens — modeled after the Vercel/shadcn "Sidebar" pattern.
+ *
+ * Color values use the oklch() color space for perceptually uniform
+ * lightness. Two themes:
+ *   - `.light` (default — used when html has no `.dark` class)
+ *   - `.dark`  (overrides below)
+ *
+ * Semantic color roles:
+ *   - primary    : brand accent (RelayAB blue)
+ *   - secondary  : muted surface fills
+ *   - accent     : subtle highlight (e.g. selected sidebar row)
+ *   - muted      : low-priority text and disabled state
+ *   - success / warning / info / destructive : status badges & banners
+ *   - sidebar-*  : dedicated palette for the left sidebar so it can stand
+ *                    out from the main content surface
+ */
+
+:root,
+.light {
+  color-scheme: light;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+
+  --primary: oklch(0.55 0.18 256);            /* RelayAB blue */
+  --primary-foreground: oklch(0.985 0 0);
+
+  --secondary: oklch(0.96 0.005 247);
+  --secondary-foreground: oklch(0.21 0.04 257);
+
+  --muted: oklch(0.97 0.003 247);
+  --muted-foreground: oklch(0.49 0.02 257);
+
+  --accent: color-mix(in oklch, oklch(0.55 0.18 256) 10%, oklch(1 0 0));
+  --accent-foreground: oklch(0.21 0.04 257);
+
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+
+  --success: oklch(0.596 0.145 163.225);
+  --success-foreground: oklch(0.985 0 0);
+
+  --warning: oklch(0.681 0.162 75.834);
+  --warning-foreground: oklch(0.145 0 0);
+
+  --info: oklch(0.588 0.158 241.966);
+  --info-foreground: oklch(0.985 0 0);
+
+  --neutral: oklch(0.708 0 0);
+  --neutral-foreground: oklch(0.145 0 0);
+
+  --border: oklch(0.92 0.005 247);
+  --input: oklch(0.92 0.005 247);
+  --ring: oklch(0.55 0.18 256);
+
+  --sidebar: oklch(0.985 0.002 247);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.55 0.18 256);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.95 0.01 247);
+  --sidebar-accent-foreground: oklch(0.21 0.04 257);
+  --sidebar-border: oklch(0.92 0.005 247);
+  --sidebar-ring: oklch(0.55 0.18 256);
+
+  --radius: 0.625rem;
 }
 
-html, body {
+.dark {
+  color-scheme: dark;
+  --background: oklch(0.145 0.005 247);
+  --foreground: oklch(0.985 0 0);
+
+  --card: oklch(0.18 0.008 247);
+  --card-foreground: oklch(0.985 0 0);
+
+  --popover: oklch(0.18 0.008 247);
+  --popover-foreground: oklch(0.985 0 0);
+
+  --primary: oklch(0.72 0.16 256);
+  --primary-foreground: oklch(0.145 0 0);
+
+  --secondary: oklch(0.22 0.01 247);
+  --secondary-foreground: oklch(0.93 0.005 247);
+
+  --muted: oklch(0.22 0.01 247);
+  --muted-foreground: oklch(0.66 0.02 247);
+
+  --accent: color-mix(in oklch, oklch(0.72 0.16 256) 14%, oklch(0.18 0.008 247));
+  --accent-foreground: oklch(0.93 0.005 247);
+
+  --destructive: oklch(0.65 0.22 27);
+  --destructive-foreground: oklch(0.985 0 0);
+
+  --success: oklch(0.68 0.16 163);
+  --success-foreground: oklch(0.145 0 0);
+
+  --warning: oklch(0.78 0.16 76);
+  --warning-foreground: oklch(0.145 0 0);
+
+  --info: oklch(0.7 0.16 242);
+  --info-foreground: oklch(0.145 0 0);
+
+  --neutral: oklch(0.55 0 0);
+  --neutral-foreground: oklch(0.985 0 0);
+
+  --border: oklch(0.28 0.01 247);
+  --input: oklch(0.28 0.01 247);
+  --ring: oklch(0.72 0.16 256);
+
+  --sidebar: oklch(0.18 0.008 247);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.72 0.16 256);
+  --sidebar-primary-foreground: oklch(0.145 0 0);
+  --sidebar-accent: oklch(0.25 0.012 247);
+  --sidebar-accent-foreground: oklch(0.93 0.005 247);
+  --sidebar-border: oklch(0.28 0.01 247);
+  --sidebar-ring: oklch(0.72 0.16 256);
+}
+
+/* ----- Base resets ----- */
+* {
+  border-color: var(--border);
+}
+
+html,
+body {
   height: 100%;
-  background-color: #f8fafc;
-  color: #0f172a;
-  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-}
-
-@media (prefers-color-scheme: dark) {
-  html, body {
-    background-color: #0b1220;
-    color: #e2e8f0;
-  }
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family:
+    'Inter', system-ui, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', Roboto, 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
+  font-feature-settings: 'cv11', 'ss01', 'ss03';
+  -webkit-font-smoothing: antialiased;
 }
 
 /* Pretty scrollbar */
@@ -29,9 +154,26 @@ html, body {
   background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  background: rgba(100, 116, 139, 0.4);
+  background: color-mix(in oklch, var(--muted-foreground) 30%, transparent);
   border-radius: 999px;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 116, 139, 0.7);
+  background: color-mix(in oklch, var(--muted-foreground) 55%, transparent);
+}
+
+/* Focus ring (accessible) */
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+
+/* Selection */
+::selection {
+  background: color-mix(in oklch, var(--primary) 30%, transparent);
+}
+
+/* Smooth theme transition */
+html {
+  transition: background-color 200ms ease, color 200ms ease;
 }

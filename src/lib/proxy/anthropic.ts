@@ -18,12 +18,13 @@ import {
   findProvidersForModel,
   getProviderById,
 } from "../db/providers";
-import { incrementQuotaUsed } from "../db/keys";
+import { touchApiKeyLastUsed } from "../db/keys";
+import { incrementUserQuotaUsed } from "../db/users";
 import { recordUsage, quotaDelta } from "../db/usage";
 import { checkKeyStatus, reasonToHttp } from "../auth/apikey";
 import { computeCredits } from "../quota/rates";
 import { shouldRejectBeforeRequest } from "../quota/calculator";
-import type { ApiKey, Provider } from "../db/types";
+import type { ApiKey, Provider, User } from "../db/types";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -71,9 +72,11 @@ interface AnthropicResponse {
 export async function proxyAnthropicMessage(args: {
   req: AnthropicRequest;
   apiKey: ApiKey;
+  /** Owner of `apiKey`. Carries the quota pool and the model whitelist. */
+  user: User;
   deps?: AnthropicProxyDeps;
 }): Promise<AnthropicProxyResult> {
-  const { req, apiKey, deps } = args;
+  const { req, apiKey, user, deps } = args;
   const fetchImpl = deps?.fetchImpl ?? fetch;
 
   // Validate inputs.
@@ -84,13 +87,17 @@ export async function proxyAnthropicMessage(args: {
     return { ok: false, status: 400, error: { code: "missing_max_tokens", message: "max_tokens is required" } };
   }
 
-  // 1. Defensive re-validation.
-  const status = checkKeyStatus({ key: apiKey, requestedModel: req.model });
+  // 1. Defensive re-validation (against the owner's policy, not the key's).
+  const status = checkKeyStatus({
+    key: apiKey,
+    user,
+    requestedModel: req.model,
+  });
   if (!status.ok) {
     const http = reasonToHttp(status.reason);
     return { ok: false, status: http.status, error: { code: http.code, message: http.message } };
   }
-  const preFlight = shouldRejectBeforeRequest(apiKey);
+  const preFlight = shouldRejectBeforeRequest(user);
   if (preFlight) {
     const http = reasonToHttp(preFlight.reason);
     return { ok: false, status: http.status, error: { code: http.code, message: http.message } };
@@ -111,9 +118,9 @@ export async function proxyAnthropicMessage(args: {
         error: { code: "model_not_mapped", message: `No Anthropic provider configured for model '${req.model}'` },
       };
     }
-    return doProxy({ req, apiKey, provider: fb, deps, fetchImpl });
+    return doProxy({ req, apiKey, user, provider: fb, deps, fetchImpl });
   }
-  return doProxy({ req, apiKey, provider, deps, fetchImpl });
+  return doProxy({ req, apiKey, user, provider, deps, fetchImpl });
 }
 
 // ---------------------------------------------------------------------------
@@ -123,11 +130,12 @@ export async function proxyAnthropicMessage(args: {
 async function doProxy(args: {
   req: AnthropicRequest;
   apiKey: ApiKey;
+  user: User;
   provider: Provider;
   deps?: AnthropicProxyDeps;
   fetchImpl: typeof fetch;
 }): Promise<AnthropicProxyResult> {
-  const { req, apiKey, provider, deps, fetchImpl } = args;
+  const { req, apiKey, user, provider, deps, fetchImpl } = args;
   const upstreamModel = provider.modelMapping[req.model];
   const upstreamUrl = deps?.upstreamUrlFor
     ? deps.upstreamUrlFor(provider)
@@ -171,12 +179,16 @@ async function doProxy(args: {
     completionTokens: usage.output_tokens,
   });
   const totalTokens = usage.input_tokens + usage.output_tokens;
+  // Charge the OWNER's pool, not the key's — see the note in openai.ts.
   const delta = quotaDelta({
-    quotaType: apiKey.quotaType,
+    quotaType: user.quotaType,
     creditsUsed,
     totalTokens,
   });
-  if (delta > 0) await incrementQuotaUsed(apiKey.id, delta);
+  if (delta > 0) {
+    await incrementUserQuotaUsed(apiKey.userId, delta);
+    await touchApiKeyLastUsed(apiKey.id);
+  }
 
   await recordUsage({
     apiKeyId: apiKey.id,

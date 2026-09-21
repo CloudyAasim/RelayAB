@@ -27,7 +27,11 @@ export type RedisValue = string | number;
 export interface RedisLike {
   // strings
   get<T = unknown>(key: string): Promise<T | null>;
-  set(key: string, value: RedisValue, opts?: { ex?: number }): Promise<"OK" | null>;
+  set(
+    key: string,
+    value: RedisValue,
+    opts?: { ex?: number; nx?: boolean },
+  ): Promise<"OK" | null>;
   del(...keys: string[]): Promise<number>;
   exists(...keys: string[]): Promise<number>;
   expire(key: string, seconds: number): Promise<number>;
@@ -150,6 +154,10 @@ export function createMemoryRedis(): RedisLike {
     },
 
     async set(key, value, opts) {
+      // SETNX semantics: only set when the key does not exist.
+      if (opts?.nx) {
+        if (store.data.has(key)) return null;
+      }
       const entry = ensureKind(store, key, "string");
       entry.value = value;
       applyExpire(entry, opts?.ex);

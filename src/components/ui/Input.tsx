@@ -13,7 +13,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     return (
       <div className="space-y-1.5">
         {label && (
-          <label htmlFor={inputId} className="block text-sm font-medium text-slate-700">
+          <label htmlFor={inputId} className="block text-sm font-medium text-foreground">
             {label}
           </label>
         )}
@@ -21,17 +21,17 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           id={inputId}
           ref={ref}
           className={cn(
-            "block w-full rounded-md border bg-white px-3 py-2 text-sm",
-            "border-slate-300 placeholder:text-slate-400",
-            "focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500",
-            "disabled:opacity-60 disabled:cursor-not-allowed",
-            error && "border-red-400 focus:border-red-500 focus:ring-red-500",
+            "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm",
+            "placeholder:text-muted-foreground",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+            "disabled:opacity-50 disabled:cursor-not-allowed",
+            error && "border-destructive focus-visible:ring-destructive",
             className,
           )}
           {...rest}
         />
-        {hint && !error && <p className="text-xs text-slate-500">{hint}</p>}
-        {error && <p className="text-xs text-red-600">{error}</p>}
+        {hint && !error && <p className="text-xs text-muted-foreground">{hint}</p>}
+        {error && <p className="text-xs text-destructive">{error}</p>}
       </div>
     );
   },
@@ -50,7 +50,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
     return (
       <div className="space-y-1.5">
         {label && (
-          <label htmlFor={tid} className="block text-sm font-medium text-slate-700">
+          <label htmlFor={tid} className="block text-sm font-medium text-foreground">
             {label}
           </label>
         )}
@@ -58,17 +58,16 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
           id={tid}
           ref={ref}
           className={cn(
-            "block w-full rounded-md border bg-white px-3 py-2 text-sm font-mono",
-            "border-slate-300 placeholder:text-slate-400",
-            "focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500",
-            error && "border-red-400 focus:border-red-500 focus:ring-red-500",
+            "flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono",
+            "placeholder:text-muted-foreground",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+            error && "border-destructive focus-visible:ring-destructive",
             className,
           )}
-          rows={4}
           {...rest}
         />
-        {hint && !error && <p className="text-xs text-slate-500">{hint}</p>}
-        {error && <p className="text-xs text-red-600">{error}</p>}
+        {hint && !error && <p className="text-xs text-muted-foreground">{hint}</p>}
+        {error && <p className="text-xs text-destructive">{error}</p>}
       </div>
     );
   },

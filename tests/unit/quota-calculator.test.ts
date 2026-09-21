@@ -9,58 +9,68 @@ import {
   aggregateByDay,
   estimateCredits,
 } from "@/lib/quota/calculator";
-import type { ApiKey, UsageLog } from "@/lib/db/types";
+import type { User, UsageLog } from "@/lib/db/types";
 
-function makeKey(over: Partial<ApiKey> = {}): ApiKey {
+/**
+ * These helpers operate on the OWNER now: the quota pool moved from the key
+ * onto the user, so the pre-flight check is a question about the account.
+ */
+function makeUser(over: Partial<User> = {}): User {
   return {
-    id: "k",
-    userId: "u",
-    label: "l",
-    keyHash: "h".repeat(64),
-    keyPrefix: "sk-relay-xxx",
+    id: "u",
+    username: "u",
+    passwordHash: "$2a$12$x",
+    role: "user",
+    displayName: "U",
+    createdAt: "2026-09-21T00:00:00.000Z",
+    updatedAt: "2026-09-21T00:00:00.000Z",
+    lastLoginAt: null,
+    disabled: false,
     quotaType: "credits",
     quotaLimit: 100,
     quotaUsed: 0,
-    expiresAt: null,
-    enabled: true,
+    maxActiveKeys: 0,
     allowedModels: [],
-    createdAt: "2026-09-21T00:00:00.000Z",
-    lastUsedAt: null,
     ...over,
   };
 }
 
 describe("shouldRejectBeforeRequest", () => {
   it("returns false when quotaUsed < quotaLimit", () => {
-    const r = shouldRejectBeforeRequest(makeKey({ quotaUsed: 50, quotaLimit: 100 }));
+    const r = shouldRejectBeforeRequest(makeUser({ quotaUsed: 50, quotaLimit: 100 }));
     expect(r).toBe(false);
   });
 
   it("returns quota_exceeded_credits when used >= limit (credits)", () => {
-    const r = shouldRejectBeforeRequest(makeKey({
-      quotaType: "credits",
-      quotaLimit: 100,
-      quotaUsed: 100,
-    }));
+    const r = shouldRejectBeforeRequest(
+      makeUser({ quotaType: "credits", quotaLimit: 100, quotaUsed: 100 }),
+    );
     expect(r).toEqual({ reason: "quota_exceeded_credits" });
   });
 
   it("returns quota_exceeded_tokens when used >= limit (tokens)", () => {
-    const r = shouldRejectBeforeRequest(makeKey({
-      quotaType: "tokens",
-      quotaLimit: 1000,
-      quotaUsed: 1000,
-    }));
+    const r = shouldRejectBeforeRequest(
+      makeUser({ quotaType: "tokens", quotaLimit: 1000, quotaUsed: 1000 }),
+    );
     expect(r).toEqual({ reason: "quota_exceeded_tokens" });
+  });
+
+  it("rejects an unallocated pool (limit 0) rather than treating it as unlimited", () => {
+    const r = shouldRejectBeforeRequest(makeUser({ quotaLimit: 0, quotaUsed: 0 }));
+    expect(r).toEqual({ reason: "quota_exceeded_credits" });
   });
 });
 
 describe("isOverQuotaAfterRequest", () => {
   it("detects crossing the limit", () => {
-    expect(isOverQuotaAfterRequest({ key: makeKey({ quotaLimit: 100 }), newQuotaUsed: 101 })).toBe(true);
+    expect(
+      isOverQuotaAfterRequest({ user: makeUser({ quotaLimit: 100 }), newQuotaUsed: 101 }),
+    ).toBe(true);
   });
   it("is false at exactly the limit", () => {
-    expect(isOverQuotaAfterRequest({ key: makeKey({ quotaLimit: 100 }), newQuotaUsed: 100 })).toBe(false);
+    expect(
+      isOverQuotaAfterRequest({ user: makeUser({ quotaLimit: 100 }), newQuotaUsed: 100 }),
+    ).toBe(false);
   });
 });
 

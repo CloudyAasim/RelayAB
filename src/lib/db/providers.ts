@@ -13,6 +13,7 @@
  * admin web panel can decrypt them (just-in-time when forwarding a request).
  */
 import { ProviderSchema, type Provider, type ProviderKind } from "./types";
+import { cache } from "react";
 import { getRedis, k } from "./redis";
 import { encryptSecret } from "../crypto/secrets";
 import { generateId } from "../crypto/hashing";
@@ -41,6 +42,8 @@ export interface CreateProviderInput {
   modelMapping?: Record<string, string>;
   enabled?: boolean;
   priority?: number;
+  /** Optional per-provider HTTP headers (e.g. api-version for Azure). */
+  headers?: Record<string, string>;
 }
 
 export interface UpdateProviderInput {
@@ -52,6 +55,7 @@ export interface UpdateProviderInput {
   modelMapping?: Record<string, string>;
   enabled?: boolean;
   priority?: number;
+  headers?: Record<string, string>;
 }
 
 // ---------------------------------------------------------------------------
@@ -72,6 +76,7 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
     modelMapping: input.modelMapping ?? {},
     enabled: input.enabled ?? true,
     priority: input.priority ?? 1,
+    headers: input.headers ?? {},
     createdAt: now,
     updatedAt: now,
   });
@@ -85,6 +90,7 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
     modelMapping: JSON.stringify(provider.modelMapping),
     enabled: provider.enabled ? "1" : "0",
     priority: String(provider.priority),
+    headers: JSON.stringify(provider.headers ?? {}),
     createdAt: provider.createdAt,
     updatedAt: provider.updatedAt,
   });
@@ -101,10 +107,11 @@ export async function getProviderById(id: string): Promise<Provider | null> {
   return hashToProvider(await getRedis().hgetall<Record<string, string>>(k.provider(id)));
 }
 
+
 /** List all providers (sorted by priority ascending, then by name). */
-export async function listProviders(opts: {
+export const listProviders = cache(async (opts: {
   enabledOnly?: boolean;
-} = {}): Promise<Provider[]> {
+} = {}): Promise<Provider[]> => {
   const redis = getRedis();
   const [, matched] = await redis.scan(0, {
     match: `${k.provider("").slice(0, -1)}*`,
@@ -124,7 +131,7 @@ export async function listProviders(opts: {
     return a.name.localeCompare(b.name);
   });
   return out;
-}
+});
 
 /**
  * Find providers that can serve the given client-visible model.
@@ -165,6 +172,7 @@ export async function updateProvider(
     modelMapping: patch.modelMapping ?? existing.modelMapping,
     enabled: patch.enabled === undefined ? existing.enabled : patch.enabled,
     priority: patch.priority ?? existing.priority,
+    headers: patch.headers ?? existing.headers,
     updatedAt: new Date().toISOString(),
   });
 
@@ -176,6 +184,7 @@ export async function updateProvider(
     modelMapping: JSON.stringify(merged.modelMapping),
     enabled: merged.enabled ? "1" : "0",
     priority: String(merged.priority),
+    headers: JSON.stringify(merged.headers ?? {}),
     updatedAt: merged.updatedAt,
   });
 
@@ -209,6 +218,7 @@ async function hashToProvider(raw: Record<string, string> | null): Promise<Provi
       modelMapping: raw.modelMapping ? JSON.parse(raw.modelMapping) : {},
       enabled: raw.enabled === "1",
       priority: Number(raw.priority ?? "1"),
+      headers: raw.headers ? JSON.parse(raw.headers) : {},
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
     });

@@ -19,12 +19,13 @@
  */
 import { decryptSecret } from "../crypto/secrets";
 import { findProvidersForModel, getProviderById } from "../db/providers";
-import { incrementQuotaUsed } from "../db/keys";
+import { touchApiKeyLastUsed } from "../db/keys";
+import { incrementUserQuotaUsed } from "../db/users";
 import { recordUsage, quotaDelta } from "../db/usage";
 import { checkKeyStatus, reasonToHttp } from "../auth/apikey";
 import { computeCredits } from "../quota/rates";
 import { quotaDeltaFromUsage, shouldRejectBeforeRequest } from "../quota/calculator";
-import type { ApiKey, Provider } from "../db/types";
+import type { ApiKey, Provider, User } from "../db/types";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -79,9 +80,11 @@ interface ChatCompletionRequest {
 export async function proxyChatCompletion(args: {
   req: ChatCompletionRequest;
   apiKey: ApiKey;
+  /** Owner of `apiKey`. Carries the quota pool and the model whitelist. */
+  user: User;
   deps?: ProxyDeps;
 }): Promise<ProxyResult> {
-  const { req, apiKey, deps } = args;
+  const { req, apiKey, user, deps } = args;
   const fetchImpl = deps?.fetchImpl ?? fetch;
 
   if (!req.model) {
@@ -89,12 +92,16 @@ export async function proxyChatCompletion(args: {
   }
 
   // 1. Re-validate the key (defensive: caller may have skipped).
-  const status = checkKeyStatus({ key: apiKey, requestedModel: req.model });
+  const status = checkKeyStatus({
+    key: apiKey,
+    user,
+    requestedModel: req.model,
+  });
   if (!status.ok) {
     const http = reasonToHttp(status.reason);
     return { ok: false, status: http.status, error: { code: http.code, message: http.message } };
   }
-  const preFlight = shouldRejectBeforeRequest(apiKey);
+  const preFlight = shouldRejectBeforeRequest(user);
   if (preFlight) {
     const http = reasonToHttp(preFlight.reason);
     return { ok: false, status: http.status, error: { code: http.code, message: http.message } };
@@ -165,13 +172,18 @@ export async function proxyChatCompletion(args: {
     completionTokens: usage.completion_tokens,
   });
 
-  // 7. Persist usage + bump quota.
+  // 7. Persist usage + charge the owner's pool.
+  // The pool belongs to the USER, not the key: three keys held by the same
+  // account all draw down one balance.
   const delta = quotaDelta({
-    quotaType: apiKey.quotaType,
+    quotaType: user.quotaType,
     creditsUsed,
     totalTokens: usage.total_tokens,
   });
-  if (delta > 0) await incrementQuotaUsed(apiKey.id, delta);
+  if (delta > 0) {
+    await incrementUserQuotaUsed(apiKey.userId, delta);
+    await touchApiKeyLastUsed(apiKey.id);
+  }
 
   await recordUsage({
     apiKeyId: apiKey.id,

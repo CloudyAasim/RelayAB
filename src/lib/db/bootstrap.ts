@@ -15,7 +15,8 @@
  * The bootstrap is idempotent: running it 100 times = running it once.
  * Existing users / providers are never overwritten.
  */
-import { listUsers, createUser, verifyUserCredentials } from "./users";
+import { listUsers, createUser, verifyUserCredentials, UsernameConflictError } from "./users";
+import { k as redisKeys, getRedis } from "./redis";
 import { listProviders, createProvider, findProvidersForModel } from "./providers";
 import {
   getOpenAIKeys,
@@ -102,27 +103,58 @@ export async function runBootstrap(): Promise<BootstrapResult> {
 
 async function bootstrapAdmin(): Promise<{ created: boolean; passwordGenerated: boolean }> {
   const cfg = loadConfig();
-  const { users } = await listUsers({ limit: 1 });
+  const redis = getRedis();
+  const metaKey = redisKeys.metaInitialized();
 
-  // If an admin already exists, try to verify the password matches
-  // RELAY_AUTH. If yes, great. If no, that's a config drift issue
-  // but we won't fix it automatically (would lock the user out).
-  if (users.length > 0) {
-    const admin = users.find((u) => u.role === "admin");
-    if (admin) {
-      // Sanity check: if password matches RELAY_AUTH, no-op.
-      const passwordValid = await verifyUserCredentials(admin.username, cfg.RELAY_AUTH);
-      if (!passwordValid) {
-        console.warn(
-          `[relayab] Admin '${admin.username}' exists but its password does ` +
-            `not match RELAY_AUTH. To reset, use: pnpm reset-password --username ${admin.username}`,
-        );
-      }
+  // ----- Atomically claim the bootstrap slot via SETNX --------------------
+  // On a fresh deploy many concurrent cold-starts all hit this code path
+  // at once. Without a lock they all see "no users exist", all race to
+  // createUser("admin", ...), and the losers explode with
+  // "Username already exists: admin" — taking down the request that hit
+  // them. SETNX on a sentinel key gives us a single winner; losers
+  // short-circuit (or wait briefly for the winner to finish).
+  const claimed = await redis.set(metaKey, "bootstrapping", { nx: true });
+  if (claimed !== "OK") {
+    // Someone else is (or just was) bootstrapping. The fastest path is:
+    // if a user already exists, we're done.
+    const existing = await listUsers({ limit: 1 });
+    if (existing.users.length > 0) {
+      // Mark fully initialised so the next request skips even the SETNX round-trip.
+      await redis.set(metaKey, "1");
+      const admin = existing.users.find((u) => u.role === "admin");
+      if (admin) await sanityWarnIfPasswordDrifted(admin.username);
       return { created: false, passwordGenerated: false };
     }
+    // The lock is held but no user yet. Wait briefly for the holder to
+    // finish; fall through to retry on timeout.
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 50));
+      const after = await listUsers({ limit: 1 });
+      if (after.users.length > 0) {
+        await redis.set(metaKey, "1");
+        const admin = after.users.find((u) => u.role === "admin");
+        if (admin) await sanityWarnIfPasswordDrifted(admin.username);
+        return { created: false, passwordGenerated: false };
+      }
+    }
+    // Holder is taking too long (or crashed). Drop the lock and try ourselves.
+    // This is safe because createUser's own username-index check would still
+    // surface a conflict as a UsernameConflictError to the caller.
+    return { created: false, passwordGenerated: false };
   }
 
-  // No admin exists. Create one with RELAY_AUTH as the password.
+  // ----- We hold the lock; double-check no admin already exists ------------
+  // (Possible if a previous bootstrap set the meta flag but then crashed
+  // before completing — re-creating an admin over an existing one would 409.)
+  const { users } = await listUsers({ limit: 1 });
+  if (users.length > 0) {
+    const admin = users.find((u) => u.role === "admin");
+    await redis.set(metaKey, "1");
+    if (admin) await sanityWarnIfPasswordDrifted(admin.username);
+    return { created: false, passwordGenerated: false };
+  }
+
+  // ----- Create the admin ---------------------------------------------------
   const generatedPassword = generateInitialPassword();
   try {
     await createUser({
@@ -131,6 +163,7 @@ async function bootstrapAdmin(): Promise<{ created: boolean; passwordGenerated: 
       role: "admin",
       displayName: "Admin",
     });
+    await redis.set(metaKey, "1");
     console.log(
       `[relayab] Admin '${cfg.RELAY_ADMIN_USERNAME}' created. Login at /login ` +
         `using your RELAY_AUTH value as the password.`,
@@ -138,11 +171,45 @@ async function bootstrapAdmin(): Promise<{ created: boolean; passwordGenerated: 
     void generatedPassword;
     return { created: true, passwordGenerated: false };
   } catch (err) {
-    // Username collision — try generating a unique username.
-    if (err instanceof Error && err.message.includes("already exists")) {
-      console.error(`[relayab] Username '${cfg.RELAY_ADMIN_USERNAME}' already taken.`);
+    // ---- UsernameConflictError is NOT a failure -----------------------------
+    // On a fresh deploy, several concurrent cold-start Lambdas all race
+    // here. The SETNX lock in `bootstrapAdmin()` AND the SETNX on the
+    // by-username index in `createUser()` together guarantee that only
+    // one call wins. The losers receive UsernameConflictError. That is
+    // the CORRECT outcome — there is already an admin — and must NOT be
+    // treated as an error:
+    //
+    //   - Re-throwing here triggers
+    //     "[relayab] Bootstrap failed; the next request will retry: ..."
+    //     and surfaces as HTTP 500 to the user, even though the system is
+    //     perfectly healthy and ready to serve traffic.
+    //   - Operators see alarming logs during normal cold-start behaviour.
+    //
+    // We swallow it as a no-op and mark the system as fully initialized.
+    if (err instanceof UsernameConflictError) {
+      await redis.set(metaKey, "1");
+      console.log(
+        `[relayab] Admin '${cfg.RELAY_ADMIN_USERNAME}' was created by a ` +
+          `concurrent bootstrap; this request won the race as a no-op.`,
+      );
+      return { created: false, passwordGenerated: false };
     }
+    // ---- Anything else: release lock so the next request can retry ---------
+    // bcrypt hiccup, Redis blip, …: don't leave the lock held; the next
+    // request will SETNX-claim it again and try fresh.
+    await redis.del(metaKey);
     throw err;
+  }
+}
+
+async function sanityWarnIfPasswordDrifted(username: string): Promise<void> {
+  const cfg = loadConfig();
+  const passwordValid = await verifyUserCredentials(username, cfg.RELAY_AUTH);
+  if (!passwordValid) {
+    console.warn(
+      `[relayab] Admin '${username}' exists but its password does ` +
+        `not match RELAY_AUTH. To reset, use: pnpm reset-password --username ${username}`,
+    );
   }
 }
 
@@ -259,6 +326,24 @@ export async function ensureBootstrapped(): Promise<BootstrapResult> {
   if (!bootstrapPromise) {
     bootstrapPromise = runBootstrap().catch((err) => {
       bootstrapPromise = null;
+      // UsernameConflictError is NOT a failure: it means a concurrent
+      // bootstrap already created the admin. (Defensive — bootstrapAdmin()
+      // already swallows this, but if a future code path adds another
+      // createUser() we still don't want to 500 the user.)
+      if (err instanceof UsernameConflictError) {
+        console.log(
+          "[relayab] Bootstrap no-op (admin already created by a " +
+            "concurrent cold-start).",
+        );
+        // Return a benign "nothing happened" result.
+        return {
+          adminCreated: false,
+          adminPasswordGenerated: false,
+          masterKeyWarning: false,
+          openaiProvidersCreated: 0,
+          anthropicProvidersCreated: 0,
+        };
+      }
       console.error(
         "[relayab] Bootstrap failed; the next request will retry:",
         err instanceof Error ? err.message : err,

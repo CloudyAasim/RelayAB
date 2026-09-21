@@ -8,13 +8,10 @@
  *   STRING  relay:apikey:hash:{sha256(key)}    → keyId  (Bearer lookup)
  *   SET     relay:apikey:by-user:{userId}      → [keyId, ...]
  *
- * Quota bookkeeping is split into two fields on the hash itself:
- *   quotaUsed — incremented in real-time per request.
- *   quotaLimit — set at creation/edit.
- *
- * Unit depends on `quotaType`: for `credits` both fields are **积分**
- * stored as integer 0.001-积分 units (see lib/quota/credits.ts); for
- * `tokens` they are token counts.
+ * A key is a CREDENTIAL, not a wallet. It carries identity (who is calling)
+ * and light policy (enabled / expiry / optional model narrowing); the quota
+ * pool lives on the owning user, so every key that user holds draws from the
+ * same balance. See `DEFAULT_USER_ALLOCATION` in ./types.ts for why.
  *
  * Plaintext keys are NEVER stored: only the sha256 is kept. The plaintext
  * is returned ONCE from createApiKey and is unrecoverable afterwards.
@@ -42,16 +39,13 @@ export class ApiKeyNotFoundError extends Error {
 export interface CreateApiKeyInput {
   userId: string;
   label: string;
-  quotaType: "credits" | "tokens";
-  quotaLimit: number;
   expiresAt?: string | null;
+  /** Optional narrowing of the owner's model whitelist. */
   allowedModels?: string[];
 }
 
 export interface UpdateApiKeyInput {
   label?: string;
-  quotaType?: "credits" | "tokens";
-  quotaLimit?: number;
   expiresAt?: string | null;
   allowedModels?: string[];
   enabled?: boolean;
@@ -85,9 +79,6 @@ export async function createApiKey(input: CreateApiKeyInput): Promise<ApiKeyWith
     label: input.label,
     keyHash,
     keyPrefix: maskApiKey(plain),
-    quotaType: input.quotaType,
-    quotaLimit: input.quotaLimit,
-    quotaUsed: 0,
     expiresAt: input.expiresAt ?? null,
     enabled: true,
     allowedModels: input.allowedModels ?? [],
@@ -103,9 +94,6 @@ export async function createApiKey(input: CreateApiKeyInput): Promise<ApiKeyWith
     label: apiKey.label,
     keyHash: apiKey.keyHash,
     keyPrefix: apiKey.keyPrefix,
-    quotaType: apiKey.quotaType,
-    quotaLimit: String(apiKey.quotaLimit),
-    quotaUsed: String(apiKey.quotaUsed),
     expiresAt: apiKey.expiresAt ?? "",
     enabled: apiKey.enabled ? "1" : "0",
     allowedModels: apiKey.allowedModels.join(","),
@@ -217,8 +205,6 @@ export async function updateApiKey(
   const merged: ApiKey = ApiKeySchema.parse({
     ...existing,
     label: patch.label ?? existing.label,
-    quotaType: patch.quotaType ?? existing.quotaType,
-    quotaLimit: patch.quotaLimit ?? existing.quotaLimit,
     expiresAt: patch.expiresAt === undefined ? existing.expiresAt : patch.expiresAt,
     allowedModels: patch.allowedModels ?? existing.allowedModels,
     enabled: patch.enabled === undefined ? existing.enabled : patch.enabled,
@@ -226,8 +212,6 @@ export async function updateApiKey(
 
   await getRedis().hset(k.apiKey(keyId), {
     label: merged.label,
-    quotaType: merged.quotaType,
-    quotaLimit: String(merged.quotaLimit),
     expiresAt: merged.expiresAt ?? "",
     allowedModels: merged.allowedModels.join(","),
     enabled: merged.enabled ? "1" : "0",
@@ -244,30 +228,15 @@ export async function setApiKeyEnabled(
 }
 
 /**
- * Atomically increment quotaUsed and lastUsedAt.
- * Returns the new value. Throws if the key is missing.
+ * Stamp `lastUsedAt` on a key after a successful call.
+ *
+ * Consumption itself is NOT recorded here — it belongs to the owning user's
+ * pool (see `incrementUserQuotaUsed` in ./users.ts). Keeping this function
+ * separate makes that split explicit at every call site.
  */
-export async function incrementQuotaUsed(
-  keyId: string,
-  delta: number,
-): Promise<ApiKey | null> {
-  if (!Number.isFinite(delta) || delta < 0) {
-    throw new RangeError("delta must be non-negative finite number");
-  }
-  const redis = getRedis();
-  const newUsed = await redis.hincrby(k.apiKey(keyId), "quotaUsed", delta);
+export async function touchApiKeyLastUsed(keyId: string): Promise<void> {
   const now = new Date().toISOString();
-  await redis.hset(k.apiKey(keyId), { lastUsedAt: now });
-
-  // Re-read full record so callers see consistent state.
-  const fresh = await getApiKeyById(keyId);
-  if (!fresh) return null;
-
-  // If quota is now over limit, leave it as-is — the check happens at
-  // request time, and the user might have a generous `quotaUsed` carry-over.
-  // Returning the record lets callers decide.
-  void newUsed;
-  return fresh;
+  await getRedis().hset(k.apiKey(keyId), { lastUsedAt: now });
 }
 
 // ---------------------------------------------------------------------------
@@ -310,9 +279,6 @@ async function hashToKey(raw: Record<string, string> | null): Promise<ApiKey | n
       label: raw.label,
       keyHash: raw.keyHash,
       keyPrefix: raw.keyPrefix,
-      quotaType: raw.quotaType,
-      quotaLimit: Number(raw.quotaLimit ?? "0"),
-      quotaUsed: Number(raw.quotaUsed ?? "0"),
       expiresAt: raw.expiresAt && raw.expiresAt !== "" ? raw.expiresAt : null,
       enabled: raw.enabled === "1",
       allowedModels: raw.allowedModels ? raw.allowedModels.split(",").filter(Boolean) : [],

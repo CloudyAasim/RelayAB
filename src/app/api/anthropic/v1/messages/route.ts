@@ -10,6 +10,7 @@ import { NextResponse } from "next/server";
 import { authenticateBearer, reasonToHttp } from "@/lib/auth/apikey";
 import { proxyAnthropicMessage } from "@/lib/proxy/anthropic";
 import type { ApiKey } from "@/lib/db/types";
+import { getUserById as lookupUserById } from "@/lib/db/users";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -42,9 +43,22 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
+  // The owner record carries the quota pool and the model whitelist.
+  const owner = auth.user ?? (await lookupUserById(auth.key.userId));
+  if (!owner) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: { code: "user_not_found", message: "The account owning this key no longer exists" },
+      },
+      { status: 403 },
+    );
+  }
+
   const result = await proxyAnthropicMessage({
     req: body as Parameters<typeof proxyAnthropicMessage>[0]["req"],
     apiKey: auth.key as ApiKey,
+    user: owner,
   });
 
   if (!result.ok) {

@@ -1,24 +1,26 @@
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 
-export function Table({ children }: { children: ReactNode }) {
+export function Table({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-      <table className="w-full text-left text-sm">{children}</table>
+    <div className={cn("overflow-hidden rounded-lg border border-border bg-card", className)}>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-sm">{children}</table>
+      </div>
     </div>
   );
 }
 
 export function THead({ children }: { children: ReactNode }) {
   return (
-    <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wider text-slate-600">
+    <thead className="border-b border-border bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
       {children}
     </thead>
   );
 }
 
 export function TBody({ children }: { children: ReactNode }) {
-  return <tbody className="divide-y divide-slate-100">{children}</tbody>;
+  return <tbody className="divide-y divide-border">{children}</tbody>;
 }
 
 export function TR({
@@ -27,7 +29,7 @@ export function TR({
   ...rest
 }: React.HTMLAttributes<HTMLTableRowElement> & { children: ReactNode }) {
   return (
-    <tr className={cn("transition-colors hover:bg-slate-50", className)} {...rest}>
+    <tr className={cn("transition-colors hover:bg-muted/30", className)} {...rest}>
       {children}
     </tr>
   );
@@ -40,7 +42,7 @@ export function TH({
   children: ReactNode;
   className?: string;
 }) {
-  return <th className={cn("px-4 py-3 font-medium", className)}>{children}</th>;
+  return <th className={cn("px-4 py-2.5 font-medium", className)}>{children}</th>;
 }
 
 export function TD({
@@ -63,16 +65,40 @@ export function EmptyState({
   title,
   description,
   action,
+  icon,
 }: {
   title: string;
   description?: string;
   action?: ReactNode;
+  icon?: ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
-      <p className="text-sm font-medium text-slate-700">{title}</p>
-      {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
+    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-muted/20 px-6 py-12 text-center">
+      {icon && (
+        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+          {icon}
+        </div>
+      )}
+      <p className="text-sm font-medium text-foreground">{title}</p>
+      {description && (
+        <p className="mt-1 max-w-sm text-sm text-muted-foreground">{description}</p>
+      )}
       {action && <div className="mt-4">{action}</div>}
     </div>
+  );
+}
+
+/**
+ * Skeleton — a lightweight loading placeholder that follows the design tokens.
+ * Use as: `<Skeleton className="h-4 w-32" />`.
+ */
+export function Skeleton({ className }: { className?: string }) {
+  return (
+    <div
+      className={cn(
+        "animate-pulse rounded-md bg-muted",
+        className,
+      )}
+    />
   );
 }

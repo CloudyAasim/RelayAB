@@ -1,39 +1,47 @@
-import Link from "next/link";
+"use client";
 
 /**
  * Site-wide footer.
  *
- * - Single source of truth for the project license attribution.
- * - No project version is shown anywhere in this footer.
- * - The GitHub link is opt-in via NEXT_PUBLIC_REPOSITORY_URL so the footer
- *   doesn't break for self-hosted deployments without a public repo.
+ * - Single source of truth for project license attribution.
+ * - Includes the locale switcher so users can toggle zh-CN ⇄ en.
+ * - Uses the design tokens so it follows light/dark mode.
+ * - The GitHub link is opt-in via NEXT_PUBLIC_REPOSITORY_URL.
  */
+import Link from "next/link";
+import { useT } from "@/components/i18n/I18nProvider";
+import { LocaleSwitcher } from "@/components/i18n/LocaleSwitcher";
+
 export function Footer() {
   const year = new Date().getFullYear();
   const repoUrl = process.env.NEXT_PUBLIC_REPOSITORY_URL?.trim();
+  const t = useT();
 
   return (
-    <footer className="mt-auto border-t border-slate-200 bg-slate-50">
-      <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-4 py-4 text-xs text-slate-500 sm:flex-row">
+    <footer className="mt-auto border-t border-border bg-muted/30">
+      <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-4 py-4 text-xs text-muted-foreground sm:flex-row sm:px-6">
         <div>
-          © {year} CloudyAasim · Released under the{" "}
+          © {year} CloudyAasim ·{" "}
           <Link
             href="/license"
-            className="font-medium text-slate-700 underline-offset-2 hover:underline"
+            className="font-medium text-foreground underline-offset-2 hover:underline"
           >
-            MIT License
+            {t("footer.releasedUnder")}
           </Link>
         </div>
-        {repoUrl ? (
-          <a
-            href={repoUrl}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="font-medium text-slate-700 underline-offset-2 hover:underline"
-          >
-            Source on GitHub ↗
-          </a>
-        ) : null}
+        <div className="flex items-center gap-4">
+          <LocaleSwitcher />
+          {repoUrl ? (
+            <a
+              href={repoUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="font-medium text-foreground underline-offset-2 hover:underline"
+            >
+              {t("footer.sourceCode")} ↗
+            </a>
+          ) : null}
+        </div>
       </div>
     </footer>
   );

@@ -1,129 +1,177 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
-import { Nav } from "@/components/layouts/Nav";
-import { Card, CardHeader } from "@/components/ui/Card";
-import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/Table";
-import { Badge } from "@/components/ui/Badge";
 import { listUsers } from "@/lib/db/users";
 import { listAllApiKeys } from "@/lib/db/keys";
 import { listProviders } from "@/lib/db/providers";
-import { aggregateByDay } from "@/lib/quota/calculator";
-import { listUsageByKey } from "@/lib/db/usage";
-import { formatCredits, formatNumber } from "@/lib/utils";
+import { aggregateByKey } from "@/lib/db/usage";
+import { Card, CardHeader, StatCard } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import {
+  Table,
+  THead,
+  TBody,
+  TR,
+  TH,
+  TD,
+  EmptyState,
+} from "@/components/ui/Table";
+import { formatNumber, formatDate } from "@/lib/utils";
+import { getT } from "@/lib/i18n/server";
+import { AuthenticatedLayout, SectionPageLayout } from "@/components/layouts";
+import {
+  Users,
+  KeyRound,
+  Server,
+  Activity,
+  Coins,
+  TrendingUp,
+} from "lucide-react";
 
-export default async function AdminOverview() {
+export default async function AdminOverviewPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   if (user.role !== "admin") redirect("/dashboard");
 
-  const [users, keys, providers] = await Promise.all([
+  const { t } = await getT();
+  const [{ users }, keys, providers] = await Promise.all([
     listUsers({ limit: 200 }),
-    listAllApiKeys(),
+    listAllApiKeys({}),
     listProviders(),
   ]);
 
-  // Aggregate recent usage.
-  const recentLogs = (
-    await Promise.all(keys.map((k) => listUsageByKey(k.id, { limit: 200 })))
-  ).flat();
-  const dayBuckets = aggregateByDay(recentLogs, 0);
-  const totals = recentLogs.reduce(
-    (acc, l) => {
-      if (l.status !== "success") return acc;
-      acc.tokens += l.totalTokens;
-      acc.credits += l.creditsUsed;
-      acc.requests += 1;
-      return acc;
-    },
-    { tokens: 0, credits: 0, requests: 0 },
+  // Best-effort usage aggregate; the underlying fn is aggregateByKey which returns
+  // per-key totals. We sum them.
+  const aggTotals = (await Promise.all(keys.map((k) => aggregateByKey(k.id)))).reduce(
+    (acc, x) => ({
+      totalTokens: acc.totalTokens + x.totalTokens,
+      creditsUsed: acc.creditsUsed + x.creditsUsed,
+    }),
+    { totalTokens: 0, creditsUsed: 0 },
   );
 
+  const recentUsers = [...users]
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 5);
+
   return (
-    <>
-      <Nav username={user.username} role={user.role} />
-      <main className="mx-auto max-w-6xl px-4 py-8">
-        <h1 className="mb-6 text-2xl font-semibold tracking-tight">Overview</h1>
+    <AuthenticatedLayout
+      role={user.role}
+      username={user.username}
+      pageTitle={t("admin.overview.title")}
+    >
+      <SectionPageLayout>
+        <SectionPageLayout.Title>{t("admin.overview.title")}</SectionPageLayout.Title>
+        <SectionPageLayout.Content>
+          {/* Stat row */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard
+              label={t("admin.stat.users")}
+              value={formatNumber(users.length)}
+              icon={<Users className="h-4 w-4" />}
+              tone="primary"
+            />
+            <StatCard
+              label={t("admin.stat.apiKeys")}
+              value={formatNumber(keys.length)}
+              icon={<KeyRound className="h-4 w-4" />}
+              tone="info"
+              hint={`${keys.filter((k) => k.enabled).length} ${t("dashboard.stat.activeKeys").toLowerCase()}`}
+            />
+            <StatCard
+              label={t("admin.stat.providers")}
+              value={formatNumber(providers.length)}
+              icon={<Server className="h-4 w-4" />}
+              tone="success"
+              hint={`${providers.filter((p) => p.enabled).length} ${t("dashboard.status.enabled")}`}
+            />
+            <StatCard
+              label={t("admin.stat.tokens")}
+              value={formatNumber(aggTotals.totalTokens)}
+              icon={<Activity className="h-4 w-4" />}
+              tone="warning"
+              hint={t("admin.stat.tokensHint")}
+            />
+          </div>
 
-        <div className="grid gap-4 sm:grid-cols-4 mb-6">
-          <Stat label="Users" value={formatNumber(users.users.length)} />
-          <Stat label="API Keys" value={formatNumber(keys.length)} />
-          <Stat label="Providers" value={formatNumber(providers.length)} />
-          <Stat label="Requests" value={formatNumber(totals.requests)} />
-        </div>
-
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Card>
-            <CardHeader title="Daily Usage (Last 7 Days)" />
-            {dayBuckets.length === 0 ? (
-              <p className="text-sm text-slate-500">No activity yet.</p>
-            ) : (
-              <Table>
-                <THead>
-                  <TR>
-                    <TH>Date</TH>
-                    <TH>Requests</TH>
-                    <TH>Tokens</TH>
-                    <TH>积分</TH>
-                  </TR>
-                </THead>
-                <TBody>
-                  {dayBuckets.slice(-7).map((d) => (
-                    <TR key={d.day}>
-                      <TD>{d.day}</TD>
-                      <TD>{formatNumber(d.requests)}</TD>
-                      <TD>{formatNumber(d.promptTokens + d.completionTokens)}</TD>
-                      <TD>{formatCredits(d.creditsUsed)}</TD>
+          <div className="mt-6 grid gap-6 lg:grid-cols-2">
+            <Card>
+              <CardHeader
+                title={
+                  <span className="flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                    {t("admin.overview.recentUsers")}
+                  </span>
+                }
+              />
+              {recentUsers.length === 0 ? (
+                <EmptyState title={t("admin.users.empty.title")} />
+              ) : (
+                <Table>
+                  <THead>
+                    <TR>
+                      <TH>{t("admin.users.create.username")}</TH>
+                      <TH>{t("admin.users.create.role")}</TH>
+                      <TH>{t("dashboard.table.time")}</TH>
                     </TR>
-                  ))}
-                </TBody>
-              </Table>
-            )}
-          </Card>
+                  </THead>
+                  <TBody>
+                    {recentUsers.map((u) => (
+                      <TR key={u.id}>
+                        <TD>
+                          <div className="font-medium">{u.username}</div>
+                          <div className="text-xs text-muted-foreground">{u.displayName}</div>
+                        </TD>
+                        <TD>
+                          <Badge tone={u.role === "admin" ? "primary" : "neutral"}>
+                            {u.role === "admin"
+                              ? t("admin.users.role.admin")
+                              : t("admin.users.role.user")}
+                          </Badge>
+                        </TD>
+                        <TD className="text-muted-foreground">{formatDate(u.createdAt)}</TD>
+                      </TR>
+                    ))}
+                  </TBody>
+                </Table>
+              )}
+            </Card>
 
-          <Card>
-            <CardHeader title="Providers" />
-            <Table>
-              <THead>
-                <TR>
-                  <TH>Name</TH>
-                  <TH>Kind</TH>
-                  <TH>Models</TH>
-                  <TH>Status</TH>
-                </TR>
-              </THead>
-              <TBody>
-                {providers.length === 0 ? (
-                  <TR>
-                    <TD colSpan={4} className="text-center text-slate-500">
-                      No providers configured
-                    </TD>
-                  </TR>
-                ) : (
-                  providers.map((p) => (
-                    <TR key={p.id}>
-                      <TD>{p.name}</TD>
-                      <TD><Badge tone="slate">{p.kind}</Badge></TD>
-                      <TD>{formatNumber(Object.keys(p.modelMapping).length)}</TD>
-                      <TD>
-                        {p.enabled ? <Badge tone="green">enabled</Badge> : <Badge tone="red">disabled</Badge>}
-                      </TD>
-                    </TR>
-                  ))
-                )}
-              </TBody>
-            </Table>
-          </Card>
-        </div>
-      </main>
-    </>
+            <Card>
+              <CardHeader
+                title={
+                  <span className="flex items-center gap-2">
+                    <Coins className="h-4 w-4 text-muted-foreground" />
+                    {t("admin.overview.usage")}
+                  </span>
+                }
+              />
+              <div className="space-y-3">
+                <UsageRow
+                  label={t("admin.overview.usageTotalTokens")}
+                  value={formatNumber(aggTotals.totalTokens)}
+                />
+                <UsageRow
+                  label={t("admin.overview.usageTotalCredits")}
+                  value={formatNumber(aggTotals.creditsUsed / 1000)}
+                />
+                <UsageRow
+                  label={t("admin.overview.usageActiveKeys")}
+                  value={`${keys.filter((k) => k.enabled).length} / ${keys.length}`}
+                />
+              </div>
+            </Card>
+          </div>
+        </SectionPageLayout.Content>
+      </SectionPageLayout>
+    </AuthenticatedLayout>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function UsageRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
-      <div className="text-sm text-slate-500">{label}</div>
-      <div className="mt-1 text-2xl font-semibold text-slate-900">{value}</div>
+    <div className="flex items-center justify-between rounded-md border border-border bg-card px-3 py-2.5">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className="font-mono text-sm font-medium text-foreground">{value}</span>
     </div>
   );
 }

@@ -16,11 +16,12 @@
 
 ### 1.2 必填环境变量
 
-**只需 3 个变量即可启动：**
+**只需 4 个变量即可启动：**
 
 | 名称 | 来源 | 备注 |
 |---|---|---|
 | `RELAY_AUTH` | 手动：`openssl rand -hex 32` | 主密码，同时承担管理员登录密码 + 会话密钥派生种子 |
+| `RELAY_PUBLIC_URL` | 手动 | 服务对外可访问的 URL，例如 `https://relay.example.com` — 出现在 `/dashboard/docs` 文档页与 `/dashboard` 的导航里，可一键复制到 OpenAI / Anthropic 客户端 |
 | `UPSTASH_REDIS_REST_URL` | Vercel Marketplace 自动注入 | Upstash REST URL |
 | `UPSTASH_REDIS_REST_TOKEN` | Vercel Marketplace 自动注入 | Upstash REST Token |
 
@@ -33,6 +34,7 @@
 - `ANTHROPIC_KEYS` — 同上，Anthropic Provider
 - `OPENAI_BASE_URL` / `ANTHROPIC_BASE_URL` — 覆盖默认端点（Azure / 自建代理）
 - `RELAY_ADMIN_USERNAME` — 管理员用户名（默认 `admin`）
+- `RELAY_DEFAULT_LOCALE` — 界面默认语言，`zh-CN`（默认）或 `en`；访客仍可在页脚自行切换
 - `VERCEL_PROTECTION_BYPASS` — 部署保护 bypass secret
 - `EMULATE_VERCEL_LOCAL` — `"1"` 启用嵌入式 Vercel mock（**仅本地开发**）
 - `AI_GATEWAY_API_KEY` — 通过 Vercel AI Gateway 路由所有上游流量

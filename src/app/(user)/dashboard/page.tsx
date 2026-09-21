@@ -1,134 +1,195 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
-import { listApiKeysByUser, getApiKeyById } from "@/lib/db/keys";
-import { listUsageByKey, aggregateByUser } from "@/lib/db/usage";
-import { Nav } from "@/components/layouts/Nav";
-import { Card, CardHeader } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
-import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/components/ui/Table";
+import { listApiKeysByUser } from "@/lib/db/keys";
+import { aggregateByUser } from "@/lib/db/usage";
+import { getUserById } from "@/lib/db/users";
+import { Card, StatCard, CardHeader } from "@/components/ui/Card";
+import { Badge, StatusDot } from "@/components/ui/Badge";
+import {
+  Table,
+  THead,
+  TBody,
+  TR,
+  TH,
+  TD,
+  EmptyState,
+} from "@/components/ui/Table";
 import { formatCredits, formatNumber, formatDate } from "@/lib/utils";
-import Link from "next/link";
+import { getT } from "@/lib/i18n/server";
+import {
+  AuthenticatedLayout,
+  SectionPageLayout,
+} from "@/components/layouts";
+import {
+  CreateKeyButton,
+  type UserAllocation,
+} from "./CreateKeyButton";
+import { UserKeyActions } from "./UserKeyActions";
+import { AllocationSummary } from "./AllocationSummary";
+import { KeyRound, Coins, Activity, Plus, Sparkles } from "lucide-react";
 
 export default async function DashboardPage() {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  const sessionUser = await getCurrentUser();
+  if (!sessionUser) redirect("/login");
 
-  const { keys } = await listApiKeysByUser(user.id);
-  // Aggregate usage across all user's keys.
-  const allLogs = (
-    await Promise.all(keys.map((k) => listUsageByKey(k.id, { limit: 50 })))
-  ).flat();
+  const { t } = await getT();
+  const fullUser = await getUserById(sessionUser.id);
+  const { keys } = await listApiKeysByUser(sessionUser.id, { limit: 200 });
   const agg = await aggregateByUser(keys.map((k) => k.id));
 
+  const allocation: UserAllocation | null = fullUser
+    ? {
+        maxActiveKeys: fullUser.maxActiveKeys,
+        activeKeyCount: keys.filter((k) => k.enabled).length,
+        allowedModels: fullUser.allowedModels,
+      }
+    : null;
+
   return (
-    <>
-      <Nav username={user.username} role={user.role} />
-      <main className="mx-auto max-w-6xl px-4 py-8">
-        <h1 className="mb-6 text-2xl font-semibold tracking-tight">My Dashboard</h1>
-
-        <div className="grid gap-4 sm:grid-cols-3 mb-6">
-          <Stat label="Active Keys" value={formatNumber(keys.filter((k) => k.enabled).length)} />
-          <Stat label="Tokens Used" value={formatNumber(agg.totalTokens)} />
-          <Stat label="积分用量" value={formatCredits(agg.creditsUsed)} />
-        </div>
-
-        <Card>
-          <CardHeader title="API Keys" description="Your personal keys for accessing upstream AI APIs." />
-          {keys.length === 0 ? (
-            <EmptyState
-              title="No keys yet"
-              description="Ask an administrator to issue you a key."
+    <AuthenticatedLayout
+      role={sessionUser.role}
+      username={sessionUser.username}
+      pageTitle={t("dashboard.title")}
+    >
+      <SectionPageLayout>
+        <SectionPageLayout.Title>
+          {t("dashboard.welcome", { username: sessionUser.username })}
+        </SectionPageLayout.Title>
+        <SectionPageLayout.Actions>
+          <CreateKeyButton allocation={allocation} />
+        </SectionPageLayout.Actions>
+        <SectionPageLayout.Content>
+          {/* Stats row */}
+          <div className="grid gap-4 sm:grid-cols-3">
+            <StatCard
+              label={t("dashboard.stat.activeKeys")}
+              value={formatNumber(keys.filter((k) => k.enabled).length)}
+              icon={<KeyRound className="h-4 w-4" />}
+              tone="primary"
             />
-          ) : (
-            <Table>
-              <THead>
-                <TR>
-                  <TH>Label</TH>
-                  <TH>Key</TH>
-                  <TH>Quota</TH>
-                  <TH>Expires</TH>
-                  <TH>Status</TH>
-                </TR>
-              </THead>
-              <TBody>
-                {keys.map((k) => (
-                  <TR key={k.id}>
-                    <TD>{k.label}</TD>
-                    <TD>
-                      <code className="text-xs">{k.keyPrefix}</code>
-                    </TD>
-                    <TD>
-                        {k.quotaType === "credits"
-                        ? `${formatCredits(k.quotaUsed)} / ${formatCredits(k.quotaLimit)} 积分`
-                        : `${formatNumber(k.quotaUsed)} / ${formatNumber(k.quotaLimit)} tokens`}
-                    </TD>
-                    <TD>{formatDate(k.expiresAt)}</TD>
-                    <TD>
-                      {k.enabled ? <Badge tone="green">enabled</Badge> : <Badge tone="red">disabled</Badge>}
-                      {k.expiresAt && new Date(k.expiresAt) < new Date() && (
-                        <Badge tone="yellow" className="ml-1">expired</Badge>
-                      )}
-                    </TD>
-                  </TR>
-                ))}
-              </TBody>
-            </Table>
-          )}
-        </Card>
-
-        <Card className="mt-6">
-          <CardHeader title="Recent Activity" description="Last 50 requests across all your keys." />
-          {allLogs.length === 0 ? (
-            <EmptyState
-              title="No activity yet"
-              description="Activity will appear here after you make your first request."
+            <StatCard
+              label={t("dashboard.stat.tokensUsed")}
+              value={formatNumber(agg.totalTokens)}
+              icon={<Activity className="h-4 w-4" />}
+              tone="info"
             />
-          ) : (
-            <Table>
-              <THead>
-                <TR>
-                  <TH>Time</TH>
-                  <TH>Model</TH>
-                  <TH>Tokens</TH>
-                  <TH>积分</TH>
-                  <TH>Status</TH>
-                </TR>
-              </THead>
-              <TBody>
-                {allLogs.slice(0, 20).map((l) => (
-                  <TR key={l.id}>
-                    <TD>{formatDate(l.createdAt)}</TD>
-                    <TD><code className="text-xs">{l.model}</code></TD>
-                    <TD>{formatNumber(l.totalTokens)}</TD>
-                    <TD>{formatCredits(l.creditsUsed)}</TD>
-                    <TD>
-                      {l.status === "success" ? (
-                        <Badge tone="green">success</Badge>
-                      ) : (
-                        <Badge tone="red">error</Badge>
-                      )}
-                    </TD>
-                  </TR>
-                ))}
-              </TBody>
-            </Table>
+            <StatCard
+              label={t("dashboard.stat.creditsUsed")}
+              value={formatCredits(agg.creditsUsed)}
+              icon={<Coins className="h-4 w-4" />}
+              tone="success"
+            />
+          </div>
+
+          {/* Allocation banner */}
+          {fullUser && (
+            <div className="mt-6">
+              <AllocationSummary
+                quotaType={fullUser.quotaType}
+                quotaLimit={fullUser.quotaLimit}
+                quotaUsed={fullUser.quotaUsed}
+                allowedModels={fullUser.allowedModels}
+                maxActiveKeys={fullUser.maxActiveKeys}
+                activeKeyCount={keys.filter((k) => k.enabled).length}
+              />
+            </div>
           )}
-        </Card>
 
-        <p className="mt-8 text-xs text-slate-500 text-center">
-          Need help? Contact your administrator.
-        </p>
-      </main>
-    </>
-  );
-}
+          {/* API Keys list */}
+          <div className="mt-6">
+            <Card>
+              <CardHeader
+                title={t("dashboard.apiKeys.title")}
+                description={t("dashboard.apiKeys.description")}
+              />
+              {keys.length === 0 ? (
+                <EmptyState
+                  icon={<Sparkles className="h-5 w-5" />}
+                  title={t("dashboard.apiKeys.empty.title")}
+                  description={t("dashboard.apiKeys.empty.description")}
+                  action={
+                    <CreateKeyButton
+                      allocation={allocation}
+                      label={
+                        <>
+                          <Plus className="mr-1.5 h-4 w-4" />
+                          {t("dashboard.createKey.button")}
+                        </>
+                      }
+                    />
+                  }
+                />
+              ) : (
+                <Table>
+                  <THead>
+                    <TR>
+                      <TH>{t("admin.keys.create.label")}</TH>
+                      <TH>{t("dashboard.table.key")}</TH>
+                      <TH>{t("dashboard.table.modelScope")}</TH>
+                      <TH>{t("dashboard.table.lastUsed")}</TH>
+                      <TH>{t("admin.keys.create.expiresAt")}</TH>
+                      <TH>{t("dashboard.table.status")}</TH>
+                      <TH className="w-32 text-right">
+                        {t("common.actions")}
+                      </TH>
+                    </TR>
+                  </THead>
+                  <TBody>
+                    {keys.map((k) => (
+                      <TR key={k.id}>
+                        <TD className="font-medium">{k.label}</TD>
+                        <TD>
+                          <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                            {k.keyPrefix}
+                          </code>
+                        </TD>
+                        {/* Quota is shared, so this column shows the key's own
+                            model scope instead of a per-key balance. */}
+                        <TD className="text-muted-foreground">
+                          {k.allowedModels.length > 0
+                            ? k.allowedModels.join(", ")
+                            : t("dashboard.table.inheritsAccount")}
+                        </TD>
+                        <TD className="text-muted-foreground">
+                          {formatDate(k.lastUsedAt)}
+                        </TD>
+                        <TD className="text-muted-foreground">
+                          {formatDate(k.expiresAt)}
+                        </TD>
+                        <TD>
+                          {k.enabled ? (
+                            <Badge tone="success">
+                              <StatusDot tone="success" pulse={false} className="mr-1" />
+                              {t("dashboard.status.enabled")}
+                            </Badge>
+                          ) : (
+                            <Badge tone="neutral">
+                              <StatusDot tone="neutral" pulse={false} className="mr-1" />
+                              {t("dashboard.status.disabled")}
+                            </Badge>
+                          )}
+                          {k.expiresAt && new Date(k.expiresAt) < new Date() && (
+                            <Badge tone="warning" className="ml-1">
+                              {t("dashboard.status.expired")}
+                            </Badge>
+                          )}
+                        </TD>
+                        <TD className="text-right">
+                          <UserKeyActions apiKey={k} />
+                        </TD>
+                      </TR>
+                    ))}
+                  </TBody>
+                </Table>
+              )}
+            </Card>
+          </div>
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
-      <div className="text-sm text-slate-500">{label}</div>
-      <div className="mt-1 text-2xl font-semibold text-slate-900">{value}</div>
-    </div>
+          <p className="mt-8 text-center text-xs text-muted-foreground">
+            {t("dashboard.help.contactAdmin")}
+          </p>
+        </SectionPageLayout.Content>
+      </SectionPageLayout>
+    </AuthenticatedLayout>
   );
 }

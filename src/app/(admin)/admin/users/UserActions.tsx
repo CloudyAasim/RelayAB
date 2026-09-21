@@ -1,117 +1,144 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
+import { useT } from "@/components/i18n/I18nProvider";
+import { apiErrorMessage } from "@/lib/i18n/api-errors";
+import type { User } from "@/lib/db/types";
+import { MoreHorizontal, Power, KeyRound, Trash2 } from "lucide-react";
 
-interface UserActionsProps {
-  userId: string;
-  isSelf: boolean;
-  disabled: boolean;
-}
-
-export function UserActions({ userId, isSelf, disabled }: UserActionsProps) {
-  const router = useRouter();
-  const [busy, setBusy] = useState(false);
-  const [confirmReset, setConfirmReset] = useState(false);
+export function UserActions({ user }: { user: User }) {
+  const t = useT();
   const [newPassword, setNewPassword] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
-  async function resetPassword() {
-    setBusy(true);
+  async function toggle() {
+    setLoading(true);
     try {
-      const res = await fetch(`/api/admin/users/${userId}/reset-password`, {
+      const res = await fetch(`/api/admin/users/${user.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ disabled: !user.disabled }),
+      });
+      const data = await res.json();
+      if (!data.ok) alert(apiErrorMessage(t, data.error?.code, data.error?.message));
+      else window.location.reload();
+    } catch {
+      alert(t("admin.users.action.failed"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function reset() {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}/reset-password`, {
         method: "POST",
       });
       const data = await res.json();
       if (!data.ok) {
-        alert(data.error?.message ?? "Failed");
-        return;
+        alert(apiErrorMessage(t, data.error?.code, data.error?.message));
+      } else {
+        setNewPassword(data.data?.generatedPassword ?? null);
+        setMenuOpen(false);
       }
-      setNewPassword(data.data?.generatedPassword ?? null);
-      router.refresh();
+    } catch {
+      alert(t("admin.users.action.failed"));
     } finally {
-      setBusy(false);
+      setLoading(false);
     }
   }
 
-  async function toggleDisabled() {
-    setBusy(true);
+  async function remove() {
+    if (!confirm(t("admin.users.action.confirmDelete"))) return;
+    setLoading(true);
     try {
-      const res = await fetch(`/api/admin/users/${userId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ disabled: !disabled }),
-      });
-      if (!(await res.json()).ok) {
-        alert("Failed");
-      }
-      router.refresh();
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function deleteUser() {
-    if (!confirm("Delete this user and all their keys? This cannot be undone.")) return;
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/admin/users/${userId}`, { method: "DELETE" });
+      const res = await fetch(`/api/admin/users/${user.id}`, { method: "DELETE" });
       const data = await res.json();
-      if (!data.ok) {
-        alert(data.error?.message ?? "Failed");
-      }
-      router.refresh();
+      if (!data.ok) alert(apiErrorMessage(t, data.error?.code, data.error?.message));
+      else window.location.reload();
+    } catch {
+      alert(t("admin.users.action.failed"));
     } finally {
-      setBusy(false);
+      setLoading(false);
     }
   }
 
   return (
-    <div className="flex flex-wrap gap-1">
-      <Button size="sm" variant="ghost" disabled={busy} onClick={() => setConfirmReset(true)}>
-        Reset PW
-      </Button>
-      {!isSelf && (
-        <Button size="sm" variant="ghost" disabled={busy} onClick={toggleDisabled}>
-          {disabled ? "Enable" : "Disable"}
-        </Button>
-      )}
-      {!isSelf && (
-        <Button size="sm" variant="danger" disabled={busy} onClick={deleteUser}>
-          Delete
-        </Button>
-      )}
-      <Modal
-        open={confirmReset}
-        onClose={() => {
-          setConfirmReset(false);
-          setNewPassword(null);
-        }}
-        title={newPassword ? "Password Reset" : "Reset Password"}
-        description={
-          newPassword ? "Save the new password — it won't be shown again." : "Generate a new random password for this user."
-        }
-        footer={
-          newPassword ? (
-            <Button onClick={() => { setConfirmReset(false); setNewPassword(null); }}>Done</Button>
-          ) : (
-            <>
-              <Button variant="ghost" onClick={() => setConfirmReset(false)}>Cancel</Button>
-              <Button onClick={resetPassword} loading={busy}>Generate</Button>
-            </>
-          )
-        }
+    <div className="relative inline-block text-left">
+      <Button
+        size="icon"
+        variant="ghost"
+        onClick={() => setMenuOpen(!menuOpen)}
+        aria-label={t("common.actions")}
+        disabled={loading}
       >
-        {newPassword ? (
-          <pre className="rounded-md bg-slate-900 px-4 py-3 text-sm font-mono text-green-400 overflow-x-auto">
-            {newPassword}
-          </pre>
-        ) : (
-          <p className="text-sm text-slate-600">
-            The user's existing password will be invalidated immediately.
-          </p>
-        )}
+        <MoreHorizontal className="h-4 w-4" />
+      </Button>
+      {menuOpen && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} aria-hidden />
+          <div className="absolute right-0 top-full z-50 mt-2 w-44 overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-lg animate-slide-down">
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent"
+              onClick={() => {
+                setMenuOpen(false);
+                toggle();
+              }}
+              disabled={loading}
+            >
+              <Power className="h-4 w-4 text-muted-foreground" />
+              {user.disabled ? t("admin.users.action.enable") : t("admin.users.action.disable")}
+            </button>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent"
+              onClick={() => {
+                setMenuOpen(false);
+                reset();
+              }}
+              disabled={loading}
+            >
+              <KeyRound className="h-4 w-4 text-muted-foreground" />
+              {t("admin.users.action.resetPassword")}
+            </button>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-sm text-destructive hover:bg-destructive/5"
+              onClick={() => {
+                setMenuOpen(false);
+                remove();
+              }}
+              disabled={loading}
+            >
+              <Trash2 className="h-4 w-4" />
+              {t("common.delete")}
+            </button>
+          </div>
+        </>
+      )}
+
+      <Modal
+        open={newPassword !== null}
+        onClose={() => setNewPassword(null)}
+        title={t("admin.users.action.passwordReset")}
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">{user.username}</p>
+          {newPassword && (
+            <div className="rounded-md border border-warning/30 bg-warning/10 p-3 font-mono text-sm break-all select-all">
+              {newPassword}
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground">{t("admin.users.action.passwordResetHint")}</p>
+          <div className="flex justify-end pt-2">
+            <Button onClick={() => setNewPassword(null)}>{t("common.close")}</Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

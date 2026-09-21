@@ -14,12 +14,13 @@ import { getCurrentUser } from "@/lib/auth/session";
 
 const PostSchema = z.object({
   name: z.string().min(1).max(64),
-  kind: z.enum(["openai", "anthropic", "custom-openai"]),
+  kind: z.enum(["openai", "anthropic", "custom-openai", "azure"]),
   baseUrl: z.string().nullable().optional(),
   apiKey: z.string().min(1),
   modelMapping: z.record(z.string(), z.string()).optional(),
   enabled: z.boolean().optional(),
   priority: z.number().int().optional(),
+  headers: z.record(z.string(), z.string()).optional(),
 });
 
 export async function GET(): Promise<Response> {

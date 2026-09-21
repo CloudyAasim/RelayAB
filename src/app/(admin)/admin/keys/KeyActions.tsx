@@ -1,46 +1,31 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
+import { useT } from "@/components/i18n/I18nProvider";
+import type { ApiKey } from "@/lib/db/types";
 
-export function KeyActions({ keyId, enabled }: { keyId: string; enabled: boolean }) {
-  const router = useRouter();
-  const [busy, setBusy] = useState(false);
+export function KeyActions({ apiKey }: { apiKey: ApiKey }) {
+  const t = useT();
+  const [loading, setLoading] = useState(false);
 
   async function toggle() {
-    setBusy(true);
+    setLoading(true);
     try {
-      await fetch(`/api/admin/keys/${keyId}/toggle`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled: !enabled }),
-      });
-      router.refresh();
+      const res = await fetch(`/api/admin/keys/${apiKey.id}/toggle`, { method: "POST" });
+      const data = await res.json();
+      if (!data.ok) alert(data.error?.message ?? t("admin.keys.action.failed"));
+      else window.location.reload();
+    } catch {
+      alert(t("admin.keys.action.failed"));
     } finally {
-      setBusy(false);
-    }
-  }
-
-  async function del() {
-    if (!confirm("Delete this key? This cannot be undone.")) return;
-    setBusy(true);
-    try {
-      await fetch(`/api/admin/keys/${keyId}`, { method: "DELETE" });
-      router.refresh();
-    } finally {
-      setBusy(false);
+      setLoading(false);
     }
   }
 
   return (
-    <div className="flex gap-1">
-      <Button size="sm" variant="ghost" disabled={busy} onClick={toggle}>
-        {enabled ? "Disable" : "Enable"}
-      </Button>
-      <Button size="sm" variant="danger" disabled={busy} onClick={del}>
-        Delete
-      </Button>
-    </div>
+    <Button size="sm" variant="ghost" onClick={toggle} disabled={loading}>
+      {apiKey.enabled ? t("admin.keys.action.disable") : t("admin.keys.action.enable")}
+    </Button>
   );
 }

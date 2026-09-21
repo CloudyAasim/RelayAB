@@ -93,6 +93,7 @@ describe("i18n: client/server boundary", () => {
       "src/app/(user)/dashboard/settings/page.tsx",
       "src/app/layout.tsx",
       "src/app/license/page.tsx",
+      "src/app/page.tsx",
     ]);
   });
 });

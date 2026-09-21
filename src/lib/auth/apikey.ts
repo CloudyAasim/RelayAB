@@ -108,17 +108,22 @@ export async function lookupUserById(userId: string): Promise<User | null> {
  * Validate that the API key is currently usable.
  *
  * Order of checks (early returns, cheap to expensive):
- *   1. key.enabled (string "1" / "0")
- *   2. expiresAt (compare ISO to now)
- *   3. quota (compare quotaUsed to quotaLimit)
- *   4. allowedModels (if non-empty array, must include the requested model)
+ *   1. key.enabled
+ *   2. key.expiresAt
+ *   3. owner account still enabled
+ *   4. the OWNER's quota pool still has headroom
+ *   5. model permission — intersection of owner whitelist and key whitelist
+ *
+ * Step 4 is the architecturally important one: quota is checked against the
+ * user, not the key, so minting extra keys does not mint extra budget.
  */
 export function checkKeyStatus(args: {
   key: ApiKey;
+  user?: User;
   requestedModel?: string;
   now?: number;
 }): KeyValidationResult {
-  const { key, requestedModel, now = Date.now() } = args;
+  const { key, user, requestedModel, now = Date.now() } = args;
 
   if (!key.enabled) {
     return { ok: false, reason: "key_disabled", key };
@@ -128,23 +133,39 @@ export function checkKeyStatus(args: {
     return { ok: false, reason: "key_expired", key };
   }
 
-  if (key.quotaType === "credits" && key.quotaUsed >= key.quotaLimit) {
-    return { ok: false, reason: "quota_exceeded_credits", key };
+  if (user) {
+    if (user.disabled) {
+      return { ok: false, reason: "user_disabled", key, user };
+    }
+    if (user.quotaUsed >= user.quotaLimit) {
+      return {
+        ok: false,
+        reason:
+          user.quotaType === "tokens"
+            ? "quota_exceeded_tokens"
+            : "quota_exceeded_credits",
+        key,
+        user,
+      };
+    }
   }
 
-  if (key.quotaType === "tokens" && key.quotaUsed >= key.quotaLimit) {
-    return { ok: false, reason: "quota_exceeded_tokens", key };
+  if (requestedModel) {
+    // The owner's whitelist is the outer bound; a key may narrow it further
+    // but can never widen it. An empty list at either level means "no
+    // additional restriction here".
+    const ownerAllows =
+      !user ||
+      user.allowedModels.length === 0 ||
+      user.allowedModels.includes(requestedModel);
+    const keyAllows =
+      key.allowedModels.length === 0 || key.allowedModels.includes(requestedModel);
+    if (!ownerAllows || !keyAllows) {
+      return { ok: false, reason: "model_not_allowed", key, user };
+    }
   }
 
-  if (
-    requestedModel &&
-    key.allowedModels.length > 0 &&
-    !key.allowedModels.includes(requestedModel)
-  ) {
-    return { ok: false, reason: "model_not_allowed", key };
-  }
-
-  return { ok: true, reason: "ok", key };
+  return { ok: true, reason: "ok", key, user };
 }
 
 /**
@@ -171,7 +192,13 @@ export async function authenticateBearer(args: {
 
   const user = await lookupUserById(key.userId);
 
-  const result = checkKeyStatus({ key, requestedModel: args.requestedModel });
+  // The owner has to be resolved before validation because the quota pool and
+  // the model whitelist both live on the user record.
+  const result = checkKeyStatus({
+    key,
+    user: user ?? undefined,
+    requestedModel: args.requestedModel,
+  });
   return { ...result, user: user ?? undefined };
 }
 
@@ -191,9 +218,6 @@ function parseApiKeyFromHash(raw: Record<string, string>): ApiKey | null {
       label: raw.label,
       keyHash: raw.keyHash,
       keyPrefix: raw.keyPrefix,
-      quotaType: raw.quotaType,
-      quotaLimit: Number(raw.quotaLimit ?? "0"),
-      quotaUsed: Number(raw.quotaUsed ?? "0"),
       expiresAt: raw.expiresAt && raw.expiresAt !== "" ? raw.expiresAt : null,
       enabled: raw.enabled === "1",
       allowedModels: raw.allowedModels ? raw.allowedModels.split(",").filter(Boolean) : [],
@@ -207,6 +231,27 @@ function parseApiKeyFromHash(raw: Record<string, string>): ApiKey | null {
 
 function parseUserFromHash(raw: Record<string, string>): User | null {
   try {
+    // Back-compat: pre-pool records kept the allocation under
+    // `quotaTypePerKey` / `quotaLimitPerKey`.
+    const quotaType =
+      (raw.quotaType as "credits" | "tokens" | undefined) ??
+      (raw.quotaTypePerKey as "credits" | "tokens" | undefined) ??
+      "credits";
+    const quotaLimit =
+      raw.quotaLimit && raw.quotaLimit !== ""
+        ? Number(raw.quotaLimit)
+        : raw.quotaLimitPerKey && raw.quotaLimitPerKey !== ""
+          ? Number(raw.quotaLimitPerKey)
+          : 0;
+    const quotaUsed =
+      raw.quotaUsed && raw.quotaUsed !== "" ? Number(raw.quotaUsed) : 0;
+    const maxActiveKeys =
+      raw.maxActiveKeys && raw.maxActiveKeys !== ""
+        ? Number(raw.maxActiveKeys)
+        : 0;
+    const allowedModels = raw.allowedModels
+      ? raw.allowedModels.split(",").filter(Boolean)
+      : [];
     return UserSchema.parse({
       id: raw.id,
       username: raw.username,
@@ -217,6 +262,11 @@ function parseUserFromHash(raw: Record<string, string>): User | null {
       updatedAt: raw.updatedAt,
       lastLoginAt: raw.lastLoginAt && raw.lastLoginAt !== "" ? raw.lastLoginAt : null,
       disabled: raw.disabled === "1",
+      quotaType,
+      quotaLimit,
+      quotaUsed,
+      maxActiveKeys,
+      allowedModels,
     });
   } catch {
     return null;
@@ -240,10 +290,24 @@ export function reasonToHttp(reason: string): { status: number; code: string; me
       return { status: 403, code: "key_disabled", message: "This API key has been disabled" };
     case "key_expired":
       return { status: 403, code: "key_expired", message: "This API key has expired" };
+    case "user_disabled":
+      return {
+        status: 403,
+        code: "user_disabled",
+        message: "The account that owns this key has been disabled",
+      };
     case "quota_exceeded_credits":
-      return { status: 403, code: "quota_exceeded_credits", message: "积分 balance exhausted for this key" };
+      return {
+        status: 403,
+        code: "quota_exceeded_credits",
+        message: "积分 balance exhausted for this account",
+      };
     case "quota_exceeded_tokens":
-      return { status: 403, code: "quota_exceeded_tokens", message: "Token quota exhausted for this key" };
+      return {
+        status: 403,
+        code: "quota_exceeded_tokens",
+        message: "Token quota exhausted for this account",
+      };
     case "model_not_allowed":
       return { status: 403, code: "model_not_allowed", message: "This key is not permitted to call this model" };
     default:

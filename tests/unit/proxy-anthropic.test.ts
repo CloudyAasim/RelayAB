@@ -5,21 +5,28 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { __resetRedisForTest, __setRedisForTest } from "@/lib/db/redis";
 import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
 import { createApiKey, getApiKeyById } from "@/lib/db/keys";
-import { createUser } from "@/lib/db/users";
+import { createUser, getUserById } from "@/lib/db/users";
 import { createProvider } from "@/lib/db/providers";
 import { listUsageByKey } from "@/lib/db/usage";
 import { proxyAnthropicMessage } from "@/lib/proxy/anthropic";
 import type { ApiKey } from "@/lib/db/types";
 
-async function setupUserAndKey(): Promise<ApiKey> {
-  const u = await createUser({ username: "ant-" + Math.random().toString(36).slice(2, 6), password: "x" });
-  const result = await createApiKey({
-    userId: u.id,
-    label: "l",
+/**
+ * Create an owner plus one key. The proxy needs the owner because the quota
+ * pool and the model whitelist live on the user, not the key.
+ */
+async function setupUserAndKey(): Promise<{
+  key: ApiKey;
+  user: NonNullable<Awaited<ReturnType<typeof getUserById>>>;
+}> {
+  const u = await createUser({
+    username: "ant-" + Math.random().toString(36).slice(2, 6),
+    password: "x",
     quotaType: "credits",
     quotaLimit: 1000,
   });
-  return result.key;
+  const result = await createApiKey({ userId: u.id, label: "l" });
+  return { key: result.key, user: (await getUserById(u.id))! };
 }
 
 async function setupAnthropicProvider(): Promise<string> {
@@ -42,7 +49,7 @@ describe("proxyAnthropicMessage", () => {
 
   it("forwards request with x-api-key header", async () => {
     await setupAnthropicProvider();
-    const key = await setupUserAndKey();
+    const { key, user } = await setupUserAndKey();
 
     const fetchMock = vi.fn(async () =>
       new Response(
@@ -66,6 +73,7 @@ describe("proxyAnthropicMessage", () => {
         max_tokens: 100,
       },
       apiKey: key,
+      user,
       deps: { fetchImpl: fetchMock as unknown as typeof fetch },
     });
 
@@ -81,7 +89,7 @@ describe("proxyAnthropicMessage", () => {
   });
 
   it("returns missing_max_tokens when not provided", async () => {
-    const key = await setupUserAndKey();
+    const { key, user } = await setupUserAndKey();
     const r = await proxyAnthropicMessage({
       req: {
         model: "claude-3-5-sonnet",
@@ -89,6 +97,7 @@ describe("proxyAnthropicMessage", () => {
         max_tokens: 0,
       },
       apiKey: key,
+      user,
       deps: { fetchImpl: vi.fn() as unknown as typeof fetch },
     });
     expect(r.status).toBe(400);
@@ -96,7 +105,7 @@ describe("proxyAnthropicMessage", () => {
   });
 
   it("returns model_not_mapped when no Anthropic provider", async () => {
-    const key = await setupUserAndKey();
+    const { key, user } = await setupUserAndKey();
     // No provider setup
     const r = await proxyAnthropicMessage({
       req: {
@@ -105,6 +114,7 @@ describe("proxyAnthropicMessage", () => {
         max_tokens: 100,
       },
       apiKey: key,
+      user,
       deps: { fetchImpl: vi.fn() as unknown as typeof fetch },
     });
     expect(r.status).toBe(400);
@@ -113,7 +123,7 @@ describe("proxyAnthropicMessage", () => {
 
   it("records success usage", async () => {
     await setupAnthropicProvider();
-    const key = await setupUserAndKey();
+    const { key, user } = await setupUserAndKey();
 
     const fetchMock = vi.fn(async () =>
       new Response(
@@ -137,6 +147,7 @@ describe("proxyAnthropicMessage", () => {
         max_tokens: 100,
       },
       apiKey: key,
+      user,
       deps: { fetchImpl: fetchMock as unknown as typeof fetch },
     });
 
@@ -146,7 +157,8 @@ describe("proxyAnthropicMessage", () => {
     expect(logs[0].completionTokens).toBe(50);
     expect(logs[0].upstreamModel).toBe("claude-3-5-sonnet-20241022");
 
-    const fresh = await getApiKeyById(key.id);
-    expect(fresh?.quotaUsed).toBeGreaterThan(0);
+    // Charged to the owner's pool; the key holds no balance of its own.
+    const owner = await getUserById(key.userId);
+    expect(owner?.quotaUsed).toBeGreaterThan(0);
   });
 });

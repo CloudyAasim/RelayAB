@@ -85,9 +85,9 @@
 
 | 表/键 | 用途 | 主键 |
 |---|---|---|
-| `user:{id}` | 用户档案 + 角色 + 密码散列 | `id` |
+| `user:{id}` | 用户档案 + 角色 + 密码散列 + **积分池** (`quotaType`/`quotaLimit`/`quotaUsed`) + 模型白名单 | `id` |
 | `user:by-username:{username}` | 用户名 → id 反查 | `username` |
-| `apikey:{id}` | 客户 Key 元数据 + 散列 | `id` |
+| `apikey:{id}` | 客户 Key 凭证（散列 / 启用 / 过期 / 模型收窄）。**不含额度字段** | `id` |
 | `apikey:hash:{hash}` | API Key 哈希 → id（用于 Bearer 校验） | `sha256(key)` |
 | `apikey:by-user:{userId}` | 用户的 Key 列表（Set） | `userId` |
 | `provider:{id}` | 上游 Provider 配置 + 加密的 API Key | `id` |
@@ -118,7 +118,11 @@
 |---|---|---|
 | `/api/auth/login` | POST | 用户名/密码登录 |
 | `/api/auth/logout` | POST | 登出 |
-| `/api/admin/users` | GET / POST | 用户列表 / 创建 |
+| `/api/auth/change-password` | POST | 用户自助修改密码（需原密码 + 两次新密码） |
+| `/api/config` | GET | 公共运行时信息（公网 URL、OpenAI/Anthropic 兼容端点） |
+| `/api/user/keys` | GET / POST | 普通用户列出 / 创建自己的 Key（额度继承自分配） |
+| `/api/user/keys/[id]` | PATCH / DELETE | 普通用户改名 / 启用停用 / 删除自己的 Key |
+| `/api/admin/users` | GET / POST | 用户列表 / 创建（含每用户额度分配） |
 | `/api/admin/users/[id]` | GET / PATCH / DELETE | 用户详情 / 编辑 / 删除 |
 | `/api/admin/users/[id]/reset-password` | POST | 重置密码 |
 | `/api/admin/keys` | GET / POST | Key 列表 / 创建 |
@@ -181,31 +185,60 @@
 
 ## 6. 额度与用量引擎
 
-### 6.1 计量方式
-- 每个 Key 配置 `quotaType`：
+### 6.1 积分池挂在账号上
+
+这是全项目最重要的数据结构决策，所有其他设计都从这里推导：
+
+```
+管理员给 Alice 分配 1000 积分，白名单 [gpt-4o-mini]
+  Alice 建了 key A / key B / key C
+  通过 A、B、C 的任何一次调用都从同一个 1000 扣
+  1000 用完 → 三把 Key 一起失效
+```
+
+- 额度字段（`quotaType` / `quotaLimit` / `quotaUsed`）在 **User** 上。
+- **ApiKey 上没有任何额度字段**。Key 是凭证：身份 + 启用/过期 + 可选的模型收窄。
+
+理由：如果额度挂在 Key 上，用户多建一把 Key 就等于凭空多拿一份额度。
+那既不是「给 Alice 1000 积分」的字面意思，也无法被管理员预测——
+管理员授权时看到的数字，必须就是用户能消耗的上限。
+
+### 6.2 计量方式
+- 账号级 `quotaType`：
   - `credits`：按**积分**累计，精度 0.001 积分（整数存储），
     这样单次消耗极小的廉价请求不会被向上取整成 1 积分。
   - `tokens`：按 total_tokens 累计。
+- `quotaLimit === 0` 表示**尚未分配**，所有调用被拒绝（而非「不限额」）。
 - 每次请求结束后，从上游响应里取 `usage.prompt_tokens` / `usage.completion_tokens`，按 [`quota/rates.ts`](../../src/lib/quota/rates.ts) 中的积分标准换算成消耗量。
 
-### 6.2 积分标准（`rates.ts`）
+### 6.3 模型权限 = 账号白名单 ∩ Key 白名单
+
+- 账号的 `allowedModels` 是外层边界；Key 的 `allowedModels` 只能在其内收窄。
+- 任一侧为空数组表示该层不额外限制。
+- 因此用户可以自己造一把「只能跑便宜模型」的 Key，而无需管理员重新授权整个账号；
+  但无法用一把 Key 突破账号本身的限制。
+
+### 6.4 积分标准（`rates.ts`）
 - 数据结构：`Record<modelId, { inputPerMillion: number, outputPerMillion: number }>`
   （整数，单位积分 / 100 万 tokens）。
 - 首次启动时内置默认值，可由管理员通过 `applyRateOverride()` 覆盖。
 - 未知模型回退到 `DEFAULT_RATE`。
 
-### 6.3 扣减流程（伪代码）
+### 6.5 扣减流程（伪代码）
 ```
-1. 校验 Key 存在、启用、未过期、剩余额度 > 0
+1. 校验：Key 启用且未过期 → 账号未停用 → 账号 quotaUsed < quotaLimit
+        → 请求的模型同时通过账号与 Key 的白名单
 2. 转发到上游（流式）
 3. 流结束后聚合 token 数
 4. 计算本次消耗的积分
-5. Redis HINCRBY 用量计数 + HINCRBY 积分计数
-6. 若 new_used > quota_limit → 标记 Key 禁用（可选）或仅日志告警
+5. HINCRBY relay:user:{userId} quotaUsed <delta>   ← 记在账号上
+6. HSET  relay:apikey:{keyId} lastUsedAt <now>      ← 只是时间戳
+7. 写入 relay:log:* 用量日志（保留逐请求明细）
 ```
 
-### 6.4 并发安全
-- 使用 Redis Lua 脚本原子地做「读 → 检查 → 写」三步。
+### 6.6 并发安全
+- `quotaUsed` 的累加走 `HINCRBY`，天然原子，多个并发请求不会丢更新。
+- 归属校验（用户名唯一）走 `SET NX`，见 §5 的冷启动竞态说明。
 - 或在流开始前预扣（悲观），流结束后多退少补。
 
 ---
@@ -365,3 +398,33 @@ RelayAB/
 | Vercel Serverless 超时 | 流式长请求被截断 | 配置 `maxDuration: 60`（Pro）或拆 chunk（v2） |
 | 速率限制 | 共享上游 Key 易触发 OpenAI/Anthropic 限流 | 额度引擎天然限速；v2 加 per-Provider 速率 |
 | 嵌入式 mock 在生产泄漏 | mock 数据被外部访问 | 仅当 `NODE_ENV !== "production"` 时加载 |
+
+---
+
+## 12. 界面多语言（i18n）
+
+支持 `zh-CN`（默认）与 `en` 两种语言，作用范围是**界面文案**，不影响 API 响应。
+
+```
+src/lib/i18n/dict.ts            纯模块：字典 + translate/parseLocale + LOCALE_COOKIE
+src/lib/i18n/server.ts          仅服务端：读 cookie / Accept-Language，导出 getT()
+src/components/i18n/I18nProvider.tsx   客户端 Provider（locale / setLocale / t 三个 context）
+src/components/i18n/LocaleSwitcher.tsx 页脚语言下拉
+```
+
+设计要点：
+
+- **字典是纯模块。** `dict.ts` 不 import `next/headers`，所以客户端组件可以安全地从它取
+  `LOCALE_COOKIE`、`LOCALE_LABELS` 等常量。反过来，`I18nProvider`（`"use client"`）
+  **绝不能** import `server.ts` —— 那会把 `next/headers` 拉进浏览器 bundle，
+  `next build` 直接失败。这条边界由 `tests/unit/i18n-usage.test.ts` 守护。
+- **服务端渲染的文案**用 `await getT()`（Server Component），**客户端交互的文案**用
+  `useT()`（Client Component）。两者读同一个字典，落在同一个 `relayab_locale` cookie。
+- **回退链**：当前语言 → `en` → key 本身。最后一级是为了让漏翻的 key 在开发时肉眼可见，
+  而不是静默显示空白。
+- **context 拆成三个**（locale / setLocale / t）：只用 `setLocale` 的组件不会因为文案变化
+  而重渲染，`t` 也按语言缓存引用。
+- 占位符是轻量 ICU 风格 `{name}`，用法：`t("dashboard.quota.credits", { used: 5, limit: 100 })`。
+- 新增文案时**必须同时加到两个字典**（`tests/unit/i18n.test.ts` 会校验 key 对齐），
+  并且不要在 JSX 里写死可见文本或对 `t()` 结果做 `.replace()` 二次加工 ——
+  这类"派生文案"在另一种语言里必然失效。

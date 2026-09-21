@@ -26,6 +26,26 @@
 | `updatedAt` | ISO string | |
 | `lastLoginAt` | ISO string \| null | |
 | `disabled` | 0 \| 1 | 软删除标志 |
+| `quotaType` | `"credits" \| "tokens"` | 账号积分池的计量单位 |
+| `quotaLimit` | int | 账号积分池总量（credits 时以 0.001 积分整数存储）。`0` = 未分配，所有调用都会被拒绝 |
+| `quotaUsed` | int | 账号已消耗量，单位同 `quotaLimit` |
+| `maxActiveKeys` | int | 允许同时启用的 Key 数上限（0 = 无上限） |
+| `allowedModels` | string[] | 该账号可访问的模型白名单（空 = 全部） |
+
+> **积分属于账号，不属于 Key。** 这是整个网关最核心的建模决策：
+>
+> ```
+> 管理员给 Alice 分配 1000 积分
+>   Alice 建了 key A / key B / key C
+>   通过 A、B、C 的任何一次调用都从同一个 1000 里扣
+>   1000 用完 → 三把 Key 一起失效
+> ```
+>
+> 如果积分挂在 Key 上，用户多建一把 Key 就等于凭空多拿一份额度——那不是
+> 「给 Alice 1000 积分」的意思。因此 `ApiKey` 上**没有**任何 quota 字段。
+>
+> `allowedModels` 同样属于账号；Key 只能在此基础上**收窄**（见下文 §2），
+> 不可能放宽。管理员在 `/admin/users` 配置这三项，用户无法自行修改。
 
 **示例**：
 ```json
@@ -38,7 +58,12 @@
   "createdAt": "2026-09-21T08:00:00.000Z",
   "updatedAt": "2026-09-21T08:00:00.000Z",
   "lastLoginAt": null,
-  "disabled": "0"
+  "disabled": "0",
+  "quotaType": "credits",
+  "quotaLimit": "500000",
+  "quotaUsed": "13500",
+  "maxActiveKeys": 0,
+  "allowedModels": ["gpt-4o-mini"]
 }
 ```
 
@@ -58,17 +83,18 @@
 |---|---|---|
 | `id` | string (ULID) | 主键 |
 | `userId` | string | 所属用户 |
-| `label` | string | 管理员备注 |
+| `label` | string | 用户/管理员给这把 Key 起的名字 |
 | `keyHash` | string | sha256(明文 key)，**不存明文** |
 | `keyPrefix` | string | 明文前 12 字符 + `...` + 后 4 字符，仅展示 |
-| `quotaType` | `"credits" \| "tokens"` | 配额类型 |
-| `quotaLimit` | number | 总额度。`credits` → **积分**，以 0.001 积分为整数单位存储（`500000` = 500 积分）；`tokens` → token 数 |
-| `quotaUsed` | number | 已用，单位与 `quotaLimit` 相同（每次成功请求按实际消耗累加，精度 0.001 积分） |
 | `expiresAt` | ISO string \| null | 过期时间 |
 | `enabled` | 0 \| 1 | 启用标志 |
-| `allowedModels` | string[] (CSV) | 允许的模型列表（空 = 全部） |
+| `allowedModels` | string[] (CSV) | 这把 Key **额外**允许的模型。与账号白名单取**交集**——只能收窄，不能放宽（空 = 不额外限制，仍受账号白名单约束） |
 | `createdAt` | ISO string | |
 | `lastUsedAt` | ISO string \| null | |
+
+> Key 是**凭证**，不是钱包。它只携带身份（谁在调用）与轻量策略
+> （启用 / 过期 / 可选的模型收窄），额度池在所属账号上。
+> 因此这里**没有** `quotaType` / `quotaLimit` / `quotaUsed` 三个字段。
 
 **示例**：
 ```json
@@ -78,9 +104,6 @@
   "label": "Alice 的 Macbook",
   "keyHash": "a3f2c9...",
   "keyPrefix": "sk-relay-X3K...m2pQ",
-  "quotaType": "credits",
-  "quotaLimit": "500000",
-  "quotaUsed": "1234",
   "expiresAt": "2026-12-31T23:59:59.000Z",
   "enabled": "1",
   "allowedModels": "gpt-4o-mini,gpt-4o,claude-3-5-sonnet",
@@ -89,16 +112,42 @@
 }
 ```
 
-**校验逻辑**（在路由入口）：
+**校验逻辑**（`lib/auth/apikey.ts` 的 `checkKeyStatus`）：
+
 ```ts
-function validateApiKey(key: ApiKey): ValidationResult {
-  if (key.disabled === "1") return { ok: false, reason: "key_disabled" };
-  if (key.expiresAt && Date.parse(key.expiresAt) < Date.now()) return { ok: false, reason: "key_expired" };
-  if (key.quotaType === "credits" && Number(key.quotaUsed) >= Number(key.quotaLimit)) return { ok: false, reason: "quota_exceeded_credits" };
-  if (key.quotaType === "tokens" && Number(key.quotaUsed) >= Number(key.quotaLimit)) return { ok: false, reason: "quota_exceeded_tokens" };
-  return { ok: true };
+// 顺序即优先级；user 是 key 的所属账号，必需。
+function checkKeyStatus({ key, user, requestedModel }): ValidationResult {
+  // 1. 凭证本身
+  if (!key.enabled) return { ok: false, reason: "key_disabled" };
+  if (key.expiresAt && Date.parse(key.expiresAt) <= Date.now())
+    return { ok: false, reason: "key_expired" };
+
+  // 2. 账号状态与额度池 —— 注意读的是 user，不是 key
+  if (user.disabled) return { ok: false, reason: "user_disabled" };
+  if (user.quotaUsed >= user.quotaLimit) {
+    return {
+      ok: false,
+      reason: user.quotaType === "tokens"
+        ? "quota_exceeded_tokens"
+        : "quota_exceeded_credits",
+    };
+  }
+
+  // 3. 模型权限 = 账号白名单 ∩ Key 白名单（任一为空则该层不额外限制）
+  const ownerAllows = user.allowedModels.length === 0
+    || user.allowedModels.includes(requestedModel);
+  const keyAllows = key.allowedModels.length === 0
+    || key.allowedModels.includes(requestedModel);
+  if (!ownerAllows || !keyAllows) return { ok: false, reason: "model_not_allowed" };
+
+  return { ok: true, reason: "ok" };
 }
 ```
+
+> 第 2 步是「多建 Key 不会多拿额度」的落点：无论请求由哪把 Key 承载，
+> 读的都是同一个 `user.quotaUsed / user.quotaLimit`。
+> `quotaLimit === 0`（未分配）会被判定为超额，即新账号默认无法调用，
+> 而不是被当成「不限额」。
 
 ---
 

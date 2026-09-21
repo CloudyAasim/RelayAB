@@ -1,8 +1,10 @@
+"use client";
+
 import { cn } from "@/lib/utils";
 import { type ButtonHTMLAttributes, forwardRef } from "react";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger";
-type Size = "sm" | "md" | "lg";
+type Variant = "primary" | "secondary" | "ghost" | "danger" | "outline";
+type Size = "sm" | "md" | "lg" | "icon";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
@@ -12,19 +14,22 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantClass: Record<Variant, string> = {
   primary:
-    "bg-brand-600 text-white hover:bg-brand-700 focus-visible:ring-brand-500",
+    "bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-ring shadow-sm",
   secondary:
-    "bg-slate-100 text-slate-900 hover:bg-slate-200 focus-visible:ring-slate-400",
+    "bg-secondary text-secondary-foreground hover:bg-secondary/80 focus-visible:ring-ring",
+  outline:
+    "border border-input bg-background hover:bg-accent hover:text-accent-foreground focus-visible:ring-ring",
   ghost:
-    "bg-transparent text-slate-700 hover:bg-slate-100 focus-visible:ring-slate-300",
+    "bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground focus-visible:ring-ring",
   danger:
-    "bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-500",
+    "bg-destructive text-destructive-foreground hover:bg-destructive/90 focus-visible:ring-ring shadow-sm",
 };
 
 const sizeClass: Record<Size, string> = {
   sm: "h-8 px-3 text-sm rounded-md",
-  md: "h-10 px-4 text-sm rounded-md",
-  lg: "h-12 px-6 text-base rounded-lg",
+  md: "h-9 px-4 text-sm rounded-md",
+  lg: "h-10 px-6 text-base rounded-md",
+  icon: "h-9 w-9 rounded-md",
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
@@ -38,8 +43,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         disabled={disabled || loading}
         className={cn(
           "inline-flex items-center justify-center font-medium transition-colors",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
-          "disabled:opacity-50 disabled:cursor-not-allowed",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+          "disabled:opacity-50 disabled:pointer-events-none",
           variantClass[variant],
           sizeClass[size],
           className,

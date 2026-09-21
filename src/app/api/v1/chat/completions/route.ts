@@ -12,6 +12,7 @@ import { NextResponse } from "next/server";
 import { authenticateBearer, reasonToHttp } from "@/lib/auth/apikey";
 import { proxyChatCompletion } from "@/lib/proxy/openai";
 import type { ApiKey } from "@/lib/db/types";
+import { getUserById as lookupUserById } from "@/lib/db/users";
 
 export const runtime = "nodejs";
 // Allow longer-running streaming responses on Vercel Pro (60s).
@@ -48,10 +49,24 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
+  // The owner record carries the quota pool and the model whitelist, so the
+  // proxy cannot validate or charge without it.
+  const owner = auth.user ?? (await lookupUserById(auth.key.userId));
+  if (!owner) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: { code: "user_not_found", message: "The account owning this key no longer exists" },
+      },
+      { status: 403 },
+    );
+  }
+
   // 3. Forward.
   const result = await proxyChatCompletion({
     req: body as Parameters<typeof proxyChatCompletion>[0]["req"],
     apiKey: auth.key as ApiKey,
+    user: owner,
   });
 
   if (!result.ok) {

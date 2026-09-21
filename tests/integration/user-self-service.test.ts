@@ -139,12 +139,12 @@ describe("user self-service API key endpoints", () => {
     __setRedisForTest(createMemoryRedis());
   });
 
-  it("user creates a key inheriting quota from allocation", async () => {
+  it("user creates a key; quota stays on the account, not the key", async () => {
     const u = await createUser({
       username: "dave",
       password: "longenoughpw",
-      quotaTypePerKey: "tokens",
-      quotaLimitPerKey: 100_000,
+      quotaType: "tokens",
+      quotaLimit: 100_000,
       allowedModels: ["gpt-4o-mini", "claude-3-5-haiku"],
       maxActiveKeys: 5,
     });
@@ -158,10 +158,16 @@ describe("user self-service API key endpoints", () => {
     const { status, body } = await asJson(res);
     expect(status).toBe(200);
     expect(body.ok).toBe(true);
-    expect(body.data.key.quotaType).toBe("tokens");
-    expect(body.data.key.quotaLimit).toBe(100_000);
-    expect(body.data.key.allowedModels).toEqual(["gpt-4o-mini", "claude-3-5-haiku"]);
+    // The key is a credential: it inherits no balance of its own.
+    expect(body.data.key.quotaLimit).toBeUndefined();
+    expect(body.data.key.quotaUsed).toBeUndefined();
+    // Per-key scope starts empty; the owner's whitelist still applies.
+    expect(body.data.key.allowedModels).toEqual([]);
     expect(body.data.plainKey).toMatch(/^sk-relay-/);
+    // The granted pool is what the account now holds.
+    const owner = await getUserById(u.id);
+    expect(owner?.quotaLimit).toBe(100_000);
+    expect(owner?.quotaUsed).toBe(0);
   });
 
   it("enforces maxActiveKeys cap", async () => {
@@ -211,8 +217,6 @@ describe("user self-service API key endpoints", () => {
     const { key: ownerKey } = await createApiKey({
       userId: owner.id,
       label: "x",
-      quotaType: "credits",
-      quotaLimit: 1000,
     });
 
     const store = new InMemoryCookieStore();
@@ -236,8 +240,6 @@ describe("user self-service API key endpoints", () => {
     const { key } = await createApiKey({
       userId: u.id,
       label: "old",
-      quotaType: "credits",
-      quotaLimit: 1000,
     });
 
     const store = new InMemoryCookieStore();
@@ -259,8 +261,6 @@ describe("user self-service API key endpoints", () => {
     const { key } = await createApiKey({
       userId: u.id,
       label: "to-delete",
-      quotaType: "credits",
-      quotaLimit: 1000,
     });
 
     const store = new InMemoryCookieStore();
@@ -279,9 +279,9 @@ describe("user self-service API key endpoints", () => {
   it("GET /api/user/keys lists only the current user's keys", async () => {
     const alice = await createUser({ username: "alice2", password: "longenoughpw" });
     const bob = await createUser({ username: "bob2", password: "longenoughpw" });
-    await createApiKey({ userId: alice.id, label: "a", quotaType: "credits", quotaLimit: 1 });
-    await createApiKey({ userId: bob.id, label: "b", quotaType: "credits", quotaLimit: 1 });
-    await createApiKey({ userId: bob.id, label: "b2", quotaType: "credits", quotaLimit: 1 });
+    await createApiKey({ userId: alice.id, label: "a" });
+    await createApiKey({ userId: bob.id, label: "b" });
+    await createApiKey({ userId: bob.id, label: "b2" });
 
     const store = new InMemoryCookieStore();
     await loginAs(store, bob.id, "bob2", "user");

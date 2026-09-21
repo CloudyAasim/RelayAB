@@ -27,9 +27,6 @@ function makeKey(overrides: Partial<ApiKey> = {}): ApiKey {
     label: "test",
     keyHash: sha256Hex(plain),
     keyPrefix: plain.slice(0, 12) + "..." + plain.slice(-4),
-    quotaType: "credits",
-    quotaLimit: 1000,
-    quotaUsed: 0,
     expiresAt: null,
     enabled: true,
     allowedModels: [],
@@ -39,7 +36,31 @@ function makeKey(overrides: Partial<ApiKey> = {}): ApiKey {
   };
 }
 
-async function seedKey(key: ApiKey): Promise<string> {
+/**
+ * Owner of the key above. The quota pool and the model whitelist live here,
+ * which is the whole point of the user-centric model under test.
+ */
+function makeUser(overrides: Partial<User> = {}): User {
+  return {
+    id: "01JU0001",
+    username: "owner",
+    passwordHash: "$2a$12$notarealhash",
+    role: "user",
+    displayName: "Owner",
+    createdAt: "2026-09-01T00:00:00Z",
+    updatedAt: "2026-09-01T00:00:00Z",
+    lastLoginAt: null,
+    disabled: false,
+    quotaType: "credits",
+    quotaLimit: 1000,
+    quotaUsed: 0,
+    maxActiveKeys: 0,
+    allowedModels: [],
+    ...overrides,
+  };
+}
+
+async function seedKey(key: ApiKey, user: User = makeUser()): Promise<string> {
   const redis = getRedis();
   await redis.hset(k.apiKey(key.id), {
     id: key.id,
@@ -47,9 +68,6 @@ async function seedKey(key: ApiKey): Promise<string> {
     label: key.label,
     keyHash: key.keyHash,
     keyPrefix: key.keyPrefix,
-    quotaType: key.quotaType,
-    quotaLimit: String(key.quotaLimit),
-    quotaUsed: String(key.quotaUsed),
     expiresAt: key.expiresAt ?? "",
     enabled: key.enabled ? "1" : "0",
     allowedModels: key.allowedModels.join(","),
@@ -57,9 +75,29 @@ async function seedKey(key: ApiKey): Promise<string> {
     lastUsedAt: key.lastUsedAt ?? "",
   });
   await redis.set(k.apiKeyByHash(key.keyHash), key.id);
-  // We don't know the plaintext here in tests; reconstruct from hash via
-  // a side map. For tests we use a helper plaintext.
+  await seedUser(user);
   return key.id;
+}
+
+async function seedUser(user: User): Promise<void> {
+  const redis = getRedis();
+  await redis.hset(k.user(user.id), {
+    id: user.id,
+    username: user.username,
+    passwordHash: user.passwordHash,
+    role: user.role,
+    displayName: user.displayName,
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+    lastLoginAt: user.lastLoginAt ?? "",
+    disabled: user.disabled ? "1" : "0",
+    quotaType: user.quotaType,
+    quotaLimit: String(user.quotaLimit),
+    quotaUsed: String(user.quotaUsed),
+    maxActiveKeys: String(user.maxActiveKeys),
+    allowedModels: user.allowedModels.join(","),
+  });
+  await redis.set(k.userByUsername(user.username), user.id);
 }
 
 describe("parseBearer", () => {
@@ -124,28 +162,94 @@ describe("checkKeyStatus", () => {
     expect(r.ok).toBe(true);
   });
 
-  it("returns quota_exceeded_credits when used >= limit", () => {
+  it("returns quota_exceeded_credits when the OWNER's pool is spent", () => {
     const r = checkKeyStatus({
-      key: makeKey({ quotaType: "credits", quotaLimit: 100, quotaUsed: 100 }),
+      key: makeKey(),
+      user: makeUser({ quotaType: "credits", quotaLimit: 100, quotaUsed: 100 }),
       now: NOW,
     });
     expect(r.reason).toBe("quota_exceeded_credits");
   });
 
-  it("returns quota_exceeded_tokens when used >= limit", () => {
+  it("returns quota_exceeded_tokens when the OWNER's token pool is spent", () => {
     const r = checkKeyStatus({
-      key: makeKey({ quotaType: "tokens", quotaLimit: 50_000, quotaUsed: 50_000 }),
+      key: makeKey(),
+      user: makeUser({ quotaType: "tokens", quotaLimit: 50_000, quotaUsed: 50_000 }),
       now: NOW,
     });
     expect(r.reason).toBe("quota_exceeded_tokens");
   });
 
-  it("does not flag under-limit quota", () => {
+  it("does not flag an owner who still has headroom", () => {
     const r = checkKeyStatus({
-      key: makeKey({ quotaType: "credits", quotaLimit: 100, quotaUsed: 99 }),
+      key: makeKey(),
+      user: makeUser({ quotaLimit: 100, quotaUsed: 99 }),
       now: NOW,
     });
     expect(r.ok).toBe(true);
+  });
+
+  it("treats an unallocated pool (limit 0) as exhausted", () => {
+    const r = checkKeyStatus({
+      key: makeKey(),
+      user: makeUser({ quotaLimit: 0, quotaUsed: 0 }),
+      now: NOW,
+    });
+    // "0 credits granted" blocks calls rather than meaning "unlimited".
+    expect(r.reason).toBe("quota_exceeded_credits");
+  });
+
+  it("blocks a disabled owner", () => {
+    const r = checkKeyStatus({
+      key: makeKey(),
+      user: makeUser({ disabled: true }),
+      now: NOW,
+    });
+    expect(r.reason).toBe("user_disabled");
+  });
+
+  it("minting extra keys does not mint extra budget", () => {
+    // Two different keys, same owner, same exhausted pool → both refused.
+    const owner = makeUser({ quotaLimit: 100, quotaUsed: 100 });
+    const a = checkKeyStatus({ key: makeKey(), user: owner, now: NOW });
+    const b = checkKeyStatus({
+      key: makeKey({ id: "01JK0002" }),
+      user: owner,
+      now: NOW,
+    });
+    expect(a.reason).toBe("quota_exceeded_credits");
+    expect(b.reason).toBe("quota_exceeded_credits");
+  });
+
+  it("the owner whitelist is the outer bound on models", () => {
+    const r = checkKeyStatus({
+      key: makeKey(),
+      user: makeUser({ allowedModels: ["gpt-4o-mini"] }),
+      requestedModel: "claude-3-5-sonnet",
+      now: NOW,
+    });
+    expect(r.reason).toBe("model_not_allowed");
+  });
+
+  it("a key can narrow but never widen the owner's whitelist", () => {
+    const owner = makeUser({ allowedModels: ["gpt-4o-mini"] });
+    // Key asks for something the owner cannot reach → still refused.
+    const widened = checkKeyStatus({
+      key: makeKey({ allowedModels: ["claude-3-5-sonnet"] }),
+      user: owner,
+      requestedModel: "claude-3-5-sonnet",
+      now: NOW,
+    });
+    expect(widened.reason).toBe("model_not_allowed");
+
+    // Key narrows to a model the owner holds → allowed.
+    const narrowed = checkKeyStatus({
+      key: makeKey({ allowedModels: ["gpt-4o-mini"] }),
+      user: owner,
+      requestedModel: "gpt-4o-mini",
+      now: NOW,
+    });
+    expect(narrowed.ok).toBe(true);
   });
 
   it("returns model_not_allowed when requested model not in whitelist", () => {
@@ -253,17 +357,21 @@ describe("authenticateBearer (end-to-end with in-memory Redis)", () => {
     expect(r.reason).toBe("key_disabled");
   });
 
-  it("enforces quota end-to-end", async () => {
+  it("enforces the owner's exhausted quota end-to-end", async () => {
     const plain = generateApiKey();
-    const key = makeKey({
-      keyHash: sha256Hex(plain),
-      quotaType: "credits",
-      quotaLimit: 100,
-      quotaUsed: 100,
-    });
-    await seedKey(key);
+    const key = makeKey({ keyHash: sha256Hex(plain) });
+    await seedKey(key, makeUser({ quotaLimit: 100, quotaUsed: 100 }));
 
     const r = await authenticateBearer({ authHeader: `Bearer ${plain}` });
     expect(r.reason).toBe("quota_exceeded_credits");
+  });
+
+  it("enforces a disabled owner end-to-end", async () => {
+    const plain = generateApiKey();
+    const key = makeKey({ keyHash: sha256Hex(plain) });
+    await seedKey(key, makeUser({ disabled: true }));
+
+    const r = await authenticateBearer({ authHeader: `Bearer ${plain}` });
+    expect(r.reason).toBe("user_disabled");
   });
 });

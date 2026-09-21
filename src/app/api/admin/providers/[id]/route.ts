@@ -9,12 +9,13 @@ import { getCurrentUser } from "@/lib/auth/session";
 
 const PatchSchema = z.object({
   name: z.string().optional(),
-  kind: z.enum(["openai", "anthropic", "custom-openai"]).optional(),
+  kind: z.enum(["openai", "anthropic", "custom-openai", "azure"]).optional(),
   baseUrl: z.string().nullable().optional(),
   apiKey: z.string().optional(),
   modelMapping: z.record(z.string(), z.string()).optional(),
   enabled: z.boolean().optional(),
   priority: z.number().int().optional(),
+  headers: z.record(z.string(), z.string()).optional(),
 });
 
 export async function PATCH(

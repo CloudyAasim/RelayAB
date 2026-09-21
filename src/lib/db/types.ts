@@ -26,12 +26,46 @@ export type Role = z.infer<typeof RoleSchema>;
 export const QuotaTypeSchema = z.enum(["credits", "tokens"]);
 export type QuotaType = z.infer<typeof QuotaTypeSchema>;
 
-export const ProviderKindSchema = z.enum(["openai", "anthropic", "custom-openai"]);
+export const ProviderKindSchema = z.enum(["openai", "anthropic", "custom-openai", "azure"]);
 export type ProviderKind = z.infer<typeof ProviderKindSchema>;
 
 // ---------------------------------------------------------------------------
 // User
 // ---------------------------------------------------------------------------
+
+/**
+ * Default policy for a freshly created user.
+ *
+ * QUOTA LIVES ON THE USER, NOT THE KEY.
+ *
+ * This is the central modelling decision of the whole gateway, so it is
+ * worth spelling out. A user is granted a pool of credits (or tokens) by an
+ * admin. Every API key that user creates draws from that single pool:
+ *
+ *     admin grants Alice 1000 积分
+ *       Alice creates key A, key B, key C
+ *       calls on A, B and C all decrement the same 1000
+ *
+ * The alternative — a quota per key — silently multiplies whatever the
+ * admin granted by the number of keys a user mints, which is not what
+ * "give Alice 1000 credits" means to anyone.
+ *
+ * Fields:
+ *  - `quotaType`      unit of the pool: "credits" (积分) or "tokens".
+ *  - `quotaLimit`     size of the pool, in `CREDIT_SCALE` integer units for
+ *                     credits. `0` means "not yet granted" → all calls are
+ *                     rejected until an admin allocates something.
+ *  - `quotaUsed`      consumed so far, same unit as `quotaLimit`.
+ *  - `maxActiveKeys`  cap on simultaneously enabled keys. `0` = no cap.
+ *  - `allowedModels`  models this user may call. `[]` = every model exposed
+ *                     by the configured providers.
+ */
+export const DEFAULT_USER_ALLOCATION = Object.freeze({
+  quotaType: "credits" as QuotaType,
+  quotaLimit: 0,     // nothing granted yet — admin must allocate
+  maxActiveKeys: 0,  // 0 = no cap
+  allowedModels: [] as string[],
+});
 
 export const UserSchema = z.object({
   id: z.string().min(1),
@@ -43,6 +77,22 @@ export const UserSchema = z.object({
   updatedAt: z.string(),
   lastLoginAt: z.string().nullable(),
   disabled: z.boolean(),
+  // ----- Admin-controlled policy (see DEFAULT_USER_ALLOCATION above) -----
+  quotaType: QuotaTypeSchema.default(DEFAULT_USER_ALLOCATION.quotaType),
+  quotaLimit: z
+    .number()
+    .int()
+    .nonnegative()
+    .default(DEFAULT_USER_ALLOCATION.quotaLimit),
+  quotaUsed: z.number().int().nonnegative().default(0),
+  maxActiveKeys: z
+    .number()
+    .int()
+    .nonnegative()
+    .default(DEFAULT_USER_ALLOCATION.maxActiveKeys),
+  allowedModels: z
+    .array(z.string())
+    .default([]),
 });
 export type User = z.infer<typeof UserSchema>;
 
@@ -62,17 +112,17 @@ export const ApiKeySchema = z.object({
   label: z.string().min(1).max(64),
   keyHash: z.string().length(64), // sha256 hex
   keyPrefix: z.string().min(8), // "sk-relay-XXXX...YYYY"
-  quotaType: QuotaTypeSchema,
-  /**
-   * Unit depends on `quotaType`:
-   *   "credits" → 积分, stored as integer 0.001-积分 units (see quota/credits.ts)
-   *   "tokens"  → tokens
-   */
-  quotaLimit: z.number().int().nonnegative(),
-  /** Same unit as `quotaLimit`; incremented per successful request. */
-  quotaUsed: z.number().int().nonnegative(),
   expiresAt: z.string().nullable(),
   enabled: z.boolean(),
+  /**
+   * Optional per-key narrowing of the user's model whitelist.
+   *
+   * The effective permission is the INTERSECTION of the user's whitelist and
+   * this key's whitelist. That lets a user mint e.g. a "read-only cheap
+   * models" key without asking an admin to re-scope their whole account.
+   * `[]` means "no additional restriction" — the user's whitelist still
+   * applies.
+   */
   allowedModels: z.array(z.string()),
   createdAt: z.string(),
   lastUsedAt: z.string().nullable(),
@@ -100,6 +150,8 @@ export const ProviderSchema = z.object({
   modelMapping: z.record(z.string(), z.string()),
   enabled: z.boolean(),
   priority: z.number().int(),
+  // Optional per-provider HTTP headers (e.g. api-version for Azure).
+  headers: z.record(z.string(), z.string()).optional().default({}),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -139,6 +191,7 @@ export type KeyValidationReason =
   | "key_not_found"
   | "key_disabled"
   | "key_expired"
+  | "user_disabled"
   | "quota_exceeded_credits"
   | "quota_exceeded_tokens"
   | "model_not_allowed";

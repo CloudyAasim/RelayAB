@@ -29,6 +29,7 @@ import {
   deleteUser,
   verifyUserCredentials,
   bootstrapAdminIfNeeded,
+  incrementUserQuotaUsed,
 } from "@/lib/db/users";
 import {
   createApiKey,
@@ -38,7 +39,6 @@ import {
   listAllApiKeys,
   updateApiKey,
   setApiKeyEnabled,
-  incrementQuotaUsed,
   deleteApiKey,
 } from "@/lib/db/keys";
 import {
@@ -178,8 +178,6 @@ describe("keys repository", () => {
     const result = await createApiKey({
       userId,
       label: "Macbook",
-      quotaType: "credits",
-      quotaLimit: 1000,
     });
     expect(result.plainKey).toMatch(/^sk-relay-/);
     expect(result.key.keyHash).toHaveLength(64);
@@ -194,10 +192,10 @@ describe("keys repository", () => {
   });
 
   it("listApiKeysByUser returns only that user's keys", async () => {
-    await createApiKey({ userId, label: "k1", quotaType: "credits", quotaLimit: 100 });
-    await createApiKey({ userId, label: "k2", quotaType: "tokens", quotaLimit: 5000 });
+    await createApiKey({ userId, label: "k1" });
+    await createApiKey({ userId, label: "k2" });
     const other = await createUser({ username: "other", password: "x" });
-    await createApiKey({ userId: other.id, label: "k3", quotaType: "credits", quotaLimit: 100 });
+    await createApiKey({ userId: other.id, label: "k3" });
 
     const list = await listApiKeysByUser(userId);
     expect(list.keys).toHaveLength(2);
@@ -208,57 +206,62 @@ describe("keys repository", () => {
     const { key } = await createApiKey({
       userId,
       label: "before",
-      quotaType: "credits",
-      quotaLimit: 100,
     });
-    const updated = await updateApiKey(key.id, { label: "after", quotaLimit: 200 });
+    const expires = "2030-01-01T00:00:00.000Z";
+    const updated = await updateApiKey(key.id, {
+      label: "after",
+      expiresAt: expires,
+    });
     expect(updated?.label).toBe("after");
-    expect(updated?.quotaLimit).toBe(200);
-    expect(updated?.quotaType).toBe("credits");
+    expect(updated?.expiresAt).toBe(expires);
+  });
+
+  it("a key carries no quota of its own — the pool is on the user", async () => {
+    const { key } = await createApiKey({ userId, label: "scoped" });
+    expect("quotaLimit" in key).toBe(false);
+    expect("quotaUsed" in key).toBe(false);
   });
 
   it("setApiKeyEnabled flips the flag", async () => {
     const { key } = await createApiKey({
       userId,
       label: "l",
-      quotaType: "credits",
-      quotaLimit: 100,
     });
     expect(key.enabled).toBe(true);
     const after = await setApiKeyEnabled(key.id, false);
     expect(after?.enabled).toBe(false);
   });
 
-  it("incrementQuotaUsed bumps the field", async () => {
-    const { key } = await createApiKey({
-      userId,
-      label: "l",
-      quotaType: "credits",
-      quotaLimit: 1000,
-    });
-    await incrementQuotaUsed(key.id, 5);
-    await incrementQuotaUsed(key.id, 3);
+  it("incrementUserQuotaUsed accumulates on the owner, not the key", async () => {
+    const { key } = await createApiKey({ userId, label: "l" });
+    await incrementUserQuotaUsed(userId, 5);
+    await incrementUserQuotaUsed(userId, 3);
+    const owner = await getUserById(userId);
+    expect(owner?.quotaUsed).toBe(8);
+
+    // The key itself still carries no balance.
     const fresh = await getApiKeyById(key.id);
-    expect(fresh?.quotaUsed).toBe(8);
-    expect(fresh?.lastUsedAt).not.toBeNull();
+    expect("quotaUsed" in (fresh as object)).toBe(false);
   });
 
-  it("incrementQuotaUsed rejects negative delta", async () => {
-    const { key } = await createApiKey({
-      userId,
-      label: "l",
-      quotaType: "credits",
-      quotaLimit: 1000,
-    });
-    await expect(incrementQuotaUsed(key.id, -1)).rejects.toThrow(RangeError);
+  it("keys held by one account share a single pool", async () => {
+    await createApiKey({ userId, label: "a" });
+    await createApiKey({ userId, label: "b" });
+    await incrementUserQuotaUsed(userId, 10);
+    await incrementUserQuotaUsed(userId, 7);
+    const owner = await getUserById(userId);
+    // Two keys, one balance: 17 — not 17 per key.
+    expect(owner?.quotaUsed).toBe(17);
+  });
+
+  it("incrementUserQuotaUsed rejects a negative delta", async () => {
+    await expect(incrementUserQuotaUsed(userId, -1)).rejects.toThrow(RangeError);
   });
 
   it("deleteApiKey removes hash + set", async () => {
     const { key, plainKey } = await createApiKey({
       userId,
       label: "l",
-      quotaType: "credits",
-      quotaLimit: 1000,
     });
     expect(await getApiKeyById(key.id)).not.toBeNull();
     expect(await deleteApiKey(key.id)).toBe(true);
@@ -270,10 +273,8 @@ describe("keys repository", () => {
     const { key } = await createApiKey({
       userId,
       label: "l",
-      quotaType: "credits",
-      quotaLimit: 1000,
     });
-    await createApiKey({ userId, label: "m", quotaType: "credits", quotaLimit: 1000 });
+    await createApiKey({ userId, label: "m" });
     await setApiKeyEnabled(key.id, false);
 
     const enabled = await listAllApiKeys({ enabledOnly: true });

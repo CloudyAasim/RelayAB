@@ -114,8 +114,9 @@ describe("db types - toPublic helpers", () => {
       updatedAt: "2025-01-01T00:00:00.000Z",
       lastLoginAt: null,
       disabled: false,
-      quotaTypePerKey: "credits",
-      quotaLimitPerKey: 1000,
+      quotaType: "credits",
+      quotaLimit: 1000,
+      quotaUsed: 0,
       maxActiveKeys: 0,
       allowedModels: [],
     };

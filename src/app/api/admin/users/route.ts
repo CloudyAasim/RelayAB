@@ -16,6 +16,12 @@ const PostSchema = z.object({
   password: z.string().optional(),
   role: z.enum(["admin", "user"]).optional(),
   displayName: z.string().optional(),
+  // Optional initial allocation. Omit to create the account with an empty
+  // pool — the admin can grant credits later from the allocation editor.
+  quotaType: z.enum(["credits", "tokens"]).optional(),
+  quotaLimit: z.number().int().nonnegative().optional(),
+  maxActiveKeys: z.number().int().nonnegative().optional(),
+  allowedModels: z.array(z.string()).optional(),
 });
 
 export async function GET(req: Request): Promise<Response> {
@@ -75,6 +81,10 @@ export async function POST(req: Request): Promise<Response> {
       password,
       role: parsed.data.role,
       displayName: parsed.data.displayName,
+      quotaType: parsed.data.quotaType,
+      quotaLimit: parsed.data.quotaLimit,
+      maxActiveKeys: parsed.data.maxActiveKeys,
+      allowedModels: parsed.data.allowedModels,
     });
     return NextResponse.json({
       ok: true,

@@ -1,74 +1,54 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
-import { creditsToUnits } from "@/lib/quota/credits";
+import { Button } from "@/components/ui/Button";
+import { useT } from "@/components/i18n/I18nProvider";
 
-interface User {
-  id: string;
-  username: string;
-  displayName: string;
-}
+interface UserOpt { id: string; username: string; }
 
-export function CreateKeyButton({ users }: { users: User[] }) {
-  const router = useRouter();
+export function CreateKeyButton({ users }: { users: UserOpt[] }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
-  const [userId, setUserId] = useState("");
+  const [userId, setUserId] = useState(users[0]?.id ?? "");
   const [label, setLabel] = useState("");
   const [quotaType, setQuotaType] = useState<"credits" | "tokens">("credits");
-  // Entered as 积分; converted to the integer storage units on submit.
-  const [quotaLimitCredits, setQuotaLimitCredits] = useState(500);
-  const [quotaLimitTokens, setQuotaLimitTokens] = useState(100_000);
+  const [quotaLimit, setQuotaLimit] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
   const [allowedModels, setAllowedModels] = useState("");
+  const [plainKey, setPlainKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [plainKey, setPlainKey] = useState<string | null>(null);
 
   function reset() {
-    setUserId("");
-    setLabel("");
-    setQuotaType("credits");
-    setQuotaLimitCredits(500);
-    setQuotaLimitTokens(100_000);
-    setExpiresAt("");
-    setAllowedModels("");
-    setError(null);
-    setPlainKey(null);
+    setLabel(""); setQuotaLimit(""); setExpiresAt(""); setAllowedModels("");
+    setPlainKey(null); setError(null); setQuotaType("credits");
   }
 
-  async function onSubmit() {
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
     setError(null);
     setLoading(true);
     try {
-      const body: Record<string, unknown> = {
-        userId,
-        label,
-        quotaType,
-        quotaLimit:
-          quotaType === "credits" ? creditsToUnits(quotaLimitCredits) : quotaLimitTokens,
-        expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
-        allowedModels: allowedModels
-          ? allowedModels.split(",").map((s) => s.trim()).filter(Boolean)
-          : [],
-      };
       const res = await fetch("/api/admin/keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          userId, label, quotaType, quotaLimit: Number(quotaLimit),
+          expiresAt: expiresAt || null,
+          allowedModels: allowedModels ? allowedModels.split(",").map(s => s.trim()).filter(Boolean) : null,
+        }),
       });
       const data = await res.json();
       if (!data.ok) {
-        setError(data.error?.message ?? "Failed");
+        setError(data.error?.message ?? t("common.failed"));
         return;
       }
       setPlainKey(data.data?.plainKey ?? null);
-      router.refresh();
+      // Reload after user copies.
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+      setError(err instanceof Error ? err.message : t("common.failed"));
     } finally {
       setLoading(false);
     }
@@ -76,96 +56,69 @@ export function CreateKeyButton({ users }: { users: User[] }) {
 
   return (
     <>
-      <Button onClick={() => setOpen(true)}>Create Key</Button>
-      <Modal
-        open={open}
-        onClose={() => { setOpen(false); reset(); }}
-        title={plainKey ? "Key Created" : "Create API Key"}
-        description={
-          plainKey
-            ? "Copy the key below — it will not be shown again."
-            : "Issue a new key for one of your users."
-        }
-        footer={
-          plainKey ? (
-            <Button onClick={() => { setOpen(false); reset(); }}>Done</Button>
-          ) : (
-            <>
-              <Button variant="ghost" onClick={() => { setOpen(false); reset(); }}>Cancel</Button>
-              <Button onClick={onSubmit} loading={loading} disabled={!userId || !label}>Create</Button>
-            </>
-          )
-        }
-      >
+      <Button onClick={() => { reset(); setOpen(true); }}>{t("admin.keys.create")}</Button>
+      <Modal open={open} onClose={() => { setOpen(false); reset(); }}
+             title={plainKey ? t("admin.keys.created") : t("admin.keys.create")}>
         {plainKey ? (
-          <pre className="rounded-md bg-slate-900 px-4 py-3 text-sm font-mono text-green-400 overflow-x-auto">
-            {plainKey}
-          </pre>
-        ) : (
           <div className="space-y-3">
-            <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-slate-700">User</label>
+            <p className="text-sm text-slate-700">{t("admin.keys.createdNotice")}</p>
+            <div className="rounded-md bg-slate-100 p-3 font-mono text-xs break-all">{plainKey}</div>
+            <div className="flex justify-end">
+              <Button onClick={() => { setOpen(false); reset(); window.location.reload(); }}>
+                {t("common.close")}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={onSubmit} className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-slate-700">
+                {t("admin.keys.create.user")}
+              </label>
               <select
                 value={userId}
                 onChange={(e) => setUserId(e.target.value)}
-                className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                required
               >
-                <option value="">Select user…</option>
                 {users.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.username} ({u.displayName})
-                  </option>
+                  <option key={u.id} value={u.id}>{u.username}</option>
                 ))}
               </select>
             </div>
-            <Input label="Label" required value={label} onChange={(e) => setLabel(e.target.value)} />
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <label className="block text-sm font-medium text-slate-700">Quota Type</label>
-                <select
-                  value={quotaType}
-                  onChange={(e) => setQuotaType(e.target.value as "credits" | "tokens")}
-                  className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                >
-                  <option value="credits">积分</option>
-                  <option value="tokens">Tokens</option>
-                </select>
-              </div>
-              {quotaType === "credits" ? (
-                <Input
-                  label="Limit (积分)"
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={quotaLimitCredits}
-                  onChange={(e) => setQuotaLimitCredits(Number(e.target.value))}
-                  hint="Usage is tracked down to 0.001 积分."
-                />
-              ) : (
-                <Input
-                  label="Limit (tokens)"
-                  type="number"
-                  min="0"
-                  value={quotaLimitTokens}
-                  onChange={(e) => setQuotaLimitTokens(Number(e.target.value))}
-                />
-              )}
+            <Input label={t("admin.keys.create.label")} required
+                   value={label} onChange={(e) => setLabel(e.target.value)} />
+            <div>
+              <label className="block text-sm font-medium text-slate-700">
+                {t("admin.keys.create.quotaType")}
+              </label>
+              <select
+                value={quotaType}
+                onChange={(e) => setQuotaType(e.target.value as "credits" | "tokens")}
+                className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              >
+                <option value="credits">{t("admin.keys.create.quotaType.credits")}</option>
+                <option value="tokens">{t("admin.keys.create.quotaType.tokens")}</option>
+              </select>
             </div>
-            <Input
-              label="Expires At"
-              type="datetime-local"
-              value={expiresAt}
-              onChange={(e) => setExpiresAt(e.target.value)}
-              hint="Leave blank for no expiration."
-            />
-            <Input
-              label="Allowed Models"
-              value={allowedModels}
-              onChange={(e) => setAllowedModels(e.target.value)}
-              hint="Comma-separated. Empty = all models allowed."
-            />
+            <Input label={t("admin.keys.create.limit", { type: quotaType === "credits" ? t("admin.keys.create.quotaType.credits") : t("admin.keys.create.quotaType.tokens") })}
+                   type="number" required
+                   value={quotaLimit} onChange={(e) => setQuotaLimit(e.target.value)} />
+            <Input label={t("admin.keys.create.expiresAt")}
+                   type="datetime-local"
+                   value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
+            <Input label={t("admin.keys.create.allowedModels")}
+                   value={allowedModels} onChange={(e) => setAllowedModels(e.target.value)} />
             {error && <p className="text-sm text-red-600">{error}</p>}
-          </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="ghost" onClick={() => { setOpen(false); reset(); }}>
+                {t("common.cancel")}
+              </Button>
+              <Button type="submit" loading={loading}>
+                {t("admin.keys.create.submit")}
+              </Button>
+            </div>
+          </form>
         )}
       </Modal>
     </>

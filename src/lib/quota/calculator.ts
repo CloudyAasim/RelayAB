@@ -8,13 +8,13 @@
  *   2. Decide if the request would be rejected by quota (shouldReject).
  *   3. Forward to upstream provider.
  *   4. Compute 积分 consumed from the response.
- *   5. Bump quotaUsed (lib/db/keys.ts).
+ *   5. Bump the OWNER's quotaUsed (lib/db/users.ts).
  *   6. Record a usage log (lib/db/usage.ts).
  *
  * This module owns step 2 and the small helpers around step 4.
  */
 import { computeCredits } from "./rates";
-import type { ApiKey, QuotaType, UsageLog } from "../db/types";
+import type { ApiKey, QuotaType, UsageLog, User } from "../db/types";
 
 // ---------------------------------------------------------------------------
 // Pre-flight quota check
@@ -32,13 +32,13 @@ import type { ApiKey, QuotaType, UsageLog } from "../db/types";
  * The other reasons (disabled, expired) are already enforced in
  * `lib/auth/apikey.ts`. This function only adds a defensive double-check.
  */
-export function shouldRejectBeforeRequest(key: ApiKey): false | {
+export function shouldRejectBeforeRequest(user: Pick<User, "quotaType" | "quotaLimit" | "quotaUsed">): false | {
   reason: "quota_exceeded_credits" | "quota_exceeded_tokens";
 } {
-  if (key.quotaType === "credits" && key.quotaUsed >= key.quotaLimit) {
+  if (user.quotaType === "credits" && user.quotaUsed >= user.quotaLimit) {
     return { reason: "quota_exceeded_credits" };
   }
-  if (key.quotaType === "tokens" && key.quotaUsed >= key.quotaLimit) {
+  if (user.quotaType === "tokens" && user.quotaUsed >= user.quotaLimit) {
     return { reason: "quota_exceeded_tokens" };
   }
   return false;
@@ -53,10 +53,10 @@ export function shouldRejectBeforeRequest(key: ApiKey): false | {
  * over-quota request can surprise users mid-conversation.
  */
 export function isOverQuotaAfterRequest(args: {
-  key: ApiKey;
+  user: Pick<User, "quotaLimit">;
   newQuotaUsed: number;
 }): boolean {
-  return args.newQuotaUsed > args.key.quotaLimit;
+  return args.newQuotaUsed > args.user.quotaLimit;
 }
 
 // ---------------------------------------------------------------------------

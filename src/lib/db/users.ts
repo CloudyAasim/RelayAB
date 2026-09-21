@@ -14,7 +14,7 @@
  */
 import { hashPassword } from "../crypto/password";
 import { generateId } from "../crypto/hashing";
-import { UserSchema, type User } from "./types";
+import { UserSchema, DEFAULT_USER_ALLOCATION, type User } from "./types";
 import { getRedis, k } from "./redis";
 
 // ---------------------------------------------------------------------------
@@ -44,12 +44,25 @@ export interface CreateUserInput {
   password: string; // plaintext; repository will hash
   role?: "admin" | "user";
   displayName?: string;
+  /** Admin-controlled policy applied at creation. Defaults come from
+   *  `DEFAULT_USER_ALLOCATION` if not supplied. */
+  quotaType?: "credits" | "tokens";
+  quotaLimit?: number;
+  maxActiveKeys?: number;
+  allowedModels?: string[];
 }
 
 export interface UpdateUserInput {
   displayName?: string;
   role?: "admin" | "user";
   disabled?: boolean;
+  // Admin-controlled policy (see UserSchema).
+  quotaType?: "credits" | "tokens";
+  quotaLimit?: number;
+  /** Admin can also top up / reset consumption. Never settable by the user. */
+  quotaUsed?: number;
+  maxActiveKeys?: number;
+  allowedModels?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -77,32 +90,63 @@ export async function createUser(input: CreateUserInput): Promise<User> {
     updatedAt: now,
     lastLoginAt: null,
     disabled: false,
+    quotaType: input.quotaType ?? DEFAULT_USER_ALLOCATION.quotaType,
+    quotaLimit: input.quotaLimit ?? DEFAULT_USER_ALLOCATION.quotaLimit,
+    quotaUsed: 0,
+    maxActiveKeys: input.maxActiveKeys ?? DEFAULT_USER_ALLOCATION.maxActiveKeys,
+    allowedModels: input.allowedModels ?? [],
   });
 
   const redis = getRedis();
 
-  // Conflict detection: if a user with this username already exists, fail
-  // fast before doing any writes. This is racy in theory (TOCTOU) but in
-  // practice a 1ms window is acceptable for our admin-driven use case.
-  const existingId = await redis.get(k.userByUsername(user.username));
-  if (existingId) {
+  // ATOMIC CONFLICT CHECK + RESERVATION.
+  //
+  // The classic implementation does GET-then-SET, which has a TOCTOU race:
+  // two concurrent createUser() calls both observe "no existing user" and
+  // both proceed to write, ending up with a duplicated username and an
+  // orphaned user record. The fix is to use SETNX on the secondary index:
+  // if the SETNX returns "OK" we have atomically reserved the username; if
+  // it returns null the username is already taken.
+  //
+  // Why this matters in production: Vercel cold-starts spin up multiple
+  // concurrent Lambda containers, and `bootstrapAdmin()` is invoked from
+  // every page-load's `getCurrentUser()`. Without atomic reservation the
+  // losing Lambda explodes with "Username already exists: admin" and
+  // surfaces as an HTTP 500 to the user.
+  const usernameKey = k.userByUsername(user.username);
+  const claimed = await redis.set(usernameKey, user.id, { nx: true });
+  if (claimed !== "OK") {
     throw new UsernameConflictError(user.username);
   }
 
-  const tx = redis.multi();
-  tx.set(k.userByUsername(user.username), user.id);
-  tx.hset(k.user(user.id), {
-    id: user.id,
-    username: user.username,
-    passwordHash: user.passwordHash,
-    role: user.role,
-    displayName: user.displayName,
-    createdAt: user.createdAt,
-    updatedAt: user.updatedAt,
-    lastLoginAt: user.lastLoginAt ?? "",
-    disabled: user.disabled ? "1" : "0",
-  });
-  await tx.exec();
+  // From here on the username is reserved in the secondary index. If the
+  // user hash write that follows fails, we MUST release the reservation
+  // (otherwise the username is "stuck taken" forever).
+  try {
+    await redis.hset(k.user(user.id), {
+      id: user.id,
+      username: user.username,
+      passwordHash: user.passwordHash,
+      role: user.role,
+      displayName: user.displayName,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+      lastLoginAt: user.lastLoginAt ?? "",
+      disabled: user.disabled ? "1" : "0",
+      quotaType: user.quotaType,
+      quotaLimit: String(user.quotaLimit),
+      quotaUsed: String(user.quotaUsed),
+      maxActiveKeys: String(user.maxActiveKeys),
+      allowedModels: user.allowedModels.join(","),
+    });
+  } catch (err) {
+    // Best-effort cleanup. If this DEL also fails (e.g. transient Redis
+    // outage), the operator can clear relay:user:by-username:{username}
+    // by hand. The error that caused us to land here is the meaningful
+    // one — surface it.
+    await redis.del(usernameKey).catch(() => {});
+    throw err;
+  }
   return user;
 }
 
@@ -190,6 +234,11 @@ export async function updateUser(
     displayName: patch.displayName ?? existing.displayName,
     role: patch.role ?? existing.role,
     disabled: patch.disabled ?? existing.disabled,
+    quotaType: patch.quotaType ?? existing.quotaType,
+    quotaLimit: patch.quotaLimit ?? existing.quotaLimit,
+    quotaUsed: patch.quotaUsed ?? existing.quotaUsed,
+    maxActiveKeys: patch.maxActiveKeys ?? existing.maxActiveKeys,
+    allowedModels: patch.allowedModels ?? existing.allowedModels,
     updatedAt: now,
   };
   // Re-validate.
@@ -199,6 +248,11 @@ export async function updateUser(
     displayName: validated.displayName,
     role: validated.role,
     disabled: validated.disabled ? "1" : "0",
+    quotaType: validated.quotaType,
+    quotaLimit: String(validated.quotaLimit),
+    quotaUsed: String(validated.quotaUsed),
+    maxActiveKeys: String(validated.maxActiveKeys),
+    allowedModels: validated.allowedModels.join(","),
     updatedAt: validated.updatedAt,
   });
 
@@ -226,6 +280,39 @@ export async function resetUserPassword(
 export async function touchLastLogin(userId: string): Promise<void> {
   const now = new Date().toISOString();
   await getRedis().hset(k.user(userId), { lastLoginAt: now });
+}
+
+/**
+ * Atomically add `delta` to a user's consumed-quota counter.
+ *
+ * This is the write half of the "quota lives on the user" model: every
+ * successful proxied request — no matter which of the user's keys carried
+ * it — decrements the same pool. `HINCRBY` keeps concurrent requests from
+ * losing updates the way a read-modify-write would.
+ *
+ * Returns the fresh user record so callers can render remaining balance
+ * without a second round trip. Returns null if the user vanished mid-flight.
+ */
+export async function incrementUserQuotaUsed(
+  userId: string,
+  delta: number,
+): Promise<User | null> {
+  if (!Number.isFinite(delta) || delta < 0) {
+    throw new RangeError("delta must be a non-negative finite number");
+  }
+  if (delta === 0) return getUserById(userId);
+
+  await getRedis().hincrby(k.user(userId), "quotaUsed", delta);
+  return getUserById(userId);
+}
+
+/**
+ * Remaining quota for a user, in the same integer unit as `quotaLimit`.
+ * Never negative — an overshooting request shows 0 remaining rather than a
+ * balance that reads like a debt.
+ */
+export function remainingQuota(user: Pick<User, "quotaLimit" | "quotaUsed">): number {
+  return Math.max(0, user.quotaLimit - user.quotaUsed);
 }
 
 /** Soft-delete: mark user as disabled (keeps data for audit). */
@@ -287,6 +374,30 @@ export async function bootstrapAdminIfNeeded(args: {
 async function hashToUser(raw: Record<string, string> | null): Promise<User | null> {
   if (!raw) return null;
   try {
+    // Allocation fields default if missing (back-compat with records written
+    // before the user-allocation feature shipped).
+    // Back-compat: records written before quota moved from the key onto the
+    // user stored `quotaTypePerKey` / `quotaLimitPerKey`. Read those as the
+    // pool so an existing deployment keeps whatever it had granted.
+    const quotaType =
+      (raw.quotaType as "credits" | "tokens" | undefined) ??
+      (raw.quotaTypePerKey as "credits" | "tokens" | undefined) ??
+      DEFAULT_USER_ALLOCATION.quotaType;
+    const quotaLimit =
+      raw.quotaLimit && raw.quotaLimit !== ""
+        ? Number(raw.quotaLimit)
+        : raw.quotaLimitPerKey && raw.quotaLimitPerKey !== ""
+          ? Number(raw.quotaLimitPerKey)
+          : DEFAULT_USER_ALLOCATION.quotaLimit;
+    const quotaUsed =
+      raw.quotaUsed && raw.quotaUsed !== "" ? Number(raw.quotaUsed) : 0;
+    const maxActiveKeys =
+      raw.maxActiveKeys && raw.maxActiveKeys !== ""
+        ? Number(raw.maxActiveKeys)
+        : DEFAULT_USER_ALLOCATION.maxActiveKeys;
+    const allowedModels = raw.allowedModels
+      ? raw.allowedModels.split(",").filter(Boolean)
+      : [];
     return UserSchema.parse({
       id: raw.id,
       username: raw.username,
@@ -297,6 +408,11 @@ async function hashToUser(raw: Record<string, string> | null): Promise<User | nu
       updatedAt: raw.updatedAt,
       lastLoginAt: raw.lastLoginAt && raw.lastLoginAt !== "" ? raw.lastLoginAt : null,
       disabled: raw.disabled === "1",
+      quotaType,
+      quotaLimit,
+      quotaUsed,
+      maxActiveKeys,
+      allowedModels,
     });
   } catch {
     return null;

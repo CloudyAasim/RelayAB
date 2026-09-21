@@ -19,6 +19,14 @@ set -uo pipefail
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$APP_DIR" || exit 1
 
+# Everything here talks to 127.0.0.1. If the developer's shell exports
+# http_proxy/https_proxy, curl would route those requests through a proxy and
+# every check fails with an empty body / HTTP 000. Drop the proxy env for this
+# script; it only ever hits local ports.
+unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy
+export NO_PROXY="127.0.0.1,localhost"
+export no_proxy="$NO_PROXY"
+
 PORT="${SMOKE_PORT:-3211}"
 UPSTREAM_PORT="${SMOKE_UPSTREAM_PORT:-8891}"
 BASE="http://127.0.0.1:${PORT}"
