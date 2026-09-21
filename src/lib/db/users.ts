@@ -130,13 +130,17 @@ export async function listUsers(opts: { limit?: number; cursor?: string } = {}):
   nextCursor: string | null;
 }> {
   const limit = Math.max(1, Math.min(opts.limit ?? 50, 200));
-  const allIds = await getRedis().scan(0, { match: `${k.user("")}*`, count: 200 });
-  void allIds;
-  // Direct approach: scan for user: keys, then hgetall each.
-  // For correctness over efficiency, we use scan + filter.
   const redis = getRedis();
-  const [, matched] = await redis.scan(0, { match: `${k.user("").slice(0, -1)}*`, count: 500 });
-  const userKeys = matched.filter((key) => key.startsWith(k.user("")));
+  // Schema reminder:
+  //   HASH     relay:user:{userId}            → record
+  //   STRING   relay:user:by-username:{u}    → userId  (secondary index)
+  // SCAN `relay:user:*` would match BOTH; we filter out the secondary
+  // index so we never call HGETALL on a STRING key (which throws
+  // WRONGTYPE in real Upstash).
+  const [, matched] = await redis.scan(0, { match: `${k.user("")}*`, count: 500 });
+  const userKeys = matched.filter(
+    (key) => key.startsWith(k.user("")) && !key.startsWith(k.userByUsername("")),
+  );
 
   const users: User[] = [];
   for (const key of userKeys) {

@@ -173,11 +173,23 @@ export async function listAllApiKeys(opts: {
   enabledOnly?: boolean;
 } = {}): Promise<ApiKey[]> {
   const redis = getRedis();
+  // Schema reminder:
+  //   HASH   relay:apikey:{keyId}            → record
+  //   STRING relay:apikey:hash:{hash}        → keyId  (lookup index)
+  //   STRING relay:apikey:by-user:{userId}   → set of keyIds (per-user index)
+  // SCAN `relay:apikey:*` would match all of these; we only want the
+  // HASH records here. Calling HGETALL on the STRING indexes would
+  // throw WRONGTYPE in real Upstash.
   const [, matched] = await redis.scan(0, {
-    match: `${k.apiKey("").slice(0, -1)}*`,
+    match: `${k.apiKey("")}*`,
     count: 500,
   });
-  const keyIds = matched.filter((key) => key.startsWith(k.apiKey("")));
+  const keyIds = matched.filter(
+    (key) =>
+      key.startsWith(k.apiKey("")) &&
+      !key.startsWith(k.apiKeyByHash("")) &&
+      !key.startsWith(k.apiKeyByUser("")),
+  );
 
   const out: ApiKey[] = [];
   for (const key of keyIds) {
