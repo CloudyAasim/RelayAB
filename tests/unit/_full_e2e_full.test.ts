@@ -19,15 +19,16 @@ const setEnv = (env: Record<string, string | undefined>): void => {
 };
 
 describe("Test 1 · config.ts: schema accepts Deploy-Button flow", () => {
-  it("only RELAY_AUTH + RELAY_PUBLIC_URL are required at startup", () => {
+  it("RELAY_AUTH alone is enough; RELAY_PUBLIC_URL is optional", () => {
     setEnv({
       RELAY_AUTH: "deploy-button-only-12345678",
-      RELAY_PUBLIC_URL: "https://relay.example.com",
+      RELAY_PUBLIC_URL: undefined,
       NODE_ENV: "production",
     });
     const cfg = loadConfig();
     expect(cfg.RELAY_AUTH).toBe("deploy-button-only-12345678");
-    expect(cfg.RELAY_PUBLIC_URL).toBe("https://relay.example.com");
+    // Not set — the public URL is derived at render time instead.
+    expect(cfg.RELAY_PUBLIC_URL).toBeUndefined();
     expect(cfg.UPSTASH_REDIS_REST_URL).toBeUndefined();
     expect(cfg.UPSTASH_REDIS_REST_TOKEN).toBeUndefined();
   });

@@ -1,9 +1,9 @@
 /**
  * tests/unit/config-public-url.test.ts
  *
- * Tests the RELAY_PUBLIC_URL configuration:
- *   - default in dev / test
- *   - required in production
+ * Tests public-URL resolution:
+ *   - RELAY_PUBLIC_URL is OPTIONAL; omitting it must not fail startup
+ *   - VERCEL_URL is used as the fallback (no configuration on Vercel)
  *   - getPublicUrl() strips trailing slash
  *   - publicUrl() helper builds paths correctly
  */
@@ -27,15 +27,41 @@ describe("RELAY_PUBLIC_URL config", () => {
     __resetConfigForTest();
   });
 
-  it("defaults to http://localhost:3000 in non-prod", () => {
+  it("is OPTIONAL — omitting it does not fail startup", () => {
     setEnv({
       RELAY_AUTH: "long-enough-password-here",
-      NODE_ENV: "development",
+      RELAY_PUBLIC_URL: undefined,
+      VERCEL_URL: undefined,
+      NODE_ENV: "production",
     });
     __resetConfigForTest();
     const cfg = loadConfig();
-    expect(cfg.RELAY_PUBLIC_URL).toBe("http://localhost:3000");
+    // The schema accepts its absence; the value is derived at render time.
+    expect(cfg.RELAY_PUBLIC_URL).toBeUndefined();
+    // Env-only fallback is localhost, which is honest about not knowing.
     expect(getPublicUrl()).toBe("http://localhost:3000");
+  });
+
+  it("derives from VERCEL_URL with no configuration", () => {
+    setEnv({
+      RELAY_AUTH: "long-enough-password-here",
+      RELAY_PUBLIC_URL: undefined,
+      VERCEL_URL: "relay-ab-abc123.vercel.app",
+      NODE_ENV: "production",
+    });
+    __resetConfigForTest();
+    expect(getPublicUrl()).toBe("https://relay-ab-abc123.vercel.app");
+  });
+
+  it("prefers an explicit RELAY_PUBLIC_URL over VERCEL_URL", () => {
+    setEnv({
+      RELAY_AUTH: "long-enough-password-here",
+      RELAY_PUBLIC_URL: "https://relay.example.com",
+      VERCEL_URL: "relay-ab-abc123.vercel.app",
+      NODE_ENV: "production",
+    });
+    __resetConfigForTest();
+    expect(getPublicUrl()).toBe("https://relay.example.com");
   });
 
   it("strips trailing slash from the URL", () => {

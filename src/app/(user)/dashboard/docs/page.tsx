@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { Card } from "@/components/ui/Card";
 import { getT } from "@/lib/i18n/server";
-import { getPublicUrl } from "@/lib/config";
+import { resolvePublicUrl } from "@/lib/public-url";
 import {
   AuthenticatedLayout,
   SectionPageLayout,
@@ -14,7 +14,7 @@ export default async function DocsPage() {
   if (!user) redirect("/login");
   const { t } = await getT();
 
-  const base = getPublicUrl().replace(/\/$/, "");
+  const base = await resolvePublicUrl();
   const openaiBase = `${base}/v1`;
   const anthropicBase = `${base}/anthropic`;
 

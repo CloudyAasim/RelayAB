@@ -6,16 +6,14 @@
 
 ## 一键部署到 Vercel
 
-点下面按钮，Vercel 在 "Add Environment Variables" 区会让你填 **2 个变量** —— `RELAY_AUTH` 和 `RELAY_PUBLIC_URL`。Upstash 的两个变量**不在这填**，等部署成功后再用 Vercel Marketplace 一键装。
+点下面按钮，Vercel 在 "Add Environment Variables" 区**只让你填 1 个变量** —— `RELAY_AUTH`。Upstash 的两个变量**不在这填**，等部署成功后再用 Vercel Marketplace 一键装；公网地址由 `VERCEL_URL` 自动推导，不用填。
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FCloudyAasim%2FRelayAB&env=RELAY_AUTH&envDescription=Master%20password%20%2B%20first%20admin%20login%20password&envLink=https%3A%2F%2Fgithub.com%2FCloudyAasim%2FRelayAB%23readme&env=RELAY_PUBLIC_URL&envDescription=Public%20base%20URL%20users%20will%20call%20%28e.g.%20https%3A%2F%2Frelay.example.com%29)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FCloudyAasim%2FRelayAB&env=RELAY_AUTH&envDescription=Master%20password%20%2B%20first%20admin%20login%20password&envLink=https%3A%2F%2Fgithub.com%2FCloudyAasim%2FRelayAB%23readme)
 
 ### 步骤（每一步该点什么）
 
 1. **点击按钮** → 打开 `vercel.com/new/clone`。Vercel 先让你点 "Continue with GitHub" 完成授权（已登录会自动跳过）。
-2. **New Project 页** 出现，向下滚动到 "Add Environment Variables" 区 — **两个输入框**：
-   - `RELAY_AUTH`：填一个**高熵字符串**（32+ 字节的随机字符；具体值由你定，这是 root secret）。
-   - `RELAY_PUBLIC_URL`：填本服务对外可访问的 URL（用户会把它配进 OpenAI / Anthropic 兼容客户端里），例如 `https://relay.example.com`。点 **Deploy**。
+2. **New Project 页** 出现，向下滚动到 "Add Environment Variables" 区 — **只有一个输入框 `RELAY_AUTH`**。填一个**高熵字符串**（32+ 字节的随机字符；具体值由你定，这是 root secret）。点 **Deploy**。
 3. 等 `Ready` 出现，记下 `*.vercel.app` URL。
 4. **Storage → Create Database → Upstash** → Free → Create。
 5. **Deployments** → 顶部最新一条 → **⋯** → **Redeploy** —— 这次 Upstash 凭证就生效了。
@@ -37,7 +35,7 @@ curl -s https://<your-app>.vercel.app/healthz
 如果 `status` 是 `"degraded"`，响应里 `env.missing` 告诉你哪些还没填：
 
 - 只有 Upstash 缺 → 还没装 Marketplace，跳回 Step 4
-- `RELAY_AUTH` 或 `RELAY_PUBLIC_URL` 也缺 → Deploy Button 步骤里没填，回去填
+- `RELAY_AUTH` 也缺 → Deploy Button 步骤里没填，回去填
 
 ### 如果你已经在 Vercel 里有这个项目了
 
@@ -100,19 +98,21 @@ pnpm install
 cp .env.example .env.local
 ```
 
-**只需要 4 个变量：**
+**只有 1 个必填，另外 2 个在 Vercel 上会自动注入：**
 
 ```bash
-# 主密码（也是管理员登录密码）
+# 必填：主密码（也是管理员登录密码）
 RELAY_AUTH="<openssl rand -hex 32>"
 
-# 服务对外可访问的 URL（出现在文档页与 dashboard 中，可一键复制到客户端）
-RELAY_PUBLIC_URL="https://example.com"
-
-# Upstash Redis（Vercel Marketplace 自动注入，或手动填写）
+# Vercel 上由 Marketplace 自动注入；自托管时才手动填
 UPSTASH_REDIS_REST_URL="https://<your-db>.upstash.io"
 UPSTASH_REDIS_REST_TOKEN="<your-token>"
 ```
+
+**公网地址不用配。** `/dashboard/docs` 和欢迎页里展示的接口地址会自动取
+`VERCEL_URL`，取不到时读当前请求的 Host 头。只有在自定义域名 / 反向代理
+场景下（用户应该调用的地址 ≠ 他们实际访问到的地址）才需要显式设置
+`RELAY_PUBLIC_URL` 覆盖。
 
 **可选：自动 bootstrap 上游 Provider（首次启动时生效）**
 
@@ -219,11 +219,11 @@ pnpm list-usage [--user <name>] [--days N]     # 用量摘要
 | 名称 | 来源 |
 |---|---|
 | `RELAY_AUTH` | `openssl rand -hex 32`（管理员登录密码 + 密钥派生种子） |
-| `RELAY_PUBLIC_URL` | 用户访问的公网 URL，例如 `https://relay.example.com`（出现在文档页与 dashboard 中，可一键复制到客户端） |
 | `UPSTASH_REDIS_REST_URL` | Vercel Marketplace 自动注入 |
 | `UPSTASH_REDIS_REST_TOKEN` | Vercel Marketplace 自动注入 |
 | `RELAY_ADMIN_USERNAME` | 可选，默认 `admin` |
 | `RELAY_DEFAULT_LOCALE` | 可选，界面默认语言 `zh-CN`（默认）或 `en` |
+| `RELAY_PUBLIC_URL` | 可选，仅当用户应调用的地址 ≠ 实际访问地址时设置（自定义域名 / 反向代理）。默认从 `VERCEL_URL` 或请求 Host 头推导 |
 | `RELAY_MASTER_KEY_HEX` | 可选，默认从 `RELAY_AUTH` 派生 |
 
 `SESSION_PASSWORD` 与（默认情况下的）`RELAY_MASTER_KEY_HEX` 都由 `RELAY_AUTH`

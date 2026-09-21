@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getT } from "@/lib/i18n/server";
-import { getPublicUrl } from "@/lib/config";
+import { resolvePublicUrl } from "@/lib/public-url";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import {
@@ -36,7 +36,7 @@ export default async function WelcomePage() {
   // page people see when something is wrong.
   let origin = "";
   try {
-    origin = getPublicUrl();
+    origin = await resolvePublicUrl();
   } catch {
     origin = "";
   }

@@ -52,22 +52,29 @@ function deriveHex(authSecret: string, label: string): string {
 const schema = z.object({
   // Required at startup — without this the app cannot start.
   RELAY_AUTH: z.string().min(8, "RELAY_AUTH must be at least 8 characters."),
-  // Public base URL of this instance. Surfaced to logged-in users in the
-  // docs page so they can copy it into their OpenAI/Anthropic-compatible
-  // clients. Treated as required at startup (with a safe localhost default
-  // in dev / test) so the user-facing UI always has something to render.
+  /**
+   * Public base URL of this instance.
+   *
+   * OPTIONAL — and normally unnecessary. It is only worth setting when the
+   * URL users should paste into their clients is not the URL they reached
+   * this deployment on (custom domain in front of a *.vercel.app origin, a
+   * reverse proxy, etc.).
+   *
+   * Resolution order when unset (see `resolvePublicUrl`):
+   *   1. VERCEL_URL          — injected automatically by Vercel
+   *   2. request headers     — x-forwarded-proto + x-forwarded-host / host
+   *   3. http://localhost:3000 — local dev
+   *
+   * Keeping this optional matters: the Deploy Button asks for exactly one
+   * value, and a self-hoster shouldn't have to tell the app its own address.
+   */
   RELAY_PUBLIC_URL: z
     .string()
     .url()
-    .refine(
-      (v) => v.startsWith("https://") || v.startsWith("http://"),
-      // Transport-level policy (https required in production, http allowed
-      // for localhost / LAN self-hosting) is enforced after parsing, where
-      // NODE_ENV is available. Here we only check the scheme is http(s).
-      {
-        message: "RELAY_PUBLIC_URL must be an http(s) URL.",
-      },
-    ),
+    .refine((v) => v.startsWith("https://") || v.startsWith("http://"), {
+      message: "RELAY_PUBLIC_URL must be an http(s) URL.",
+    })
+    .optional(),
 
   // Optional at startup — these are auto-injected by the Upstash for Redis
   // Vercel Marketplace once you install it on the project. They are required
@@ -132,11 +139,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): z.infer<typeof
     RELAY_AUTH:
       env.RELAY_AUTH ??
       (isTest ? "test-relay-auth-must-be-8-chars-long-padding" : undefined),
-    // Default to localhost for dev / test so the app always boots.
-    // Production deployments MUST set this (see .env.example).
-    RELAY_PUBLIC_URL:
-      env.RELAY_PUBLIC_URL ??
-      (isProd ? undefined : "http://localhost:3000"),
+    // Left undefined when unset; `resolvePublicUrl()` derives a sensible
+    // value from VERCEL_URL or the incoming request at render time.
+    RELAY_PUBLIC_URL: env.RELAY_PUBLIC_URL,
     // Vercel Upstash Marketplace injects KV_REST_API_* (legacy Vercel KV
     // naming). The Upstash SDK docs use UPSTASH_REDIS_REST_*. Accept either.
     UPSTASH_REDIS_REST_URL:
@@ -167,7 +172,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): z.infer<typeof
       .join("\n");
     throw new Error(
       `[relayab] Invalid configuration. Fix the following env vars:\n${issues}\n\n` +
-        `Minimum required: RELAY_AUTH, RELAY_PUBLIC_URL.\n` +
+        `Only RELAY_AUTH is strictly required.\n` +
         `Note: UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are auto-injected\n` +
         `by the Upstash for Redis Vercel Marketplace after you install it on the project.\n` +
         `Without them, the app starts but all data routes fail; /healthz reports the state.\n` +
@@ -176,55 +181,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): z.infer<typeof
     );
   }
 
-  // Transport policy: in production the public origin is what end users paste
-  // into their API clients, so a plaintext http:// public origin would leak
-  // session cookies and API keys onto the network. We still allow http for
-  // loopback / private-network hosts, which is how self-hosted installs (and
-  // the test suite) legitimately run behind a local reverse proxy or on a LAN.
-  if (
-    isProd &&
-    !result.data.RELAY_PUBLIC_URL.startsWith("https://") &&
-    !isLocalOrPrivateUrl(result.data.RELAY_PUBLIC_URL)
-  ) {
-    throw new Error(
-      `[relayab] Invalid configuration. Fix the following env vars:\n` +
-        `  - RELAY_PUBLIC_URL: must use https:// in production ` +
-        `(got "${result.data.RELAY_PUBLIC_URL}").\n\n` +
-        `Set RELAY_PUBLIC_URL to the public https origin of this deployment, ` +
-        `e.g. https://relay.example.com.`,
-    );
-  }
-
   cachedConfig = result.data;
   return cachedConfig;
 }
 
-/**
- * True when the URL points at a loopback or private-network host, where
- * plaintext http carries no additional exposure beyond the operator's own
- * machine or LAN.
- */
-function isLocalOrPrivateUrl(raw: string): boolean {
-  let hostname: string;
-  try {
-    hostname = new URL(raw).hostname.toLowerCase();
-  } catch {
-    return false;
-  }
-  if (hostname === "localhost" || hostname === "::1" || hostname === "[::1]") {
-    return true;
-  }
-  // IPv4 loopback (127.0.0.0/8) and RFC1918 ranges.
-  if (/^127\./.test(hostname)) return true;
-  if (/^10\./.test(hostname)) return true;
-  if (/^192\.168\./.test(hostname)) return true;
-  if (/^172\.(1[6-9]|2\d|3[01])\./.test(hostname)) return true;
-  // IPv6 unique-local (fc00::/7).
-  if (/^f[cd][0-9a-f]{2}:/.test(hostname)) return true;
-  // Common internal suffixes.
-  if (/\.(local|internal|lan|home|test)$/.test(hostname)) return true;
-  return false;
-}
+
+
 
 /** Reset cached config. Test-only helper. */
 export function __resetConfigForTest(): void {
@@ -306,22 +268,43 @@ export function getAnthropicKeys(): string[] {
 }
 
 /**
- * The public-facing base URL of this instance.
- *
- * Surfaced to logged-in users via `/api/config` so the docs page can
- * hand them a copy-pasteable endpoint to plug into their OpenAI /
- * Anthropic-compatible clients.
- *
- * No trailing slash.
+ * Strip a trailing slash so callers can safely append "/v1".
  */
-export function getPublicUrl(): string {
-  const cfg = loadConfig();
-  return cfg.RELAY_PUBLIC_URL.replace(/\/$/, "");
+function trimSlash(url: string): string {
+  return url.replace(/\/+$/, "");
 }
 
 /**
- * Resolve a URL relative to the public base URL. Useful for handing
- * users copy-pasteable endpoints like `${publicUrl()}/v1`.
+ * Best-effort public base URL using ONLY environment variables.
+ *
+ * Order:
+ *   1. RELAY_PUBLIC_URL — explicit override, for custom domains/proxies
+ *   2. VERCEL_URL       — Vercel injects the deployment host automatically
+ *   3. http://localhost:3000 — local dev
+ *
+ * This cannot see the request, so on a self-hosted box behind an unknown
+ * domain it falls back to localhost. Server components should prefer
+ * `resolvePublicUrl()` from `lib/public-url.ts`, which can also read the
+ * incoming Host header and therefore gets the right answer with no
+ * configuration at all.
+ */
+export function getPublicUrl(): string {
+  const cfg = loadConfig();
+  if (cfg.RELAY_PUBLIC_URL) return trimSlash(cfg.RELAY_PUBLIC_URL);
+
+  const vercel = process.env.VERCEL_URL?.trim();
+  if (vercel) {
+    // VERCEL_URL is a bare host ("my-app.vercel.app"), not a full URL.
+    const host = vercel.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+    return `https://${host}`;
+  }
+
+  return "http://localhost:3000";
+}
+
+/**
+ * Build a URL relative to the public base, e.g. publicUrl("/v1").
+ * Env-only; see `resolvePublicUrl()` for the request-aware variant.
  */
 export function publicUrl(path: string): string {
   const base = getPublicUrl();

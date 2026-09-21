@@ -20,10 +20,10 @@
  * provider keys) are never returned.
  */
 import { NextResponse } from "next/server";
-import { getPublicUrl } from "@/lib/config";
+import { resolvePublicUrl } from "@/lib/public-url";
 
 export async function GET(): Promise<Response> {
-  const base = getPublicUrl();
+  const base = await resolvePublicUrl();
   const siteName = process.env.RELAY_SITE_NAME?.trim() || "RelayAB";
   return NextResponse.json({
     ok: true,

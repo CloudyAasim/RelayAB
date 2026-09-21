@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/Table";
 import type { Metadata } from "next";
 import { getT } from "@/lib/i18n/server";
-import { getPublicUrl } from "@/lib/config";
+import { resolvePublicUrl } from "@/lib/public-url";
 import {
   ArrowLeft,
   Boxes,
@@ -132,7 +132,7 @@ export default async function LicensePage() {
   // request so it stays consistent across proxies.
   let origin = "";
   try {
-    origin = getPublicUrl();
+    origin = await resolvePublicUrl();
   } catch {
     // Config can be incomplete on a fresh deploy; the page still renders.
   }

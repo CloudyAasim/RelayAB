@@ -16,14 +16,18 @@
 
 ### 1.2 必填环境变量
 
-**只需 4 个变量即可启动：**
+**只有 1 个变量是必填的：**
 
 | 名称 | 来源 | 备注 |
 |---|---|---|
 | `RELAY_AUTH` | 手动：`openssl rand -hex 32` | 主密码，同时承担管理员登录密码 + 会话密钥派生种子 |
-| `RELAY_PUBLIC_URL` | 手动 | 服务对外可访问的 URL，例如 `https://relay.example.com` — 出现在 `/dashboard/docs` 文档页与 `/dashboard` 的导航里，可一键复制到 OpenAI / Anthropic 客户端 |
 | `UPSTASH_REDIS_REST_URL` | Vercel Marketplace 自动注入 | Upstash REST URL |
 | `UPSTASH_REDIS_REST_TOKEN` | Vercel Marketplace 自动注入 | Upstash REST Token |
+
+> **公网地址不用配。** 文档页与欢迎页展示的接口地址会自动取 `VERCEL_URL`，
+> 取不到时读当前请求的 Host 头，所以 Vercel 部署与常见的自托管场景都是零配置。
+> 只有「用户应该调用的地址 ≠ 他们实际访问到的地址」时才需要设
+> `RELAY_PUBLIC_URL` 覆盖（例如前面挂了自定义域名或反向代理）。
 
 **自动派生**（无需手动设置）：
 - `SESSION_PASSWORD` — 从 `RELAY_AUTH` 派生（HMAC-SHA256）
