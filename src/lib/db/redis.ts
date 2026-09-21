@@ -63,6 +63,19 @@ export function getRedis(): RedisLike {
     return client;
   }
 
+  // Production path requires real Upstash credentials. If they are missing
+  // (e.g. user has not installed Upstash for Redis Marketplace yet on Vercel),
+  // throw an actionable error so /healthz can surface it instead of letting
+  // the @upstash/redis SDK fail with a generic "url is required".
+  if (!cfg.UPSTASH_REDIS_REST_URL || !cfg.UPSTASH_REDIS_REST_TOKEN) {
+    throw new Error(
+      "[relayab] Redis is not configured. Install Upstash for Redis via " +
+      "Vercel Marketplace (Storage → Create Database → Upstash) to auto-" +
+      "inject UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN. " +
+      "GET /healthz reports the current state.",
+    );
+  }
+
   // Real Upstash client. Cast to RedisLike - the upstash SDK implements
   // a superset of what we use; the small type drift (e.g. `set` returns
   // `RedisValue | null` instead of `"OK" | null`) does not matter for

@@ -29,15 +29,25 @@ describe("config", () => {
     expect(a).toBe(b);
   });
 
-  it("only requires RELAY_AUTH + Upstash vars", () => {
-    // The test setup provides these. Anything else is auto-defaulted.
+  it("only requires RELAY_AUTH to load config successfully", () => {
+    // Upstash vars are optional at startup — auto-injected by Vercel Marketplace.
     const cfg = loadConfig();
     expect(cfg.RELAY_AUTH.length).toBeGreaterThanOrEqual(8);
-    expect(cfg.UPSTASH_REDIS_REST_URL).toMatch(/localhost|https:/);
-    expect(cfg.UPSTASH_REDIS_REST_TOKEN.length).toBeGreaterThan(0);
   });
 
-  it("throws helpful error when RELAY_AUTH is missing in production", () => {
+  it("loads without Upstash creds when only RELAY_AUTH is set", () => {
+    // Realistic Vercel scenario: Deploy Button deployed with RELAY_AUTH only,
+    // Upstash Marketplace not yet installed. loadConfig() must succeed so the
+    // app can boot and /healthz can report the missing state.
+    const cfg = loadConfig({
+      RELAY_AUTH: "long-enough-password-here",
+    } as unknown as NodeJS.ProcessEnv);
+    expect(cfg.RELAY_AUTH).toBe("long-enough-password-here");
+    expect(cfg.UPSTASH_REDIS_REST_URL).toBeUndefined();
+    expect(cfg.UPSTASH_REDIS_REST_TOKEN).toBeUndefined();
+  });
+
+  it("throws helpful error when RELAY_AUTH is missing", () => {
     expect(() =>
       loadConfig({
         NODE_ENV: "production",
@@ -45,15 +55,6 @@ describe("config", () => {
         UPSTASH_REDIS_REST_TOKEN: "x",
       } as unknown as NodeJS.ProcessEnv),
     ).toThrow(/RELAY_AUTH/);
-  });
-
-  it("throws helpful error when Upstash vars are missing", () => {
-    expect(() =>
-      loadConfig({
-        NODE_ENV: "production",
-        RELAY_AUTH: "long-enough-password-here",
-      } as unknown as NodeJS.ProcessEnv),
-    ).toThrow(/UPSTASH/);
   });
 
   it("EMULATE_VERCEL_LOCAL is coerced to boolean", () => {

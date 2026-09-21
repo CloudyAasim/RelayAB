@@ -49,15 +49,23 @@ function deriveHex(authSecret: string, label: string): string {
 // ---------------------------------------------------------------------------
 
 const schema = z.object({
-  // Required
+  // Required at startup — without this the app cannot start.
   RELAY_AUTH: z.string().min(8, "RELAY_AUTH must be at least 8 characters."),
+
+  // Optional at startup — these are auto-injected by the Upstash for Redis
+  // Vercel Marketplace once you install it on the project. They are required
+  // for the app to actually function (any /api or /admin route touches
+  // Redis). The /healthz endpoint reports whether they are currently present.
+  // The Deploy Button only asks for RELAY_AUTH so you can deploy first,
+  // then install Upstash Marketplace.
   UPSTASH_REDIS_REST_URL: z
     .string()
     .url()
     .refine((v) => v.startsWith("https://") || v.startsWith("http://localhost"), {
       message: "UPSTASH_REDIS_REST_URL must be a valid URL.",
-    }),
-  UPSTASH_REDIS_REST_TOKEN: z.string().min(1),
+    })
+    .optional(),
+  UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
 
   // Optional with safe defaults
   RELAY_MASTER_KEY_HEX: z.string().optional(),
@@ -123,7 +131,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): z.infer<typeof
       .join("\n");
     throw new Error(
       `[relayab] Invalid configuration. Fix the following env vars:\n${issues}\n\n` +
-        `Minimum required: RELAY_AUTH, UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN.\n` +
+        `Minimum required: RELAY_AUTH.\n` +
+        `Note: UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are auto-injected\n` +
+        `by the Upstash for Redis Vercel Marketplace after you install it on the project.\n` +
+        `Without them, the app starts but all data routes fail; /healthz reports the state.\n` +
+ +
         `See .env.example for the full list.`,
     );
   }
