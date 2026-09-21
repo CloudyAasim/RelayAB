@@ -24,7 +24,7 @@ describe("db types - schemas", () => {
       role: "user" as const,
       displayName: "Alice",
       createdAt: "2026-09-21T08:00:00.000Z",
-      updatedAt: "2026-09-21T08:00:00.000Z",
+      updatedAt: "2025-01-01T00:00:00.000Z",
       lastLoginAt: null,
       disabled: false,
     };
@@ -39,7 +39,7 @@ describe("db types - schemas", () => {
       role: "superuser",
       displayName: "Alice",
       createdAt: "2026-09-21T08:00:00.000Z",
-      updatedAt: "2026-09-21T08:00:00.000Z",
+      updatedAt: "2025-01-01T00:00:00.000Z",
       lastLoginAt: null,
       disabled: false,
     };
@@ -75,8 +75,9 @@ describe("db types - schemas", () => {
       modelMapping: { "gpt-4o-mini": "gpt-4o-mini-2024-07-18" },
       enabled: true,
       priority: 1,
+      headers: {},
       createdAt: "2026-09-21T08:00:00.000Z",
-      updatedAt: "2026-09-21T08:00:00.000Z",
+      updatedAt: "2025-01-01T00:00:00.000Z",
     };
     expect(() => ProviderSchema.parse(p)).not.toThrow();
   });
@@ -110,9 +111,13 @@ describe("db types - toPublic helpers", () => {
       role: "user",
       displayName: "Alice",
       createdAt: "2026-09-21T08:00:00.000Z",
-      updatedAt: "2026-09-21T08:00:00.000Z",
+      updatedAt: "2025-01-01T00:00:00.000Z",
       lastLoginAt: null,
       disabled: false,
+      quotaTypePerKey: "credits",
+      quotaLimitPerKey: 1000,
+      maxActiveKeys: 0,
+      allowedModels: [],
     };
     const pub = toPublicUser(u);
     expect("passwordHash" in pub).toBe(false);
@@ -129,8 +134,9 @@ describe("db types - toPublic helpers", () => {
       modelMapping: {},
       enabled: true,
       priority: 1,
+      headers: {},
       createdAt: "2026-09-21T08:00:00.000Z",
-      updatedAt: "2026-09-21T08:00:00.000Z",
+      updatedAt: "2025-01-01T00:00:00.000Z",
     };
     const pub = toPublicProvider(p);
     expect("encryptedApiKey" in pub).toBe(false);

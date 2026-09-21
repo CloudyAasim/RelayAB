@@ -41,6 +41,7 @@ describe("config", () => {
     // app can boot and /healthz can report the missing state.
     const cfg = loadConfig({
       RELAY_AUTH: "long-enough-password-here",
+      RELAY_PUBLIC_URL: "https://relay.example.com",
     } as unknown as NodeJS.ProcessEnv);
     expect(cfg.RELAY_AUTH).toBe("long-enough-password-here");
     expect(cfg.UPSTASH_REDIS_REST_URL).toBeUndefined();
@@ -53,6 +54,7 @@ describe("config", () => {
         NODE_ENV: "production",
         UPSTASH_REDIS_REST_URL: "http://localhost:3000",
         UPSTASH_REDIS_REST_TOKEN: "x",
+        RELAY_PUBLIC_URL: "https://relay.example.com",
       } as unknown as NodeJS.ProcessEnv),
     ).toThrow(/RELAY_AUTH/);
   });

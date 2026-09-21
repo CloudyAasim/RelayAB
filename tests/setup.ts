@@ -9,5 +9,6 @@
  */
 (process.env as Record<string, string>).NODE_ENV = "test";
 process.env.RELAY_AUTH = "test-relay-auth-must-be-8-chars-long-padding";
+process.env.RELAY_PUBLIC_URL = "http://localhost:3000";
 process.env.UPSTASH_REDIS_REST_URL = "http://localhost:13700";
 process.env.UPSTASH_REDIS_REST_TOKEN = "test-token";

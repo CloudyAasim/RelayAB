@@ -19,13 +19,15 @@ const setEnv = (env: Record<string, string | undefined>): void => {
 };
 
 describe("Test 1 · config.ts: schema accepts Deploy-Button flow", () => {
-  it("only RELAY_AUTH is required at startup", () => {
+  it("only RELAY_AUTH + RELAY_PUBLIC_URL are required at startup", () => {
     setEnv({
       RELAY_AUTH: "deploy-button-only-12345678",
+      RELAY_PUBLIC_URL: "https://relay.example.com",
       NODE_ENV: "production",
     });
     const cfg = loadConfig();
     expect(cfg.RELAY_AUTH).toBe("deploy-button-only-12345678");
+    expect(cfg.RELAY_PUBLIC_URL).toBe("https://relay.example.com");
     expect(cfg.UPSTASH_REDIS_REST_URL).toBeUndefined();
     expect(cfg.UPSTASH_REDIS_REST_TOKEN).toBeUndefined();
   });
@@ -37,6 +39,7 @@ describe("Test 2 · config.ts: rejects missing RELAY_AUTH", () => {
       NODE_ENV: "production",
       KV_REST_API_URL: "https://x.upstash.io",
       KV_REST_API_TOKEN: "tok",
+      RELAY_PUBLIC_URL: "https://relay.example.com",
     });
     expect(() => loadConfig()).toThrow(/RELAY_AUTH/);
   });
@@ -48,6 +51,7 @@ describe("Test 3 · config.ts: KV_REST_API_* fallback", () => {
       RELAY_AUTH: "ok-password-12345678",
       KV_REST_API_URL: "https://kv-relay.upstash.io",
       KV_REST_API_TOKEN: "kv-token-abc",
+      RELAY_PUBLIC_URL: "https://relay.example.com",
       NODE_ENV: "production",
     });
     const cfg = loadConfig();
@@ -64,6 +68,7 @@ describe("Test 4 · config.ts: UPSTASH_* wins over KV_*", () => {
       UPSTASH_REDIS_REST_TOKEN: "upstash-token-xyz",
       KV_REST_API_URL: "https://kv-relay.upstash.io",
       KV_REST_API_TOKEN: "kv-token-abc",
+      RELAY_PUBLIC_URL: "https://relay.example.com",
       NODE_ENV: "production",
     });
     const cfg = loadConfig();
@@ -127,6 +132,7 @@ describe("Test 6 · redis.ts: actionable error when Upstash missing", () => {
     __resetRedisForTest();
     setEnv({
       RELAY_AUTH: "ok-password-12345678",
+      RELAY_PUBLIC_URL: "https://relay.example.com",
       NODE_ENV: "production",
     });
     expect(() => getRedis()).toThrow(/Redis is not configured/);
