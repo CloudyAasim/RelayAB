@@ -65,10 +65,11 @@ export function responsesToChatRequest(req: ResponseAPIRequest): ChatCompletionR
   
   // Build extra_body for MiniMax-specific parameters
   const extraBody: Record<string, unknown> = {};
-  if (req.extra_body) {
-    if (req.extra_body.thinking !== undefined) extraBody.thinking = req.extra_body.thinking;
-    if (req.extra_body.reasoning_split !== undefined) extraBody.reasoning_split = req.extra_body.reasoning_split;
-    if (req.extra_body.service_tier !== undefined) extraBody.service_tier = req.extra_body.service_tier;
+  const reqExtraBody = req.extra_body as Record<string, unknown> | undefined;
+  if (reqExtraBody) {
+    if (reqExtraBody.thinking !== undefined) extraBody.thinking = reqExtraBody.thinking;
+    if (reqExtraBody.reasoning_split !== undefined) extraBody.reasoning_split = reqExtraBody.reasoning_split;
+    if (reqExtraBody.service_tier !== undefined) extraBody.service_tier = reqExtraBody.service_tier;
   }
   
   const chatReq: ChatCompletionRequest = {
