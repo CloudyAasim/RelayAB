@@ -71,7 +71,7 @@ export function getRedis(): RedisLike {
     throw new Error(
       "[relayab] Redis is not configured. Install Upstash for Redis via " +
       "Vercel Marketplace (Storage → Create Database → Upstash) to auto-" +
-      "inject UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN. " +
+      "inject UPSTASH_REDIS_REST_URL (or KV_REST_API_URL, KV_URL) and UPSTASH_REDIS_REST_TOKEN (or KV_REST_API_TOKEN). " +
       "GET /healthz reports the current state.",
     );
   }

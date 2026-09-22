@@ -155,10 +155,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): z.infer<typeof
     // Vercel Upstash Marketplace injects KV_REST_API_* (legacy Vercel KV
     // naming). The Upstash SDK docs use UPSTASH_REDIS_REST_*. Accept either.
     UPSTASH_REDIS_REST_URL: emptyToUndefined(
-      env.UPSTASH_REDIS_REST_URL ?? env.KV_REST_API_URL) ??
+      env.UPSTASH_REDIS_REST_URL ?? env.KV_REST_API_URL ?? env.KV_URL) ??
       (isTest ? "http://localhost:13700" : undefined),
     UPSTASH_REDIS_REST_TOKEN: emptyToUndefined(
-      env.UPSTASH_REDIS_REST_TOKEN ?? env.KV_REST_API_TOKEN) ??
+      env.UPSTASH_REDIS_REST_TOKEN ?? env.KV_REST_API_TOKEN ?? env.KV_REST_API_READ_ONLY_TOKEN) ??
       (isTest ? "test-token" : undefined),
     RELAY_MASTER_KEY_HEX: env.RELAY_MASTER_KEY_HEX,
     RELAY_ADMIN_USERNAME: emptyToUndefined(env.RELAY_ADMIN_USERNAME) ?? "admin",

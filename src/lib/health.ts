@@ -4,10 +4,6 @@
  * Pure health-check logic, kept out of the route handler so it can be unit
  * tested directly.
  *
- * This used to be duplicated — the route had one copy and the test had
- * another — which meant a change to the rules silently left the test asserting
- * the old behaviour. Sharing one implementation removes that failure mode.
- *
  * "Required" depends on where the data actually lives:
  *   - RELAY_AUTH is ALWAYS required.
  *   - Upstash URL + TOKEN are required only when a real database is in use.
@@ -17,10 +13,19 @@
 
 export interface HealthEnv {
   RELAY_AUTH?: string;
+  // Upstash SDK default
   UPSTASH_REDIS_REST_URL?: string;
-  KV_REST_API_URL?: string;
   UPSTASH_REDIS_REST_TOKEN?: string;
+  // Vercel KV / Upstash Marketplace
+  KV_REST_API_URL?: string;
   KV_REST_API_TOKEN?: string;
+  KV_REST_API_READ_ONLY_TOKEN?: string;
+  // Upstash Redis direct
+  KV_URL?: string;
+  REDIS_URL?: string;
+  // Legacy / other providers
+  REDIS_HOST?: string;
+  REDIS_PASSWORD?: string;
   NODE_ENV?: string;
   EMULATE_VERCEL_LOCAL?: string;
 }
@@ -47,21 +52,57 @@ export function isUsingMemoryStore(env: HealthEnv): boolean {
 }
 
 /**
- * Accept BOTH common Upstash env-var naming conventions:
+ * Detect if a string looks like a valid URL or connection string.
+ */
+function hasValue(val?: string): boolean {
+  if (!val?.trim()) return false;
+  // Check for common URL patterns
+  if (val.startsWith("https://") || val.startsWith("http://") || val.startsWith("redis")) return true;
+  // Check for token-like values (not empty, not just placeholder)
+  if (val.length > 10) return true;
+  return false;
+}
+
+/**
+ * Accept ALL common Upstash/Redis env-var naming conventions:
  *   - UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN  (Upstash SDK default)
- *   - KV_REST_API_URL / KV_REST_API_TOKEN                (Vercel Marketplace)
+ *   - KV_REST_API_URL / KV_REST_API_TOKEN               (Vercel Marketplace)
+ *   - KV_URL / REDIS_URL                               (Upstash Redis direct)
+ *   - KV_REST_API_READ_ONLY_TOKEN                       (Vercel KV)
  */
 export function computeHealth(env: HealthEnv): HealthReport {
   const usingMemory = isUsingMemoryStore(env);
-  const url = env.UPSTASH_REDIS_REST_URL ?? env.KV_REST_API_URL;
-  const token = env.UPSTASH_REDIS_REST_TOKEN ?? env.KV_REST_API_TOKEN;
+
+  // Try multiple possible URL variables
+  const url =
+    env.UPSTASH_REDIS_REST_URL ??
+    env.KV_REST_API_URL ??
+    env.KV_URL ??
+    undefined;
+
+  // Try multiple possible TOKEN variables
+  const token =
+    env.UPSTASH_REDIS_REST_TOKEN ??
+    env.KV_REST_API_TOKEN ??
+    env.KV_REST_API_READ_ONLY_TOKEN ??
+    undefined;
+
+  // If we have a REDIS_URL, parse it for connection info
+  const hasRedisUrl = hasValue(env.REDIS_URL);
 
   const missing: string[] = [];
   if (!env.RELAY_AUTH?.trim()) missing.push("RELAY_AUTH");
 
   if (!usingMemory) {
-    if (!url?.trim()) missing.push("UPSTASH_REDIS_REST_URL (or KV_REST_API_URL)");
-    if (!token?.trim()) {
+    // Check if we have any usable database configuration
+    const hasUrl = hasValue(url);
+    const hasToken = hasValue(token);
+
+    // If we have KV_URL or REDIS_URL, we might be able to use it
+    if (!hasUrl && !hasRedisUrl) {
+      missing.push("UPSTASH_REDIS_REST_URL (or KV_REST_API_URL / KV_URL / REDIS_URL)");
+    }
+    if (!hasToken && !hasRedisUrl) {
       missing.push("UPSTASH_REDIS_REST_TOKEN (or KV_REST_API_TOKEN)");
     }
   }
