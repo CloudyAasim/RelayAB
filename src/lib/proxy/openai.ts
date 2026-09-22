@@ -248,6 +248,13 @@ export interface ProxyResult {
   status: number;
   /** Either an OpenAI ChatCompletion (or SSE stream) or a RelayAB error. */
   data?: unknown;
+  /**
+   * Set when the upstream body should be piped straight through to the client
+   * instead of being buffered and re-serialized (used for SSE streaming).
+   */
+  body?: ReadableStream<Uint8Array>;
+  /** Content-Type to use together with `body`. */
+  contentType?: string;
   error?: { code: string; message: string };
 }
 
@@ -615,27 +622,66 @@ export async function proxyOpenAIResponse(args: {
     };
   }
 
-  // 6. Parse + extract usage.
+  // 6. Streaming clients (Codex CLI, OpenAI SDK with stream:true) expect an
+  //    SSE body. Pipe the upstream bytes straight through instead of trying to
+  //    parse them as JSON, and settle usage once the stream has finished.
+  if (req.stream === true) {
+    return streamResponsesAnswer({
+      upstream: response,
+      apiKey,
+      provider,
+      user,
+      model: req.model,
+      upstreamModel,
+    });
+  }
+
+  // 7. Parse + extract usage.
   const body = (await response.json()) as ResponseAPIResponse;
-  // Responses API uses input_tokens/output_tokens, Chat uses prompt_tokens/completion_tokens
   const usage = body.usage ?? {};
   const promptTokens = (usage as any).prompt_tokens ?? (usage as any).input_tokens ?? 0;
-  const completionTokens = (usage as any).completion_tokens ?? (usage as any).output_tokens ?? 0;
+  const completionTokens =
+    (usage as any).completion_tokens ?? (usage as any).output_tokens ?? 0;
   const totalTokens = (usage as any).total_tokens ?? (promptTokens + completionTokens);
-  // 积分 consumed, in integer 0.001-积分 units, so even a tiny request
-  // registers a fraction of a 积分 instead of being rounded up to a whole one.
-  const creditsUsed = computeCredits({
-    model: upstreamModel,
+
+  await settleResponsesUsage({
+    apiKey,
+    provider,
+    user,
+    model: req.model,
+    upstreamModel,
     promptTokens,
     completionTokens,
-  });
-
-  // 7. Persist usage
-  const delta = quotaDelta({
-    quotaType: user.quotaType,
-    creditsUsed,
     totalTokens,
   });
+
+  return { ok: true, status: 200, data: body };
+}
+
+/**
+ * Charge the owner's pool and record one usage row for a successful Responses
+ * call. Shared by the buffered path and the streaming path.
+ */
+async function settleResponsesUsage(args: {
+  apiKey: ApiKey;
+  provider: Provider;
+  user: User;
+  model: string;
+  upstreamModel: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}): Promise<void> {
+  const { apiKey, provider, user, model, upstreamModel } = args;
+  const promptTokens = Math.max(0, Math.trunc(args.promptTokens));
+  const completionTokens = Math.max(0, Math.trunc(args.completionTokens));
+  const totalTokens = Math.max(0, Math.trunc(args.totalTokens));
+
+  // 积分 consumed, in integer 0.001-积分 units, so even a tiny request
+  // registers a fraction of a 积分 instead of being rounded up to a whole one.
+  const creditsUsed = computeCredits({ model: upstreamModel, promptTokens, completionTokens });
+
+  const delta = quotaDelta({ quotaType: user.quotaType, creditsUsed, totalTokens });
   if (delta > 0) {
     await incrementUserQuotaUsed(apiKey.userId, delta);
     await touchApiKeyLastUsed(apiKey.id);
@@ -645,15 +691,115 @@ export async function proxyOpenAIResponse(args: {
     apiKeyId: apiKey.id,
     userId: apiKey.userId,
     providerId: provider.id,
-    model: req.model,
+    model,
     upstreamModel,
     promptTokens,
     completionTokens,
     creditsUsed,
     status: "success",
   });
+}
 
-  return { ok: true, status: 200, data: body };
+interface StreamUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+/**
+ * Pull token usage out of a Responses SSE event payload, accepting both the
+ * Chat (`prompt_tokens`) and Responses (`input_tokens`) spellings, at either
+ * the top level or nested under `response`.
+ */
+function usageFromSsePayload(payload: unknown): StreamUsage | null {
+  if (!payload || typeof payload !== "object") return null;
+  const record = payload as Record<string, unknown>;
+  const nested = record.response;
+  const source =
+    (record.usage as Record<string, unknown> | undefined) ??
+    (nested && typeof nested === "object"
+      ? ((nested as Record<string, unknown>).usage as Record<string, unknown> | undefined)
+      : undefined);
+  if (!source) return null;
+
+  const toInt = (value: unknown): number =>
+    typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : 0;
+  const promptTokens = toInt(source.prompt_tokens ?? source.input_tokens);
+  const completionTokens = toInt(source.completion_tokens ?? source.output_tokens);
+  const totalTokens = toInt(source.total_tokens) || promptTokens + completionTokens;
+  return { promptTokens, completionTokens, totalTokens };
+}
+
+/**
+ * Pipe an upstream SSE response through to the client untouched while
+ * scanning `data:` lines for the usage block, then charge + record once the
+ * stream completes.
+ */
+function streamResponsesAnswer(args: {
+  upstream: Response;
+  apiKey: ApiKey;
+  provider: Provider;
+  user: User;
+  model: string;
+  upstreamModel: string;
+}): ProxyResult {
+  const { upstream, apiKey, provider, user, model, upstreamModel } = args;
+  if (!upstream.body) {
+    return {
+      ok: false,
+      status: 502,
+      error: { code: "upstream_error", message: "Upstream returned an empty stream" },
+    };
+  }
+
+  const decoder = new TextDecoder();
+  let pending = "";
+  let usage: StreamUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+
+  const consumeLine = (line: string): void => {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) return;
+    const payload = trimmed.slice(5).trim();
+    if (!payload || payload === "[DONE]") return;
+    try {
+      const parsed = JSON.parse(payload) as unknown;
+      usage = usageFromSsePayload(parsed) ?? usage;
+    } catch {
+      // Partial or non-JSON keep-alive frame — nothing to do.
+    }
+  };
+
+  const tap = new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      pending += decoder.decode(chunk, { stream: true });
+      let newline = pending.indexOf("\n");
+      while (newline !== -1) {
+        consumeLine(pending.slice(0, newline));
+        pending = pending.slice(newline + 1);
+        newline = pending.indexOf("\n");
+      }
+      controller.enqueue(chunk);
+    },
+    async flush() {
+      pending += decoder.decode();
+      if (pending) consumeLine(pending);
+      await settleResponsesUsage({
+        apiKey,
+        provider,
+        user,
+        model,
+        upstreamModel,
+        ...usage,
+      });
+    },
+  });
+
+  return {
+    ok: true,
+    status: 200,
+    body: upstream.body.pipeThrough(tap),
+    contentType: upstream.headers.get("content-type") ?? "text/event-stream",
+  };
 }
 
 /**

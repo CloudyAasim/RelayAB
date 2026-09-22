@@ -7,6 +7,7 @@
 import { NextResponse } from "next/server";
 import { authenticateBearer, reasonToHttp } from "@/lib/auth/apikey";
 import { proxyOpenAIResponse } from "@/lib/proxy/openai";
+import { proxyResultToResponse } from "@/lib/proxy/respond";
 import type { ApiKey } from "@/lib/db/types";
 import { getUserById as lookupUserById } from "@/lib/db/users";
 
@@ -64,11 +65,5 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  if (!result.ok) {
-    return NextResponse.json(
-      { ok: false, error: result.error },
-      { status: result.status },
-    );
-  }
-  return NextResponse.json(result.data, { status: result.status });
+  return proxyResultToResponse(result);
 }
