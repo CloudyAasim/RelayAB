@@ -37,6 +37,8 @@ import type { Role } from "../db/types";
 export interface SessionData {
   userId?: string;
   username?: string;
+  /** Cached so the shell can render it without an extra Redis read. */
+  displayName?: string;
   role?: Role;
   /** Unix seconds when the session was created. */
   iat?: number;
@@ -104,6 +106,7 @@ export async function destroySession(): Promise<void> {
 export interface AuthedUser {
   id: string;
   username: string;
+  displayName?: string;
   role: Role;
 }
 
@@ -131,6 +134,7 @@ export async function getCurrentUser(): Promise<AuthedUser | null> {
   return {
     id: session.userId,
     username: session.username,
+    displayName: session.displayName,
     role: session.role,
   };
 }

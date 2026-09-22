@@ -39,6 +39,7 @@ export default async function SettingsPage() {
     <AuthenticatedLayout
       role={user.role}
       username={user.username}
+      displayName={user.displayName}
       pageTitle={t("admin.settings.title")}
     >
       <SectionPageLayout>

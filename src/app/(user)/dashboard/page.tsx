@@ -53,6 +53,7 @@ export default async function DashboardPage() {
     <AuthenticatedLayout
       role={sessionUser.role}
       username={sessionUser.username}
+      displayName={sessionUser.displayName}
       pageTitle={t("dashboard.title")}
     >
       <SectionPageLayout>

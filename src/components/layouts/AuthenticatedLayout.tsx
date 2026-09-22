@@ -39,6 +39,8 @@ import {
 interface AuthenticatedLayoutProps {
   role: "admin" | "user";
   username: string;
+  /** Friendly name shown in the user menu; falls back to the username. */
+  displayName?: string;
   /** Optional page title for the top bar breadcrumb. */
   pageTitle?: ReactNode;
   children: ReactNode;
@@ -47,12 +49,13 @@ interface AuthenticatedLayoutProps {
 export function AuthenticatedLayout({
   role,
   username,
+  displayName,
   pageTitle,
   children,
 }: AuthenticatedLayoutProps) {
   return (
     <SidebarProvider>
-      <SidebarShell role={role} username={username} pageTitle={pageTitle}>
+      <SidebarShell role={role} username={username} displayName={displayName} pageTitle={pageTitle}>
         {children}
       </SidebarShell>
     </SidebarProvider>
@@ -62,6 +65,7 @@ export function AuthenticatedLayout({
 function SidebarShell({
   role,
   username,
+  displayName,
   pageTitle,
   children,
 }: AuthenticatedLayoutProps) {
@@ -212,6 +216,7 @@ function SidebarShell({
       <SidebarInset>
         <AppHeader
           username={username}
+          displayName={displayName}
           role={role}
           pageTitle={pageTitle}
         />

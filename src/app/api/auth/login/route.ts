@@ -65,6 +65,7 @@ export async function POST(req: Request): Promise<Response> {
   const session = await getSession();
   session.userId = user.id;
   session.username = user.username;
+  session.displayName = user.displayName;
   session.role = user.role;
   session.iat = Math.floor(Date.now() / 1000);
   await session.save();

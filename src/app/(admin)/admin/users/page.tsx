@@ -43,6 +43,7 @@ export default async function UsersPage() {
     <AuthenticatedLayout
       role={user.role}
       username={user.username}
+      displayName={user.displayName}
       pageTitle={t("admin.users.title")}
     >
       <SectionPageLayout>

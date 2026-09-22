@@ -57,6 +57,7 @@ export default async function AdminOverviewPage() {
     <AuthenticatedLayout
       role={user.role}
       username={user.username}
+      displayName={user.displayName}
       pageTitle={t("admin.overview.title")}
     >
       <SectionPageLayout>

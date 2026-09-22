@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { LogOut, Menu, Settings, ChevronDown, User } from "lucide-react";
+import { LogOut, Menu, Settings, ChevronDown, LayoutDashboard } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -13,6 +13,8 @@ import { LocaleSwitcher } from "@/components/i18n/LocaleSwitcher";
 
 interface AppHeaderProps {
   username: string;
+  /** Optional friendly name; falls back to the username. */
+  displayName?: string;
   role: "admin" | "user";
   /** Optional breadcrumb / page title for the header right side. */
   pageTitle?: ReactNode;
@@ -24,7 +26,7 @@ interface AppHeaderProps {
  * On mobile, opens the sidebar drawer via the menu button.
  * On desktop, hosts the theme toggle and user dropdown.
  */
-export function AppHeader({ username, role, pageTitle }: AppHeaderProps) {
+export function AppHeader({ username, displayName, role, pageTitle }: AppHeaderProps) {
   const t = useT();
   const { toggleSidebar, open, setOpen, isMobile } = useSidebar();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -59,6 +61,7 @@ export function AppHeader({ username, role, pageTitle }: AppHeaderProps) {
         <ThemeToggle />
         <UserMenu
           username={username}
+          displayName={displayName}
           role={role}
           open={menuOpen}
           setOpen={setMenuOpen}
@@ -70,21 +73,27 @@ export function AppHeader({ username, role, pageTitle }: AppHeaderProps) {
 
 function UserMenu({
   username,
+  displayName,
   role,
   open,
   setOpen,
 }: {
   username: string;
+  displayName?: string;
   role: "admin" | "user";
   open: boolean;
   setOpen: (v: boolean) => void;
 }) {
   const t = useT();
+  const name = displayName?.trim() || username;
   return (
     <div className="relative">
       <button
         type="button"
         onClick={() => setOpen(!open)}
+        aria-label={t("nav.user.menu")}
+        aria-haspopup="menu"
+        aria-expanded={open}
         className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
       >
         <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
@@ -107,29 +116,33 @@ function UserMenu({
           />
           <div className="absolute right-0 top-full z-50 mt-2 w-56 rounded-md border border-border bg-popover text-popover-foreground shadow-lg animate-slide-down">
             <div className="border-b border-border px-3 py-2.5">
-              <p className="text-sm font-medium">{username}</p>
-              <p className="text-xs text-muted-foreground">
+              <p className="truncate text-sm font-medium">{name}</p>
+              <p className="truncate text-xs text-muted-foreground">
+                @{username} ·{" "}
                 {role === "admin" ? t("nav.user.adminBadge") : t("nav.user.userBadge")}
               </p>
             </div>
-            <Link
-              href={role === "admin" ? "/admin" : "/dashboard/settings"}
-              className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent"
-              onClick={() => setOpen(false)}
-            >
-              <User className="h-4 w-4 text-muted-foreground" />
-              {role === "admin" ? t("nav.user.adminPanel") : t("nav.user.profile")}
-            </Link>
-            {role === "user" && (
+            {/* Admins get both entries; regular users only need the second one.
+                Previously a user saw "个人面板" and "设置" pointing at the same
+                page, and an admin had no route to their own account settings. */}
+            {role === "admin" && (
               <Link
-                href="/dashboard/settings"
+                href="/admin"
                 className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent"
                 onClick={() => setOpen(false)}
               >
-                <Settings className="h-4 w-4 text-muted-foreground" />
-                {t("nav.settings")}
+                <LayoutDashboard className="h-4 w-4 text-muted-foreground" />
+                {t("nav.user.adminPanel")}
               </Link>
             )}
+            <Link
+              href="/dashboard/settings"
+              className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent"
+              onClick={() => setOpen(false)}
+            >
+              <Settings className="h-4 w-4 text-muted-foreground" />
+              {t("nav.user.accountSettings")}
+            </Link>
             <form action={logoutAction}>
               <button
                 type="submit"

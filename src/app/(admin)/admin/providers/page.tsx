@@ -32,6 +32,7 @@ export default async function ProvidersPage() {
     <AuthenticatedLayout
       role={user.role}
       username={user.username}
+      displayName={user.displayName}
       pageTitle={t("admin.providers.title")}
     >
       <SectionPageLayout>

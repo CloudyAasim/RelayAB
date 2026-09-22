@@ -295,6 +295,81 @@ describe("user self-service API key endpoints", () => {
   });
 });
 
+describe("profile endpoint", () => {
+  beforeEach(() => {
+    __setRedisForTest(createMemoryRedis());
+  });
+
+  async function patchProfile(body: unknown): Promise<{ status: number; body: any }> {
+    const { PATCH } = await import("@/app/api/user/profile/route");
+    return asJson(await PATCH(jsonRequest("PATCH", body)));
+  }
+
+  it("requires a session", async () => {
+    currentStore = new InMemoryCookieStore();
+    const { status, body } = await patchProfile({ displayName: "Anyone" });
+    expect(status).toBe(401);
+    expect(body.ok).toBe(false);
+  });
+
+  it("updates the display name and mirrors it into the session", async () => {
+    const u = await createUser({ username: "dave", password: "longenoughpw" });
+    const store = new InMemoryCookieStore();
+    await loginAs(store, u.id, "dave", "user");
+    currentStore = store;
+
+    const { status, body } = await patchProfile({ displayName: "Dave 显示名" });
+    expect(status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.data.user.displayName).toBe("Dave 显示名");
+
+    expect((await getUserById(u.id))?.displayName).toBe("Dave 显示名");
+
+    // The shell renders the name from the session cookie, so it has to be
+    // refreshed too — otherwise the header would keep the old value until the
+    // next login.
+    const session = await getSessionFromStore(store);
+    expect(session.displayName).toBe("Dave 显示名");
+  });
+
+  it("trims surrounding whitespace", async () => {
+    const u = await createUser({ username: "erin", password: "longenoughpw" });
+    const store = new InMemoryCookieStore();
+    await loginAs(store, u.id, "erin", "user");
+    currentStore = store;
+
+    const { status, body } = await patchProfile({ displayName: "  Erin  " });
+    expect(status).toBe(200);
+    expect(body.data.user.displayName).toBe("Erin");
+  });
+
+  it("rejects an empty or whitespace-only name", async () => {
+    const u = await createUser({ username: "frank", password: "longenoughpw" });
+    const store = new InMemoryCookieStore();
+    await loginAs(store, u.id, "frank", "user");
+    currentStore = store;
+
+    for (const displayName of ["", "   "]) {
+      const { status, body } = await patchProfile({ displayName });
+      expect(status).toBe(400);
+      expect(body.error?.code).toBe("bad_request");
+    }
+    expect((await getUserById(u.id))?.displayName).toBe("frank");
+  });
+
+  it("rejects a name longer than 64 characters", async () => {
+    const u = await createUser({ username: "grace", password: "longenoughpw" });
+    const store = new InMemoryCookieStore();
+    await loginAs(store, u.id, "grace", "user");
+    currentStore = store;
+
+    const { status, body } = await patchProfile({ displayName: "x".repeat(65) });
+    expect(status).toBe(400);
+    expect(body.error?.code).toBe("bad_request");
+    expect((await getUserById(u.id))?.displayName).toBe("grace");
+  });
+});
+
 describe("/api/config public endpoint", () => {
   beforeEach(() => {
     __setRedisForTest(createMemoryRedis());
