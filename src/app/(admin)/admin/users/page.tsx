@@ -23,9 +23,6 @@ import { UserActions } from "./UserActions";
 import { AllocationEditor } from "./AllocationEditor";
 import { Users as UsersIcon } from "lucide-react";
 
-// VERSION STAMP — bump on every meaningful change to this page.
-const PAGE_VERSION = "v10-clean-2025-09-22";
-
 export default async function UsersPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
@@ -56,17 +53,6 @@ export default async function UsersPage() {
           <CreateUserButton />
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
-          {/* VERSION STAMP */}
-          <div
-            data-page-version={PAGE_VERSION}
-            className="mb-4 rounded-md border border-dashed border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning-foreground"
-          >
-            <strong>部署版本：</strong> <code className="font-mono">{PAGE_VERSION}</code>
-            {" · 共 "}
-            <span data-user-count={publicUsers.length}>{publicUsers.length}</span>
-            {" 个用户"}
-          </div>
-
           <Card data-users-table>
             {publicUsers.length === 0 ? (
               <EmptyState
