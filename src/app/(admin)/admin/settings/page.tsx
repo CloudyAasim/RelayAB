@@ -3,8 +3,6 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { getSettings } from "@/lib/db/settings";
 import { loadConfig } from "@/lib/config";
 import { Card } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Input";
-import { Button } from "@/components/ui/Button";
 import { AuthenticatedLayout, SectionPageLayout } from "@/components/layouts";
 import { getT } from "@/lib/i18n/server";
 import { SettingsForm } from "./SettingsForm";
@@ -18,11 +16,12 @@ export default async function SettingsPage() {
 
   const { t } = await getT();
   
-  let settings = { publicUrl: "" };
+  let dbPublicUrl: string | undefined;
   let envPublicUrl: string | null = null;
   
   try {
-    settings = await getSettings();
+    const settings = await getSettings();
+    dbPublicUrl = settings.publicUrl;
   } catch (e) {
     console.error("Failed to load settings:", e);
   }
@@ -33,6 +32,8 @@ export default async function SettingsPage() {
   } catch {
     // Config not available
   }
+
+  const currentUrl = dbPublicUrl ?? envPublicUrl ?? "";
 
   return (
     <AuthenticatedLayout
@@ -51,7 +52,7 @@ export default async function SettingsPage() {
                   {t("admin.settings.publicUrlDescription")}
                 </p>
                 <SettingsForm 
-                  currentUrl={settings.publicUrl || envPublicUrl || ""} 
+                  currentUrl={currentUrl}
                   envConfigured={!!envPublicUrl}
                 />
               </div>
