@@ -125,6 +125,13 @@ export function checkKeyStatus(args: {
 }): KeyValidationResult {
   const { key, user, requestedModel, now = Date.now() } = args;
 
+  // Admin override first: a force-disabled key must never serve traffic, even
+  // if the `enabled` flag is still true (the admin API can set the flag on its
+  // own, and only relying on `enabled` made that a silent no-op).
+  if (key.forceDisabled) {
+    return { ok: false, reason: "key_force_disabled", key, user };
+  }
+
   if (!key.enabled) {
     return { ok: false, reason: "key_disabled", key };
   }
@@ -290,6 +297,12 @@ export function reasonToHttp(reason: string): { status: number; code: string; me
       return { status: 401, code: "unauthorized", message: "Invalid API key" };
     case "key_disabled":
       return { status: 403, code: "key_disabled", message: "This API key has been disabled" };
+    case "key_force_disabled":
+      return {
+        status: 403,
+        code: "key_force_disabled",
+        message: "This API key has been disabled by an administrator",
+      };
     case "key_expired":
       return { status: 403, code: "key_expired", message: "This API key has expired" };
     case "user_disabled":

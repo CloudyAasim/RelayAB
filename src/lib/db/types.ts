@@ -230,6 +230,7 @@ export type KeyValidationReason =
   | "missing_key"
   | "key_not_found"
   | "key_disabled"
+  | "key_force_disabled"
   | "key_expired"
   | "user_disabled"
   | "quota_exceeded_credits"

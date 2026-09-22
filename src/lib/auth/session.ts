@@ -28,6 +28,7 @@ import { getIronSession, type IronSession, type SessionOptions } from "iron-sess
 import { cookies } from "next/headers";
 import { isProduction, getSessionPassword } from "../config";
 import { ensureBootstrapped } from "../db/bootstrap";
+import { getUserById } from "../db/users";
 import type { Role } from "../db/types";
 
 // ---------------------------------------------------------------------------
@@ -110,14 +111,26 @@ export interface AuthedUser {
   role: Role;
 }
 
+export type SessionRejection = "user_not_found" | "user_disabled";
+
+export interface CurrentUserLookup {
+  user: AuthedUser | null;
+  /**
+   * Set when a session cookie was present and decryptable, but the account
+   * behind it is gone or has been disabled. Lets API routes answer with an
+   * actionable 403 instead of a bare "please sign in" 401.
+   */
+  rejection?: SessionRejection;
+}
+
 /**
- * Return the currently authenticated user, or null if no session.
+ * Resolve the caller *and* the reason a session was refused.
  *
  * Callers that require auth should redirect or 401 themselves.
  * We don't throw here because the response shape depends on context
  * (page vs API route).
  */
-export async function getCurrentUser(): Promise<AuthedUser | null> {
+export async function lookupCurrentUser(): Promise<CurrentUserLookup> {
   // Read the session first: `cookies()` is what makes the enclosing server
   // component dynamic. Doing this before the bootstrap keeps `next build` from
   // running bootstrap while prerendering (build machines have no env vars and
@@ -129,14 +142,35 @@ export async function getCurrentUser(): Promise<AuthedUser | null> {
   await ensureBootstrapped();
 
   if (!session.userId || !session.username || !session.role) {
-    return null;
+    return { user: null };
   }
+
+  // The cookie only *caches* identity — it cannot be revoked server-side, so a
+  // stale cookie would otherwise keep working until it expires. Re-read the
+  // record so that disabling or deleting an account takes effect on the very
+  // next request instead of leaving the user a fully working dashboard.
+  const user = await getUserById(session.userId);
+  if (!user) return { user: null, rejection: "user_not_found" };
+  if (user.disabled) return { user: null, rejection: "user_disabled" };
+
   return {
-    id: session.userId,
-    username: session.username,
-    displayName: session.displayName,
-    role: session.role,
+    user: {
+      id: user.id,
+      // Prefer the stored record over the cookie: an admin may have renamed the
+      // account since the cookie was minted.
+      username: user.username,
+      displayName: user.displayName,
+      role: user.role,
+    },
   };
+}
+
+/**
+ * Return the currently authenticated user, or null when the caller must be
+ * treated as signed out — no session, deleted account, or disabled account.
+ */
+export async function getCurrentUser(): Promise<AuthedUser | null> {
+  return (await lookupCurrentUser()).user;
 }
 
 /**

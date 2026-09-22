@@ -16,6 +16,7 @@ import {
   LifeBuoy,
   Route,
   Server,
+  Split,
   Tags,
   Wrench,
 } from "lucide-react";
@@ -43,7 +44,7 @@ export default async function AdminDocsPage() {
       <SectionPageLayout>
         <SectionPageLayout.Title>{t("admin.docs.title")}</SectionPageLayout.Title>
         <SectionPageLayout.Content>
-          <div className="max-w-3xl space-y-5">
+          <div className="max-w-4xl space-y-5">
             <Card>
               <div className="flex items-start gap-3">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -69,6 +70,29 @@ export default async function AdminDocsPage() {
               </ul>
             </Card>
 
+            {/* How to add the second protocol for a vendor — the step people
+                most often get wrong (they reach for the Anthropic template). */}
+            <Card className="border-primary/20 bg-primary/[0.03]">
+              <CardHeader
+                title={
+                  <CardTitle icon={<Split className="h-4 w-4" />}>
+                    {t("admin.docs.add.title")}
+                  </CardTitle>
+                }
+                description={t("admin.docs.add.desc")}
+              />
+              <ol className="list-decimal space-y-1.5 pl-5 text-sm text-foreground/90">
+                <li>{t("admin.docs.add.step1")}</li>
+                <li>{t("admin.docs.add.step2")}</li>
+                <li>{t("admin.docs.add.step3")}</li>
+                <li>{t("admin.docs.add.step4")}</li>
+              </ol>
+              <p className="mt-3 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-muted-foreground">
+                {t("admin.docs.add.why")}
+              </p>
+              <p className="mt-2 text-xs text-muted-foreground">{t("admin.docs.add.note")}</p>
+            </Card>
+
             <Card>
               <CardHeader
                 title={
@@ -78,47 +102,90 @@ export default async function AdminDocsPage() {
                 }
                 description={t("admin.docs.routes.desc")}
               />
-              <ul className="space-y-2 text-sm">
-                <li className="rounded-md border border-border bg-foreground/[0.03] px-3 py-2 font-mono text-xs">
-                  {t("admin.docs.routes.openai")}
-                </li>
-                <li className="rounded-md border border-border bg-foreground/[0.03] px-3 py-2 font-mono text-xs">
-                  {t("admin.docs.routes.anthropic")}
-                </li>
-              </ul>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left text-xs uppercase tracking-wider text-muted-foreground">
+                      <th className="py-2 pr-3 font-medium">{t("admin.docs.routes.col.endpoint")}</th>
+                      <th className="py-2 pr-3 font-medium">{t("admin.docs.routes.col.base")}</th>
+                      <th className="py-2 font-medium">{t("admin.docs.routes.col.format")}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-muted-foreground">
+                    {/* Written out literally (not mapped) so the i18n scanner
+                        in tests/unit/i18n-usage.test.ts can see every key. */}
+                    <tr className="border-b border-border/60">
+                      <td className="py-2 pr-3 align-top font-mono text-xs text-foreground">
+                        {t("admin.docs.routes.r1.endpoint")}
+                      </td>
+                      <td className="py-2 pr-3 align-top text-xs">
+                        {t("admin.docs.routes.r1.base")}
+                      </td>
+                      <td className="py-2 align-top text-xs">
+                        {t("admin.docs.routes.r1.format")}
+                      </td>
+                    </tr>
+                    <tr className="border-b border-border/60">
+                      <td className="py-2 pr-3 align-top font-mono text-xs text-foreground">
+                        {t("admin.docs.routes.r2.endpoint")}
+                      </td>
+                      <td className="py-2 pr-3 align-top text-xs">
+                        {t("admin.docs.routes.r2.base")}
+                      </td>
+                      <td className="py-2 align-top text-xs">
+                        {t("admin.docs.routes.r2.format")}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 pr-3 align-top font-mono text-xs text-foreground">
+                        {t("admin.docs.routes.r3.endpoint")}
+                      </td>
+                      <td className="py-2 pr-3 align-top text-xs">
+                        {t("admin.docs.routes.r3.base")}
+                      </td>
+                      <td className="py-2 align-top text-xs">
+                        {t("admin.docs.routes.r3.format")}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </Card>
 
-            <Card>
-              <CardHeader
-                title={
-                  <CardTitle icon={<Tags className="h-4 w-4" />}>
-                    {t("admin.docs.mapping.title")}
-                  </CardTitle>
-                }
-                description={t("admin.docs.mapping.desc")}
-              />
-              <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
-                <li>{t("admin.docs.mapping.rule1")}</li>
-                <li>{t("admin.docs.mapping.rule2")}</li>
-                <li>{t("admin.docs.mapping.rule3")}</li>
-              </ul>
-            </Card>
+            {/* Two short reference cards side by side on wide screens. */}
+            <div className="grid gap-5 lg:grid-cols-2">
+              <Card>
+                <CardHeader
+                  title={
+                    <CardTitle icon={<Tags className="h-4 w-4" />}>
+                      {t("admin.docs.mapping.title")}
+                    </CardTitle>
+                  }
+                  description={t("admin.docs.mapping.desc")}
+                />
+                <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
+                  <li>{t("admin.docs.mapping.rule1")}</li>
+                  <li>{t("admin.docs.mapping.rule2")}</li>
+                  <li>{t("admin.docs.mapping.rule3")}</li>
+                </ul>
+              </Card>
 
-            <Card>
-              <CardHeader
-                title={
-                  <CardTitle icon={<Coins className="h-4 w-4" />}>
-                    {t("admin.docs.quota.title")}
-                  </CardTitle>
-                }
-                description={t("admin.docs.quota.desc")}
-              />
-              <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
-                <li>{t("admin.docs.quota.point1")}</li>
-                <li>{t("admin.docs.quota.point2")}</li>
-                <li>{t("admin.docs.quota.point3")}</li>
-              </ul>
-            </Card>
+              <Card>
+                <CardHeader
+                  title={
+                    <CardTitle icon={<Coins className="h-4 w-4" />}>
+                      {t("admin.docs.quota.title")}
+                    </CardTitle>
+                  }
+                  description={t("admin.docs.quota.desc")}
+                />
+                <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
+                  <li>{t("admin.docs.quota.point1")}</li>
+                  <li>{t("admin.docs.quota.point2")}</li>
+                  <li>{t("admin.docs.quota.point3")}</li>
+                </ul>
+              </Card>
+            </div>
 
             <Card>
               <CardHeader

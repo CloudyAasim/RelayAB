@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { useT } from "@/components/i18n/I18nProvider";
 import { PROVIDER_TEMPLATES, type ProviderTemplate } from "@/lib/providers/templates";
+import { UpstreamFormatField } from "./UpstreamFormatField";
 
 interface Props {
   onCreated?: () => void;
@@ -360,23 +361,7 @@ export function CreateProviderButton({ onCreated }: Props) {
           </div>
 
           {/* Upstream Format */}
-          <div>
-            <label className="block text-sm font-medium mb-1.5">上游格式</label>
-            <select
-              value={upstreamFormat}
-              onChange={(e) => setUpstreamFormat(e.target.value as "responses" | "chat" | "anthropic")}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            >
-              <option value="chat">Chat（直连 Chat Completions）</option>
-              <option value="responses">Responses（原生，直连不转换格式）</option>
-              <option value="anthropic">Anthropic Messages</option>
-            </select>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {upstreamFormat === "chat" && "使用 OpenAI Chat Completions 协议"}
-              {upstreamFormat === "responses" && "使用 OpenAI Responses API，原生直连不转换格式"}
-              {upstreamFormat === "anthropic" && "使用 Anthropic Messages 协议"}
-            </p>
-          </div>
+          <UpstreamFormatField value={upstreamFormat} onChange={setUpstreamFormat} />
 
 
           {/* Model mapping with config */}

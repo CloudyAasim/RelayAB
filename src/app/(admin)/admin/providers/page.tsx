@@ -55,6 +55,7 @@ export default async function ProvidersPage() {
                 <TR>
                   <TH>{t("admin.providers.create.name")}</TH>
                   <TH>{t("admin.providers.table.kind")}</TH>
+                  <TH>{t("admin.providers.table.format")}</TH>
                   <TH>{t("admin.providers.create.baseUrl")}</TH>
                   <TH>{t("admin.providers.table.models")}</TH>
                   <TH>{t("dashboard.table.status")}</TH>
@@ -72,6 +73,15 @@ export default async function ProvidersPage() {
                       <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
                         {p.kind}
                       </code>
+                    </TD>
+                    <TD>
+                      <Badge tone={p.upstreamFormat === "anthropic" ? "orange" : "neutral"}>
+                        {p.upstreamFormat === "anthropic"
+                          ? t("admin.providers.format.anthropic")
+                          : p.upstreamFormat === "chat"
+                            ? t("admin.providers.format.short.chat")
+                            : t("admin.providers.format.short.responses")}
+                      </Badge>
                     </TD>
                     <TD className="text-muted-foreground">
                       <code className="text-xs">{p.baseUrl || "—"}</code>

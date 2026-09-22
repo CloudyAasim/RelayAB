@@ -146,6 +146,16 @@ describe("checkKeyStatus", () => {
     expect(r.reason).toBe("key_disabled");
   });
 
+  it("returns key_force_disabled when an admin force-disabled the key", () => {
+    // The admin override must win even if `enabled` is still true: the toggle
+    // endpoint accepts `{ forceDisabled: true }` on its own, and relying on the
+    // UI to also flip `enabled` made that combination a silent no-op.
+    const key = makeKey({ enabled: true, forceDisabled: true });
+    const result = checkKeyStatus({ key, user: makeUser() });
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe("key_force_disabled");
+  });
+
   it("returns key_expired when expiresAt is in the past", () => {
     const r = checkKeyStatus({
       key: makeKey({ expiresAt: "2020-01-01T00:00:00Z" }),
@@ -296,6 +306,8 @@ describe("reasonToHttp", () => {
     });
     expect(reasonToHttp("key_not_found").status).toBe(401);
     expect(reasonToHttp("key_disabled").status).toBe(403);
+    expect(reasonToHttp("key_force_disabled").status).toBe(403);
+    expect(reasonToHttp("key_force_disabled").code).toBe("key_force_disabled");
     expect(reasonToHttp("key_expired").status).toBe(403);
     expect(reasonToHttp("quota_exceeded_credits").status).toBe(403);
     expect(reasonToHttp("quota_exceeded_tokens").status).toBe(403);

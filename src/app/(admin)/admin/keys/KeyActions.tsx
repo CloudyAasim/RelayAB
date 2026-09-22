@@ -48,6 +48,32 @@ export function KeyActions({ apiKey }: { apiKey: ApiKey }) {
     }
   }
 
+  /**
+   * Lift an admin force-disable.
+   *
+   * This previously reused `toggle(false)`, which only sends `{enabled:false}`
+   * — the `forceDisabled` flag was never cleared, so the action looked like a
+   * no-op. The key stays disabled afterwards; the admin can enable it with the
+   * regular button once the flag is gone.
+   */
+  async function clearForceDisable() {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/keys/${apiKey.id}/toggle`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ forceDisabled: false }),
+      });
+      const data = await res.json();
+      if (!data.ok) alert(data.error?.message ?? t("admin.keys.action.failed"));
+      else window.location.reload();
+    } catch {
+      alert(t("admin.keys.action.failed"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function remove() {
     if (!confirm(t("admin.keys.action.confirmDelete"))) return;
     setLoading(true);
@@ -122,7 +148,10 @@ export function KeyActions({ apiKey }: { apiKey: ApiKey }) {
             </Button>
           )}
 
-          {effectiveStatus !== "force_disabled" && apiKey.enabled && (
+          {/* Force-disable is an admin override over the key's own state, so it
+              must be available even when the key is already disabled —
+              otherwise the admin has to enable it first just to lock it. */}
+          {effectiveStatus !== "force_disabled" && (
             <Button
               variant="outline"
               className="w-full justify-start text-orange-600 hover:text-orange-700"
@@ -143,7 +172,7 @@ export function KeyActions({ apiKey }: { apiKey: ApiKey }) {
               className="w-full justify-start"
               onClick={() => {
                 setMenuOpen(false);
-                toggle(false); // Disable first
+                clearForceDisable();
               }}
               disabled={loading}
             >

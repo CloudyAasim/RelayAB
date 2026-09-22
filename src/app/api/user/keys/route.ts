@@ -22,7 +22,7 @@
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getCurrentUser } from "@/lib/auth/session";
+import { getCurrentUser, lookupCurrentUser } from "@/lib/auth/session";
 import { getUserById } from "@/lib/db/users";
 import {
   createApiKey,
@@ -53,8 +53,16 @@ export async function GET(): Promise<Response> {
 }
 
 export async function POST(req: Request): Promise<Response> {
-  const me = await getCurrentUser();
+  const { user: me, rejection } = await lookupCurrentUser();
   if (!me) {
+    // "Account disabled" is actionable; plain 401 would just look like a
+    // signed-out session.
+    if (rejection === "user_disabled") {
+      return NextResponse.json(
+        { ok: false, error: { code: "user_disabled", message: "Your account is disabled" } },
+        { status: 403 },
+      );
+    }
     return NextResponse.json(
       { ok: false, error: { code: "unauthenticated", message: "Login required" } },
       { status: 401 },

@@ -21,10 +21,11 @@ import {
   __setRedisForTest,
 } from "@/lib/db/redis";
 import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
-import { createUser, getUserById } from "@/lib/db/users";
-import { createApiKey, getApiKeyById } from "@/lib/db/keys";
+import { createUser, getUserById, updateUser } from "@/lib/db/users";
+import { createApiKey, getApiKeyById, updateApiKey } from "@/lib/db/keys";
 import { getPublicUrl } from "@/lib/config";
 import { InMemoryCookieStore, getSessionFromStore } from "@/lib/auth/session";
+import { getCurrentUser } from "@/lib/auth/session";
 
 async function loginAs(store: InMemoryCookieStore, userId: string, username: string, role: "admin" | "user"): Promise<void> {
   const s = await getSessionFromStore(store);
@@ -292,6 +293,93 @@ describe("user self-service API key endpoints", () => {
     expect(status).toBe(200);
     expect(body.data.keys).toHaveLength(2);
     expect(body.data.keys.every((k: any) => k.userId === bob.id)).toBe(true);
+  });
+});
+
+describe("disabled accounts", () => {
+  beforeEach(() => {
+    __setRedisForTest(createMemoryRedis());
+  });
+
+  it("loses panel access immediately, without waiting for the cookie to expire", async () => {
+    const u = await createUser({ username: "henry", password: "longenoughpw" });
+    const store = new InMemoryCookieStore();
+    await loginAs(store, u.id, "henry", "user");
+    currentStore = store;
+
+    // The session works while the account is active.
+    expect(await getCurrentUser()).not.toBeNull();
+
+    await updateUser(u.id, { disabled: true });
+
+    // The cookie is untouched and still decrypts, but the account is disabled —
+    // so every page and self-service route must now treat it as signed out.
+    expect(await getCurrentUser()).toBeNull();
+  });
+
+  it("keeps working again after the admin re-enables the account", async () => {
+    const u = await createUser({ username: "iris", password: "longenoughpw" });
+    const store = new InMemoryCookieStore();
+    await loginAs(store, u.id, "iris", "user");
+    currentStore = store;
+
+    await updateUser(u.id, { disabled: true });
+    expect(await getCurrentUser()).toBeNull();
+
+    await updateUser(u.id, { disabled: false });
+    expect(await getCurrentUser()).not.toBeNull();
+  });
+});
+
+describe("admin force-disable on an API key", () => {
+  beforeEach(() => {
+    __setRedisForTest(createMemoryRedis());
+  });
+
+  async function adminToggle(keyId: string, body: unknown) {
+    const { POST } = await import("@/app/api/admin/keys/[id]/toggle/route");
+    const res = await POST(jsonRequest("POST", body), {
+      params: Promise.resolve({ id: keyId }),
+    });
+    return asJson(res);
+  }
+
+  async function signedInAdmin() {
+    const admin = await createUser({
+      username: "rootadmin",
+      password: "longenoughpw",
+      role: "admin",
+    });
+    const store = new InMemoryCookieStore();
+    await loginAs(store, admin.id, "rootadmin", "admin");
+    currentStore = store;
+  }
+
+  it("works on an already-disabled key (no need to enable it first)", async () => {
+    await signedInAdmin();
+    const owner = await createUser({ username: "ivan", password: "longenoughpw" });
+    const { key } = await createApiKey({ userId: owner.id, label: "k" });
+    await updateApiKey(key.id, { enabled: false });
+
+    const { status, body } = await adminToggle(key.id, { forceDisabled: true });
+    expect(status).toBe(200);
+    expect(body.data.key.forceDisabled).toBe(true);
+    expect(body.data.key.enabled).toBe(false);
+  });
+
+  it("clears the force-disable flag", async () => {
+    await signedInAdmin();
+    const owner = await createUser({ username: "judy", password: "longenoughpw" });
+    const { key } = await createApiKey({ userId: owner.id, label: "k" });
+
+    await adminToggle(key.id, { enabled: false, forceDisabled: true });
+    expect((await getApiKeyById(key.id))?.forceDisabled).toBe(true);
+
+    const { status, body } = await adminToggle(key.id, { forceDisabled: false });
+    expect(status).toBe(200);
+    expect(body.data.key.forceDisabled).toBe(false);
+    // Lifting the override leaves the key disabled; the admin enables it next.
+    expect(body.data.key.enabled).toBe(false);
   });
 });
 

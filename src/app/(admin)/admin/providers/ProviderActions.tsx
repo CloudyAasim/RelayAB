@@ -7,6 +7,10 @@ import { Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
 import { useT } from "@/components/i18n/I18nProvider";
 import { RefreshCw, Pencil, Trash2, Zap, X } from "lucide-react";
+import {
+  UpstreamFormatField,
+  type UpstreamFormat,
+} from "./UpstreamFormatField";
 
 interface Props {
   providerId: string;
@@ -22,6 +26,7 @@ interface Provider {
   modelConfigs: Record<string, unknown>;
   enabled: boolean;
   priority: number;
+  upstreamFormat?: UpstreamFormat;
 }
 
 type TestResult =
@@ -169,26 +174,68 @@ interface EditModalProps {
 function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps) {
   const t = useT();
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState("");
 
   const [name, setName] = useState(provider.name);
+  const [kind, setKind] = useState(provider.kind);
   const [baseUrl, setBaseUrl] = useState(provider.baseUrl ?? "");
   const [apiKey, setApiKey] = useState("");
   const [priority, setPriority] = useState(String(provider.priority ?? "1"));
   const [enabled, setEnabled] = useState(provider.enabled);
+  const [upstreamFormat, setUpstreamFormat] = useState<UpstreamFormat>(
+    provider.upstreamFormat ?? "responses",
+  );
   const [modelMapping, setModelMapping] = useState<Record<string, string>>(provider.modelMapping ?? {});
 
   // Sync state when provider changes
   useEffect(() => {
     if (open && provider) {
       setName(provider.name);
+      setKind(provider.kind);
       setBaseUrl(provider.baseUrl ?? "");
       setApiKey("");
       setPriority(String(provider.priority ?? "1"));
       setEnabled(provider.enabled);
+      setUpstreamFormat(provider.upstreamFormat ?? "responses");
       setModelMapping(provider.modelMapping ?? {});
+      setError("");
     }
   }, [open, provider]);
+
+  /**
+   * Pull the upstream model list and merge it into the mapping being edited.
+   *
+   * Uses the *stored* provider credentials, so it picks up whatever was saved
+   * last — the hint under the button says so. The merge is additive: existing
+   * aliases are never overwritten.
+   */
+  async function syncModels() {
+    setSyncing(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/admin/providers/${provider.id}/models`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        setError(t("admin.providers.fetchFailed", { error: data.error ?? t("common.unknown") }));
+        return;
+      }
+      const ids: string[] = data.models ?? [];
+      setModelMapping((prev) => {
+        const merged = { ...prev };
+        for (const id of ids) {
+          if (!(id in merged)) merged[id] = id;
+        }
+        return merged;
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("common.networkError"));
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -204,10 +251,12 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name,
+          kind,
           baseUrl: baseUrl || null,
           apiKey: apiKey || undefined,
           priority: Number(priority),
           enabled,
+          upstreamFormat,
           modelMapping,
         }),
       });
@@ -236,12 +285,28 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
             required
           />
 
-          <Input
-            label={t("admin.providers.create.baseUrl")}
-            value={baseUrl}
-            onChange={(e) => setBaseUrl(e.target.value)}
-          />
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">
+              {t("admin.providers.table.kind")}
+            </label>
+            <select
+              value={kind}
+              onChange={(e) => setKind(e.target.value)}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            >
+              <option value="openai">openai</option>
+              <option value="anthropic">anthropic</option>
+              <option value="custom-openai">custom-openai</option>
+              <option value="azure">azure</option>
+            </select>
+          </div>
         </div>
+
+        <Input
+          label={t("admin.providers.create.baseUrl")}
+          value={baseUrl}
+          onChange={(e) => setBaseUrl(e.target.value)}
+        />
 
         <Input
           label={t("admin.providers.create.apiKey") + " (" + t("admin.providers.edit.leaveBlank") + ")"}
@@ -250,6 +315,8 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
           onChange={(e) => setApiKey(e.target.value)}
           placeholder="••••••••"
         />
+
+        <UpstreamFormatField value={upstreamFormat} onChange={setUpstreamFormat} />
 
         <div className="grid grid-cols-2 gap-4">
           <Input
@@ -271,7 +338,23 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-2">{t("admin.providers.table.models")}</label>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <label className="block text-sm font-medium">
+              {t("admin.providers.table.models")}
+            </label>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={syncModels}
+              loading={syncing}
+              title={t("admin.providers.syncHint")}
+            >
+              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+              {t("admin.providers.fetchModels")}
+            </Button>
+          </div>
+          <p className="mb-2 text-xs text-muted-foreground">{t("admin.providers.syncHint")}</p>
           <div className="max-h-60 overflow-y-auto border rounded-md">
             <table className="w-full text-sm">
               <thead className="bg-muted sticky top-0">
