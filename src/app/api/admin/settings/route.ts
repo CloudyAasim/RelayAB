@@ -7,7 +7,6 @@ import { z } from "zod";
 import { getSettings, updateSettings } from "@/lib/db/settings";
 import { getCurrentUser } from "@/lib/auth/session";
 import { loadConfig } from "@/lib/config";
-import { publicUrl } from "@/lib/public-url";
 
 const UpdateSchema = z.object({
   publicUrl: z.string().url().optional(),
