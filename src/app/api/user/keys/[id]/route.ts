@@ -68,12 +68,15 @@ export async function PATCH(
   }
 
   // Prevent user from enabling a force-disabled key
-  if (parsed.data.enabled === true && existing.forceDisabled) {
+  if (parsed.data.enabled === true && existing.forceDisabled === true) {
+    console.log(`[user/keys PATCH] Blocked: key=${id} forceDisabled=${existing.forceDisabled}`);
     return NextResponse.json(
       { ok: false, error: { code: "key_force_disabled", message: "This key has been disabled by the administrator and cannot be enabled" } },
       { status: 403 },
     );
   }
+
+  console.log(`[user/keys PATCH] key=${id} enabled=${parsed.data.enabled} forceDisabled=${existing.forceDisabled}`);
 
   const updated = await updateApiKey(id, parsed.data);
   if (!updated) {
@@ -82,6 +85,7 @@ export async function PATCH(
       { status: 500 },
     );
   }
+  console.log(`[user/keys PATCH] Success: key=${id} updated.enabled=${updated.enabled}`);
   return NextResponse.json({ ok: true, data: { key: updated } });
 }
 

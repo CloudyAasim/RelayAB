@@ -24,14 +24,14 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [label, setLabel] = useState(apiKey.label);
-  const [enabled, setEnabled] = useState(apiKey.enabled);
+  const [enabled, setEnabled] = useState(Boolean(apiKey.enabled));
   const [expiresAt, setExpiresAt] = useState(toLocalInput(apiKey.expiresAt));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function reset() {
     setLabel(apiKey.label);
-    setEnabled(apiKey.enabled);
+    setEnabled(Boolean(apiKey.enabled));
     setExpiresAt(toLocalInput(apiKey.expiresAt));
     setError(null);
   }
@@ -65,17 +65,24 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
   }
 
   async function toggle() {
+    const newEnabled = !Boolean(apiKey.enabled);
+    console.log("[toggle] apiKey.enabled:", apiKey.enabled, "-> newEnabled:", newEnabled);
     setLoading(true);
     try {
       const res = await fetch(`/api/user/keys/${apiKey.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled: !apiKey.enabled }),
+        body: JSON.stringify({ enabled: newEnabled }),
       });
       const data = await res.json();
-      if (!data.ok) alert(apiErrorMessage(t, data.error?.code, data.error?.message));
-      else window.location.reload();
-    } catch {
+      console.log("[toggle] Response:", JSON.stringify(data));
+      if (!data.ok) {
+        alert(apiErrorMessage(t, data.error?.code, data.error?.message));
+        return;
+      }
+      window.location.reload();
+    } catch (err) {
+      console.error("[toggle] Error:", err);
       alert(t("common.failed"));
     } finally {
       setLoading(false);
@@ -98,11 +105,8 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
   }
 
   // Determine effective status
-  const effectiveStatus = apiKey.forceDisabled === true
-    ? "force_disabled"
-    : apiKey.enabled
-    ? "enabled"
-    : "disabled";
+  const isForceDisabled = apiKey.forceDisabled === true;
+  const isEnabled = apiKey.enabled === true;
 
   return (
     <>
@@ -135,12 +139,12 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
             {t("common.edit")}
           </Button>
 
-          {effectiveStatus === "force_disabled" ? (
+          {isForceDisabled ? (
             <div className="flex items-center gap-2 px-3 py-2 text-sm text-orange-600">
               <Ban className="h-4 w-4" />
               {t("admin.keys.status.forceDisabled")}
             </div>
-          ) : effectiveStatus === "enabled" ? (
+          ) : isEnabled ? (
             <Button
               variant="outline"
               className="w-full justify-start"
@@ -214,10 +218,10 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
               checked={enabled}
               onChange={(e) => setEnabled(e.target.checked)}
               className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
-              disabled={apiKey.forceDisabled}
+              disabled={isForceDisabled}
             />
             {t("dashboard.keyActions.enabled")}
-            {apiKey.forceDisabled === true && (
+            {isForceDisabled && (
               <span className="text-xs text-orange-600">({t("admin.keys.status.forceDisabled")})</span>
             )}
           </label>
