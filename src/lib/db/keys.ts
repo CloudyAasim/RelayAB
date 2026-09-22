@@ -278,6 +278,7 @@ export async function deleteApiKeysByUser(userId: string): Promise<number> {
 async function hashToKey(raw: Record<string, string> | null): Promise<ApiKey | null> {
   if (!raw) return null;
   try {
+    const strVal = (v: unknown): string => String(v ?? "");
     return ApiKeySchema.parse({
       id: raw.id,
       userId: raw.userId,
@@ -285,8 +286,8 @@ async function hashToKey(raw: Record<string, string> | null): Promise<ApiKey | n
       keyHash: raw.keyHash,
       keyPrefix: raw.keyPrefix,
       expiresAt: raw.expiresAt && raw.expiresAt !== "" ? raw.expiresAt : null,
-      forceDisabled: raw.forceDisabled === "1",
-      enabled: raw.enabled === "1",
+      forceDisabled: strVal(raw.forceDisabled) === "1",
+      enabled: strVal(raw.enabled) === "1",
       allowedModels: raw.allowedModels ? raw.allowedModels.split(",").filter(Boolean) : [],
       createdAt: raw.createdAt,
       lastUsedAt: raw.lastUsedAt && raw.lastUsedAt !== "" ? raw.lastUsedAt : null,

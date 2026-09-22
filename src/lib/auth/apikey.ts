@@ -212,6 +212,7 @@ export async function authenticateBearer(args: {
  */
 function parseApiKeyFromHash(raw: Record<string, string>): ApiKey | null {
   try {
+    const strVal = (v: unknown): string => String(v ?? "");
     return ApiKeySchema.parse({
       id: raw.id,
       userId: raw.userId,
@@ -219,7 +220,8 @@ function parseApiKeyFromHash(raw: Record<string, string>): ApiKey | null {
       keyHash: raw.keyHash,
       keyPrefix: raw.keyPrefix,
       expiresAt: raw.expiresAt && raw.expiresAt !== "" ? raw.expiresAt : null,
-      enabled: raw.enabled === "1",
+      forceDisabled: strVal(raw.forceDisabled) === "1",
+      enabled: strVal(raw.enabled) === "1",
       allowedModels: raw.allowedModels ? raw.allowedModels.split(",").filter(Boolean) : [],
       createdAt: raw.createdAt,
       lastUsedAt: raw.lastUsedAt && raw.lastUsedAt !== "" ? raw.lastUsedAt : null,
