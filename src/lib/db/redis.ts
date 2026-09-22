@@ -16,6 +16,7 @@
 import { Redis } from "@upstash/redis";
 import { loadConfig } from "../config";
 import { createMemoryRedis, type RedisLike } from "./__mocks__/memory-redis";
+export type { RedisLike };
 
 // ---------------------------------------------------------------------------
 // Singleton

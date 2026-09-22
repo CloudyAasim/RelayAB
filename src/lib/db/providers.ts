@@ -15,6 +15,7 @@
 import { ProviderSchema, type Provider, type ProviderKind, type ModelConfig } from "./types";
 import { revalidateTag } from "next/cache";
 import { getRedis, k } from "./redis";
+import type { RedisLike } from "./redis";
 import { encryptSecret } from "../crypto/secrets";
 import { generateId } from "../crypto/hashing";
 
