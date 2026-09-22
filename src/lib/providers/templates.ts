@@ -119,7 +119,7 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
     id: "minimax",
     label: "MiniMax",
     kind: "openai",
-    defaultBaseUrl: "https://api.minimax.io/v1",
+    defaultBaseUrl: "https://api.minimax.cn/v1",
     defaultContextLength: 1048576,
     defaultMaxOutput: 131072,
     defaultModelMapping: {

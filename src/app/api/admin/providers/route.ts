@@ -39,11 +39,19 @@ export async function GET(): Promise<Response> {
       { status: 403 },
     );
   }
-  const providers = await listProviders();
-  return NextResponse.json({
-    ok: true,
-    data: { providers: providers.map(toPublicProvider) },
-  });
+  try {
+    const providers = await listProviders();
+    return NextResponse.json({
+      ok: true,
+      data: { providers: providers.map(toPublicProvider) },
+    });
+  } catch (err) {
+    console.error("[providers GET]", err);
+    return NextResponse.json({
+      ok: false,
+      error: { code: "server_error", message: err instanceof Error ? err.message : "Unknown error" },
+    }, { status: 500 });
+  }
 }
 
 export async function POST(req: Request): Promise<Response> {
@@ -60,10 +68,11 @@ export async function POST(req: Request): Promise<Response> {
     body = await req.json();
   } catch {
     return NextResponse.json(
-      { ok: false, error: { code: "bad_json", message: "Invalid JSON" } },
+      { ok: false, error: { code: "bad_json", message: "Invalid JSON in request body" } },
       { status: 400 },
     );
   }
+  
   const parsed = PostSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
@@ -72,19 +81,27 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  const provider = await createProvider({
-    name: parsed.data.name,
-    kind: parsed.data.kind,
-    baseUrl: parsed.data.baseUrl ?? null,
-    apiKey: parsed.data.apiKey,
-    modelMapping: parsed.data.modelMapping ?? {},
-    modelConfigs: parsed.data.modelConfigs ?? {},
-    enabled: parsed.data.enabled ?? true,
-    priority: parsed.data.priority ?? 1,
-    headers: parsed.data.headers,
-  });
-  return NextResponse.json({
-    ok: true,
-    data: { provider: toPublicProvider(provider) },
-  });
+  try {
+    const provider = await createProvider({
+      name: parsed.data.name,
+      kind: parsed.data.kind,
+      baseUrl: parsed.data.baseUrl ?? null,
+      apiKey: parsed.data.apiKey,
+      modelMapping: parsed.data.modelMapping ?? {},
+      modelConfigs: parsed.data.modelConfigs ?? {},
+      enabled: parsed.data.enabled ?? true,
+      priority: parsed.data.priority ?? 1,
+      headers: parsed.data.headers,
+    });
+    return NextResponse.json({
+      ok: true,
+      data: { provider: toPublicProvider(provider) },
+    });
+  } catch (err) {
+    console.error("[providers POST]", err);
+    return NextResponse.json({
+      ok: false,
+      error: { code: "server_error", message: err instanceof Error ? err.message : "Failed to create provider" },
+    }, { status: 500 });
+  }
 }

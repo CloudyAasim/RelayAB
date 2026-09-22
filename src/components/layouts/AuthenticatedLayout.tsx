@@ -128,6 +128,11 @@ function SidebarShell({
                       {t("nav.providers")}
                     </SidebarMenuButton>
                   </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton href="/admin/settings" icon={<Settings className="h-4 w-4" />} isActive={isActive("/admin/settings")}>
+                      {t("admin.settings.title")}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
                 </SidebarMenu>
               </SidebarGroup>
               {/* Admins hold keys of their own too, so the personal
