@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -9,19 +9,13 @@ import { apiErrorMessage } from "@/lib/i18n/api-errors";
 import type { User } from "@/lib/db/types";
 import { MoreHorizontal, Power, KeyRound, Trash2 } from "lucide-react";
 
+// Bumped whenever the deployed client bundle changes meaningfully.
+// Find this in the browser console with:  [UserActions] deployed v...
+const CLIENT_VERSION = "v3-toggle-reload-2025-09-22";
+
 export function UserActions({ user: serverUser }: { user: User }) {
   const t = useT();
   const router = useRouter();
-
-  // We treat the SERVER as the source of truth. `serverUser` is the prop
-  // coming from the parent server component (re-renders on every page refresh
-  // because UsersPage declares `export const dynamic = "force-dynamic"`).
-  //
-  // We do NOT maintain a local copy of `disabled` because that creates a
-  // two-source-of-truth problem: a sync effect can fight the optimistic update.
-  // Instead, after a successful toggle we trigger router.refresh() + a hard
-  // navigation, both of which cause the parent to re-render with fresh data
-  // from Redis.
 
   const [newPassword, setNewPassword] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -30,11 +24,16 @@ export function UserActions({ user: serverUser }: { user: User }) {
   async function toggle() {
     if (loading) return;
 
-    const targetDisabled = !serverUser.disabled;
+    console.log(`[UserActions ${CLIENT_VERSION}] toggle() called for ${serverUser.username} (id=${serverUser.id})`);
+    console.log(`[UserActions ${CLIENT_VERSION}] current disabled =`, serverUser.disabled);
 
+    const targetDisabled = !serverUser.disabled;
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/users/${serverUser.id}/toggle`, {
+      const url = `/api/admin/users/${serverUser.id}/toggle`;
+      console.log(`[UserActions ${CLIENT_VERSION}] POST ${url} body=`, JSON.stringify({ disabled: targetDisabled }));
+
+      const res = await fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -44,36 +43,38 @@ export function UserActions({ user: serverUser }: { user: User }) {
         body: JSON.stringify({ disabled: targetDisabled }),
       });
 
+      console.log(`[UserActions ${CLIENT_VERSION}] response status=${res.status}`);
       const data = await res.json();
+      console.log(`[UserActions ${CLIENT_VERSION}] response body=`, JSON.stringify(data));
 
       if (!res.ok || !data.ok) {
         const msg =
           apiErrorMessage(t, data?.error?.code, data?.error?.message) ??
           t("admin.users.action.failed");
+        console.warn(`[UserActions ${CLIENT_VERSION}] toggle failed:`, msg);
         alert(msg);
         return;
       }
 
-      // Tell Next.js to re-render the server component with fresh data.
-      // The parent's `dynamic = "force-dynamic"` guarantees a fresh fetch
-      // from Redis on this refresh.
+      console.log(`[UserActions ${CLIENT_VERSION}] toggle succeeded, server disabled =`, data.data?.user?.disabled);
+
+      // Trigger RSC refresh first
       try {
         router.refresh();
-      } catch {
-        // ignore
+      } catch (e) {
+        console.warn(`[UserActions ${CLIENT_VERSION}] router.refresh threw:`, e);
       }
 
-      // Hard reload as a fallback — guaranteed to bypass any cache layer.
-      // We do this after a tick so router.refresh() gets a chance first
-      // (router.refresh is the smooth UX path; the hard reload is the
-      // belt-and-suspenders backup).
+      // Hard reload as a fallback. We use location.replace so the back-button
+      // doesn't bring back the stale page.
       setTimeout(() => {
-        const url = new URL(window.location.href);
-        url.searchParams.set("_", String(Date.now()));
-        window.location.assign(url.toString());
-      }, 200);
+        const sep = window.location.href.includes("?") ? "&" : "?";
+        const newUrl = `${window.location.href.split("?")[0]}${sep}_=${Date.now()}`;
+        console.log(`[UserActions ${CLIENT_VERSION}] hard-reloading to`, newUrl);
+        window.location.replace(newUrl);
+      }, 100);
     } catch (err) {
-      console.error("[toggle] error:", err);
+      console.error(`[UserActions ${CLIENT_VERSION}] toggle exception:`, err);
       alert(t("admin.users.action.failed"));
     } finally {
       setLoading(false);
@@ -109,10 +110,7 @@ export function UserActions({ user: serverUser }: { user: User }) {
       const res = await fetch(`/api/admin/users/${serverUser.id}`, { method: "DELETE" });
       const data = await res.json();
       if (!data.ok) alert(apiErrorMessage(t, data.error?.code, data.error?.message));
-      else {
-        router.refresh();
-        setTimeout(() => window.location.reload(), 200);
-      }
+      else window.location.reload();
     } catch {
       alert(t("admin.users.action.failed"));
     } finally {
