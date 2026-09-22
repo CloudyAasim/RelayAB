@@ -90,6 +90,7 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
     enabled: input.enabled ?? true,
     priority: input.priority ?? 1,
     headers: input.headers ?? {},
+    upstreamFormat: input.upstreamFormat ?? "responses",
     createdAt: now,
     updatedAt: now,
   });
@@ -108,6 +109,7 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
     enabled: provider.enabled ? "1" : "0",
     priority: String(provider.priority),
     headers: JSON.stringify(provider.headers ?? {}),
+    upstreamFormat: provider.upstreamFormat,
     createdAt: provider.createdAt,
     updatedAt: provider.updatedAt,
   });
@@ -224,6 +226,7 @@ export async function updateProvider(
     enabled: patch.enabled === undefined ? existing.enabled : patch.enabled,
     priority: patch.priority ?? existing.priority,
     headers: patch.headers ?? existing.headers,
+    upstreamFormat: patch.upstreamFormat ?? existing.upstreamFormat,
     updatedAt: new Date().toISOString(),
   });
 
@@ -238,6 +241,7 @@ export async function updateProvider(
     enabled: merged.enabled ? "1" : "0",
     priority: String(merged.priority),
     headers: JSON.stringify(merged.headers ?? {}),
+    upstreamFormat: merged.upstreamFormat,
     updatedAt: merged.updatedAt,
   });
 
@@ -299,7 +303,7 @@ async function hashToProvider(raw: Record<string, string> | null): Promise<Provi
       enabled,
       priority: Number(raw.priority ?? "1"),
       headers: safeJsonParse(raw.headers),
-      upstreamFormat: (raw.upstreamFormat as "responses" | "chat" | "anthropic") || "chat",
+      upstreamFormat: (raw.upstreamFormat as "responses" | "chat" | "anthropic") || "responses",
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
     });

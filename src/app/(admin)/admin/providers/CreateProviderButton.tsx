@@ -47,7 +47,7 @@ export function CreateProviderButton({ onCreated }: Props) {
   const [priority, setPriority] = useState("0");
   const [enabled, setEnabled] = useState(true);
   const [headers, setHeaders] = useState("");
-  const [upstreamFormat, setUpstreamFormat] = useState<"responses" | "chat" | "anthropic">("chat");
+  const [upstreamFormat, setUpstreamFormat] = useState<"responses" | "chat" | "anthropic">("responses");
   const [models, setModels] = useState<ModelConfig[]>([]);
 
   // Fetch-models state
@@ -92,7 +92,7 @@ export function CreateProviderButton({ onCreated }: Props) {
     setName(""); setBaseUrl(""); setApiKey("");
     setPriority("0"); setEnabled(true); setHeaders("");
     setModels([]); setError(null); setFetchResult(null);
-    setUpstreamFormat("chat");
+    setUpstreamFormat("responses");
     setTemplateId("openai");
   }
 

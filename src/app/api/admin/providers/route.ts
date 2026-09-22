@@ -93,7 +93,7 @@ export async function POST(req: Request): Promise<Response> {
       enabled: parsed.data.enabled ?? true,
       priority: parsed.data.priority ?? 1,
       headers: parsed.data.headers,
-      upstreamFormat: parsed.data.upstreamFormat ?? "chat",
+      upstreamFormat: parsed.data.upstreamFormat ?? "responses",
     });
     return NextResponse.json({
       ok: true,

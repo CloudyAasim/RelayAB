@@ -191,7 +191,7 @@ export const ProviderSchema = z.object({
   // Optional per-provider HTTP headers (e.g. api-version for Azure).
   headers: z.record(z.string(), z.string()).optional().default({}),
   // Upstream format: responses (native), chat, or anthropic
-  upstreamFormat: UpstreamFormatSchema.default("chat"),
+  upstreamFormat: UpstreamFormatSchema.default("responses"),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
