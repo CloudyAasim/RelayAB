@@ -76,7 +76,7 @@ export function responsesToChatRequest(req: ResponseAPIRequest): ChatCompletionR
     model: req.model,
     messages: messages as Array<{ role: string; content: string }>,
     temperature: req.temperature as number | undefined,
-    max_tokens: (req.max_output_tokens ?? (req as Record<string, unknown>).max_tokens as number | undefined) ?? 1024,
+    max_tokens: ((req.max_output_tokens ?? (req as Record<string, unknown>).max_tokens) as number | undefined) ?? 1024,
     top_p: req.top_p as number | undefined,
     stream: false,
   };
