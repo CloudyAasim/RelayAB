@@ -216,6 +216,8 @@ const zhCN: Dict = {
   "apiError.notFound": "找不到对应的资源。",
   "apiError.badRequest": "请求参数有误，请检查后重试。",
   "apiError.internal": "服务器出错了，请稍后重试。",
+  "apiError.selfDisable": "不能停用你自己的账号。",
+  "apiError.selfDelete": "不能删除你自己的账号。",
 
   // ===== Docs page =====
   "docs.title": "接入文档",
@@ -310,6 +312,10 @@ const zhCN: Dict = {
   "admin.users.action.failed": "操作失败",
   "admin.users.action.confirmDelete": "确定删除这个用户？此操作不可撤销。",
   "admin.users.action.passwordResetHint": "明文仅显示一次，请立即复制并通过安全渠道转交给用户。",
+  "admin.users.flash.disabled": "已停用 {username}",
+  "admin.users.flash.enabled": "已启用 {username}",
+  "admin.users.flash.deleted": "已删除 {username}",
+  "admin.users.flash.dbValue": "数据库 disabled={raw}",
 
 
   // ===== Admin Users: allocation editor =====
@@ -718,6 +724,8 @@ const en: Dict = {
   "apiError.notFound": "That resource could not be found.",
   "apiError.badRequest": "The request was malformed. Check the input and try again.",
   "apiError.internal": "Something went wrong on the server. Please try again.",
+  "apiError.selfDisable": "You cannot disable your own account.",
+  "apiError.selfDelete": "You cannot delete your own account.",
 
   // ===== Docs page =====
   "docs.title": "Integration Docs",
@@ -812,6 +820,10 @@ const en: Dict = {
   "admin.users.action.failed": "Failed",
   "admin.users.action.confirmDelete": "Delete this user? This cannot be undone.",
   "admin.users.action.passwordResetHint": "The plaintext is shown only once — copy it now and deliver it over a secure channel.",
+  "admin.users.flash.disabled": "Disabled {username}",
+  "admin.users.flash.enabled": "Enabled {username}",
+  "admin.users.flash.deleted": "Deleted {username}",
+  "admin.users.flash.dbValue": "database disabled={raw}",
 
 
   // ===== Admin Users: allocation editor =====

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { useT } from "@/components/i18n/I18nProvider";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";
-import type { User } from "@/lib/db/types";
+import type { PublicUser } from "@/lib/db/types";
 import { MoreHorizontal, Power, KeyRound, Trash2 } from "lucide-react";
 import { resetPasswordAction } from "./actions";
 
@@ -32,7 +32,7 @@ import { resetPasswordAction } from "./actions";
  * nothing in production. Mark the row as busy instead and let the browser
  * finish the submit; the 303 redirect renders the modal away for us.
  */
-export function UserActions({ user: serverUser }: { user: User }) {
+export function UserActions({ user: serverUser }: { user: PublicUser }) {
   const t = useT();
   const [menuOpen, setMenuOpen] = useState(false);
   const [passwordModal, setPasswordModal] = useState<string | null>(null);

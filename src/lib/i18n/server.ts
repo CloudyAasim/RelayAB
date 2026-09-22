@@ -18,6 +18,7 @@ import {
   type Locale,
 } from "./dict";
 import { loadConfig } from "../config";
+import { apiErrorMessage } from "./api-errors";
 
 export { LOCALE_COOKIE };
 
@@ -59,6 +60,17 @@ export async function getT(): Promise<{ t: (key: string, vars?: Record<string, s
     locale,
     t: (key, vars) => translate(locale, key, vars),
   };
+}
+
+/**
+ * Localize a machine-readable API error code in a server context (route
+ * handlers, server actions). Mirrors the client-side `apiErrorMessage` helper
+ * so server-generated messages (flash banners) speak the same language as the
+ * UI that renders them.
+ */
+export async function apiErrorText(code: string, fallback?: string): Promise<string> {
+  const { t } = await getT();
+  return apiErrorMessage(t, code, fallback);
 }
 
 // Convenience for sync contexts (rare).

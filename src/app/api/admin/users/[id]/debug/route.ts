@@ -22,16 +22,26 @@ export async function GET(
   const { id } = await context.params;
 
   const redis = getRedis();
-  const raw = await redis.hgetall<Record<string, string>>(k.user(id));
+  // Read ONLY the fields this endpoint exists to check. Dumping the whole
+  // hash would ship every user's bcrypt password hash to the browser.
+  const [rawDisabled, rawRole, updatedAt, username] = await Promise.all([
+    redis.hget<string>(k.user(id), "disabled"),
+    redis.hget<string>(k.user(id), "role"),
+    redis.hget<string>(k.user(id), "updatedAt"),
+    redis.hget<string>(k.user(id), "username"),
+  ]);
+  const exists = await redis.exists(k.user(id));
 
   return NextResponse.json(
     {
       ok: true,
       data: {
         id,
-        rawDisabled: raw?.disabled ?? null,
-        rawRole: raw?.role ?? null,
-        allFields: raw ?? {},
+        exists: exists === 1,
+        username: username ?? null,
+        rawDisabled: rawDisabled ?? null,
+        rawRole: rawRole ?? null,
+        updatedAt: updatedAt ?? null,
       },
     },
     {

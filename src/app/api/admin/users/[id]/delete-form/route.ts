@@ -10,18 +10,24 @@ import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth/session";
 import { deleteApiKeysByUser } from "@/lib/db/keys";
 import { getUserById } from "@/lib/db/users";
-import { seeOther } from "@/lib/http/see-other";
+import { flashRedirect } from "@/lib/http/flash";
+import { apiErrorText, getT } from "@/lib/i18n/server";
 
 const FormSchema = z.object({
   userId: z.string().min(1),
 });
 
 export async function POST(req: Request): Promise<Response> {
+  const contentType = req.headers.get("content-type") ?? "";
+  const isFormPost =
+    contentType.includes("application/x-www-form-urlencoded") ||
+    contentType.includes("multipart/form-data");
+
   const me = await getCurrentUser();
   if (!me || me.role !== "admin") {
-    return new NextResponse("<h1>Forbidden</h1>", {
-      status: 403,
-      headers: { "Content-Type": "text/html" },
+    return flashRedirect("/admin/users", {
+      kind: "error",
+      message: await apiErrorText("forbidden", "Admin required"),
     });
   }
 
@@ -29,36 +35,31 @@ export async function POST(req: Request): Promise<Response> {
   const pathParts = url.pathname.split("/");
   const id = pathParts[pathParts.length - 2] ?? "";
 
-  const contentType = req.headers.get("content-type") ?? "";
-  const isFormPost =
-    contentType.includes("application/x-www-form-urlencoded") ||
-    contentType.includes("multipart/form-data");
-
   let userId = id;
   if (isFormPost) {
     const form = await req.formData();
     const parsed = FormSchema.safeParse({ userId: form.get("userId") });
     if (!parsed.success || parsed.data.userId !== id) {
-      return new NextResponse("<h1>Bad request</h1>", {
-        status: 400,
-        headers: { "Content-Type": "text/html" },
+      return flashRedirect("/admin/users", {
+        kind: "error",
+        message: await apiErrorText("bad_request"),
       });
     }
     userId = parsed.data.userId;
   }
 
   if (userId === me.id) {
-    return new NextResponse("<h1>Cannot delete your own account</h1>", {
-      status: 400,
-      headers: { "Content-Type": "text/html" },
+    return flashRedirect("/admin/users", {
+      kind: "error",
+      message: await apiErrorText("self_delete", "Cannot delete your own account"),
     });
   }
 
   const existing = await getUserById(userId);
   if (!existing) {
-    return new NextResponse("<h1>User not found</h1>", {
-      status: 404,
-      headers: { "Content-Type": "text/html" },
+    return flashRedirect("/admin/users", {
+      kind: "error",
+      message: await apiErrorText("not_found", "User not found"),
     });
   }
 
@@ -67,5 +68,9 @@ export async function POST(req: Request): Promise<Response> {
   await deleteUser(userId);
 
   revalidatePath("/admin/users");
-  return seeOther("/admin/users");
+  const { t } = await getT();
+  return flashRedirect("/admin/users", {
+    kind: "ok",
+    message: t("admin.users.flash.deleted", { username: existing.username }),
+  });
 }

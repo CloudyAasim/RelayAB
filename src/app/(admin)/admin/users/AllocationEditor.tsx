@@ -10,26 +10,27 @@ import { useT } from "@/components/i18n/I18nProvider";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";
 import { formatCredits, formatNumber } from "@/lib/utils";
 import { CREDIT_SCALE } from "@/lib/quota/credits";
-import type { User } from "@/lib/db/types";
+import type { PublicUser } from "@/lib/db/types";
 import { Settings2, Coins, ListChecks, KeyRound, Wallet } from "lucide-react";
 
 /**
  * Format an amount in the unit the account is denominated in.
  * Locale-neutral on purpose — the surrounding template supplies the wording.
  */
-function amount(type: User["quotaType"], n: number): string {
+function amount(type: PublicUser["quotaType"], n: number): string {
   return type === "tokens" ? formatNumber(n) : formatCredits(n);
 }
 
 interface Props {
-  users: User[];
+  /** Password-hash-free projection — see UsersPage. */
+  users: PublicUser[];
   /** Client-visible model ids across all enabled providers. */
   availableModels: string[];
 }
 
 export function AllocationEditor({ users, availableModels }: Props) {
   const t = useT();
-  const [editing, setEditing] = useState<User | null>(null);
+  const [editing, setEditing] = useState<PublicUser | null>(null);
 
   return (
     <>
@@ -139,7 +140,7 @@ function AllocationModal({
   onClose,
   onSaved,
 }: {
-  user: User;
+  user: PublicUser;
   availableModels: string[];
   onClose: () => void;
   onSaved: () => void;

@@ -14,12 +14,14 @@
  * fresh state.
  */
 import { NextResponse } from "next/server";
+import { flashRedirect } from "@/lib/http/flash";
+import { apiErrorText, getT } from "@/lib/i18n/server";
+import { getRedis, k } from "@/lib/db/redis";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getUserById, updateUser } from "@/lib/db/users";
 import { toPublicUser } from "@/lib/db/types";
 import { getCurrentUser } from "@/lib/auth/session";
-import { seeOther } from "@/lib/http/see-other";
 
 const JsonSchema = z.object({
   disabled: z.boolean(),
@@ -31,8 +33,19 @@ const FormSchema = z.object({
 });
 
 export async function POST(req: Request): Promise<Response> {
+  const contentType = req.headers.get("content-type") ?? "";
+  const isFormPost =
+    contentType.includes("application/x-www-form-urlencoded") ||
+    contentType.includes("multipart/form-data");
+
   const me = await getCurrentUser();
   if (!me || me.role !== "admin") {
+    if (isFormPost) {
+      return flashRedirect("/admin/users", {
+        kind: "error",
+        message: await apiErrorText("forbidden", "Admin required"),
+      });
+    }
     return NextResponse.json(
       { ok: false, error: { code: "forbidden", message: "Admin required" } },
       { status: 403 },
@@ -46,11 +59,6 @@ export async function POST(req: Request): Promise<Response> {
   // /api/admin/users/<id>/toggle  →  [<empty>, "api", "admin", "users", "<id>", "toggle"]
   const id = pathParts[pathParts.length - 2] ?? "";
 
-  const contentType = req.headers.get("content-type") ?? "";
-  const isFormPost =
-    contentType.includes("application/x-www-form-urlencoded") ||
-    contentType.includes("multipart/form-data");
-
   let targetDisabled: boolean;
   if (isFormPost) {
     const form = await req.formData();
@@ -60,16 +68,16 @@ export async function POST(req: Request): Promise<Response> {
       disabled: form.get("disabled"),
     });
     if (!parsed.success) {
-      return new NextResponse(
-        `<h1>Bad request</h1><p>${parsed.error.message}</p>`,
-        { status: 400, headers: { "Content-Type": "text/html" } },
-      );
+      return flashRedirect("/admin/users", {
+        kind: "error",
+        message: await apiErrorText("bad_request", parsed.error.message),
+      });
     }
     if (parsed.data.userId !== id) {
-      return new NextResponse(
-        `<h1>Bad request</h1><p>URL and form userId mismatch.</p>`,
-        { status: 400, headers: { "Content-Type": "text/html" } },
-      );
+      return flashRedirect("/admin/users", {
+        kind: "error",
+        message: await apiErrorText("bad_request", "URL and form userId mismatch."),
+      });
     }
     targetDisabled = parsed.data.disabled === "true";
   } else {
@@ -88,9 +96,9 @@ export async function POST(req: Request): Promise<Response> {
   const existing = await getUserById(id);
   if (!existing) {
     if (isFormPost) {
-      return new NextResponse("<h1>User not found</h1>", {
-        status: 404,
-        headers: { "Content-Type": "text/html" },
+      return flashRedirect("/admin/users", {
+        kind: "error",
+        message: await apiErrorText("not_found", "User not found"),
       });
     }
     return NextResponse.json(
@@ -102,9 +110,9 @@ export async function POST(req: Request): Promise<Response> {
   // Refuse self-disable.
   if (id === me.id && targetDisabled) {
     if (isFormPost) {
-      return new NextResponse("<h1>Cannot disable your own account</h1>", {
-        status: 400,
-        headers: { "Content-Type": "text/html" },
+      return flashRedirect("/admin/users", {
+        kind: "error",
+        message: await apiErrorText("self_disable", "Cannot disable your own account"),
       });
     }
     return NextResponse.json(
@@ -116,9 +124,9 @@ export async function POST(req: Request): Promise<Response> {
   const updated = await updateUser(id, { disabled: targetDisabled });
   if (!updated) {
     if (isFormPost) {
-      return new NextResponse("<h1>Update failed</h1>", {
-        status: 500,
-        headers: { "Content-Type": "text/html" },
+      return flashRedirect("/admin/users", {
+        kind: "error",
+        message: await apiErrorText("update_failed", "Could not update user"),
       });
     }
     return NextResponse.json(
@@ -135,7 +143,23 @@ export async function POST(req: Request): Promise<Response> {
     // a fresh server-rendered page that reads the latest Redis state.
     // Relative Location: stays on the origin the browser is already on, so
     // the session cookie still matches (see lib/http/see-other.ts).
-    return seeOther("/admin/users");
+    //
+    // The banner reports what we read BACK from Redis, so "the row looks
+    // unchanged" can be told apart from "the write never landed".
+    const { t } = await getT();
+    const stored = await getRedis().hget<string>(k.user(id), "disabled");
+    return flashRedirect("/admin/users", {
+      kind: "ok",
+      message: [
+        t(
+          targetDisabled
+            ? "admin.users.flash.disabled"
+            : "admin.users.flash.enabled",
+          { username: existing.username },
+        ),
+        t("admin.users.flash.dbValue", { raw: String(stored) }),
+      ].join(" · "),
+    });
   }
 
   return NextResponse.json(

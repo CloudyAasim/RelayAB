@@ -12,6 +12,10 @@
  *    /login — which looks exactly like "the button did nothing".
  * 2. The mutation must actually persist, because the page has no client-side
  *    state to fall back on: the next render is the only feedback.
+ * 3. Every outcome (success or failure) must come back as a redirect + flash
+ *    banner rather than a bare HTML error page: an admin staring at an
+ *    unchanged table cannot tell "the write failed" from "the request was
+ *    never sent", and that ambiguity is what made this bug so hard to see.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
@@ -48,6 +52,15 @@ function formRequest(path: string, fields: Record<string, string>): Request {
   });
 }
 
+/** Decode the `relay_flash` cookie the route attaches to its 303. */
+function readFlashCookie(res: Response): { kind: string; message: string } | null {
+  const raw = res.headers.getSetCookie?.() ?? [];
+  const cookie = raw.find((c) => c.startsWith("relay_flash="));
+  if (!cookie) return null;
+  const value = cookie.slice("relay_flash=".length).split(";")[0];
+  return JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
+}
+
 describe("admin user form-POST endpoints", () => {
   beforeEach(() => {
     __resetRedisForTest();
@@ -76,6 +89,13 @@ describe("admin user form-POST endpoints", () => {
     expect(res.headers.get("location")).toBe("/admin/users");
 
     expect((await getUserById(target.id))?.disabled).toBe(true);
+
+    // The banner echoes what was read back from Redis, so a stale-looking row
+    // can be told apart from a write that never landed.
+    const flash = readFlashCookie(res);
+    expect(flash?.kind).toBe("ok");
+    expect(flash?.message).toContain("alice");
+    expect(flash?.message).toContain("disabled=1");
   });
 
   it("toggle re-enables a disabled user", async () => {
@@ -101,9 +121,10 @@ describe("admin user form-POST endpoints", () => {
 
     expect(res.status).toBe(303);
     expect((await getUserById(target.id))?.disabled).toBe(false);
+    expect(readFlashCookie(res)?.message).toContain("disabled=0");
   });
 
-  it("refuses to disable the signed-in admin's own account", async () => {
+  it("refuses to disable the signed-in admin's own account, with a visible banner", async () => {
     const admin = await createUser({ username: "admin", password: "pw", role: "admin" });
     const store = new InMemoryCookieStore();
     await loginAs(store, admin.id, "admin", "admin");
@@ -117,7 +138,9 @@ describe("admin user form-POST endpoints", () => {
       }),
     );
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe("/admin/users");
+    expect(readFlashCookie(res)?.kind).toBe("error");
     expect((await getUserById(admin.id))?.disabled).toBe(false);
   });
 
@@ -136,7 +159,8 @@ describe("admin user form-POST endpoints", () => {
       }),
     );
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(303);
+    expect(readFlashCookie(res)?.kind).toBe("error");
     expect((await getUserById(target.id))?.disabled).toBe(false);
   });
 
@@ -154,7 +178,8 @@ describe("admin user form-POST endpoints", () => {
       }),
     );
 
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(303);
+    expect(readFlashCookie(res)?.kind).toBe("error");
     expect((await getUserById(user.id))?.disabled).toBe(false);
   });
 
@@ -179,5 +204,6 @@ describe("admin user form-POST endpoints", () => {
     expect(res.headers.get("location")).toBe("/admin/users");
     expect(await getUserById(target.id)).toBeNull();
     expect(await getApiKeyById(key.id)).toBeNull();
+    expect(readFlashCookie(res)).toMatchObject({ kind: "ok" });
   });
 });

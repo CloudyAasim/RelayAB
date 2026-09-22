@@ -37,6 +37,9 @@ const CODE_TO_KEY: Record<string, string> = {
   internal_error: "apiError.internal",
   update_failed: "apiError.internal",
   delete_failed: "apiError.internal",
+  // admin user actions
+  self_disable: "apiError.selfDisable",
+  self_delete: "apiError.selfDelete",
 };
 
 /**
