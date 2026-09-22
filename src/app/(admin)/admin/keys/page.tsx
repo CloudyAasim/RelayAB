@@ -101,8 +101,8 @@ export default async function KeysPage() {
                       </TD>
                       <TD className="text-muted-foreground">{formatDate(k.expiresAt)}</TD>
                       <TD>
-                        <Badge tone={k.forceDisabled ? "orange" : k.enabled ? "success" : "neutral"}>
-                          {k.forceDisabled ? t("admin.keys.status.forceDisabled") : k.enabled ? t("dashboard.status.enabled") : t("dashboard.status.disabled")}
+                        <Badge tone={k.forceDisabled === true ? "orange" : k.enabled ? "success" : "neutral"}>
+                          {k.forceDisabled === true ? t("admin.keys.status.forceDisabled") : k.enabled ? t("dashboard.status.enabled") : t("dashboard.status.disabled")}
                         </Badge>
                       </TD>
                       <TD className="text-right">

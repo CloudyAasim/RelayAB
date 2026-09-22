@@ -64,7 +64,7 @@ export function KeyActions({ apiKey }: { apiKey: ApiKey }) {
   }
 
   // Determine effective status
-  const effectiveStatus = apiKey.forceDisabled
+  const effectiveStatus = apiKey.forceDisabled === true
     ? "force_disabled"
     : apiKey.enabled
     ? "enabled"

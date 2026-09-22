@@ -157,7 +157,7 @@ export default async function DashboardPage() {
                           {formatDate(k.expiresAt)}
                         </TD>
                         <TD>
-                          {k.forceDisabled ? (
+                          {k.forceDisabled === true ? (
                             <Badge tone="orange">
                               <StatusDot tone="orange" pulse={false} className="mr-1" />
                               {t("admin.keys.status.forceDisabled")}

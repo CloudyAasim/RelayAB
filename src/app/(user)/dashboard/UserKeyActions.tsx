@@ -98,7 +98,7 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
   }
 
   // Determine effective status
-  const effectiveStatus = apiKey.forceDisabled
+  const effectiveStatus = apiKey.forceDisabled === true
     ? "force_disabled"
     : apiKey.enabled
     ? "enabled"
@@ -217,7 +217,7 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
               disabled={apiKey.forceDisabled}
             />
             {t("dashboard.keyActions.enabled")}
-            {apiKey.forceDisabled && (
+            {apiKey.forceDisabled === true && (
               <span className="text-xs text-orange-600">({t("admin.keys.status.forceDisabled")})</span>
             )}
           </label>
