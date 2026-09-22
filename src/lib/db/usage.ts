@@ -13,6 +13,7 @@
  */
 import { UsageLogSchema, type UsageLog, type QuotaType } from "./types";
 import { getRedis, k } from "./redis";
+import { mapWithConcurrency } from "./concurrency";
 import { generateId } from "../crypto/hashing";
 
 /** Max number of log entries kept per API key (older ones trimmed). */
@@ -97,13 +98,14 @@ export async function listUsageByKey(
   const limit = Math.max(1, Math.min(opts.limit ?? 50, MAX_LOGS_PER_KEY));
   const redis = getRedis();
   const ids = await redis.lrange(k.usageLogsByKey(apiKeyId), 0, limit - 1);
-  const out: UsageLog[] = [];
-  for (const id of ids) {
-    const raw = await redis.hgetall<Record<string, string>>(k.usageLog(apiKeyId, id));
-    const log = await hashToLog(raw);
-    if (log) out.push(log);
-  }
-  return out;
+  // Read the hashes concurrently. Fetching them one-by-one cost a full HTTP
+  // round-trip per log (up to MAX_LOGS_PER_KEY of them), which dominated
+  // dashboard and usage-page load time on a REST-backed Redis.
+  const rows = await mapWithConcurrency(ids, 32, (id) =>
+    redis.hgetall<Record<string, string>>(k.usageLog(apiKeyId, id)),
+  );
+  const parsed = await Promise.all(rows.map((raw) => hashToLog(raw)));
+  return parsed.filter((log): log is UsageLog => log !== null);
 }
 
 /**

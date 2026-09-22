@@ -32,8 +32,8 @@ export default async function AdminOverviewPage() {
   if (!user) redirect("/login");
   if (user.role !== "admin") redirect("/dashboard");
 
-  const { t } = await getT();
-  const [{ users }, keys, providers] = await Promise.all([
+  const [{ t }, { users }, keys, providers] = await Promise.all([
+    getT(),
     listUsers({ limit: 200 }),
     listAllApiKeys({}),
     listProviders(),

@@ -32,9 +32,13 @@ export default async function DashboardPage() {
   const sessionUser = await getCurrentUser();
   if (!sessionUser) redirect("/login");
 
-  const { t } = await getT();
-  const fullUser = await getUserById(sessionUser.id);
-  const { keys } = await listApiKeysByUser(sessionUser.id, { limit: 200 });
+  // These three are independent — fetch them in one wave instead of three.
+  const [{ t }, fullUser, keyPage] = await Promise.all([
+    getT(),
+    getUserById(sessionUser.id),
+    listApiKeysByUser(sessionUser.id, { limit: 200 }),
+  ]);
+  const keys = keyPage.keys;
   const agg = await aggregateByUser(keys.map((k) => k.id));
 
   const allocation: UserAllocation | null = fullUser

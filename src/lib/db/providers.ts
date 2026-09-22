@@ -6,8 +6,9 @@
  * Uses Redis SCAN for enumeration - compatible with both Upstash Redis and Vercel KV.
  */
 import { ProviderSchema, type Provider, type ProviderKind, type ModelConfig } from "./types";
-import { revalidateTag } from "next/cache";
+import { revalidateTag, unstable_cache } from "next/cache";
 import { getRedis, k } from "./redis";
+import { mapWithConcurrency } from "./concurrency";
 import { encryptSecret } from "../crypto/secrets";
 import { generateId } from "../crypto/hashing";
 
@@ -129,20 +130,25 @@ export async function getProviderById(id: string): Promise<Provider | null> {
   return hashToProvider(await getRedis().hgetall<Record<string, string>>(k.provider(id)));
 }
 
-/** List all providers (sorted by priority ascending, then by name). */
-export async function listProviders(opts: {
-  enabledOnly?: boolean;
-} = {}): Promise<Provider[]> {
+/**
+ * Un-cached provider read: one SCAN, then one concurrent wave of HGETALLs
+ * (previously these were awaited one at a time).
+ */
+async function readProviders(enabledOnly: boolean): Promise<Provider[]> {
   const redis = getRedis();
-  
+
   // Use SCAN to find all provider keys - works with both Upstash Redis and Vercel KV
   const providerIds = await scanProviderIds(redis);
-  
+
+  const rows = await mapWithConcurrency(providerIds, 16, (id) =>
+    redis.hgetall<Record<string, string>>(k.provider(id)),
+  );
+  const parsed = await Promise.all(rows.map((raw) => hashToProvider(raw)));
+
   const out: Provider[] = [];
-  for (const id of providerIds) {
-    const p = await hashToProvider(await redis.hgetall<Record<string, string>>(k.provider(id)));
+  for (const p of parsed) {
     if (!p) continue;
-    if (opts.enabledOnly && !p.enabled) continue;
+    if (enabledOnly && !p.enabled) continue;
     out.push(p);
   }
   out.sort((a, b) => {
@@ -150,6 +156,25 @@ export async function listProviders(opts: {
     return a.name.localeCompare(b.name);
   });
   return out;
+}
+
+/**
+ * `listProviders` sits on the hot path of every proxied request (it resolves
+ * which upstream serves a model) and costs a SCAN plus one read per provider.
+ * Provider config changes rarely, so cache it and invalidate through the
+ * `providers` tag that create/update/delete already fire.
+ */
+const listProvidersCached = unstable_cache(
+  readProviders,
+  ["relayab:listProviders"],
+  { tags: ["providers"], revalidate: 60 },
+);
+
+/** List all providers (sorted by priority ascending, then by name). */
+export async function listProviders(opts: {
+  enabledOnly?: boolean;
+} = {}): Promise<Provider[]> {
+  return listProvidersCached(Boolean(opts.enabledOnly));
 }
 
 /**
