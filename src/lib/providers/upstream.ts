@@ -121,9 +121,13 @@ export async function callUpstream(opts: UpstreamFetchOptions): Promise<Upstream
 function joinUrl(base: string, path: string): string {
   if (!path) return base.replace(/\/$/, "");
   if (path.startsWith("http")) return path;
-  const a = base.replace(/\/$/, "");
-  const b = path.startsWith("/") ? path : "/" + path;
-  return a + b;
+  let a = base.replace(/\/$/, "");
+  let b = path.startsWith("/") ? path.slice(1) : path;
+  // Avoid double paths like /v1/v1/models - if base ends with same prefix as path starts with
+  if (a.endsWith("/" + b.split("/")[0]) && b.includes("/")) {
+    b = b.split("/").slice(1).join("/");
+  }
+  return a + "/" + b;
 }
 
 /**

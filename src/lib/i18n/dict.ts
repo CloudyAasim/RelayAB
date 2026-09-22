@@ -355,6 +355,8 @@ const zhCN: Dict = {
   "admin.providers.create.submit": "添加",
   "admin.providers.table.kind": "类型",
   "admin.providers.table.models": "模型映射",
+  "admin.providers.edit": "编辑提供商",
+  "admin.providers.edit.leaveBlank": "留空以保持不变",
   // Admin settings
   "admin.settings.title": "系统设置",
   "admin.settings.publicUrl": "公开访问地址",
@@ -752,6 +754,8 @@ const en: Dict = {
   "admin.providers.create.submit": "Add",
   "admin.providers.table.kind": "Kind",
   "admin.providers.table.models": "Model Mapping",
+  "admin.providers.edit": "Edit Provider",
+  "admin.providers.edit.leaveBlank": "Leave blank to keep unchanged",
   // Admin settings
   "admin.settings.title": "Settings",
   "admin.settings.publicUrl": "Public URL",

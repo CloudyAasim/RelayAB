@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-export const dynamic = "force-dynamic";
 import { getCurrentUser } from "@/lib/auth/session";
 import { listProviders } from "@/lib/db/providers";
 import { Card } from "@/components/ui/Card";
@@ -15,9 +14,12 @@ import {
 import { Badge } from "@/components/ui/Badge";
 import { CreateProviderButton } from "./CreateProviderButton";
 import { ProviderActions } from "./ProviderActions";
+import { EditProviderModal } from "./EditProviderModal";
 import { getT } from "@/lib/i18n/server";
 import { AuthenticatedLayout, SectionPageLayout } from "@/components/layouts";
 import { Server } from "lucide-react";
+
+export const dynamic = "force-dynamic";
 
 export default async function ProvidersPage() {
   const user = await getCurrentUser();
@@ -56,7 +58,7 @@ export default async function ProvidersPage() {
                   <TH>{t("admin.providers.create.baseUrl")}</TH>
                   <TH>{t("admin.providers.table.models")}</TH>
                   <TH>{t("dashboard.table.status")}</TH>
-                  <TH className="w-20 text-right">{t("common.actions")}</TH>
+                  <TH className="w-48 text-right">{t("common.actions")}</TH>
                 </TR>
               </THead>
               <TBody>
