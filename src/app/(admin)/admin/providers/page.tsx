@@ -14,7 +14,6 @@ import {
 import { Badge } from "@/components/ui/Badge";
 import { CreateProviderButton } from "./CreateProviderButton";
 import { ProviderActions } from "./ProviderActions";
-import { EditProviderModal } from "./EditProviderModal";
 import { getT } from "@/lib/i18n/server";
 import { AuthenticatedLayout, SectionPageLayout } from "@/components/layouts";
 import { Server } from "lucide-react";
