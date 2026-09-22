@@ -1,129 +1,74 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { useT } from "@/components/i18n/I18nProvider";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";
 import type { User } from "@/lib/db/types";
 import { MoreHorizontal, Power, KeyRound, Trash2 } from "lucide-react";
-
-const CLIENT_VERSION = "v5-dom-and-reload-2025-09-22";
+import { toggleUserAction, resetPasswordAction, deleteUserAction } from "./actions";
 
 export function UserActions({ user: serverUser }: { user: User }) {
   const t = useT();
-  const [newPassword, setNewPassword] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [passwordModal, setPasswordModal] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
 
-  async function toggle() {
-    if (loading) return;
-
-    const targetDisabled = !serverUser.disabled;
-
-    // ─── Immediate optimistic DOM update ──────────────────────────
-    // We update the badge directly in the DOM so the user sees the
-    // change instantly, without waiting for the API call or a page
-    // refresh. The server-side value will catch up after navigation.
-    const td = document.querySelector(
-      `td[data-user-id="${serverUser.id}"]`,
-    );
-    if (td) {
-      td.setAttribute("data-disabled", String(targetDisabled));
-      const badgeSpan = td.querySelector("span");
-      if (badgeSpan) {
-        badgeSpan.textContent = targetDisabled
-          ? t("dashboard.status.disabled")
-          : t("dashboard.status.enabled");
+  function runToggle() {
+    setError(null);
+    startTransition(async () => {
+      try {
+        const fd = new FormData();
+        fd.set("userId", serverUser.id);
+        fd.set("disabled", String(!serverUser.disabled));
+        // toggleUserAction ends with redirect("/admin/users"), so the page
+        // navigates and the in-flight UI is replaced. The transition
+        // stays pending until then.
+        await toggleUserAction(fd);
+      } catch (e) {
+        // redirect() throws a special Next.js error to perform the
+        // navigation — that's not a real failure.
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.includes("NEXT_REDIRECT")) return;
+        setError(apiErrorMessage(t, undefined, msg));
+        setMenuOpen(true);
       }
-    }
-
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/admin/users/${serverUser.id}/toggle`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Cache-Control": "no-store",
-        },
-        cache: "no-store",
-        body: JSON.stringify({ disabled: targetDisabled }),
-      });
-
-      const data = await res.json();
-
-      console.log(`[UserActions ${CLIENT_VERSION}] response:`, { status: res.status, data });
-
-      if (!res.ok || !data.ok) {
-        // Revert the optimistic update if the API failed.
-        if (td) {
-          td.setAttribute("data-disabled", String(serverUser.disabled));
-          const badgeSpan = td.querySelector("span");
-          if (badgeSpan) {
-            badgeSpan.textContent = serverUser.disabled
-              ? t("dashboard.status.disabled")
-              : t("dashboard.status.enabled");
-          }
-        }
-        const msg =
-          apiErrorMessage(t, data?.error?.code, data?.error?.message) ??
-          t("admin.users.action.failed");
-        alert(msg);
-        setLoading(false);
-        return;
-      }
-
-      // ─── Hard navigation to sync with server ─────────────────────
-      // The DOM update above gives instant feedback. We then force a
-      // full navigation so the parent server component re-renders
-      // with fresh data from Redis (and our optimistic update is
-      // confirmed by the server's response).
-      const baseUrl = window.location.origin + window.location.pathname;
-      const target = `${baseUrl}?_=${Date.now()}`;
-      console.log(`[UserActions ${CLIENT_VERSION}] navigating to`, target);
-      window.location.href = target;
-    } catch (err) {
-      console.error(`[UserActions ${CLIENT_VERSION}] toggle exception:`, err);
-      alert(t("admin.users.action.failed"));
-      setLoading(false);
-    }
+    });
   }
 
-  async function reset() {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/admin/users/${serverUser.id}/reset-password`, {
-        method: "POST",
-        headers: { "Cache-Control": "no-store" },
-        cache: "no-store",
-      });
-      const data = await res.json();
-      if (!data.ok) {
-        alert(apiErrorMessage(t, data.error?.code, data.error?.message));
-      } else {
-        setNewPassword(data.data?.generatedPassword ?? null);
+  function runReset() {
+    setError(null);
+    startTransition(async () => {
+      try {
+        const fd = new FormData();
+        fd.set("userId", serverUser.id);
+        const result = await resetPasswordAction(fd);
+        setPasswordModal(result.generatedPassword);
         setMenuOpen(false);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.includes("NEXT_REDIRECT")) return;
+        setError(apiErrorMessage(t, undefined, msg));
       }
-    } catch {
-      alert(t("admin.users.action.failed"));
-    } finally {
-      setLoading(false);
-    }
+    });
   }
 
-  async function remove() {
+  function runDelete() {
     if (!confirm(t("admin.users.action.confirmDelete"))) return;
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/admin/users/${serverUser.id}`, { method: "DELETE" });
-      const data = await res.json();
-      if (!data.ok) alert(apiErrorMessage(t, data.error?.code, data.error?.message));
-      else window.location.href = window.location.origin + window.location.pathname;
-    } catch {
-      alert(t("admin.users.action.failed"));
-    } finally {
-      setLoading(false);
-    }
+    setError(null);
+    startTransition(async () => {
+      try {
+        const fd = new FormData();
+        fd.set("userId", serverUser.id);
+        await deleteUserAction(fd);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.includes("NEXT_REDIRECT")) return;
+        setError(apiErrorMessage(t, undefined, msg));
+      }
+    });
   }
 
   return (
@@ -133,7 +78,7 @@ export function UserActions({ user: serverUser }: { user: User }) {
         variant="ghost"
         onClick={() => setMenuOpen(true)}
         aria-label={t("common.actions")}
-        disabled={loading}
+        disabled={isPending}
       >
         <MoreHorizontal className="h-4 w-4" />
       </Button>
@@ -150,9 +95,9 @@ export function UserActions({ user: serverUser }: { user: User }) {
             className="w-full justify-start"
             onClick={() => {
               setMenuOpen(false);
-              toggle();
+              runToggle();
             }}
-            disabled={loading}
+            disabled={isPending}
           >
             <Power className="mr-2 h-4 w-4" />
             {serverUser.disabled ? t("admin.users.action.enable") : t("admin.users.action.disable")}
@@ -162,9 +107,9 @@ export function UserActions({ user: serverUser }: { user: User }) {
             className="w-full justify-start"
             onClick={() => {
               setMenuOpen(false);
-              reset();
+              runReset();
             }}
-            disabled={loading}
+            disabled={isPending}
           >
             <KeyRound className="mr-2 h-4 w-4" />
             {t("admin.users.action.resetPassword")}
@@ -175,34 +120,39 @@ export function UserActions({ user: serverUser }: { user: User }) {
               className="w-full justify-start text-destructive hover:bg-destructive/10"
               onClick={() => {
                 setMenuOpen(false);
-                remove();
+                runDelete();
               }}
-              disabled={loading}
+              disabled={isPending}
             >
               <Trash2 className="mr-2 h-4 w-4" />
               {t("common.delete")}
             </Button>
           </div>
+          {error && (
+            <div className="mt-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {error}
+            </div>
+          )}
         </div>
       </Modal>
 
       <Modal
-        open={newPassword !== null}
-        onClose={() => setNewPassword(null)}
+        open={passwordModal !== null}
+        onClose={() => setPasswordModal(null)}
         title={t("admin.users.action.passwordReset")}
       >
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">{serverUser.username}</p>
-          {newPassword && (
+          {passwordModal && (
             <div className="rounded-md border border-warning/30 bg-warning/10 p-3 font-mono text-sm break-all select-all">
-              {newPassword}
+              {passwordModal}
             </div>
           )}
           <p className="text-xs text-muted-foreground">
             {t("admin.users.action.passwordResetHint")}
           </p>
           <div className="flex justify-end pt-2">
-            <Button onClick={() => setNewPassword(null)}>{t("common.close")}</Button>
+            <Button onClick={() => setPasswordModal(null)}>{t("common.close")}</Button>
           </div>
         </div>
       </Modal>
