@@ -13,7 +13,7 @@
  * admin web panel can decrypt them (just-in-time when forwarding a request).
  */
 import { ProviderSchema, type Provider, type ProviderKind } from "./types";
-import { unstable_cache, revalidateTag } from "next/cache";
+import { revalidateTag } from "next/cache";
 import { getRedis, k } from "./redis";
 import { encryptSecret } from "../crypto/secrets";
 import { generateId } from "../crypto/hashing";
@@ -40,6 +40,17 @@ export interface CreateProviderInput {
   /** Plaintext upstream API key. Will be AES-encrypted before storage. */
   apiKey: string;
   modelMapping?: Record<string, string>;
+  /** Model configurations (context length, output, cost) */
+  modelConfigs?: Record<string, {
+    upstreamId: string;
+    clientId: string;
+    displayName?: string;
+    contextLength?: number;
+    maxOutputTokens?: number;
+    inputCost?: number;
+    outputCost?: number;
+    enabled?: boolean;
+  }>;
   enabled?: boolean;
   priority?: number;
   /** Optional per-provider HTTP headers (e.g. api-version for Azure). */
@@ -88,6 +99,7 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
     baseUrl: provider.baseUrl ?? "",
     encryptedApiKey: provider.encryptedApiKey,
     modelMapping: JSON.stringify(provider.modelMapping),
+    modelConfigs: JSON.stringify(provider.modelConfigs ?? {}),
     enabled: provider.enabled ? "1" : "0",
     priority: String(provider.priority),
     headers: JSON.stringify(provider.headers ?? {}),
@@ -112,9 +124,9 @@ export async function getProviderById(id: string): Promise<Provider | null> {
 
 
 /** List all providers (sorted by priority ascending, then by name). */
-export const listProviders = unstable_cache(async (opts: {
+export async function listProviders(opts: {
   enabledOnly?: boolean;
-} = {}): Promise<Provider[]> => {
+} = {}): Promise<Provider[]> {
   const redis = getRedis();
   const [, matched] = await redis.scan(0, {
     match: `${k.provider("").slice(0, -1)}*`,
@@ -134,7 +146,7 @@ export const listProviders = unstable_cache(async (opts: {
     return a.name.localeCompare(b.name);
   });
   return out;
-}, ["providers"], { tags: ["providers"] });
+}
 
 /**
  * Find providers that can serve the given client-visible model.
@@ -226,6 +238,7 @@ async function hashToProvider(raw: Record<string, string> | null): Promise<Provi
       baseUrl: raw.baseUrl && raw.baseUrl !== "" ? raw.baseUrl : null,
       encryptedApiKey: raw.encryptedApiKey,
       modelMapping: raw.modelMapping ? JSON.parse(raw.modelMapping) : {},
+      modelConfigs: raw.modelConfigs ? JSON.parse(raw.modelConfigs) : {},
       enabled: raw.enabled === "1",
       priority: Number(raw.priority ?? "1"),
       headers: raw.headers ? JSON.parse(raw.headers) : {},
@@ -235,4 +248,46 @@ async function hashToProvider(raw: Record<string, string> | null): Promise<Provi
   } catch {
     return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Model Config helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Get model configuration for a specific model in a provider.
+ */
+export function getModelConfig(
+  provider: Provider,
+  clientModelId: string
+): ModelConfig | undefined {
+  return provider.modelConfigs?.[clientModelId];
+}
+
+/**
+ * Get credit cost for a model. Returns default values if not configured.
+ */
+export function getModelCreditCost(
+  provider: Provider,
+  clientModelId: string
+): { inputCost: number; outputCost: number } {
+  const config = provider.modelConfigs?.[clientModelId];
+  if (!config) {
+    // Default costs if not configured
+    return { inputCost: 0, outputCost: 0 };
+  }
+  return {
+    inputCost: config.inputCost,
+    outputCost: config.outputCost,
+  };
+}
+
+/**
+ * Get context length for a model. Returns default if not configured.
+ */
+export function getModelContextLength(
+  provider: Provider,
+  clientModelId: string
+): number {
+  return provider.modelConfigs?.[clientModelId]?.contextLength ?? 128000;
 }

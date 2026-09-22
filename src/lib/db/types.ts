@@ -147,7 +147,10 @@ export const ProviderSchema = z.object({
   kind: ProviderKindSchema,
   baseUrl: z.string().nullable(),
   encryptedApiKey: z.string().min(1), // base64
+  // Simple client→upstream model name mapping (for backwards compatibility)
   modelMapping: z.record(z.string(), z.string()),
+  // Detailed model configurations (context length, output, cost)
+  modelConfigs: z.record(z.string(), ModelConfigSchema).optional().default({}),
   enabled: z.boolean(),
   priority: z.number().int(),
   // Optional per-provider HTTP headers (e.g. api-version for Azure).
@@ -217,4 +220,49 @@ export function toPublicProvider(provider: Provider): PublicProvider {
   const { encryptedApiKey: _unused, ...rest } = provider;
   void _unused;
   return rest;
+}
+
+// ---------------------------------------------------------------------------
+// ModelConfig
+// ---------------------------------------------------------------------------
+
+/**
+ * Model configuration including context length, output length, and credit cost.
+ */
+export const ModelConfigSchema = z.object({
+  /** Upstream model ID */
+  upstreamId: z.string(),
+  /** Client-facing model ID (alias) */
+  clientId: z.string(),
+  /** Display name */
+  displayName: z.string().optional(),
+  /** Context window size (input tokens) */
+  contextLength: z.number().int().positive().default(128000),
+  /** Maximum output tokens */
+  maxOutputTokens: z.number().int().positive().default(8192),
+  /** Credit cost per 1M input tokens */
+  inputCost: z.number().positive().default(0),
+  /** Credit cost per 1M output tokens */
+  outputCost: z.number().positive().default(0),
+  /** Whether this model is enabled */
+  enabled: z.boolean().default(true),
+});
+
+export type ModelConfig = z.infer<typeof ModelConfigSchema>;
+
+/**
+ * Provider with model configurations.
+ * Extends the base Provider with detailed model settings.
+ */
+export interface ProviderWithModels {
+  id: string;
+  name: string;
+  kind: ProviderKind;
+  baseUrl: string | null;
+  enabled: boolean;
+  priority: number;
+  models: ModelConfig[];
+  headers: Record<string, string>;
+  createdAt: string;
+  updatedAt: string;
 }

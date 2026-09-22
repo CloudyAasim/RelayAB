@@ -69,6 +69,7 @@ const zhCN: Dict = {
   "login.submit": "登录",
   "login.failed": "登录失败",
   "login.networkError": "网络错误",
+  "common.backToHome": "返回首页",
   "login.footnote": "RelayAB · 自托管 AI API 网关",
 
   // ===== Nav =====
@@ -364,6 +365,11 @@ const zhCN: Dict = {
   "admin.providers.create.autoFetch": "自动获取",
   "admin.providers.create.addRow": "添加一行",
   "admin.providers.create.clientModel": "客户端模型",
+  "admin.providers.create.namePlaceholder": "例如：OpenAI 官方",
+  "admin.providers.create.contextLength": "上下文",
+  "admin.providers.create.maxOutput": "输出",
+  "admin.providers.create.inputCost": "输入积分",
+  "admin.providers.create.outputCost": "输出积分",
   "admin.providers.create.upstreamModel": "上游模型",
   "admin.providers.create.enabled": "启用",
   "admin.providers.create.fetching": "获取中…",
@@ -454,6 +460,7 @@ const en: Dict = {
   "login.submit": "Sign in",
   "login.failed": "Login failed",
   "login.networkError": "Network error",
+  "common.backToHome": "返回首页",
   "login.footnote": "RelayAB · Self-hosted AI API gateway",
 
   // ===== Nav =====
@@ -749,6 +756,11 @@ const en: Dict = {
   "admin.providers.create.autoFetch": "Auto-fetch",
   "admin.providers.create.addRow": "Add Row",
   "admin.providers.create.clientModel": "Client model",
+  "admin.providers.create.namePlaceholder": "e.g. OpenAI Official",
+  "admin.providers.create.contextLength": "Context",
+  "admin.providers.create.maxOutput": "Output",
+  "admin.providers.create.inputCost": "Input Credits",
+  "admin.providers.create.outputCost": "Output Credits",
   "admin.providers.create.upstreamModel": "Upstream model",
   "admin.providers.create.enabled": "Enabled",
   "admin.providers.create.fetching": "Fetching…",

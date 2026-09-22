@@ -2,9 +2,7 @@
  * app/api/admin/providers/route.ts
  *
  * GET  /api/admin/providers
- * POST /api/admin/providers  body: { name, kind, baseUrl?, apiKey, modelMapping?, enabled?, priority? }
- *
- * NOTE: provider list responses NEVER include the encrypted API key.
+ * POST /api/admin/providers  body: { name, kind, baseUrl?, apiKey, modelMapping?, modelConfigs?, enabled?, priority? }
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -18,6 +16,16 @@ const PostSchema = z.object({
   baseUrl: z.string().nullable().optional(),
   apiKey: z.string().min(1),
   modelMapping: z.record(z.string(), z.string()).optional(),
+  modelConfigs: z.record(z.string(), z.object({
+    upstreamId: z.string(),
+    clientId: z.string(),
+    displayName: z.string().optional(),
+    contextLength: z.number().int().positive().optional(),
+    maxOutputTokens: z.number().int().positive().optional(),
+    inputCost: z.number().optional(),
+    outputCost: z.number().optional(),
+    enabled: z.boolean().optional(),
+  })).optional(),
   enabled: z.boolean().optional(),
   priority: z.number().int().optional(),
   headers: z.record(z.string(), z.string()).optional(),
@@ -70,8 +78,10 @@ export async function POST(req: Request): Promise<Response> {
     baseUrl: parsed.data.baseUrl ?? null,
     apiKey: parsed.data.apiKey,
     modelMapping: parsed.data.modelMapping ?? {},
+    modelConfigs: parsed.data.modelConfigs ?? {},
     enabled: parsed.data.enabled ?? true,
     priority: parsed.data.priority ?? 1,
+    headers: parsed.data.headers,
   });
   return NextResponse.json({
     ok: true,

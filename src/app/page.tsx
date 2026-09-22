@@ -82,7 +82,7 @@ export default async function WelcomePage() {
                 </Button>
               </Link>
             )}
-            <Link href="/dashboard/docs">
+            <Link href="/docs">
               <Button size="lg" variant="outline">
                 <BookOpen className="mr-2 h-4 w-4" />
                 {t("welcome.readDocs")}

@@ -3,12 +3,11 @@
 /**
  * src/app/(admin)/admin/providers/CreateProviderButton.tsx
  *
- * Provider creation modal with Cherry-Studio-grade affordances:
- *   - Template dropdown (OpenAI / Anthropic / Azure / OpenRouter / DeepSeek / Custom)
- *   - One-click "Auto-fetch models" from upstream /v1/models
- *   - Visual model mapping editor (add/remove rows, client → upstream)
- *   - Multi-key paste support: each line becomes a separate API key for rotation
- *   - Save with one click; errors surface inline
+ * Provider creation modal with model configuration:
+ *   - Template selection (OpenAI / Anthropic / Azure / MiniMax / etc.)
+ *   - Auto-fetch models from upstream
+ *   - Model mapping editor (client model → upstream model)
+ *   - Model configuration (context length, output length, credit cost)
  */
 import { useState, useTransition } from "react";
 import { Modal } from "@/components/ui/Modal";
@@ -23,9 +22,13 @@ interface Props {
 
 type Kind = "openai" | "anthropic" | "custom-openai";
 
-interface ModelRow {
-  client: string;        // name the client sends
-  upstream: string;      // name sent to upstream
+interface ModelConfig {
+  client: string;
+  upstream: string;
+  contextLength: number;
+  maxOutputTokens: number;
+  inputCost: number;
+  outputCost: number;
 }
 
 export function CreateProviderButton({ onCreated }: Props) {
@@ -38,11 +41,11 @@ export function CreateProviderButton({ onCreated }: Props) {
   const [name, setName] = useState("");
   const [kind, setKind] = useState<Kind>("openai");
   const [baseUrl, setBaseUrl] = useState("");
-  const [apiKeys, setApiKeys] = useState("");     // multi-line; each non-empty line is a key
+  const [apiKey, setApiKey] = useState("");
   const [priority, setPriority] = useState("0");
   const [enabled, setEnabled] = useState(true);
   const [headers, setHeaders] = useState("");
-  const [models, setModels] = useState<ModelRow[]>([]);
+  const [models, setModels] = useState<ModelConfig[]>([]);
 
   // Fetch-models state
   const [fetchingModels, setFetchingModels] = useState(false);
@@ -58,9 +61,20 @@ export function CreateProviderButton({ onCreated }: Props) {
     setTemplateId(id);
     setKind(tpl.kind === "azure" ? "custom-openai" : (tpl.kind as Kind));
     if (tpl.defaultBaseUrl) setBaseUrl(tpl.defaultBaseUrl);
-    setModels(
-      Object.entries(tpl.defaultModelMapping).map(([client, upstream]) => ({ client, upstream })),
+    
+    // Convert template model mapping to full ModelConfig
+    const templateModels: ModelConfig[] = Object.entries(tpl.defaultModelMapping).map(
+      ([client, upstream]) => ({
+        client,
+        upstream,
+        contextLength: 128000,
+        maxOutputTokens: 8192,
+        inputCost: 0,
+        outputCost: 0,
+      })
     );
+    setModels(templateModels);
+    
     if (!name) setName(tpl.label);
     if (tpl.defaultHeaders) {
       setHeaders(Object.entries(tpl.defaultHeaders).map(([k, v]) => `${k}: ${v}`).join("\n"));
@@ -69,32 +83,42 @@ export function CreateProviderButton({ onCreated }: Props) {
   }
 
   function reset() {
-    setName(""); setBaseUrl(""); setApiKeys("");
+    setName(""); setBaseUrl(""); setApiKey("");
     setPriority("0"); setEnabled(true); setHeaders("");
     setModels([]); setError(null); setFetchResult(null);
+    setTemplateId("openai");
   }
 
   async function fetchModels() {
+    if (!baseUrl || !apiKey) return;
+    
     setFetchingModels(true);
     setFetchResult(null);
     try {
       const res = await fetch(`/api/admin/providers/probe`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ baseUrl, encryptedApiKey: apiKeys.split("\n")[0]?.trim() }),
+        body: JSON.stringify({ baseUrl, apiKey }),
       });
       const data = await res.json();
       if (data.ok) {
-        // Probe worked. Now apply to current rows.
         const ids: string[] = data.models ?? [];
+        setFetchResult({ count: ids.length, status: data.status, latencyMs: data.latencyMs });
+        
+        // Add new models that aren't already in the list
         setModels((prev) => {
-          // Keep existing user-curated rows; append new ones from upstream not yet covered.
-          const knownUpstreams = new Set(prev.map((m) => m.upstream));
-          const newRows = ids
-            .filter((id) => !knownUpstreams.has(id))
-            .map((id) => ({ client: id, upstream: id }));
-          setFetchResult({ count: ids.length, status: data.status, latencyMs: data.latencyMs });
-          return [...prev, ...newRows];
+          const knownClients = new Set(prev.map((m) => m.client));
+          const newModels: ModelConfig[] = ids
+            .filter((id) => !knownClients.has(id))
+            .map((id) => ({
+              client: id,
+              upstream: id,
+              contextLength: 128000,
+              maxOutputTokens: 8192,
+              inputCost: 0,
+              outputCost: 0,
+            }));
+          return [...prev, ...newModels];
         });
       } else {
         setFetchResult({
@@ -116,15 +140,22 @@ export function CreateProviderButton({ onCreated }: Props) {
     }
   }
 
-  function addRow() {
-    setModels((prev) => [...prev, { client: "", upstream: "" }]);
+  function addModel() {
+    setModels((prev) => [
+      ...prev,
+      { client: "", upstream: "", contextLength: 128000, maxOutputTokens: 8192, inputCost: 0, outputCost: 0 },
+    ]);
   }
-  function removeRow(idx: number) {
+
+  function removeModel(idx: number) {
     setModels((prev) => prev.filter((_, i) => i !== idx));
   }
-  function updateRow(idx: number, field: keyof ModelRow, value: string) {
+
+  function updateModel(idx: number, field: keyof ModelConfig, value: string | number) {
     setModels((prev) =>
-      prev.map((row, i) => (i === idx ? { ...row, [field]: value } : row)),
+      prev.map((m, i) =>
+        i === idx ? { ...m, [field]: value } : m
+      )
     );
   }
 
@@ -135,58 +166,61 @@ export function CreateProviderButton({ onCreated }: Props) {
       if (idx < 0) continue;
       const k = line.slice(0, idx).trim();
       const v = line.slice(idx + 1).trim();
-      if (k) out[k] = v;
+      if (k && v) out[k] = v;
     }
     return Object.keys(out).length > 0 ? out : undefined;
   }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setError(null);
     setLoading(true);
-    try {
-      const cleanMapping: Record<string, string> = {};
-      for (const m of models) {
-        const k = m.client.trim();
-        const v = m.upstream.trim();
-        if (k && v) cleanMapping[k] = v;
-      }
+    setError(null);
 
-      // The first API key is the "primary"; additional lines (if any) become
-      // rotation keys. Our backend currently stores ONE encrypted blob, so
-      // for now we use the first key and surface a warning about extras.
-      const keyLines = apiKeys.split("\n").map((s) => s.trim()).filter(Boolean);
-      const primaryKey = keyLines[0] ?? "";
-      if (!primaryKey) {
-        setError(t("admin.providers.create.needApiKey"));
-        setLoading(false);
-        return;
+    try {
+      // Build modelMapping and modelConfigs
+      const modelMapping: Record<string, string> = {};
+      const modelConfigs: Record<string, any> = {};
+      
+      for (const m of models) {
+        if (m.client && m.upstream) {
+          modelMapping[m.client] = m.upstream;
+          modelConfigs[m.client] = {
+            upstreamId: m.upstream,
+            clientId: m.client,
+            contextLength: m.contextLength,
+            maxOutputTokens: m.maxOutputTokens,
+            inputCost: m.inputCost,
+            outputCost: m.outputCost,
+            enabled: true,
+          };
+        }
       }
 
       const res = await fetch("/api/admin/providers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name,
+          name: name || templateId,
           kind,
           baseUrl: baseUrl || null,
-          apiKey: primaryKey,
-          modelMapping: cleanMapping,
+          apiKey,
+          modelMapping,
+          modelConfigs,
           enabled,
           priority: Number(priority) || 0,
           headers: parseHeaders(),
         }),
       });
       const data = await res.json();
+
       if (!data.ok) {
         setError(data.error?.message ?? t("common.failed"));
         return;
       }
-      startTransition(() => {
-        setOpen(false);
-        reset();
-        onCreated?.();
-      });
+
+      reset();
+      setOpen(false);
+      onCreated?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : t("common.failed"));
     } finally {
@@ -196,158 +230,206 @@ export function CreateProviderButton({ onCreated }: Props) {
 
   return (
     <>
-      <Button onClick={() => { reset(); applyTemplate("openai"); setOpen(true); }}>
+      <Button onClick={() => { reset(); setOpen(true); }}>
         {t("admin.providers.create")}
       </Button>
-      <Modal open={open} onClose={() => setOpen(false)} wide
-             title={t("admin.providers.create")}
-             description={t("admin.providers.create.desc")}>
+      <Modal open={open} onClose={() => setOpen(false)} title={t("admin.providers.create")}>
         <form onSubmit={onSubmit} className="space-y-4">
-          {/* Template picker */}
+          {/* Template selection */}
           <div>
-            <label className="block text-sm font-medium text-slate-700">
-              {t("admin.providers.create.template")}
-            </label>
+            <label className="block text-sm font-medium mb-1.5">{t("admin.providers.create.template")}</label>
             <select
               value={templateId}
               onChange={(e) => applyTemplate(e.target.value)}
-              className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
             >
               {PROVIDER_TEMPLATES.map((tpl) => (
                 <option key={tpl.id} value={tpl.id}>
-                  {tpl.label} — {tpl.description.slice(0, 40)}
+                  {tpl.label}
                 </option>
               ))}
             </select>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {PROVIDER_TEMPLATES.find((t) => t.id === templateId)?.description}
+            </p>
           </div>
 
-          {/* Basic fields */}
-          <div className="grid grid-cols-2 gap-3">
-            <Input label={t("admin.providers.create.name")} required
-                   value={name} onChange={(e) => setName(e.target.value)} />
-            <Input label={t("admin.providers.create.priority")} type="number"
-                   value={priority} onChange={(e) => setPriority(e.target.value)} />
-          </div>
-          <Input label={t("admin.providers.create.baseUrl")} required
-                 placeholder="https://api.openai.com/v1"
-                 value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
+          {/* Name */}
+          <Input
+            label={t("admin.providers.create.name")}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t("admin.providers.create.namePlaceholder")}
+          />
 
-          {/* API keys (multi-line for rotation; only first is saved today) */}
+          {/* Base URL */}
+          <Input
+            label={t("admin.providers.create.baseUrl")}
+            value={baseUrl}
+            onChange={(e) => setBaseUrl(e.target.value)}
+            placeholder="https://api.openai.com/v1"
+            required
+          />
+
+          {/* API Key */}
+          <Input
+            label={t("admin.providers.create.apiKey")}
+            type="password"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="sk-..."
+            required
+          />
+
+          {/* Priority */}
+          <Input
+            label={t("admin.providers.create.priority")}
+            type="number"
+            value={priority}
+            onChange={(e) => setPriority(e.target.value)}
+          />
+
+          {/* Headers */}
           <div>
-            <label className="block text-sm font-medium text-slate-700">
-              {t("admin.providers.create.apiKey")}
-              <span className="ml-2 text-xs font-normal text-slate-500">
-                {t("admin.providers.create.apiKeyHint")}
-              </span>
-            </label>
+            <label className="block text-sm font-medium mb-1.5">{t("admin.providers.create.headers")}</label>
             <textarea
-              rows={3}
-              value={apiKeys}
-              onChange={(e) => setApiKeys(e.target.value)}
-              className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-xs"
-              placeholder="sk-xxx..."
-            />
-          </div>
-
-          {/* Extra headers */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700">
-              {t("admin.providers.create.headers")}
-              <span className="ml-2 text-xs font-normal text-slate-500">
-                {t("admin.providers.create.headersHint")}
-              </span>
-            </label>
-            <textarea
-              rows={2}
               value={headers}
               onChange={(e) => setHeaders(e.target.value)}
-              className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-xs"
-              placeholder={"api-version: 2024-08-01-preview"}
+              rows={2}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
+              placeholder="api-version: 2024-08-01-preview"
             />
+            <p className="mt-1 text-xs text-muted-foreground">{t("admin.providers.create.headersHint")}</p>
           </div>
 
-          {/* Model mapping (visual editor) */}
+          {/* Model mapping with config */}
           <div>
-            <div className="flex items-center justify-between">
-              <label className="block text-sm font-medium text-slate-700">
-                {t("admin.providers.create.models")}
-                <span className="ml-2 text-xs font-normal text-slate-500">
-                  {t("admin.providers.create.models.count", { count: models.length })}
-                </span>
-              </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-medium">{t("admin.providers.create.models")}</label>
               <div className="flex gap-2">
-                <Button type="button" size="sm" variant="ghost" onClick={fetchModels}
-                        loading={fetchingModels} disabled={!baseUrl || !apiKeys}>
+                <Button type="button" size="sm" variant="ghost" onClick={fetchModels} loading={fetchingModels} disabled={!baseUrl || !apiKey}>
                   ↻ {t("admin.providers.create.autoFetch")}
                 </Button>
-                <Button type="button" size="sm" variant="ghost" onClick={addRow}>
+                <Button type="button" size="sm" variant="ghost" onClick={addModel}>
                   + {t("admin.providers.create.addRow")}
                 </Button>
               </div>
             </div>
+            
             {fetchResult && (
-              <p className={`mt-1 text-xs ${fetchResult.error ? "text-red-600" : "text-emerald-600"}`}>
+              <p className={`mb-2 text-xs ${fetchResult.error ? "text-destructive" : "text-success"}`}>
                 {fetchResult.error
                   ? `✗ ${fetchResult.error}`
-                  : `✓ ${t("admin.providers.create.fetchResult", {
-                      count: fetchResult.count,
-                      status: fetchResult.status,
-                      latency: fetchResult.latencyMs,
-                    })}`}
+                  : `✓ ${fetchResult.count} models fetched (${fetchResult.latencyMs}ms)`}
               </p>
             )}
-            <div className="mt-2 max-h-72 overflow-auto rounded-md border border-slate-200">
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500">
+
+            {/* Model list */}
+            <div className="max-h-72 overflow-auto rounded-md border">
+              <table className="w-full text-xs">
+                <thead className="bg-muted/50 sticky top-0">
                   <tr>
-                    <th className="px-3 py-2 text-left font-medium">{t("admin.providers.create.clientModel")}</th>
-                    <th className="px-3 py-2 text-left font-medium">{t("admin.providers.create.upstreamModel")}</th>
-                    <th className="w-12"></th>
+                    <th className="px-2 py-1.5 text-left font-medium">{t("admin.providers.create.clientModel")}</th>
+                    <th className="px-2 py-1.5 text-left font-medium">上游模型</th>
+                    <th className="px-2 py-1.5 text-left font-medium">上下文</th>
+                    <th className="px-2 py-1.5 text-left font-medium">输出</th>
+                    <th className="px-2 py-1.5 text-left font-medium">输入积分</th>
+                    <th className="px-2 py-1.5 text-left font-medium">输出积分</th>
+                    <th className="w-10"></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y">
                   {models.length === 0 ? (
-                    <tr><td colSpan={3} className="px-3 py-4 text-center text-xs text-slate-500">
-                      {fetchingModels
-                        ? t("admin.providers.create.fetching")
-                        : t("admin.providers.create.noMappings")}
-                    </td></tr>
-                  ) : models.map((row, idx) => (
-                    <tr key={idx}>
-                      <td className="px-2 py-1">
-                        <input type="text" value={row.client}
-                               onChange={(e) => updateRow(idx, "client", e.target.value)}
-                               placeholder="gpt-4o"
-                               className="w-full rounded border border-transparent bg-transparent px-1 py-1 text-xs font-mono hover:border-slate-300 focus:border-brand-500 focus:outline-none" />
-                      </td>
-                      <td className="px-2 py-1">
-                        <input type="text" value={row.upstream}
-                               onChange={(e) => updateRow(idx, "upstream", e.target.value)}
-                               placeholder="gpt-4o-2024-08-06"
-                               className="w-full rounded border border-transparent bg-transparent px-1 py-1 text-xs font-mono hover:border-slate-300 focus:border-brand-500 focus:outline-none" />
-                      </td>
-                      <td className="px-2 py-1">
-                        <button type="button" onClick={() => removeRow(idx)}
-                                className="text-xs text-slate-400 hover:text-red-600">×</button>
+                    <tr>
+                      <td colSpan={7} className="px-3 py-4 text-center text-muted-foreground">
+                        {fetchingModels ? t("admin.providers.create.fetching") : t("admin.providers.create.noMappings")}
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    models.map((m, idx) => (
+                      <tr key={idx}>
+                        <td className="px-1 py-1">
+                          <input
+                            type="text"
+                            value={m.client}
+                            onChange={(e) => updateModel(idx, "client", e.target.value)}
+                            placeholder="gpt-4o"
+                            className="w-full rounded border bg-transparent px-1 py-0.5 font-mono"
+                          />
+                        </td>
+                        <td className="px-1 py-1">
+                          <input
+                            type="text"
+                            value={m.upstream}
+                            onChange={(e) => updateModel(idx, "upstream", e.target.value)}
+                            placeholder="gpt-4o-2024-08-06"
+                            className="w-full rounded border bg-transparent px-1 py-0.5 font-mono"
+                          />
+                        </td>
+                        <td className="px-1 py-1">
+                          <input
+                            type="number"
+                            value={m.contextLength}
+                            onChange={(e) => updateModel(idx, "contextLength", Number(e.target.value))}
+                            className="w-20 rounded border bg-transparent px-1 py-0.5"
+                          />
+                        </td>
+                        <td className="px-1 py-1">
+                          <input
+                            type="number"
+                            value={m.maxOutputTokens}
+                            onChange={(e) => updateModel(idx, "maxOutputTokens", Number(e.target.value))}
+                            className="w-20 rounded border bg-transparent px-1 py-0.5"
+                          />
+                        </td>
+                        <td className="px-1 py-1">
+                          <input
+                            type="number"
+                            value={m.inputCost}
+                            onChange={(e) => updateModel(idx, "inputCost", Number(e.target.value))}
+                            step="0.1"
+                            className="w-16 rounded border bg-transparent px-1 py-0.5"
+                          />
+                        </td>
+                        <td className="px-1 py-1">
+                          <input
+                            type="number"
+                            value={m.outputCost}
+                            onChange={(e) => updateModel(idx, "outputCost", Number(e.target.value))}
+                            step="0.1"
+                            className="w-16 rounded border bg-transparent px-1 py-0.5"
+                          />
+                        </td>
+                        <td className="px-1 py-1">
+                          <button type="button" onClick={() => removeModel(idx)} className="text-muted-foreground hover:text-destructive">
+                            ×
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              积分: 每百万Token消耗的积分数量 (0 = 免费)
+            </p>
           </div>
 
           {/* Enabled */}
           <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={enabled}
-                   onChange={(e) => setEnabled(e.target.checked)}
-                   className="rounded border-slate-300" />
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={(e) => setEnabled(e.target.checked)}
+              className="rounded"
+            />
             {t("admin.providers.create.enabled")}
           </label>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-destructive">{error}</p>}
 
-          <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
+          <div className="flex justify-end gap-2 border-t pt-3">
             <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
               {t("common.cancel")}
             </Button>

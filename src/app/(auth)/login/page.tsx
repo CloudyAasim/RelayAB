@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { useT } from "@/components/i18n/I18nProvider";
-import { Server, Lock, User as UserIcon, ArrowRight } from "lucide-react";
+import { Server, Lock, User as UserIcon, ArrowRight, Home } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -48,6 +49,15 @@ export default function LoginPage() {
         <div className="absolute -top-32 -left-32 h-96 w-96 rounded-full bg-primary/10 blur-3xl" />
         <div className="absolute -bottom-32 -right-32 h-96 w-96 rounded-full bg-info/10 blur-3xl" />
       </div>
+
+      {/* Back to home link */}
+      <Link
+        href="/"
+        className="absolute left-4 top-4 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <Home className="h-4 w-4" />
+        {t("common.backToHome")}
+      </Link>
 
       <div className="relative w-full max-w-md">
         {/* Brand header */}
