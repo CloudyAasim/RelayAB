@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useRef } from "react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { useT } from "@/components/i18n/I18nProvider";
@@ -9,30 +9,54 @@ import type { User } from "@/lib/db/types";
 import { MoreHorizontal, Power, KeyRound, Trash2 } from "lucide-react";
 import { toggleUserAction, resetPasswordAction, deleteUserAction } from "./actions";
 
+/**
+ * UserActions — per-row action menu for the admin users table.
+ *
+ * Mutations are dispatched via Server Actions imported from ./actions.
+ * Each Server Action ends with redirect("/admin/users") after
+ * revalidatePath(); the browser follows the 303 to a freshly-rendered
+ * page that reads the new state from Redis.
+ */
 export function UserActions({ user: serverUser }: { user: User }) {
   const t = useT();
   const [menuOpen, setMenuOpen] = useState(false);
   const [passwordModal, setPasswordModal] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const errorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function showError(msg: string) {
+    setError(msg);
+    if (errorTimer.current) clearTimeout(errorTimer.current);
+    errorTimer.current = setTimeout(() => setError(null), 5000);
+  }
+
+  function isNextNavError(e: unknown): boolean {
+    if (!(e instanceof Error)) return false;
+    const msg = e.message;
+    return (
+      msg.includes("NEXT_REDIRECT") ||
+      msg.includes("NEXT_NOT_FOUND") ||
+      // Next.js sometimes attaches the marker on the digest, not the message.
+      (e as { digest?: string }).digest?.startsWith("NEXT_") === true
+    );
+  }
 
   function runToggle() {
     setError(null);
+    setMenuOpen(false);
     startTransition(async () => {
       try {
         const fd = new FormData();
         fd.set("userId", serverUser.id);
         fd.set("disabled", String(!serverUser.disabled));
-        // toggleUserAction ends with redirect("/admin/users"), so the page
-        // navigates and the in-flight UI is replaced. The transition
-        // stays pending until then.
         await toggleUserAction(fd);
+        // On success, toggleUserAction redirected — control never reaches here.
       } catch (e) {
-        // redirect() throws a special Next.js error to perform the
-        // navigation — that's not a real failure.
-        const msg = e instanceof Error ? e.message : String(e);
-        if (msg.includes("NEXT_REDIRECT")) return;
-        setError(apiErrorMessage(t, undefined, msg));
+        if (isNextNavError(e)) return; // normal redirect, ignore
+        const msg = e instanceof Error ? e.message : "unknown error";
+        console.error("[UserActions] toggle failed:", e);
+        showError(apiErrorMessage(t, undefined, msg));
         setMenuOpen(true);
       }
     });
@@ -48,9 +72,9 @@ export function UserActions({ user: serverUser }: { user: User }) {
         setPasswordModal(result.generatedPassword);
         setMenuOpen(false);
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        if (msg.includes("NEXT_REDIRECT")) return;
-        setError(apiErrorMessage(t, undefined, msg));
+        if (isNextNavError(e)) return;
+        const msg = e instanceof Error ? e.message : "unknown error";
+        showError(apiErrorMessage(t, undefined, msg));
       }
     });
   }
@@ -58,15 +82,17 @@ export function UserActions({ user: serverUser }: { user: User }) {
   function runDelete() {
     if (!confirm(t("admin.users.action.confirmDelete"))) return;
     setError(null);
+    setMenuOpen(false);
     startTransition(async () => {
       try {
         const fd = new FormData();
         fd.set("userId", serverUser.id);
         await deleteUserAction(fd);
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        if (msg.includes("NEXT_REDIRECT")) return;
-        setError(apiErrorMessage(t, undefined, msg));
+        if (isNextNavError(e)) return;
+        const msg = e instanceof Error ? e.message : "unknown error";
+        showError(apiErrorMessage(t, undefined, msg));
+        setMenuOpen(true);
       }
     });
   }
@@ -93,10 +119,7 @@ export function UserActions({ user: serverUser }: { user: User }) {
           <Button
             variant="outline"
             className="w-full justify-start"
-            onClick={() => {
-              setMenuOpen(false);
-              runToggle();
-            }}
+            onClick={runToggle}
             disabled={isPending}
           >
             <Power className="mr-2 h-4 w-4" />
@@ -105,10 +128,7 @@ export function UserActions({ user: serverUser }: { user: User }) {
           <Button
             variant="outline"
             className="w-full justify-start"
-            onClick={() => {
-              setMenuOpen(false);
-              runReset();
-            }}
+            onClick={runReset}
             disabled={isPending}
           >
             <KeyRound className="mr-2 h-4 w-4" />
@@ -118,10 +138,7 @@ export function UserActions({ user: serverUser }: { user: User }) {
             <Button
               variant="ghost"
               className="w-full justify-start text-destructive hover:bg-destructive/10"
-              onClick={() => {
-                setMenuOpen(false);
-                runDelete();
-              }}
+              onClick={runDelete}
               disabled={isPending}
             >
               <Trash2 className="mr-2 h-4 w-4" />

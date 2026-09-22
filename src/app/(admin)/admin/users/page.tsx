@@ -22,6 +22,11 @@ import { UserActions } from "./UserActions";
 import { AllocationEditor } from "./AllocationEditor";
 import { Users as UsersIcon } from "lucide-react";
 
+// VERSION STAMP — bump on every meaningful change to this page.
+// Visible in the rendered HTML (data attribute + footer line) so we can
+// verify which code is actually deployed without ambiguity.
+const PAGE_VERSION = "v6-server-action-direct-2025-09-22";
+
 export default async function UsersPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
@@ -50,7 +55,22 @@ export default async function UsersPage() {
           <CreateUserButton />
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
-          <Card>
+          {/* VERSION STAMP: do not remove. Helps verify deployment. */}
+          <div
+            data-page-version={PAGE_VERSION}
+            className="mb-4 rounded-md border border-dashed border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning-foreground"
+          >
+            <strong>部署版本：</strong> <code className="font-mono">{PAGE_VERSION}</code>
+            {" · 共 "}
+            <span data-user-count={users.length}>{users.length}</span>
+            {" 个用户 · "}
+            <span data-disabled-count={users.filter((u) => u.disabled).length}>
+              {users.filter((u) => u.disabled).length}
+            </span>
+            {" 个已停用"}
+          </div>
+
+          <Card data-users-table>
             {users.length === 0 ? (
               <EmptyState
                 icon={<UsersIcon className="h-5 w-5" />}
