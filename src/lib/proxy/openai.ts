@@ -415,6 +415,7 @@ export async function proxyOpenAIResponse(args: {
     ? deps.upstreamUrlFor(provider)
     : defaultResponsesUrl(provider);
 
+
   // 4. Decrypt upstream key
   const upstreamKey = decryptSecret(provider.encryptedApiKey);
 

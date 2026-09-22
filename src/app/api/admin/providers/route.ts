@@ -29,6 +29,7 @@ const PostSchema = z.object({
   enabled: z.boolean().optional(),
   priority: z.number().int().optional(),
   headers: z.record(z.string(), z.string()).optional(),
+  upstreamFormat: z.enum(["responses", "chat", "anthropic"]).optional(),
 });
 
 export async function GET(): Promise<Response> {
@@ -92,6 +93,7 @@ export async function POST(req: Request): Promise<Response> {
       enabled: parsed.data.enabled ?? true,
       priority: parsed.data.priority ?? 1,
       headers: parsed.data.headers,
+      upstreamFormat: parsed.data.upstreamFormat ?? "chat",
     });
     return NextResponse.json({
       ok: true,

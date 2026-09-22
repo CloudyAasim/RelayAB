@@ -16,6 +16,7 @@ const PatchSchema = z.object({
   enabled: z.boolean().optional(),
   priority: z.number().int().optional(),
   headers: z.record(z.string(), z.string()).optional(),
+  upstreamFormat: z.enum(["responses", "chat", "anthropic"]).optional(),
 });
 
 export async function PATCH(

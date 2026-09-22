@@ -248,6 +248,7 @@ export function CreateProviderButton({ onCreated }: Props) {
           enabled,
           priority: Number(priority) || 0,
           headers: parseHeaders(),
+          upstreamFormat,
         }),
       });
       
