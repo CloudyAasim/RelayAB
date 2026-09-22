@@ -8,6 +8,7 @@
  * Returns the updated user on success.
  */
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getUserById, updateUser } from "@/lib/db/users";
 import { toPublicUser } from "@/lib/db/types";
@@ -69,6 +70,14 @@ export async function POST(
       { ok: false, error: { code: "not_found", message: "User not found" } },
       { status: 404 },
     );
+  }
+
+  // Force Next.js to drop any cached RSC payload for the users page so the
+  // very next render of /admin/users reads the new disabled flag from Redis.
+  try {
+    revalidatePath("/admin/users");
+  } catch {
+    // revalidatePath is a no-op in some contexts; safe to ignore.
   }
 
   // Disable caching at every layer — the page that requested this MUST

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -9,30 +9,32 @@ import { apiErrorMessage } from "@/lib/i18n/api-errors";
 import type { User } from "@/lib/db/types";
 import { MoreHorizontal, Power, KeyRound, Trash2 } from "lucide-react";
 
-export function UserActions({ user: initialUser }: { user: User }) {
+export function UserActions({ user: serverUser }: { user: User }) {
   const t = useT();
   const router = useRouter();
 
-  const [user, setUser] = useState(initialUser);
+  // We treat the SERVER as the source of truth. `serverUser` is the prop
+  // coming from the parent server component (re-renders on every page refresh
+  // because UsersPage declares `export const dynamic = "force-dynamic"`).
+  //
+  // We do NOT maintain a local copy of `disabled` because that creates a
+  // two-source-of-truth problem: a sync effect can fight the optimistic update.
+  // Instead, after a successful toggle we trigger router.refresh() + a hard
+  // navigation, both of which cause the parent to re-render with fresh data
+  // from Redis.
+
   const [newPassword, setNewPassword] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
-  if (
-    user.disabled !== initialUser.disabled ||
-    user.role !== initialUser.role ||
-    user.quotaLimit !== initialUser.quotaLimit
-  ) {
-    setUser(initialUser);
-  }
-
   async function toggle() {
     if (loading) return;
 
-    const targetDisabled = !user.disabled;
+    const targetDisabled = !serverUser.disabled;
+
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/users/${user.id}/toggle`, {
+      const res = await fetch(`/api/admin/users/${serverUser.id}/toggle`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -52,30 +54,24 @@ export function UserActions({ user: initialUser }: { user: User }) {
         return;
       }
 
-      // Apply optimistic update from server response
-      if (data.data?.user) {
-        const updated = data.data.user as User;
-        setUser(updated);
-      }
-
-      // Force a full server re-render. We try router.refresh() first
-      // (the canonical Next.js way), then fall back to a hard navigation
-      // with a cache-busting query param so no CDN / browser cache can
-      // possibly serve a stale page.
+      // Tell Next.js to re-render the server component with fresh data.
+      // The parent's `dynamic = "force-dynamic"` guarantees a fresh fetch
+      // from Redis on this refresh.
       try {
         router.refresh();
       } catch {
         // ignore
       }
 
-      // Belt-and-suspenders: after a tick, do a hard navigation. This is
-      // guaranteed to fetch a fresh server-rendered page because the URL
-      // changes (?_= timestamp) — no cache layer can match.
+      // Hard reload as a fallback — guaranteed to bypass any cache layer.
+      // We do this after a tick so router.refresh() gets a chance first
+      // (router.refresh is the smooth UX path; the hard reload is the
+      // belt-and-suspenders backup).
       setTimeout(() => {
         const url = new URL(window.location.href);
         url.searchParams.set("_", String(Date.now()));
         window.location.assign(url.toString());
-      }, 150);
+      }, 200);
     } catch (err) {
       console.error("[toggle] error:", err);
       alert(t("admin.users.action.failed"));
@@ -87,7 +83,7 @@ export function UserActions({ user: initialUser }: { user: User }) {
   async function reset() {
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/users/${user.id}/reset-password`, {
+      const res = await fetch(`/api/admin/users/${serverUser.id}/reset-password`, {
         method: "POST",
         headers: { "Cache-Control": "no-store" },
         cache: "no-store",
@@ -110,10 +106,13 @@ export function UserActions({ user: initialUser }: { user: User }) {
     if (!confirm(t("admin.users.action.confirmDelete"))) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/users/${user.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/admin/users/${serverUser.id}`, { method: "DELETE" });
       const data = await res.json();
       if (!data.ok) alert(apiErrorMessage(t, data.error?.code, data.error?.message));
-      else window.location.reload();
+      else {
+        router.refresh();
+        setTimeout(() => window.location.reload(), 200);
+      }
     } catch {
       alert(t("admin.users.action.failed"));
     } finally {
@@ -136,7 +135,7 @@ export function UserActions({ user: initialUser }: { user: User }) {
       <Modal
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
-        title={user.username}
+        title={serverUser.username}
         description={t("common.actions")}
       >
         <div className="space-y-2">
@@ -150,7 +149,7 @@ export function UserActions({ user: initialUser }: { user: User }) {
             disabled={loading}
           >
             <Power className="mr-2 h-4 w-4" />
-            {user.disabled ? t("admin.users.action.enable") : t("admin.users.action.disable")}
+            {serverUser.disabled ? t("admin.users.action.enable") : t("admin.users.action.disable")}
           </Button>
           <Button
             variant="outline"
@@ -187,7 +186,7 @@ export function UserActions({ user: initialUser }: { user: User }) {
         title={t("admin.users.action.passwordReset")}
       >
         <div className="space-y-3">
-          <p className="text-sm text-muted-foreground">{user.username}</p>
+          <p className="text-sm text-muted-foreground">{serverUser.username}</p>
           {newPassword && (
             <div className="rounded-md border border-warning/30 bg-warning/10 p-3 font-mono text-sm break-all select-all">
               {newPassword}
