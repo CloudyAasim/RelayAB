@@ -20,6 +20,17 @@ import { resetPasswordAction } from "./actions";
  *
  * Reset-password uses a Server Action because it needs to RETURN the
  * generated plaintext to the UI (a 303 redirect can't carry that).
+ *
+ * ⚠️ DO NOT unmount these forms from their `onSubmit` handler.
+ *
+ * Closing the modal (`setMenuOpen(false)`) inside `onSubmit` removes the
+ * <form> from the DOM while the submit event is still being dispatched.
+ * The browser then aborts the pending navigation with
+ * "Form submission canceled because the form is not connected", so the
+ * POST never leaves the browser — the row silently stays unchanged.
+ * That is exactly why the earlier "plain form" attempt appeared to do
+ * nothing in production. Mark the row as busy instead and let the browser
+ * finish the submit; the 303 redirect renders the modal away for us.
  */
 export function UserActions({ user: serverUser }: { user: User }) {
   const t = useT();
@@ -27,6 +38,9 @@ export function UserActions({ user: serverUser }: { user: User }) {
   const [passwordModal, setPasswordModal] = useState<string | null>(null);
   const [resetError, setResetError] = useState<string | null>(null);
   const [isResetting, startResetTransition] = useTransition();
+  /** Which form-POST is in flight, so we can lock the menu against double
+   *  submits without tearing the <form> out of the document. */
+  const [pending, setPending] = useState<"toggle" | "delete" | null>(null);
 
   async function runReset() {
     setResetError(null);
@@ -71,7 +85,7 @@ export function UserActions({ user: serverUser }: { user: User }) {
           <form
             method="POST"
             action={`/api/admin/users/${serverUser.id}/toggle`}
-            onSubmit={() => setMenuOpen(false)}
+            onSubmit={() => setPending("toggle")}
           >
             <input type="hidden" name="userId" value={serverUser.id} />
             <input
@@ -83,6 +97,8 @@ export function UserActions({ user: serverUser }: { user: User }) {
               type="submit"
               variant="outline"
               className="w-full justify-start"
+              loading={pending === "toggle"}
+              disabled={pending !== null}
             >
               <Power className="mr-2 h-4 w-4" />
               {serverUser.disabled ? t("admin.users.action.enable") : t("admin.users.action.disable")}
@@ -93,7 +109,7 @@ export function UserActions({ user: serverUser }: { user: User }) {
             variant="outline"
             className="w-full justify-start"
             onClick={runReset}
-            disabled={isResetting}
+            disabled={isResetting || pending !== null}
           >
             <KeyRound className="mr-2 h-4 w-4" />
             {t("admin.users.action.resetPassword")}
@@ -108,10 +124,13 @@ export function UserActions({ user: serverUser }: { user: User }) {
               action={`/api/admin/users/${serverUser.id}/delete-form`}
               onSubmit={(e) => {
                 if (!confirm(t("admin.users.action.confirmDelete"))) {
+                  // User declined → stop the native POST.
                   e.preventDefault();
-                } else {
-                  setMenuOpen(false);
+                  return;
                 }
+                // Let the browser submit. Unmounting the form here would
+                // cancel this very submission (see the note at the top).
+                setPending("delete");
               }}
             >
               <input type="hidden" name="userId" value={serverUser.id} />
@@ -119,6 +138,8 @@ export function UserActions({ user: serverUser }: { user: User }) {
                 type="submit"
                 variant="ghost"
                 className="w-full justify-start text-destructive hover:bg-destructive/10"
+                loading={pending === "delete"}
+                disabled={pending !== null}
               >
                 <Trash2 className="mr-2 h-4 w-4" />
                 {t("common.delete")}

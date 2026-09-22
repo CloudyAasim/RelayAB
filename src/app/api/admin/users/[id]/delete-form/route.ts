@@ -10,6 +10,7 @@ import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth/session";
 import { deleteApiKeysByUser } from "@/lib/db/keys";
 import { getUserById } from "@/lib/db/users";
+import { seeOther } from "@/lib/http/see-other";
 
 const FormSchema = z.object({
   userId: z.string().min(1),
@@ -66,5 +67,5 @@ export async function POST(req: Request): Promise<Response> {
   await deleteUser(userId);
 
   revalidatePath("/admin/users");
-  return NextResponse.redirect(new URL("/admin/users", req.url), 303);
+  return seeOther("/admin/users");
 }

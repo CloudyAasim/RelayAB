@@ -19,6 +19,7 @@ import { z } from "zod";
 import { getUserById, updateUser } from "@/lib/db/users";
 import { toPublicUser } from "@/lib/db/types";
 import { getCurrentUser } from "@/lib/auth/session";
+import { seeOther } from "@/lib/http/see-other";
 
 const JsonSchema = z.object({
   disabled: z.boolean(),
@@ -132,7 +133,9 @@ export async function POST(req: Request): Promise<Response> {
     // Browser submitted a plain HTML form → return a 303 redirect back to
     // the users page. The browser follows the redirect natively and renders
     // a fresh server-rendered page that reads the latest Redis state.
-    return NextResponse.redirect(new URL("/admin/users", req.url), 303);
+    // Relative Location: stays on the origin the browser is already on, so
+    // the session cookie still matches (see lib/http/see-other.ts).
+    return seeOther("/admin/users");
   }
 
   return NextResponse.json(
