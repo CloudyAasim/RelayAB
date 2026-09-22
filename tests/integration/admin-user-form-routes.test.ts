@@ -1,25 +1,9 @@
 /**
  * Drives the plain-HTML-form endpoints behind the admin users table
- * ("停用/启用" and "删除") the way a browser does: an
- * application/x-www-form-urlencoded POST to a URL carrying the user id.
- *
- * Regression guard for two production-only failure modes:
- *
- * 1. The 303 must point at a *relative* path. Built from `req.url` it would
- *    pin the redirect to whatever host the serverless runtime reconstructed;
- *    if that differs from the host the admin browses (custom domain, preview
- *    alias), the session cookie no longer matches and the admin is bounced to
- *    /login — which looks exactly like "the button did nothing".
- * 2. The mutation must actually persist, because the page has no client-side
- *    state to fall back on: the next render is the only feedback.
- * 3. Every outcome (success or failure) must come back as a redirect + flash
- *    banner rather than a bare HTML error page: an admin staring at an
- *    unchanged table cannot tell "the write failed" from "the request was
- *    never sent", and that ambiguity is what made this bug so hard to see.
+ * ("删除") the way a browser does.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-// --- Mock next/headers so the session module works outside a real request ---
 let currentStore: import("@/lib/auth/session").InMemoryCookieStore | null = null;
 vi.mock("next/headers", () => ({
   cookies: async () => currentStore,
@@ -43,7 +27,6 @@ async function loginAs(
   await s.save();
 }
 
-/** Exactly what a browser sends for `<form method="POST">`. */
 function formRequest(path: string, fields: Record<string, string>): Request {
   return new Request(`https://relay.example.com${path}`, {
     method: "POST",
@@ -52,7 +35,6 @@ function formRequest(path: string, fields: Record<string, string>): Request {
   });
 }
 
-/** Decode the `relay_flash` cookie the route attaches to its 303. */
 function readFlashCookie(res: Response): { kind: string; message: string } | null {
   const raw = res.headers.getSetCookie?.() ?? [];
   const cookie = raw.find((c) => c.startsWith("relay_flash="));
@@ -66,121 +48,6 @@ describe("admin user form-POST endpoints", () => {
     __resetRedisForTest();
     __setRedisForTest(createMemoryRedis());
     currentStore = null;
-  });
-
-  it("toggle disables a user and redirects with an origin-relative Location", async () => {
-    const admin = await createUser({ username: "admin", password: "pw", role: "admin" });
-    const target = await createUser({ username: "alice", password: "pw" });
-    const store = new InMemoryCookieStore();
-    await loginAs(store, admin.id, "admin", "admin");
-    currentStore = store;
-
-    const { POST } = await import("@/app/api/admin/users/[id]/toggle/route");
-    const res = await POST(
-      formRequest(`/api/admin/users/${target.id}/toggle`, {
-        userId: target.id,
-        disabled: "true",
-      }),
-    );
-
-    expect(res.status).toBe(303);
-    // Must NOT be absolute: an absolute host can differ from the browsing
-    // origin and drop the session cookie on the way back.
-    expect(res.headers.get("location")).toBe("/admin/users");
-
-    expect((await getUserById(target.id))?.disabled).toBe(true);
-
-    // The banner echoes what was read back from Redis, so a stale-looking row
-    // can be told apart from a write that never landed.
-    const flash = readFlashCookie(res);
-    expect(flash?.kind).toBe("ok");
-    expect(flash?.message).toContain("alice");
-    expect(flash?.message).toContain("disabled=1");
-  });
-
-  it("toggle re-enables a disabled user", async () => {
-    const admin = await createUser({ username: "admin", password: "pw", role: "admin" });
-    const target = await createUser({ username: "bob", password: "pw" });
-    const store = new InMemoryCookieStore();
-    await loginAs(store, admin.id, "admin", "admin");
-    currentStore = store;
-
-    const { POST } = await import("@/app/api/admin/users/[id]/toggle/route");
-    await POST(
-      formRequest(`/api/admin/users/${target.id}/toggle`, {
-        userId: target.id,
-        disabled: "true",
-      }),
-    );
-    const res = await POST(
-      formRequest(`/api/admin/users/${target.id}/toggle`, {
-        userId: target.id,
-        disabled: "false",
-      }),
-    );
-
-    expect(res.status).toBe(303);
-    expect((await getUserById(target.id))?.disabled).toBe(false);
-    expect(readFlashCookie(res)?.message).toContain("disabled=0");
-  });
-
-  it("refuses to disable the signed-in admin's own account, with a visible banner", async () => {
-    const admin = await createUser({ username: "admin", password: "pw", role: "admin" });
-    const store = new InMemoryCookieStore();
-    await loginAs(store, admin.id, "admin", "admin");
-    currentStore = store;
-
-    const { POST } = await import("@/app/api/admin/users/[id]/toggle/route");
-    const res = await POST(
-      formRequest(`/api/admin/users/${admin.id}/toggle`, {
-        userId: admin.id,
-        disabled: "true",
-      }),
-    );
-
-    expect(res.status).toBe(303);
-    expect(res.headers.get("location")).toBe("/admin/users");
-    expect(readFlashCookie(res)?.kind).toBe("error");
-    expect((await getUserById(admin.id))?.disabled).toBe(false);
-  });
-
-  it("rejects a form whose userId does not match the URL", async () => {
-    const admin = await createUser({ username: "admin", password: "pw", role: "admin" });
-    const target = await createUser({ username: "carol", password: "pw" });
-    const store = new InMemoryCookieStore();
-    await loginAs(store, admin.id, "admin", "admin");
-    currentStore = store;
-
-    const { POST } = await import("@/app/api/admin/users/[id]/toggle/route");
-    const res = await POST(
-      formRequest(`/api/admin/users/${target.id}/toggle`, {
-        userId: "someone-else",
-        disabled: "true",
-      }),
-    );
-
-    expect(res.status).toBe(303);
-    expect(readFlashCookie(res)?.kind).toBe("error");
-    expect((await getUserById(target.id))?.disabled).toBe(false);
-  });
-
-  it("requires an admin session", async () => {
-    const user = await createUser({ username: "dave", password: "pw" });
-    const store = new InMemoryCookieStore();
-    await loginAs(store, user.id, "dave", "user");
-    currentStore = store;
-
-    const { POST } = await import("@/app/api/admin/users/[id]/toggle/route");
-    const res = await POST(
-      formRequest(`/api/admin/users/${user.id}/toggle`, {
-        userId: user.id,
-        disabled: "true",
-      }),
-    );
-
-    expect(res.status).toBe(303);
-    expect(readFlashCookie(res)?.kind).toBe("error");
-    expect((await getUserById(user.id))?.disabled).toBe(false);
   });
 
   it("delete-form removes the user plus their keys, and redirects relatively", async () => {
@@ -205,5 +72,41 @@ describe("admin user form-POST endpoints", () => {
     expect(await getUserById(target.id)).toBeNull();
     expect(await getApiKeyById(key.id)).toBeNull();
     expect(readFlashCookie(res)).toMatchObject({ kind: "ok" });
+  });
+
+  it("delete-form requires an admin session", async () => {
+    const user = await createUser({ username: "dave", password: "pw" });
+    const store = new InMemoryCookieStore();
+    await loginAs(store, user.id, "dave", "user");
+    currentStore = store;
+
+    const { POST } = await import("@/app/api/admin/users/[id]/delete-form/route");
+    const res = await POST(
+      formRequest(`/api/admin/users/${user.id}/delete-form`, {
+        userId: user.id,
+      }),
+    );
+
+    expect(res.status).toBe(303);
+    expect(readFlashCookie(res)?.kind).toBe("error");
+    expect(await getUserById(user.id)).not.toBeNull();
+  });
+
+  it("delete-form refuses to delete own account", async () => {
+    const admin = await createUser({ username: "admin", password: "pw", role: "admin" });
+    const store = new InMemoryCookieStore();
+    await loginAs(store, admin.id, "admin", "admin");
+    currentStore = store;
+
+    const { POST } = await import("@/app/api/admin/users/[id]/delete-form/route");
+    const res = await POST(
+      formRequest(`/api/admin/users/${admin.id}/delete-form`, {
+        userId: admin.id,
+      }),
+    );
+
+    expect(res.status).toBe(303);
+    expect(readFlashCookie(res)?.kind).toBe("error");
+    expect(await getUserById(admin.id)).not.toBeNull();
   });
 });

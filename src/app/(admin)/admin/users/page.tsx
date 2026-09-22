@@ -18,18 +18,13 @@ import {
 import { formatDate } from "@/lib/utils";
 import { getT } from "@/lib/i18n/server";
 import { AuthenticatedLayout, SectionPageLayout } from "@/components/layouts";
-import { Button } from "@/components/ui/Button";
-import { readFlash } from "@/lib/http/flash";
 import { CreateUserButton } from "./CreateUserButton";
 import { UserActions } from "./UserActions";
 import { AllocationEditor } from "./AllocationEditor";
-import { DeployProbe } from "./DeployProbe";
 import { Users as UsersIcon } from "lucide-react";
 
 // VERSION STAMP — bump on every meaningful change to this page.
-// Visible in the rendered HTML (data attribute + footer line) so we can
-// verify which code is actually deployed without ambiguity.
-const PAGE_VERSION = "v9-nojs-toggle-flash-2025-09-22";
+const PAGE_VERSION = "v10-clean-2025-09-22";
 
 export default async function UsersPage() {
   const user = await getCurrentUser();
@@ -37,7 +32,6 @@ export default async function UsersPage() {
   if (user.role !== "admin") redirect("/dashboard");
 
   const { t } = await getT();
-  const flash = await readFlash();
   const [{ users }, providers] = await Promise.all([
     listUsers({ limit: 200 }),
     listProviders({ enabledOnly: true }),
@@ -47,11 +41,6 @@ export default async function UsersPage() {
     new Set(providers.flatMap((p) => Object.keys(p.modelMapping))),
   ).sort();
 
-  // The table's client components receive their props across the
-  // server→client boundary, which means anything handed to them is
-  // serialized into the HTML/RSC payload the browser downloads. Hand over the
-  // password-hash-free projection (same helper the JSON APIs use) so bcrypt
-  // hashes never leave the server.
   const publicUsers = users.map(toPublicUser);
 
   return (
@@ -67,7 +56,7 @@ export default async function UsersPage() {
           <CreateUserButton />
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
-          {/* VERSION STAMP: do not remove. Helps verify deployment. */}
+          {/* VERSION STAMP */}
           <div
             data-page-version={PAGE_VERSION}
             className="mb-4 rounded-md border border-dashed border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning-foreground"
@@ -75,32 +64,8 @@ export default async function UsersPage() {
             <strong>部署版本：</strong> <code className="font-mono">{PAGE_VERSION}</code>
             {" · 共 "}
             <span data-user-count={publicUsers.length}>{publicUsers.length}</span>
-            {" 个用户 · "}
-            <span data-disabled-count={publicUsers.filter((u) => u.disabled).length}>
-              {publicUsers.filter((u) => u.disabled).length}
-            </span>
-            {" 个已停用 · "}
-            <DeployProbe />
+            {" 个用户"}
           </div>
-
-          {/*
-            Result of the last form-POST (toggle / delete). Without this the
-            page is silent about failures and "nothing happened" is
-            indistinguishable from "the request was never sent".
-          */}
-          {flash && (
-            <div
-              data-flash={flash.kind}
-              className={
-                "mb-4 rounded-md border px-3 py-2 text-sm " +
-                (flash.kind === "ok"
-                  ? "border-success/40 bg-success/10 text-success-foreground"
-                  : "border-destructive/40 bg-destructive/10 text-destructive")
-              }
-            >
-              {flash.message}
-            </div>
-          )}
 
           <Card data-users-table>
             {publicUsers.length === 0 ? (
@@ -117,7 +82,6 @@ export default async function UsersPage() {
                     <TH>{t("admin.users.create.username")}</TH>
                     <TH>{t("admin.users.create.displayName")}</TH>
                     <TH>{t("admin.users.create.role")}</TH>
-                    <TH>{t("dashboard.table.status")}</TH>
                     <TH>{t("dashboard.table.time")}</TH>
                     <TH className="w-48 text-right">{t("common.actions")}</TH>
                   </TR>
@@ -137,41 +101,9 @@ export default async function UsersPage() {
                             : t("admin.users.role.user")}
                         </Badge>
                       </TD>
-                      <TD data-user-id={u.id} data-disabled={String(u.disabled)}>
-                        <Badge tone={u.disabled ? "neutral" : "success"}>
-                          {u.disabled
-                            ? t("dashboard.status.disabled")
-                            : t("dashboard.status.enabled")}
-                        </Badge>
-                      </TD>
                       <TD className="text-muted-foreground">{formatDate(u.createdAt)}</TD>
                       <TD className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          {/*
-                            Plain server-rendered form: the enable/disable
-                            action must survive a build whose client JS never
-                            boots, so it does NOT live inside the (client-only)
-                            ⋮ modal.
-                          */}
-                          <form
-                            method="POST"
-                            action={`/api/admin/users/${u.id}/toggle`}
-                            data-inline-toggle
-                          >
-                            <input type="hidden" name="userId" value={u.id} />
-                            <input
-                              type="hidden"
-                              name="disabled"
-                              value={u.disabled ? "false" : "true"}
-                            />
-                            <Button type="submit" size="sm" variant="outline">
-                              {u.disabled
-                                ? t("admin.users.action.enable")
-                                : t("admin.users.action.disable")}
-                            </Button>
-                          </form>
-                          <UserActions user={u} />
-                        </div>
+                        <UserActions user={u} />
                       </TD>
                     </TR>
                   ))}

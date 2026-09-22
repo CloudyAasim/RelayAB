@@ -209,14 +209,12 @@ const zhCN: Dict = {
   "apiError.unauthenticated": "登录状态已失效，请重新登录。",
   "apiError.forbidden": "你没有权限执行此操作。",
   "apiError.userNotFound": "用户不存在，可能已被删除。",
-  "apiError.userDisabled": "你的账号已被停用，请联系管理员。",
   "apiError.passwordTooShort": "新密码至少 8 个字符。",
   "apiError.passwordTooLong": "新密码过长。",
   "apiError.maxKeysReached": "已达到管理员设置的活跃 Key 上限，请先停用或删除一把。",
   "apiError.notFound": "找不到对应的资源。",
   "apiError.badRequest": "请求参数有误，请检查后重试。",
   "apiError.internal": "服务器出错了，请稍后重试。",
-  "apiError.selfDisable": "不能停用你自己的账号。",
   "apiError.selfDelete": "不能删除你自己的账号。",
 
   // ===== Docs page =====
@@ -304,18 +302,13 @@ const zhCN: Dict = {
   "admin.users.create.submit": "创建",
   "admin.users.role.admin": "管理员",
   "admin.users.role.user": "普通用户",
-  "admin.users.action.enable": "启用",
-  "admin.users.action.disable": "停用",
   "admin.users.action.resetPassword": "重置密码",
   "admin.users.action.passwordReset": "密码已重置",
   "admin.users.action.copy": "复制",
   "admin.users.action.failed": "操作失败",
   "admin.users.action.confirmDelete": "确定删除这个用户？此操作不可撤销。",
   "admin.users.action.passwordResetHint": "明文仅显示一次，请立即复制并通过安全渠道转交给用户。",
-  "admin.users.flash.disabled": "已停用 {username}",
-  "admin.users.flash.enabled": "已启用 {username}",
   "admin.users.flash.deleted": "已删除 {username}",
-  "admin.users.flash.dbValue": "数据库 disabled={raw}",
 
 
   // ===== Admin Users: allocation editor =====
@@ -717,14 +710,12 @@ const en: Dict = {
   "apiError.unauthenticated": "Your session has expired. Please sign in again.",
   "apiError.forbidden": "You do not have permission to do that.",
   "apiError.userNotFound": "That user no longer exists.",
-  "apiError.userDisabled": "Your account is disabled. Contact an administrator.",
   "apiError.passwordTooShort": "The new password must be at least 8 characters.",
   "apiError.passwordTooLong": "The new password is too long.",
   "apiError.maxKeysReached": "You have reached the active-key limit set by your admin. Disable or delete a key first.",
   "apiError.notFound": "That resource could not be found.",
   "apiError.badRequest": "The request was malformed. Check the input and try again.",
   "apiError.internal": "Something went wrong on the server. Please try again.",
-  "apiError.selfDisable": "You cannot disable your own account.",
   "apiError.selfDelete": "You cannot delete your own account.",
 
   // ===== Docs page =====
@@ -812,18 +803,13 @@ const en: Dict = {
   "admin.users.create.submit": "Create",
   "admin.users.role.admin": "Admin",
   "admin.users.role.user": "User",
-  "admin.users.action.enable": "Enable",
-  "admin.users.action.disable": "Disable",
   "admin.users.action.resetPassword": "Reset Password",
   "admin.users.action.passwordReset": "Password Reset",
   "admin.users.action.copy": "Copy",
   "admin.users.action.failed": "Failed",
   "admin.users.action.confirmDelete": "Delete this user? This cannot be undone.",
   "admin.users.action.passwordResetHint": "The plaintext is shown only once — copy it now and deliver it over a secure channel.",
-  "admin.users.flash.disabled": "Disabled {username}",
-  "admin.users.flash.enabled": "Enabled {username}",
   "admin.users.flash.deleted": "Deleted {username}",
-  "admin.users.flash.dbValue": "database disabled={raw}",
 
 
   // ===== Admin Users: allocation editor =====

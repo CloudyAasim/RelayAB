@@ -1,7 +1,7 @@
 /**
  * app/api/admin/users/[id]/route.ts
  *
- * PATCH  /api/admin/users/[id]  body: { displayName?, role?, disabled? }
+ * PATCH  /api/admin/users/[id]  body: { displayName?, role?, quotaType?, quotaLimit?, quotaUsed?, maxActiveKeys?, allowedModels? }
  * DELETE /api/admin/users/[id]
  */
 import { NextResponse } from "next/server";
@@ -14,7 +14,6 @@ import { getCurrentUser } from "@/lib/auth/session";
 const PatchSchema = z.object({
   displayName: z.string().optional(),
   role: z.enum(["admin", "user"]).optional(),
-  disabled: z.boolean().optional(),
   // Admin-controlled policy. `quotaLimit` is the size of the user's pool;
   // `quotaUsed` lets an admin top someone up or reset consumption.
   quotaType: z.enum(["credits", "tokens"]).optional(),
