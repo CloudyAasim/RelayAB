@@ -135,7 +135,6 @@ export const k = {
   apiKeyByHash: (hash: string) => `${KEY_PREFIX}apikey:hash:${hash}`,
   apiKeyByUser: (userId: string) => `${KEY_PREFIX}apikey:by-user:${userId}`,
   provider: (id: string) => `${KEY_PREFIX}provider:${id}`,
-  providerIndex: () => `${KEY_PREFIX}provider:index`,
   usageLog: (apiKeyId: string, logId: string) =>
     `${KEY_PREFIX}log:${apiKeyId}:${logId}`,
   usageLogsByKey: (apiKeyId: string) =>

@@ -1,21 +1,13 @@
 /**
  * src/lib/db/providers.ts
  *
- * Repository for upstream `Provider` entities. Each Provider is one
- * upstream AI service account (OpenAI, Anthropic, custom endpoint, ...).
+ * Repository for upstream `Provider` entities.
  *
- * Schema (mirrors `docs/DATA_MODEL.md` §3):
- *   HASH relay:provider:{providerId} → Provider fields
- *     - encryptedApiKey is AES-256-GCM ciphertext (see `crypto/secrets.ts`)
- *     - modelMapping is JSON-encoded object: client-model → upstream-model
- *
- * Provider credentials are NEVER exposed via toPublicProvider; only the
- * admin web panel can decrypt them (just-in-time when forwarding a request).
+ * Uses Redis SCAN for enumeration - compatible with both Upstash Redis and Vercel KV.
  */
 import { ProviderSchema, type Provider, type ProviderKind, type ModelConfig } from "./types";
 import { revalidateTag } from "next/cache";
 import { getRedis, k } from "./redis";
-import type { RedisLike } from "./redis";
 import { encryptSecret } from "../crypto/secrets";
 import { generateId } from "../crypto/hashing";
 
@@ -38,10 +30,8 @@ export interface CreateProviderInput {
   name: string;
   kind: ProviderKind;
   baseUrl?: string | null;
-  /** Plaintext upstream API key. Will be AES-encrypted before storage. */
   apiKey: string;
   modelMapping?: Record<string, string>;
-  /** Model configurations (context length, output, cost) */
   modelConfigs?: Record<string, {
     upstreamId: string;
     clientId: string;
@@ -54,7 +44,6 @@ export interface CreateProviderInput {
   }>;
   enabled?: boolean;
   priority?: number;
-  /** Optional per-provider HTTP headers (e.g. api-version for Azure). */
   headers?: Record<string, string>;
 }
 
@@ -62,7 +51,6 @@ export interface UpdateProviderInput {
   name?: string;
   kind?: ProviderKind;
   baseUrl?: string | null;
-  /** Plaintext upstream API key (re-encrypts). */
   apiKey?: string;
   modelMapping?: Record<string, string>;
   enabled?: boolean;
@@ -94,8 +82,10 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
     updatedAt: now,
   });
 
-  const r2 = getRedis();
-  await r2.hset(k.provider(id), {
+  const redis = getRedis();
+  
+  // Save the provider hash
+  await redis.hset(k.provider(id), {
     id: provider.id,
     name: provider.name,
     kind: provider.kind,
@@ -108,11 +98,6 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
     headers: JSON.stringify(provider.headers ?? {}),
     createdAt: provider.createdAt,
     updatedAt: provider.updatedAt,
-  });
-
-  // Add to index set (fast enumeration)
-  await r2.sadd(k.providerIndex(), id).catch((err) => {
-    console.error("[createProvider] Failed to add to index:", err);
   });
 
   // Revalidate the providers cache
@@ -130,31 +115,18 @@ export async function getProviderById(id: string): Promise<Provider | null> {
   return hashToProvider(await getRedis().hgetall<Record<string, string>>(k.provider(id)));
 }
 
-
-/** List all providers (sorted by priority ascending, then by name).
- *
- * Uses a Redis Set (`relay:provider:index`) to track provider IDs for fast
- * enumeration. Falls back to SCAN if the index is empty (backwards compat).
- */
+/** List all providers (sorted by priority ascending, then by name). */
 export async function listProviders(opts: {
   enabledOnly?: boolean;
 } = {}): Promise<Provider[]> {
   const redis = getRedis();
-
-  // Try the index set first (fast path)
-  let ids: string[] = await redis.smembers(k.providerIndex()).catch(() => []);
-
-  // Fallback: SCAN if index is empty (backwards compat with existing data)
-  if (!ids || ids.length === 0) {
-    ids = await scanAllProviderIds(redis);
-  }
-
+  
+  // Use SCAN to find all provider keys - works with both Upstash Redis and Vercel KV
+  const providerIds = await scanProviderIds(redis);
+  
   const out: Provider[] = [];
-  for (const id of ids) {
-    if (!id) continue;
-    const p = await hashToProvider(
-      await redis.hgetall<Record<string, string>>(k.provider(id))
-    );
+  for (const id of providerIds) {
+    const p = await hashToProvider(await redis.hgetall<Record<string, string>>(k.provider(id)));
     if (!p) continue;
     if (opts.enabledOnly && !p.enabled) continue;
     out.push(p);
@@ -167,40 +139,46 @@ export async function listProviders(opts: {
 }
 
 /**
- * Fallback: SCAN through all provider keys. Handles cursor iteration properly.
+ * SCAN through all provider keys. Handles cursor iteration properly.
+ * Compatible with both Upstash Redis and Vercel KV.
  */
-async function scanAllProviderIds(redis: RedisLike): Promise<string[]> {
+async function scanProviderIds(redis: { scan: (cursor: number, opts: { match: string; count: number }) => Promise<[number, string[]]> }): Promise<string[]> {
   const ids: string[] = [];
-  let cursor = 0;
   const prefix = k.provider(""); // "relay:provider:"
-  const pattern = `${prefix}*`;
+  let cursor = 0;
+  
   do {
     const [nextCursor, matched] = await redis.scan(cursor, {
-      match: pattern,
+      match: `${prefix}*`,
       count: 100,
     });
+    
     for (const key of matched) {
-      // Only pick up "relay:provider:{id}" (not other keys starting with relay:provider)
+      // Extract ID: "relay:provider:abc123" -> "abc123"
       if (key.startsWith(prefix)) {
         const id = key.slice(prefix.length);
-        if (id && id !== "index") ids.push(id);
+        // Skip non-ID keys
+        if (id && !id.includes(":")) {
+          ids.push(id);
+        }
       }
     }
+    
     cursor = Number(nextCursor);
   } while (cursor !== 0);
+  
   return ids;
 }
 
 /**
  * Find providers that can serve the given client-visible model.
- * Match = the client's model is a key in the provider's modelMapping.
  */
 export async function findProvidersForModel(clientModel: string): Promise<Provider[]> {
   const all = await listProviders({ enabledOnly: true });
   return all.filter((p) => clientModel in p.modelMapping);
 }
 
-/** Find providers of a given kind (e.g. "anthropic"). */
+/** Find providers of a given kind. */
 export async function findProvidersByKind(kind: ProviderKind): Promise<Provider[]> {
   const all = await listProviders({ enabledOnly: true });
   return all.filter((p) => p.kind === kind);
@@ -234,7 +212,8 @@ export async function updateProvider(
     updatedAt: new Date().toISOString(),
   });
 
-  await getRedis().hset(k.provider(id), {
+  const redis = getRedis();
+  await redis.hset(k.provider(id), {
     name: merged.name,
     kind: merged.kind,
     baseUrl: merged.baseUrl ?? "",
@@ -259,13 +238,7 @@ export async function updateProvider(
 export async function deleteProvider(id: string): Promise<boolean> {
   const existing = await getProviderById(id);
   if (!existing) return false;
-  const r3 = getRedis();
-  await r3.del(k.provider(id));
-  
-  // Remove from index set
-  await r3.srem(k.providerIndex(), id).catch((err) => {
-    console.error("[deleteProvider] Failed to remove from index:", err);
-  });
+  await getRedis().del(k.provider(id));
   
   // Revalidate the providers cache
   revalidateTag("providers");
@@ -278,7 +251,8 @@ export async function deleteProvider(id: string): Promise<boolean> {
 // ---------------------------------------------------------------------------
 
 async function hashToProvider(raw: Record<string, string> | null): Promise<Provider | null> {
-  if (!raw) return null;
+  if (!raw || Object.keys(raw).length === 0) return null;
+  
   try {
     return ProviderSchema.parse({
       id: raw.id,
@@ -295,7 +269,7 @@ async function hashToProvider(raw: Record<string, string> | null): Promise<Provi
       updatedAt: raw.updatedAt,
     });
   } catch (err) {
-    console.error("[hashToProvider] Failed to parse provider:", err, "Raw:", raw);
+    console.error("[hashToProvider] Failed to parse provider:", err, "Raw keys:", Object.keys(raw));
     return null;
   }
 }
@@ -304,9 +278,6 @@ async function hashToProvider(raw: Record<string, string> | null): Promise<Provi
 // Model Config helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Get model configuration for a specific model in a provider.
- */
 export function getModelConfig(
   provider: Provider,
   clientModelId: string
@@ -314,16 +285,12 @@ export function getModelConfig(
   return provider.modelConfigs?.[clientModelId];
 }
 
-/**
- * Get credit cost for a model. Returns default values if not configured.
- */
 export function getModelCreditCost(
   provider: Provider,
   clientModelId: string
 ): { inputCost: number; outputCost: number } {
   const config = provider.modelConfigs?.[clientModelId];
   if (!config) {
-    // Default costs if not configured
     return { inputCost: 0, outputCost: 0 };
   }
   return {
@@ -332,9 +299,6 @@ export function getModelCreditCost(
   };
 }
 
-/**
- * Get context length for a model. Returns default if not configured.
- */
 export function getModelContextLength(
   provider: Provider,
   clientModelId: string
