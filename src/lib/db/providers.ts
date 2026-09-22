@@ -53,6 +53,16 @@ export interface UpdateProviderInput {
   baseUrl?: string | null;
   apiKey?: string;
   modelMapping?: Record<string, string>;
+  modelConfigs?: Record<string, {
+    upstreamId: string;
+    clientId: string;
+    displayName?: string;
+    contextLength?: number;
+    maxOutputTokens?: number;
+    inputCost?: number;
+    outputCost?: number;
+    enabled?: boolean;
+  }>;
   enabled?: boolean;
   priority?: number;
   headers?: Record<string, string>;
@@ -208,6 +218,7 @@ export async function updateProvider(
     baseUrl: patch.baseUrl === undefined ? existing.baseUrl : patch.baseUrl,
     encryptedApiKey,
     modelMapping: patch.modelMapping ?? existing.modelMapping,
+    modelConfigs: patch.modelConfigs ?? existing.modelConfigs,
     enabled: patch.enabled === undefined ? existing.enabled : patch.enabled,
     priority: patch.priority ?? existing.priority,
     headers: patch.headers ?? existing.headers,
@@ -221,6 +232,7 @@ export async function updateProvider(
     baseUrl: merged.baseUrl ?? "",
     encryptedApiKey: merged.encryptedApiKey,
     modelMapping: JSON.stringify(merged.modelMapping),
+    modelConfigs: JSON.stringify(merged.modelConfigs ?? {}),
     enabled: merged.enabled ? "1" : "0",
     priority: String(merged.priority),
     headers: JSON.stringify(merged.headers ?? {}),

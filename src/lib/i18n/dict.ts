@@ -388,6 +388,10 @@ const zhCN: Dict = {
   "admin.providers.saveFailed": "保存失败：{error}",
   "admin.providers.deleteFailed": "删除失败：{error}",
   "admin.providers.confirmDelete": "确定删除 Provider“{name}”？",
+  "admin.providers.fetchModels": "获取模型",
+  "admin.providers.model.clientId": "客户端ID",
+  "admin.providers.model.upstreamId": "上游ID",
+  "admin.providers.model.add": "添加模型",
 
 
   // ===== Table headers =====
@@ -787,6 +791,10 @@ const en: Dict = {
   "admin.providers.saveFailed": "Save failed: {error}",
   "admin.providers.deleteFailed": "Delete failed: {error}",
   "admin.providers.confirmDelete": "Delete provider \"{name}\"?",
+  "admin.providers.fetchModels": "Fetch Models",
+  "admin.providers.model.clientId": "Client ID",
+  "admin.providers.model.upstreamId": "Upstream ID",
+  "admin.providers.model.add": "Add Model",
 
 
   // ===== Table headers =====

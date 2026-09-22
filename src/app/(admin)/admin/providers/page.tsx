@@ -57,7 +57,7 @@ export default async function ProvidersPage() {
                   <TH>{t("admin.providers.create.baseUrl")}</TH>
                   <TH>{t("admin.providers.table.models")}</TH>
                   <TH>{t("dashboard.table.status")}</TH>
-                  <TH className="w-48 text-right">{t("common.actions")}</TH>
+                  <TH className="w-56 text-right">{t("common.actions")}</TH>
                 </TR>
               </THead>
               <TBody>
