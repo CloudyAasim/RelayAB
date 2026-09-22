@@ -13,6 +13,12 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: true,
+    // Several integration tests deliberately hammer the bootstrap path with
+    // concurrent calls while bcrypt runs at work factor 12 (on purpose, to
+    // match production). Under parallel file execution that comfortably
+    // exceeds the 5s default, so give the suite headroom.
+    testTimeout: 20000,
+    hookTimeout: 20000,
     setupFiles: ["./tests/setup.ts"],
     include: [
       "tests/unit/**/*.test.ts",
@@ -35,6 +41,9 @@ export default defineConfig({
     alias: {
       "@": resolve(__dirname, "./src"),
       "@tests": resolve(__dirname, "./tests"),
+      // `revalidateTag()` requires a Next.js request context and throws in
+      // tests; see tests/mocks/next-cache.ts.
+      "next/cache": resolve(__dirname, "./tests/mocks/next-cache.ts"),
     },
   },
 });

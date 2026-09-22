@@ -70,6 +70,7 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
       "Authorization": "Bearer YOUR_API_KEY",
       "anthropic-version": "2023-06-01",
     },
+    defaultUpstreamFormat: "anthropic",
     description: "Anthropic Claude 系列模型。不支持自动模型列举，请手动添加模型。",
     modelsListPath: "",
   },

@@ -133,9 +133,11 @@ describe("db types - toPublic helpers", () => {
       baseUrl: null,
       encryptedApiKey: "Abc==",
       modelMapping: {},
+      modelConfigs: {},
       enabled: true,
       priority: 1,
       headers: {},
+      upstreamFormat: "responses",
       createdAt: "2026-09-21T08:00:00.000Z",
       updatedAt: "2025-01-01T00:00:00.000Z",
     };

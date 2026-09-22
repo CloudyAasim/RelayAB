@@ -96,7 +96,7 @@ export function DocsContent({ baseUrl, openaiBase, anthropicBase, responsesBase 
   -H "Authorization: Bearer $RELAYAB_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "model": "gpt-4o-mini",
+    "model": "YOUR_MODEL_ID",
     "messages": [{"role": "user", "content": "Hello!"}]
   }'`}
           />
@@ -125,10 +125,50 @@ export function DocsContent({ baseUrl, openaiBase, anthropicBase, responsesBase 
   -H "anthropic-version: 2023-06-01" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "model": "claude-3-5-sonnet",
+    "model": "YOUR_MODEL_ID",
     "max_tokens": 1024,
     "messages": [{"role": "user", "content": "Hello!"}]
   }'`}
+          />
+          <p className="text-xs text-muted-foreground">{t("docs.anthropic.sdkHint")}</p>
+          <CodeBlock
+            label={t("docs.anthropic.sdk")}
+            value={`import Anthropic from "@anthropic-ai/sdk";
+
+const client = new Anthropic({
+  apiKey: process.env.RELAYAB_KEY,   // your RelayAB key
+  baseURL: "${anthropicBase}",       // no trailing /v1
+});
+
+const msg = await client.messages.create({
+  model: "YOUR_MODEL_ID",            // from GET /v1/models
+  max_tokens: 1024,
+  messages: [{ role: "user", content: "Hello!" }],
+});
+console.log(msg.content);`}
+          />
+        </div>
+      </Card>
+
+      <Card>
+        <CardHeader
+          title={
+            <span className="flex items-center gap-2">
+              <Terminal className="h-4 w-4 text-muted-foreground" />
+              {t("docs.models.title")}
+            </span>
+          }
+          description={t("docs.models.desc")}
+        />
+        <div className="space-y-3 text-sm text-foreground/90">
+          <p>{t("docs.models.line1")}</p>
+          <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
+            <li>{t("docs.models.line2")}</li>
+            <li>{t("docs.models.line3")}</li>
+          </ul>
+          <CodeBlock
+            label={t("docs.cli.example")}
+            value={`curl -H "Authorization: Bearer $RELAYAB_KEY" ${openaiBase}/models`}
           />
         </div>
       </Card>
@@ -156,7 +196,7 @@ export function DocsContent({ baseUrl, openaiBase, anthropicBase, responsesBase 
               value={`curl ${responsesBase}/responses \\
   -H "Authorization: Bearer $RELAYAB_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{\n    "model": "gpt-4o-mini",\n    "input": "Hello!"\n  }'`}
+  -d '{\n    "model": "YOUR_MODEL_ID",\n    "input": "Hello!"\n  }'`}
             />
           </div>
         </Card>
@@ -174,7 +214,7 @@ client = OpenAI(
 )
 
 resp = client.chat.completions.create(
-    model="gpt-4o-mini",
+    model="YOUR_MODEL_ID",               # from GET /v1/models
     messages=[{"role": "user", "content": "Hello!"}],
 )
 print(resp.choices[0].message.content)`}
@@ -192,30 +232,13 @@ const client = new OpenAI({
 });
 
 const resp = await client.chat.completions.create({
-  model: "gpt-4o-mini",
+  model: "YOUR_MODEL_ID",   // from GET /v1/models
   messages: [{ role: "user", content: "Hello!" }],
 });
 console.log(resp.choices[0].message.content);`}
           />
         </Card>
       </div>
-
-      <Card>
-        <CardHeader
-          title={
-            <span className="flex items-center gap-2">
-              <Terminal className="h-4 w-4 text-muted-foreground" />
-              {t("docs.cli.title")}
-            </span>
-          }
-          description={t("docs.cli.desc")}
-        />
-        <CodeBlock
-          label={t("docs.cli.example")}
-          value={`# list available models
-curl -H "Authorization: Bearer $RELAYAB_KEY" ${openaiBase}/models`}
-        />
-      </Card>
 
       <p className="text-center text-xs text-muted-foreground">
         {t("docs.help.contactAdmin")}

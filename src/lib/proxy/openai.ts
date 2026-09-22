@@ -323,7 +323,7 @@ export async function proxyChatCompletion(args: {
   // Anthropic-format providers cannot accept a Chat Completions body, so they
   // are only eligible for the /anthropic endpoint.
   const providers = (await findProvidersForModel(req.model)).filter(
-    (p) => p.upstreamFormat !== "anthropic",
+    (p) => effectiveUpstreamFormat(p) !== "anthropic",
   );
   if (providers.length === 0) {
     return {
@@ -434,6 +434,21 @@ interface ChatCompletionResponse {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Resolve the protocol a provider actually speaks.
+ *
+ * `kind: "anthropic"` implies the Anthropic Messages protocol, but the stored
+ * `upstreamFormat` field defaults to `"responses"`. Without this mapping such a
+ * provider would be treated as an OpenAI-protocol endpoint, so a Chat request
+ * would be POSTed to `<base>/chat/completions` instead of `<base>/v1/messages`.
+ */
+function effectiveUpstreamFormat(provider: Provider): "responses" | "chat" | "anthropic" {
+  if (provider.kind === "anthropic" && provider.upstreamFormat === "responses") {
+    return "anthropic";
+  }
+  return provider.upstreamFormat;
+}
+
 function defaultUpstreamUrl(provider: Provider): string {
   const base = provider.baseUrl ?? "https://api.openai.com";
   const cleanBase = base.replace(/\/$/, "");
@@ -537,10 +552,11 @@ export async function proxyOpenAIResponse(args: {
 
   // Providers that don't speak the Responses protocol natively are reached
   // through a conversion hop against their own endpoint.
-  if (provider.upstreamFormat === "chat") {
+  const providerFormat = effectiveUpstreamFormat(provider);
+  if (providerFormat === "chat") {
     return proxyResponsesViaChat({ req, apiKey, user, deps });
   }
-  if (provider.upstreamFormat === "anthropic") {
+  if (providerFormat === "anthropic") {
     return proxyResponsesViaAnthropic({ req, apiKey, user, deps });
   }
 

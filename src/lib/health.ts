@@ -52,15 +52,17 @@ export function isUsingMemoryStore(env: HealthEnv): boolean {
 }
 
 /**
- * Detect if a string looks like a valid URL or connection string.
+ * Presence check for an env var.
+ *
+ * Any non-empty value counts as configured. An earlier version additionally
+ * required tokens to be longer than 10 characters ("looks like a token"),
+ * which made `/healthz` report `degraded` for short-but-valid tokens and broke
+ * the contract the tests encode: present == configured. Whether a URL is
+ * actually reachable is not something a health check can decide by looking at
+ * the string — the redis client surfaces that at request time.
  */
 function hasValue(val?: string): boolean {
-  if (!val?.trim()) return false;
-  // Check for common URL patterns
-  if (val.startsWith("https://") || val.startsWith("http://") || val.startsWith("redis")) return true;
-  // Check for token-like values (not empty, not just placeholder)
-  if (val.length > 10) return true;
-  return false;
+  return Boolean(val?.trim());
 }
 
 /**

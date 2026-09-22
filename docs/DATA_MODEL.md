@@ -161,28 +161,37 @@ function checkKeyStatus({ key, user, requestedModel }): ValidationResult {
 |---|---|---|
 | `id` | string (ULID) | 主键 |
 | `name` | string | 管理员可见名称 |
-| `kind` | `"openai" \| "anthropic" \| "custom-openai"` | 协议类型 |
-| `baseUrl` | string \| null | 自定义端点（custom-openai 必填） |
+| `kind` | `"openai" \| "anthropic" \| "custom-openai" \| "azure"` | 协议家族。`anthropic` = 该 Provider 说 Anthropic Messages 协议 |
+| `baseUrl` | string \| null | 上游根地址，代理在其后拼接端点路径 |
 | `encryptedApiKey` | string (base64) | AES-256-GCM 加密的上游 Key |
-| `modelMapping` | JSON string | 客户端模型 → 上游模型映射 |
+| `modelMapping` | JSON string | 客户端模型 → 上游真实模型。推荐恒等映射 |
+| `modelConfigs` | JSON string | 可选的每模型上下文长度 / 输出上限 / 计费参数 |
+| `headers` | JSON string | 可选的附加请求头（如 Azure 的 `api-version`） |
+| `upstreamFormat` | `"responses" \| "chat" \| "anthropic"` | 上游原生协议，默认 `responses`。决定请求路径与是否需要协议转换 |
 | `enabled` | 0 \| 1 | |
 | `priority` | number | 路由优先级（数字小优先） |
 | `createdAt` | ISO string | |
+| `updatedAt` | ISO string | |
 
 **示例**：
 ```json
 {
   "id": "01J7R5K8W6Z8X8X8X8X8X8X8X8",
-  "name": "OpenAI 主力",
+  "name": "MiniMax 主力",
   "kind": "openai",
-  "baseUrl": null,
+  "baseUrl": "https://api.minimax.cn/v1",
   "encryptedApiKey": "AbCdEf123...==",
-  "modelMapping": "{\"gpt-4o-mini\":\"gpt-4o-mini-2024-07-18\"}",
+  "modelMapping": "{\"MiniMax-M3\":\"MiniMax-M3\"}",
+  "upstreamFormat": "responses",
   "enabled": "1",
   "priority": "1",
   "createdAt": "2026-09-21T08:00:00.000Z"
 }
 ```
+
+> **模型映射请用恒等映射。** `modelMapping` 的左列会原样出现在 `GET /v1/models` 并被写进用量日志。
+> 把 `claude-sonnet-4-6` 这类名字指向非 Anthropic 的上游模型会造成误导，除非客户端硬编码了模型名且无法覆盖。
+> 端点与 `baseUrl` 的配对规则见 [ARCHITECTURE.md §7.3](ARCHITECTURE.md#73-端点--上游路径)。
 
 ---
 

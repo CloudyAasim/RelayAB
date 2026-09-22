@@ -82,9 +82,9 @@ export function CreateProviderButton({ onCreated }: Props) {
     if (tpl.defaultHeaders) {
       setHeaders(Object.entries(tpl.defaultHeaders).map(([k, v]) => `${k}: ${v}`).join("\n"));
     }
-    if (tpl.defaultUpstreamFormat) {
-      setUpstreamFormat(tpl.defaultUpstreamFormat);
-    }
+    // Always reset this: otherwise switching from the Anthropic template back
+    // to an OpenAI-compatible one would leave `anthropic` selected.
+    setUpstreamFormat(tpl.defaultUpstreamFormat ?? "responses");
     setFetchResult(null);
   }
 

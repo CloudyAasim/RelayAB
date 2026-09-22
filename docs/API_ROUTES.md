@@ -44,6 +44,12 @@ Content-Type: application/json
 }
 ```
 
+**上游行为**：
+本端点发出的**永远是 Chat Completions 格式**的请求体，因此固定转发到上游的
+`<provider.baseUrl>/chat/completions`。Provider 的 `upstreamFormat` 不会改变这个路径
+（否则会把 Chat 请求体发到 Responses 端点）。`upstreamFormat = "anthropic"` 的
+Provider 会被本端点排除。
+
 **错误码**：
 | HTTP | code | 含义 |
 |---|---|---|
@@ -93,13 +99,33 @@ Content-Type: application/json
 {
   "id": "resp_xxx",
   "object": "response",
+  "status": "completed",
   "model": "gpt-4o-mini",
   "output": [
-    {"type": "message", "id": "msg_xxx", "content": [{"type": "output_text", "text": "..."}]}
+    {
+      "id": "msg_xxx",
+      "type": "message",
+      "status": "completed",
+      "role": "assistant",
+      "content": [{"type": "output_text", "text": "...", "annotations": []}]
+    }
   ],
-  "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
+  "output_text": "...",
+  "usage": {"input_tokens": 10, "output_tokens": 20, "total_tokens": 30}
 }
 ```
+
+**上游行为与协议转换**：
+- Provider 为 `upstreamFormat = "responses"` → 原样转发到 `<baseUrl>/responses`。
+- Provider 为 `upstreamFormat = "chat"` → 先转成 Chat 请求体调用 `<baseUrl>/chat/completions`，
+  再把 Chat 响应转回上面的 Responses 结构。
+- Provider 为 `upstreamFormat = "anthropic"`（或 `kind = "anthropic"`）→ 转成
+  Anthropic Messages 请求调用 `<baseUrl>/v1/messages`，再转回 Responses 结构。
+
+**用量字段兼容**：不同上游对 usage 的命名不同。Chat Completions 用
+`prompt_tokens` / `completion_tokens`，Responses 与 Anthropic 用
+`input_tokens` / `output_tokens`。代理两种都会识别，内部统一记录为
+`promptTokens` / `completionTokens`。
 
 ---
 
@@ -124,11 +150,14 @@ Content-Type: application/json
 
 **用途**：Anthropic Messages 兼容端点。
 
-**请求头**：
+**请求头**（两种鉴权方式都支持）：
 ```
-Authorization: Bearer sk-relay-xxx
-Content-Type: application/json
+x-api-key: sk-relay-xxx            # Anthropic SDK / Claude Code 使用这个
+# 或
+Authorization: Bearer sk-relay-xxx # OpenAI 风格客户端
+
 anthropic-version: 2023-06-01
+Content-Type: application/json
 ```
 
 **请求体**（Anthropic 标准）：
@@ -141,6 +170,14 @@ anthropic-version: 2023-06-01
 ```
 
 **响应**：标准 Anthropic Messages 响应格式。
+
+**Provider 选择**：本端点只挑 Anthropic 协议的 Provider，顺序为
+`upstreamFormat === "anthropic"` → `kind === "anthropic"` → `kind === "custom-openai"`，
+同一档内按 `priority` 升序取第一个，请求转发到 `<baseUrl>/v1/messages`。
+
+> 注意 `baseUrl` 要填上游的 **Anthropic** 基址。比如 MiniMax 的 OpenAI 基址是
+> `https://api.minimax.cn/v1`，而 Anthropic 基址是 `https://api.minimax.cn/anthropic`，
+> 两者不能混用。配置步骤见 [ARCHITECTURE.md §7.5](ARCHITECTURE.md#75-新增一条-anthropic-provider)。
 
 ---
 
@@ -380,6 +417,31 @@ import Anthropic from '@anthropic-ai/sdk';
 
 const client = new Anthropic({
   apiKey: 'sk-relay-xxxxxxxxxxxxxxxxxxxxxxxxxxxx',
-  baseURL: 'https://your-domain.com/anthropic/v1'
+  // SDK 会请求 `${baseURL}/v1/messages`，所以这里只写到 /anthropic
+  baseURL: 'https://your-domain.com/anthropic'
 });
+```
+
+### 模型名从哪来
+
+客户端能用的模型名 = 管理员在 Provider 的 `modelMapping` 里配置的**左列**。
+用 `GET /v1/models` 可以看到完整列表，直接照抄即可。
+
+这些名字只是别名，不代表上游厂商。请优先使用上游的真实模型名
+（例如 `MiniMax-M3`），不要为了让某个客户端跑起来而写成
+`claude-sonnet-4-6` 之类——这些名字会暴露给所有用户，也会进用量日志。
+如果客户端支持指定模型（如 Claude Code 的 `ANTHROPIC_MODEL`），改客户端即可。
+
+### Responses API 配置（Codex 等）
+
+```toml
+model_provider = "custom"
+model = "MiniMax-M3"
+wire_api = "responses"
+
+[model_providers.custom]
+name = "custom"
+wire_api = "responses"
+base_url = "https://your-domain.com/v1"
+experimental_bearer_token = "sk-relay-xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 ```

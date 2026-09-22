@@ -64,8 +64,9 @@ Deploy Button 走的是 "新建项目" 路径；现有项目**不会自动获得
 - **上游 Provider Key** 用 AES-256-GCM 加密后存 Redis，**主密钥丢失 = 数据永久不可用**
 - **兼容协议**：
   - OpenAI Chat Completions（`/v1/chat/completions`）
+  - OpenAI Responses API（`/v1/responses`，含 Chat / Anthropic 协议自动转换）
   - Anthropic Messages（`/anthropic/v1/messages`）
-  - 模型映射（客户端模型 → 上游真实模型）
+  - 模型映射（客户端模型 → 上游真实模型，推荐恒等映射）
 - **管理后台** + **用户面板** + 用量统计
 - **界面多语言**：中文（默认）/ English，页脚一键切换，偏好记在 `relayab_locale` cookie
 - **本地开发闭环**：嵌入式 Vercel REST API emulator（无需独立进程、无需网络）
@@ -148,6 +149,41 @@ pnpm dev          # → http://localhost:3000
 - 密码：你的 `RELAY_AUTH` 值
 
 首次登录后建议立即在 `/admin/users` 给自己改密码，或重置一个新的强密码。
+
+## 上游 Provider 配置
+
+在 `/admin/providers` 添加 Provider。三个字段职责不同，别互相替代：
+
+| 字段 | 作用 |
+|---|---|
+| **kind** | 协议家族（模板决定）。`anthropic` = 这条 Provider 说 Anthropic Messages 协议 |
+| **API 请求地址**（baseUrl） | 上游根地址，代理在其后拼端点路径 |
+| **上游格式**（upstreamFormat） | 上游原生协议：`responses` / `chat` / `anthropic` |
+
+`baseUrl` 必须和端点配对，这是最常见的配置错误：
+
+| 端点 | `baseUrl` 必须是 |
+|---|---|
+| `/v1/chat/completions`、`/v1/responses` | 上游的 OpenAI 兼容基址，如 `https://api.minimax.cn/v1` |
+| `/anthropic/v1/messages` | 上游的 Anthropic 兼容基址，如 `https://api.minimax.cn/anthropic` |
+
+**同一家上游的两套基址不通用。** 想让三个端点都能用，就建两条 Provider：
+
+```
+MiniMax            kind=openai     baseUrl=https://api.minimax.cn/v1        上游格式=Responses（原生）
+MiniMaxAnthropic   kind=anthropic  baseUrl=https://api.minimax.cn/anthropic 上游格式=Anthropic Messages
+```
+
+### 模型映射怎么写
+
+**用恒等映射**：客户端名和上游名填一样的，例如 `MiniMax-M3` → `MiniMax-M3`。
+
+左列会原样出现在 `GET /v1/models` 并被写进用量日志，所以不要为了迁就某个客户端
+而写成 `claude-sonnet-4-6` 指向 `MiniMax-M3` —— 这对使用者是误导。如果客户端
+支持指定模型（例如 Claude Code 的 `ANTHROPIC_MODEL`），改客户端配置即可。
+
+完整规则（含 `upstreamFormat` 与协议转换、Anthropic Provider 的分步配置）见
+[docs/ARCHITECTURE.md §7](docs/ARCHITECTURE.md#7-上游-provider-与模型映射)。
 
 ## 测试
 

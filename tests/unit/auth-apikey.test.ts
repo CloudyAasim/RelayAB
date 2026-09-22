@@ -29,6 +29,7 @@ function makeKey(overrides: Partial<ApiKey> = {}): ApiKey {
     keyPrefix: plain.slice(0, 12) + "..." + plain.slice(-4),
     expiresAt: null,
     enabled: true,
+    forceDisabled: false,
     allowedModels: [],
     createdAt: "2026-09-01T00:00:00Z",
     lastUsedAt: null,

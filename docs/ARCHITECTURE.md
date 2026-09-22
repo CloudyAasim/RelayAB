@@ -248,29 +248,74 @@
 ### 7.1 Provider 配置结构
 ```ts
 {
-  id: "openai-prod",
-  name: "OpenAI Production",
-  kind: "openai" | "anthropic" | "custom-openai",
-  baseUrl: "https://api.openai.com/v1",   // 自定义时必填
+  id: "01J7R5K8W6Z8X8X8X8X8X8X8X8",
+  name: "MiniMax 生产",
+  kind: "openai" | "anthropic" | "custom-openai" | "azure",
+  baseUrl: "https://api.minimax.cn/v1",
   encryptedApiKey: "base64(iv|ct|tag)",
   modelMapping: {
-    "gpt-4o-mini": "gpt-4o-mini-2024-07-18",   // 客户端模型 → 上游真实模型
-    "gpt-4o": "gpt-4o-2024-08-06"
+    "MiniMax-M3": "MiniMax-M3",   // 客户端模型 → 上游真实模型
   },
+  modelConfigs: { /* 可选的上下文长度 / 输出上限 / 计费参数 */ },
+  headers: { /* 可选的附加请求头 */ },
+  upstreamFormat: "responses" | "chat" | "anthropic",
   enabled: true,
+  priority: 1,                    // 数字小的优先被选中
 }
 ```
 
-### 7.2 路由策略
-- 客户端请求 `/v1/chat/completions`，body 中的 `model` 是「客户端可见模型」。
-- 服务端查所有启用的 Provider，找一个 `modelMapping` 包含该客户端模型 `ProviderId` 的 Provider。
-- 若多个匹配：v1 按「轮询」选一个；后续可加权重。
-- 若都未匹配 → 400 `model_not_allowed`。
+### 7.2 三个字段的分工
 
-### 7.3 Anthropic 兼容
-- `/anthropic/v1/messages` 收到 `model` 后，查 `Provider.kind === "anthropic"` 的 Provider。
-- 用 `@ai-sdk/anthropic` 调用 `streamText`，返回 SSE 流。
-- 响应里的 usage 换算成积分 + 扣额度（同 OpenAI 流程）。
+配置一条 Provider 时，起决定作用的是下面三个字段。它们职责不同，不要互相替代：
+
+| 字段 | 作用 |
+|---|---|
+| `kind` | **协议家族**。`anthropic` 表示这条 Provider 说的是 Anthropic Messages 协议 |
+| `baseUrl` | **上游根地址**。代理在其后拼接端点路径（`/chat/completions`、`/responses`、`/v1/messages`） |
+| `upstreamFormat` | **上游原生协议**。决定请求打到哪个路径、以及是否需要先做协议转换 |
+
+### 7.3 端点 → 上游路径
+
+| 客户端请求 | 上游路径 | Provider 选择规则 |
+|---|---|---|
+| `POST /v1/chat/completions` | `<baseUrl>/chat/completions` | 排除 Anthropic 协议的 Provider，其余按 `priority` 升序取第一个 |
+| `POST /v1/responses` | `<baseUrl>/responses` | 同上。若命中的 Provider 是 `chat` / `anthropic` 协议，先做请求转换，再调用它的对应端点，最后把响应转回 Responses 结构 |
+| `POST /anthropic/v1/messages` | `<baseUrl>/v1/messages` | 优先 `upstreamFormat === "anthropic"`，其次 `kind === "anthropic"`，再其次 `kind === "custom-openai"` |
+
+两个实现细节：
+
+- 请求体格式决定目标路径。Chat 代理发出的永远是 Chat 请求体，所以它必须打 `/chat/completions`；不能因为 Provider 标了别的格式就改路径，否则会把 Chat 请求体发到 Responses 端点（历史上出过这个 400 回归）。
+- `kind === "anthropic"` 的 Provider 若 `upstreamFormat` 仍是默认的 `responses`，运行时由 `effectiveUpstreamFormat()` 按 Anthropic 协议处理，避免被 `/v1/chat/completions` 误用。
+
+### 7.4 模型映射规范
+
+`modelMapping` 的左列是**客户端可见模型名**，右列是**转发给上游的真实模型名**。它只是一张别名表。
+
+- **推荐恒等映射**（两列相同），例如 `MiniMax-M3` → `MiniMax-M3`。仓库里的 Provider 模板全部使用恒等映射。
+- 只有当上游模型 ID 与客户端期望的名字不同，或客户端把模型名硬编码、改不了时，才用别名。
+- **不要用虚构名称**。把 `claude-sonnet-4-6` 指向 `MiniMax-M3` 这类写法有三个实际代价：
+  1. 该名字会原样出现在 `GET /v1/models` 里，对所有用户可见；
+  2. 用量日志记录的是客户端名，排查"实际调了哪个模型"时会混乱；
+  3. 对使用者构成误导。
+- 如果客户端支持覆盖模型名（例如 Claude Code 的 `ANTHROPIC_MODEL`），应优先改客户端配置，而不是在网关里造假名字。
+
+### 7.5 新增一条 Anthropic Provider
+
+要让 `/anthropic/v1/messages` 能工作，需要一条 Anthropic 协议的 Provider：
+
+1. 模板选 **Anthropic** —— 这会把 `kind` 设为 `anthropic`，`upstreamFormat` 自动设为 `anthropic`，并预填 Claude 模型与 `anthropic-version` 请求头。
+2. 把 **API 请求地址** 改成上游的 Anthropic 基址。例如 MiniMax 是 `https://api.minimax.cn/anthropic`（注意与它的 OpenAI 基址 `https://api.minimax.cn/v1` 不是同一个）。
+3. **模型映射** 填真实模型名。
+4. 这条 Provider 不会被 `/v1/chat/completions` 选中；它与 OpenAI 那条互不干扰。
+
+也可以不用 Anthropic 模板，改用手动方式：任意 OpenAI 系模板 + 把 **上游格式** 改成 `Anthropic Messages`。效果等价，只是 `kind` 会是 `openai`，语义上不如直接选 Anthropic 模板清晰。
+
+三个端点的基址必须配对，这是最常见的配置错误：
+
+| 端点 | `baseUrl` 必须是 |
+|---|---|
+| `/v1/chat/completions`、`/v1/responses` | 上游的 OpenAI 兼容基址（如 `https://api.minimax.cn/v1`） |
+| `/anthropic/v1/messages` | 上游的 Anthropic 兼容基址（如 `https://api.minimax.cn/anthropic`） |
 
 ---
 
