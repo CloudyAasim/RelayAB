@@ -62,7 +62,7 @@ export function StatCard({
   hint?: string;
   icon?: ReactNode;
   trend?: { value: string; direction: "up" | "down" | "flat" };
-  tone?: "neutral" | "primary" | "success" | "warning" | "danger" | "info";
+  tone?: "neutral" | "primary" | "success" | "warning" | "danger" | "info" | "orange";
   className?: string;
 }) {
   const iconBg: Record<typeof tone, string> = {
@@ -72,6 +72,7 @@ export function StatCard({
     warning: "bg-warning/10 text-warning",
     danger: "bg-destructive/10 text-destructive",
     info: "bg-info/10 text-info",
+    orange: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
   };
   const trendClass: Record<"up" | "down" | "flat", string> = {
     up: "text-success",
