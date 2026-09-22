@@ -195,6 +195,9 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
     setLoading(true);
     setError("");
 
+    // Debug: log what we're about to send
+    console.log("[EditProviderModal] Submitting with enabled:", enabled, "type:", typeof enabled);
+
     try {
       const res = await fetch(`/api/admin/providers/${provider.id}`, {
         method: "PATCH",
@@ -209,6 +212,7 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
         }),
       });
       const data = await res.json();
+      console.log("[EditProviderModal] PATCH response:", JSON.stringify(data));
       if (!data.ok) {
         setError(data.error?.message ?? t("common.saveFailed"));
         return;

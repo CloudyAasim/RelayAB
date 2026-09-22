@@ -277,6 +277,15 @@ async function hashToProvider(raw: Record<string, string> | null): Promise<Provi
   if (!raw || Object.keys(raw).length === 0) return null;
   
   try {
+    // Safely parse enabled - handle various formats that might be stored in Redis
+    const enabledRaw = raw.enabled;
+    let enabled = false;
+    if (enabledRaw !== undefined && enabledRaw !== null && enabledRaw !== "") {
+      // Handle "1", "true" (case-insensitive), "on" as true
+      const normalized = String(enabledRaw).toLowerCase();
+      enabled = normalized === "1" || normalized === "true" || normalized === "on";
+    }
+    
     return ProviderSchema.parse({
       id: raw.id,
       name: raw.name,
@@ -285,14 +294,14 @@ async function hashToProvider(raw: Record<string, string> | null): Promise<Provi
       encryptedApiKey: raw.encryptedApiKey,
       modelMapping: safeJsonParse(raw.modelMapping),
       modelConfigs: safeJsonParse(raw.modelConfigs),
-      enabled: raw.enabled === "1" || raw.enabled === "true",
+      enabled,
       priority: Number(raw.priority ?? "1"),
       headers: safeJsonParse(raw.headers),
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
     });
   } catch (err) {
-    console.error("[hashToProvider] Failed to parse provider:", err, "Raw keys:", Object.keys(raw));
+    console.error("[hashToProvider] Failed to parse provider:", err, "Raw keys:", Object.keys(raw), "Raw enabled:", raw?.enabled);
     return null;
   }
 }
