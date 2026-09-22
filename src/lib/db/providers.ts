@@ -155,10 +155,12 @@ async function scanProviderIds(redis: { scan: (cursor: any, opts: any) => Promis
     
     for (const key of matched) {
       // Extract ID: "relay:provider:abc123" -> "abc123"
+      // Skip "relay:provider:index" which is a SET, not a HASH
+      if (key === 'relay:provider:index') continue;
       if (key.startsWith(prefix)) {
         const id = key.slice(prefix.length);
-        // Skip non-ID keys
-        if (id && !id.includes(":")) {
+        // Skip non-ID keys (shouldn't happen but be safe)
+        if (id && id !== 'index') {
           ids.push(id);
         }
       }
@@ -250,6 +252,15 @@ export async function deleteProvider(id: string): Promise<boolean> {
 // Helpers
 // ---------------------------------------------------------------------------
 
+function safeJsonParse(val: unknown): Record<string, unknown> {
+  if (!val) return {};
+  if (typeof val === 'object') return val as Record<string, unknown>;
+  if (typeof val === 'string') {
+    try { return JSON.parse(val); } catch { return {}; }
+  }
+  return {};
+}
+
 async function hashToProvider(raw: Record<string, string> | null): Promise<Provider | null> {
   if (!raw || Object.keys(raw).length === 0) return null;
   
@@ -260,11 +271,11 @@ async function hashToProvider(raw: Record<string, string> | null): Promise<Provi
       kind: raw.kind,
       baseUrl: raw.baseUrl && raw.baseUrl !== "" ? raw.baseUrl : null,
       encryptedApiKey: raw.encryptedApiKey,
-      modelMapping: raw.modelMapping ? JSON.parse(raw.modelMapping) : {},
-      modelConfigs: raw.modelConfigs ? JSON.parse(raw.modelConfigs) : {},
+      modelMapping: safeJsonParse(raw.modelMapping),
+      modelConfigs: safeJsonParse(raw.modelConfigs),
       enabled: raw.enabled === "1",
       priority: Number(raw.priority ?? "1"),
-      headers: raw.headers ? JSON.parse(raw.headers) : {},
+      headers: safeJsonParse(raw.headers),
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
     });
