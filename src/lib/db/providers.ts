@@ -45,6 +45,7 @@ export interface CreateProviderInput {
   enabled?: boolean;
   priority?: number;
   headers?: Record<string, string>;
+  upstreamFormat?: "responses" | "chat" | "anthropic";
 }
 
 export interface UpdateProviderInput {
