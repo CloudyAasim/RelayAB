@@ -5,6 +5,7 @@
  * Used by:
  *   - POST /api/admin/providers/[id]/models  → fetch model list
  *   - POST /api/admin/providers/[id]/test    → health check
+ *   - POST /api/admin/providers/probe       → test connection
  *
  * Not used by the proxy path itself (that uses Vercel AI SDK).
  */
@@ -38,13 +39,14 @@ export function decryptProviderKey(encryptedApiKey: string): string {
 /**
  * Decrypt + call upstream in one step.
  * Always sets `Authorization: Bearer <key>` unless the caller overrides it.
+ * Follows up to 3 redirects to handle API gateways that redirect.
  */
 export async function callUpstream(opts: UpstreamFetchOptions): Promise<UpstreamFetchResult> {
   const start = Date.now();
   const cfg = loadConfig();
   void cfg;
   const key = decryptProviderKey(opts.encryptedApiKey);
-  const url = joinUrl(opts.baseUrl, opts.path);
+  let url = joinUrl(opts.baseUrl, opts.path);
 
   const headers: Record<string, string> = {
     "Authorization": `Bearer ${key}`,
@@ -55,36 +57,65 @@ export async function callUpstream(opts: UpstreamFetchOptions): Promise<Upstream
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 8000);
 
-  try {
-    const res = await fetch(url, {
-      method: opts.method ?? "GET",
-      headers,
-      body: opts.body ? JSON.stringify(opts.body) : undefined,
-      signal: controller.signal,
-      // Don't follow redirects automatically — that's surprising for /models
-      // endpoints which can be hit with a 307 to a different upstream.
-      redirect: "manual",
-    });
-    let parsed: unknown;
-    const text = await res.text();
-    try { parsed = JSON.parse(text); } catch { parsed = text.slice(0, 500); }
+  // Follow up to 3 redirects
+  let redirectCount = 0;
+  const maxRedirects = 3;
 
-    return {
-      ok: res.ok,
-      status: res.status,
-      body: parsed,
-      latencyMs: Date.now() - start,
-    };
-  } catch (err) {
-    return {
-      ok: false,
-      status: 0,
-      error: err instanceof Error ? err.message : String(err),
-      latencyMs: Date.now() - start,
-    };
-  } finally {
-    clearTimeout(timer);
+  while (redirectCount <= maxRedirects) {
+    try {
+      const res = await fetch(url, {
+        method: opts.method ?? "GET",
+        headers,
+        body: opts.body ? JSON.stringify(opts.body) : undefined,
+        signal: controller.signal,
+        // Follow redirects for API calls (but cap at maxRedirects)
+        redirect: redirectCount < maxRedirects ? "follow" : "manual",
+      });
+
+      // Handle redirect status codes
+      if ([301, 302, 303, 307, 308].includes(res.status)) {
+        const location = res.headers.get("Location");
+        if (!location) {
+          return {
+            ok: false,
+            status: res.status,
+            error: "Redirect response has no Location header",
+            latencyMs: Date.now() - start,
+          };
+        }
+        // Handle relative redirects
+        url = new URL(location, url).toString();
+        redirectCount++;
+        continue;
+      }
+
+      let parsed: unknown;
+      const text = await res.text();
+      try { parsed = JSON.parse(text); } catch { parsed = text.slice(0, 500); }
+
+      return {
+        ok: res.ok,
+        status: res.status,
+        body: parsed,
+        latencyMs: Date.now() - start,
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        status: 0,
+        error: err instanceof Error ? err.message : String(err),
+        latencyMs: Date.now() - start,
+      };
+    }
   }
+
+  // Too many redirects
+  return {
+    ok: false,
+    status: 0,
+    error: `Too many redirects (${maxRedirects + 1})`,
+    latencyMs: Date.now() - start,
+  };
 }
 
 function joinUrl(base: string, path: string): string {

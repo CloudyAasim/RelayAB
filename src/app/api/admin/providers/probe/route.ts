@@ -4,7 +4,7 @@
  * Probe endpoint for testing provider connection and fetching models
  * before creating a provider. This doesn't require an existing provider.
  * 
- * Body: { baseUrl, apiKey, path? }
+ * Body: { baseUrl, apiKey, kind?, path? }
  */
 import { NextResponse } from "next/server";
 import { callUpstream, extractModelIds } from "@/lib/providers/upstream";
@@ -20,7 +20,7 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  let body: { baseUrl?: string; apiKey?: string; path?: string } = {};
+  let body: { baseUrl?: string; apiKey?: string; kind?: string; path?: string } = {};
   try {
     body = await req.json();
   } catch {
@@ -47,7 +47,29 @@ export async function POST(req: Request): Promise<Response> {
   // Encrypt a temporary key for callUpstream
   const { encryptSecret } = await import("@/lib/crypto/secrets");
   const encryptedKey = encryptSecret(body.apiKey);
-  const path = body.path ?? "/v1/models";
+  
+  // Determine the models path based on provider kind or use provided path
+  let path = body.path;
+  if (!path) {
+    // Providers that don't support auto model listing
+    if (body.kind === "anthropic" || body.kind === "azure" || body.kind === "custom-openai") {
+      // These providers don't have standard models list endpoints
+      return NextResponse.json({
+        ok: true,
+        status: 200,
+        latencyMs: 0,
+        models: [],
+        notice: body.kind === "anthropic" 
+          ? "Anthropic does not support automatic model listing. Please add models manually."
+          : body.kind === "azure"
+          ? "Azure OpenAI does not support automatic model listing. Please add models manually."
+          : "Custom OpenAI-compatible providers may not support automatic model listing. Please add models manually.",
+      });
+    } else {
+      // Default to OpenAI-compatible /v1/models or /models
+      path = "/v1/models";
+    }
+  }
 
   const result = await callUpstream({
     baseUrl: body.baseUrl,
@@ -64,10 +86,12 @@ export async function POST(req: Request): Promise<Response> {
     });
   }
 
+  const models = extractModelIds(result.body);
+  
   return NextResponse.json({
     ok: true,
     status: result.status,
     latencyMs: result.latencyMs,
-    models: extractModelIds(result.body),
+    models,
   });
 }

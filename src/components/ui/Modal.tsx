@@ -13,6 +13,8 @@ interface ModalProps {
   footer?: ReactNode;
   /** Wider modal — for forms with many fields (e.g. provider editor). */
   wide?: boolean;
+  /** Extra wide modal — for complex forms with tables. */
+  extraWide?: boolean;
 }
 
 export function Modal({
@@ -23,6 +25,7 @@ export function Modal({
   children,
   footer,
   wide,
+  extraWide,
 }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -51,9 +54,11 @@ export function Modal({
         aria-modal="true"
         aria-labelledby="modal-title"
         className={cn(
-          "w-full max-w-lg rounded-lg border border-border bg-card text-card-foreground shadow-lg",
+          "w-full rounded-lg border border-border bg-card text-card-foreground shadow-lg",
           "max-h-[90vh] overflow-y-auto",
           wide && "max-w-2xl",
+          extraWide && "max-w-5xl",
+          !wide && !extraWide && "max-w-lg",
         )}
       >
         <div className="flex items-start justify-between border-b border-border px-6 py-4">

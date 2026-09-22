@@ -85,6 +85,7 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
     baseUrl: input.baseUrl ?? null,
     encryptedApiKey,
     modelMapping: input.modelMapping ?? {},
+    modelConfigs: input.modelConfigs ?? {},
     enabled: input.enabled ?? true,
     priority: input.priority ?? 1,
     headers: input.headers ?? {},

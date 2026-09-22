@@ -10,6 +10,7 @@
  *   - Model configuration (context length, output length, credit cost)
  */
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -33,6 +34,7 @@ interface ModelConfig {
 
 export function CreateProviderButton({ onCreated }: Props) {
   const t = useT();
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
 
@@ -75,7 +77,7 @@ export function CreateProviderButton({ onCreated }: Props) {
     );
     setModels(templateModels);
     
-    if (!name) setName(tpl.label);
+    setName(tpl.label);
     if (tpl.defaultHeaders) {
       setHeaders(Object.entries(tpl.defaultHeaders).map(([k, v]) => `${k}: ${v}`).join("\n"));
     }
@@ -98,7 +100,7 @@ export function CreateProviderButton({ onCreated }: Props) {
       const res = await fetch(`/api/admin/providers/probe`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ baseUrl, apiKey }),
+        body: JSON.stringify({ baseUrl, apiKey, kind, path: PROVIDER_TEMPLATES.find(t => t.id === templateId)?.modelsListPath })),
       });
       const data = await res.json();
       if (data.ok) {
@@ -221,6 +223,7 @@ export function CreateProviderButton({ onCreated }: Props) {
       reset();
       setOpen(false);
       onCreated?.();
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : t("common.failed"));
     } finally {
@@ -233,7 +236,7 @@ export function CreateProviderButton({ onCreated }: Props) {
       <Button onClick={() => { reset(); setOpen(true); }}>
         {t("admin.providers.create")}
       </Button>
-      <Modal open={open} onClose={() => setOpen(false)} title={t("admin.providers.create")}>
+      <Modal open={open} onClose={() => setOpen(false)} title={t("admin.providers.create")} extraWide>
         <form onSubmit={onSubmit} className="space-y-4">
           {/* Template selection */}
           <div>

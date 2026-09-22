@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+export const dynamic = "force-dynamic";
 import { getCurrentUser } from "@/lib/auth/session";
 import { listAllApiKeys } from "@/lib/db/keys";
 import { listUsers } from "@/lib/db/users";
