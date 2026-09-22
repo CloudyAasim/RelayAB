@@ -7,10 +7,10 @@
 
 ## 1. 公开代理接口
 
-> 实现说明：这些客户端可见路径（`/v1/*`、`/anthropic/*`）由
-> `next.config.ts` 的 `rewrites` 映射到 `src/app/api/v1/*`、
-> `src/app/api/anthropic/*` 下的 Route Handler，因此对客户端而言路径与
-> OpenAI / Anthropic 官方一致。
+> 实现说明：这些客户端可见路径（`/v1/*`）由 Next.js Route Handlers 直接处理。
+> 支持两种路径格式：
+> - `/v1/*` （推荐，直接访问）
+> - `/api/v1/*` （兼容旧版）
 
 ### 1.1 `POST /v1/chat/completions`
 
@@ -20,7 +20,6 @@
 ```
 Authorization: Bearer sk-relay-xxxxxxxxxxxxxxxxxxxxxxxxxxxx
 Content-Type: application/json
-x-vercel-protection-bypass: <可选，仅部署保护开启时>
 ```
 
 **请求体**（OpenAI 标准）：
@@ -36,23 +35,13 @@ x-vercel-protection-bypass: <可选，仅部署保护开启时>
 **响应（非流式）**：
 ```json
 {
-  "ok": true,
-  "data": {
-    "id": "chatcmpl-xxx",
-    "object": "chat.completion",
-    "created": 1695273600,
-    "model": "gpt-4o-mini",
-    "choices": [{"index": 0, "message": {"role": "assistant", "content": "..."}, "finish_reason": "stop"}],
-    "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
-  }
+  "id": "chatcmpl-xxx",
+  "object": "chat.completion",
+  "created": 1695273600,
+  "model": "gpt-4o-mini",
+  "choices": [{"index": 0, "message": {"role": "assistant", "content": "..."}, "finish_reason": "stop"}],
+  "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
 }
-```
-
-**响应（流式 SSE）**：
-```
-data: {"id":"chatcmpl-xxx","object":"chat.completion.chunk","choices":[{"delta":{"content":"Hi"}}]}
-data: ...
-data: [DONE]
 ```
 
 **错误码**：
@@ -62,7 +51,6 @@ data: [DONE]
 | 403 | `key_disabled` | Key 已禁用 |
 | 403 | `key_expired` | Key 已过期 |
 | 403 | `quota_exceeded_credits` | 积分不足 |
-| 403 | `quota_exceeded_tokens` | Token 额度耗尽 |
 | 403 | `model_not_allowed` | 该 Key 不允许此模型 |
 | 400 | `model_not_mapped` | 没有任何 Provider 支持此客户端模型 |
 | 502 | `upstream_error` | 上游调用失败 |
@@ -70,27 +58,69 @@ data: [DONE]
 
 ---
 
-### 1.2 `GET /v1/models`
+### 1.2 `POST /v1/responses`
 
-**用途**：返回该 API Key 可访问的模型列表（OpenAI `/v1/models` 兼容）。
+**用途**：OpenAI Responses API 兼容端点。
+
+**请求头**：
+```
+Authorization: Bearer sk-relay-xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+Content-Type: application/json
+```
+
+**请求体**（OpenAI 标准）：
+```json
+{
+  "model": "gpt-4o-mini",
+  "input": "Hello, how are you?",
+  "stream": false
+}
+```
+
+或使用数组格式：
+```json
+{
+  "model": "gpt-4o-mini",
+  "input": [
+    {"type": "input_text", "content": "Hello"}
+  ],
+  "stream": false
+}
+```
 
 **响应**：
 ```json
 {
-  "ok": true,
-  "data": {
-    "object": "list",
-    "data": [
-      {"id": "gpt-4o-mini", "object": "model", "created": 1695273600, "owned_by": "openai"},
-      {"id": "claude-3-5-sonnet", "object": "model", "created": 1695273600, "owned_by": "anthropic"}
-    ]
-  }
+  "id": "resp_xxx",
+  "object": "response",
+  "model": "gpt-4o-mini",
+  "output": [
+    {"type": "message", "id": "msg_xxx", "content": [{"type": "output_text", "text": "..."}]}
+  ],
+  "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
 }
 ```
 
 ---
 
-### 1.3 `POST /anthropic/v1/messages`
+### 1.3 `GET /v1/models`
+
+**用途**：返回该 API Key 可访问的模型列表。
+
+**响应**：
+```json
+{
+  "object": "list",
+  "data": [
+    {"id": "gpt-4o-mini", "object": "model", "created": 1695273600, "owned_by": "relay-ab"},
+    {"id": "claude-3-5-sonnet", "object": "model", "created": 1695273600, "owned_by": "relay-ab"}
+  ]
+}
+```
+
+---
+
+### 1.4 `POST /anthropic/v1/messages`
 
 **用途**：Anthropic Messages 兼容端点。
 
@@ -110,27 +140,11 @@ anthropic-version: 2023-06-01
 }
 ```
 
-**响应**：标准 Anthropic Messages 响应格式，**但外层包一层** RelayAB 包装：
-```json
-{
-  "ok": true,
-  "data": {
-    "id": "msg_xxx",
-    "type": "message",
-    "role": "assistant",
-    "content": [{"type": "text", "text": "..."}],
-    "model": "claude-3-5-sonnet-20241022",
-    "stop_reason": "end_turn",
-    "usage": {"input_tokens": 10, "output_tokens": 20}
-  }
-}
-```
-
-**流式**：返回标准 Anthropic SSE（`event: message_start` 等）。
+**响应**：标准 Anthropic Messages 响应格式。
 
 ---
 
-### 1.4 `GET /healthz`
+### 1.5 `GET /healthz`
 
 **用途**：健康检查，无需鉴权。
 
@@ -201,7 +215,7 @@ anthropic-version: 2023-06-01
   "ok": true,
   "data": {
     "user": {"id": "...", "username": "bob", "role": "user"},
-    "generatedPassword": "Ab12-cd34-EF56-gh78"   // 仅创建时返回
+    "generatedPassword": "Ab12-cd34-EF56-gh78"
   }
 }
 ```
@@ -233,11 +247,9 @@ anthropic-version: 2023-06-01
         "userId": "01J...",
         "label": "Alice's Macbook",
         "keyPrefix": "sk-relay-X3K...m2pQ",
-        "quotaType": "credits",
-        "quotaLimit": 500000,
-        "quotaUsed": 1234,
         "expiresAt": "2026-12-31T23:59:59.000Z",
         "enabled": true,
+        "forceDisabled": false,
         "allowedModels": ["gpt-4o-mini"],
         "createdAt": "...",
         "lastUsedAt": null
@@ -247,38 +259,44 @@ anthropic-version: 2023-06-01
 }
 ```
 
+> **Key 状态说明**：
+> - `enabled: true` - 启用状态
+> - `enabled: false` - 停用状态（用户可自行启用）
+> - `forceDisabled: true` - 强制停用（管理员操作，用户无法自行启用）
+
 #### `POST /api/admin/keys`
 **请求体**：
 ```json
 {
   "userId": "01J...",
-  "label": "Macbook",
-  "quotaType": "credits",
-  "quotaLimit": 500000,
-  "expiresAt": "2026-12-31T23:59:59.000Z",
-  "allowedModels": ["gpt-4o-mini", "gpt-4o"]
+  "label": "Macbook"
 }
 ```
 
-> **积分单位**：`credits` 配额下，`quotaLimit` / `quotaUsed` 都是**积分**，
-> 以 0.001 积分为整数单位存储（上例 `500000` = 500 积分）。
-> 管理后台表单直接填写积分，由前端换算成存储单位。
+> Key 创建后默认启用。Key 的额度（积分/配额）由管理员分配给用户，Key 本身不存储额度信息。
+
 **响应**：
 ```json
 {
   "ok": true,
   "data": {
-    "key": { /* 同 GET 中的对象，但包含明文 key，仅此一次 */ },
+    "key": { /* 同 GET 中的对象 */ },
     "plainKey": "sk-relay-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
   }
 }
 ```
 
 #### `PATCH /api/admin/keys/[id]`
-更新 `label` / `quotaLimit` / `expiresAt` / `allowedModels` / `enabled`。
+更新 `label` / `expiresAt` / `allowedModels` / `enabled`。
 
 #### `POST /api/admin/keys/[id]/toggle`
-请求体：`{ "enabled": true }`，立即生效。
+```json
+{ "enabled": true }
+```
+或强制停用：
+```json
+{ "enabled": false, "forceDisabled": true }
+```
 
 #### `DELETE /api/admin/keys/[id]`
 
@@ -323,50 +341,45 @@ anthropic-version: 2023-06-01
       "creditsUsed": 234000
     },
     "breakdown": [
-      {"key": "user:01J...", "promptTokens": 100, "completionTokens": 50, "totalTokens": 150, "creditsUsed": 5000},
-      ...
+      {"key": "user:01J...", "promptTokens": 100, "completionTokens": 50, "totalTokens": 150, "creditsUsed": 5000}
     ]
   }
 }
 ```
 
-> `creditsUsed` 同样是积分，以 0.001 积分为单位：`234000` = 234 积分。
-
 ---
 
-## 3. 嵌入式 Mock（仅 dev）
+## 3. 中间件行为
 
-### 3.1 启用条件
-- `process.env.EMULATE_VERCEL_LOCAL === "1"`
-- `process.env.NODE_ENV !== "production"`
-
-### 3.2 `ANY /api/_emu/vercel/[...path]`
-透传到 `@emulators/vercel` 的 Hono 路由器。
-
-**示例**：
-```bash
-# 创建项目
-curl -X POST http://localhost:3000/api/_emu/vercel/v11/projects \
-  -H "Authorization: Bearer test_token_admin" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "my-app"}'
-
-# 列出项目
-curl http://localhost:3000/api/_emu/vercel/v10/projects \
-  -H "Authorization: Bearer test_token_admin"
-```
-
----
-
-## 4. 中间件行为
-
-### 4.1 `middleware.ts`
+### 3.1 `middleware.ts`
 对所有 `/v1/*`、`/anthropic/*`、`/api/admin/*` 路由：
 
-1. **保护绕过**：若 `x-vercel-protection-bypass` 缺失且 `VERCEL_PROTECTION_BYPASS` 已设置，
-   自动注入该 header（便于服务端内部回环调用）。
-2. **/api/admin/***：检查 session cookie，未登录 → 302 `/login`。
-3. **/v1/**、**/anthropic/***：不强制 session（这些用 API Key）。
+1. **/api/admin/***：检查 session cookie，未登录 → 302 `/login`。
+2. **/v1/**、**/anthropic/***：不强制 session（这些用 API Key）。
 
-### 4.2 错误处理
-所有未捕获异常 → 500 `{ ok: false, error: { code: "internal_error" } }`，并记录到 Sentry（可选，v1 跳过）。
+### 3.2 错误处理
+所有未捕获异常 → 500 `{ ok: false, error: { code: "internal_error" } }`。
+
+---
+
+## 4. 客户端配置示例
+
+### OpenAI SDK 配置
+```javascript
+import OpenAI from 'openai';
+
+const client = new OpenAI({
+  apiKey: 'sk-relay-xxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+  baseURL: 'https://your-domain.com/v1'
+});
+```
+
+### Anthropic SDK 配置
+```javascript
+import Anthropic from '@anthropic-ai/sdk';
+
+const client = new Anthropic({
+  apiKey: 'sk-relay-xxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+  baseURL: 'https://your-domain.com/anthropic/v1'
+});
+```

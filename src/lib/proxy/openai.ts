@@ -246,3 +246,184 @@ async function recordFailure(args: {
 // ---------------------------------------------------------------------------
 
 export { quotaDeltaFromUsage };
+
+// ---------------------------------------------------------------------------
+// OpenAI Responses API
+// ---------------------------------------------------------------------------
+
+interface ResponseAPIRequest {
+  model: string;
+  input?: string | Array<{ type: string; content?: string; audio?: unknown }>;
+  tools?: unknown[];
+  stream?: boolean;
+  [k: string]: unknown;
+}
+
+interface ResponseAPIResponse {
+  id: string;
+  object: string;
+  model: string;
+  output: unknown[];
+  usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+  [k: string]: unknown;
+}
+
+/**
+ * Forward an OpenAI Responses API request.
+ * Maps to upstream /v1/responses endpoint.
+ */
+export async function proxyOpenAIResponse(args: {
+  req: ResponseAPIRequest;
+  apiKey: ApiKey;
+  user: User;
+  deps?: ProxyDeps;
+}): Promise<ProxyResult> {
+  const { req, apiKey, user, deps } = args;
+  const fetchImpl = deps?.fetchImpl ?? fetch;
+
+  if (!req.model) {
+    return { ok: false, status: 400, error: { code: "missing_model", message: "model is required" } };
+  }
+
+  // 1. Validate key
+  const status = checkKeyStatus({
+    key: apiKey,
+    user,
+    requestedModel: req.model,
+  });
+  if (!status.ok) {
+    const http = reasonToHttp(status.reason);
+    return { ok: false, status: http.status, error: { code: http.code, message: http.message } };
+  }
+  const preFlight = shouldRejectBeforeRequest(user);
+  if (preFlight) {
+    const http = reasonToHttp(preFlight.reason);
+    return { ok: false, status: http.status, error: { code: http.code, message: http.message } };
+  }
+
+  // 2. Pick provider
+  const providers = await findProvidersForModel(req.model);
+  if (providers.length === 0) {
+    return {
+      ok: false,
+      status: 400,
+      error: { code: "model_not_mapped", message: `No provider configured for model '${req.model}'` },
+    };
+  }
+  const provider = providers[0];
+  const upstreamModel = provider.modelMapping[req.model];
+
+  // 3. Build upstream URL - Responses API uses /responses
+  const upstreamUrl = deps?.upstreamUrlFor
+    ? deps.upstreamUrlFor(provider)
+    : defaultResponsesUrl(provider);
+
+  // 4. Decrypt upstream key
+  const upstreamKey = decryptSecret(provider.encryptedApiKey);
+
+  // 5. Forward request
+  let response: Response;
+  try {
+    // Extract input text for credits calculation
+    let inputText = "";
+    if (typeof req.input === "string") {
+      inputText = req.input;
+    } else if (Array.isArray(req.input)) {
+      inputText = req.input
+        .filter((i) => i.type === "input_text" && i.content)
+        .map((i) => i.content)
+        .join(" ");
+    }
+
+    response = await fetchImpl(upstreamUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${upstreamKey}`,
+      },
+      body: JSON.stringify({ ...req, model: upstreamModel }),
+    });
+  } catch (err) {
+    await recordFailureResponses({ apiKey, provider, model: req.model, upstreamModel, error: err });
+    return { ok: false, status: 502, error: { code: "upstream_error", message: String(err) } };
+  }
+
+  if (!response.ok) {
+    const text = await response.text();
+    await recordFailureResponses({
+      apiKey,
+      provider,
+      model: req.model,
+      upstreamModel,
+      error: `HTTP ${response.status}: ${text}`,
+    });
+    return {
+      ok: false,
+      status: 502,
+      error: {
+        code: "upstream_error",
+        message: `Upstream returned ${response.status}`,
+      },
+    };
+  }
+
+  // 6. Parse usage
+  const body = (await response.json()) as ResponseAPIResponse;
+  const usage = body.usage ?? { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+  const creditsUsed = computeCredits({
+    model: upstreamModel,
+    promptTokens: usage.prompt_tokens,
+    completionTokens: usage.completion_tokens,
+  });
+
+  // 7. Persist usage
+  const delta = quotaDelta({
+    quotaType: user.quotaType,
+    creditsUsed,
+    totalTokens: usage.total_tokens,
+  });
+  if (delta > 0) {
+    await incrementUserQuotaUsed(apiKey.userId, delta);
+    await touchApiKeyLastUsed(apiKey.id);
+  }
+
+  await recordUsage({
+    apiKeyId: apiKey.id,
+    userId: apiKey.userId,
+    providerId: provider.id,
+    model: req.model,
+    upstreamModel,
+    promptTokens: usage.prompt_tokens,
+    completionTokens: usage.completion_tokens,
+    creditsUsed,
+    status: "success",
+  });
+
+  return { ok: true, status: 200, data: body };
+}
+
+function defaultResponsesUrl(provider: Provider): string {
+  if (provider.baseUrl) return `${provider.baseUrl.replace(/\/$/, "")}/responses`;
+  return "https://api.openai.com/v1/responses";
+}
+
+async function recordFailureResponses(args: {
+  apiKey: ApiKey;
+  provider: Provider;
+  model: string;
+  upstreamModel: string;
+  error: unknown;
+}): Promise<void> {
+  await recordUsage({
+    apiKeyId: args.apiKey.id,
+    userId: args.apiKey.userId,
+    providerId: args.provider.id,
+    model: args.model,
+    upstreamModel: args.upstreamModel,
+    promptTokens: 0,
+    completionTokens: 0,
+    creditsUsed: 0,
+    status: "error",
+    errorMessage: String(args.error),
+  });
+}
