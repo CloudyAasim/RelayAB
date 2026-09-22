@@ -9,6 +9,7 @@ import { logoutAction } from "@/app/(auth)/logout-action";
 import { useSidebar } from "./sidebar";
 import { useT } from "@/components/i18n/I18nProvider";
 import { ThemeToggle } from "./ThemeToggle";
+import { LocaleSwitcher } from "@/components/i18n/LocaleSwitcher";
 
 interface AppHeaderProps {
   username: string;
@@ -54,6 +55,7 @@ export function AppHeader({ username, role, pageTitle }: AppHeaderProps) {
       )}
 
       <div className="ml-auto flex items-center gap-2">
+        <LocaleSwitcher />
         <ThemeToggle />
         <UserMenu
           username={username}

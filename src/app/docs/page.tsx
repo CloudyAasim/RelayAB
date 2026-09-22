@@ -4,7 +4,7 @@
 import { getCurrentUser } from "@/lib/auth/session";
 import { getT } from "@/lib/i18n/server";
 import { resolvePublicUrl } from "@/lib/public-url";
-import { Footer, ThemeToggle } from "@/components/layouts";
+import { ThemeToggle } from "@/components/layouts";
 import { DocsContent } from "@/app/(user)/dashboard/docs/DocsContent";
 
 export const metadata = {
@@ -69,7 +69,6 @@ export default async function PublicDocsPage() {
         </div>
       </main>
 
-      <Footer />
     </div>
   );
 }
