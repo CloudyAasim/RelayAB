@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { useT } from "@/components/i18n/I18nProvider";
@@ -9,14 +8,10 @@ import { apiErrorMessage } from "@/lib/i18n/api-errors";
 import type { User } from "@/lib/db/types";
 import { MoreHorizontal, Power, KeyRound, Trash2 } from "lucide-react";
 
-// Bumped whenever the deployed client bundle changes meaningfully.
-// Find this in the browser console with:  [UserActions] deployed v...
-const CLIENT_VERSION = "v3-toggle-reload-2025-09-22";
+const CLIENT_VERSION = "v5-dom-and-reload-2025-09-22";
 
 export function UserActions({ user: serverUser }: { user: User }) {
   const t = useT();
-  const router = useRouter();
-
   const [newPassword, setNewPassword] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -24,16 +19,28 @@ export function UserActions({ user: serverUser }: { user: User }) {
   async function toggle() {
     if (loading) return;
 
-    console.log(`[UserActions ${CLIENT_VERSION}] toggle() called for ${serverUser.username} (id=${serverUser.id})`);
-    console.log(`[UserActions ${CLIENT_VERSION}] current disabled =`, serverUser.disabled);
-
     const targetDisabled = !serverUser.disabled;
+
+    // ─── Immediate optimistic DOM update ──────────────────────────
+    // We update the badge directly in the DOM so the user sees the
+    // change instantly, without waiting for the API call or a page
+    // refresh. The server-side value will catch up after navigation.
+    const td = document.querySelector(
+      `td[data-user-id="${serverUser.id}"]`,
+    );
+    if (td) {
+      td.setAttribute("data-disabled", String(targetDisabled));
+      const badgeSpan = td.querySelector("span");
+      if (badgeSpan) {
+        badgeSpan.textContent = targetDisabled
+          ? t("dashboard.status.disabled")
+          : t("dashboard.status.enabled");
+      }
+    }
+
     setLoading(true);
     try {
-      const url = `/api/admin/users/${serverUser.id}/toggle`;
-      console.log(`[UserActions ${CLIENT_VERSION}] POST ${url} body=`, JSON.stringify({ disabled: targetDisabled }));
-
-      const res = await fetch(url, {
+      const res = await fetch(`/api/admin/users/${serverUser.id}/toggle`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -43,40 +50,41 @@ export function UserActions({ user: serverUser }: { user: User }) {
         body: JSON.stringify({ disabled: targetDisabled }),
       });
 
-      console.log(`[UserActions ${CLIENT_VERSION}] response status=${res.status}`);
       const data = await res.json();
-      console.log(`[UserActions ${CLIENT_VERSION}] response body=`, JSON.stringify(data));
+
+      console.log(`[UserActions ${CLIENT_VERSION}] response:`, { status: res.status, data });
 
       if (!res.ok || !data.ok) {
+        // Revert the optimistic update if the API failed.
+        if (td) {
+          td.setAttribute("data-disabled", String(serverUser.disabled));
+          const badgeSpan = td.querySelector("span");
+          if (badgeSpan) {
+            badgeSpan.textContent = serverUser.disabled
+              ? t("dashboard.status.disabled")
+              : t("dashboard.status.enabled");
+          }
+        }
         const msg =
           apiErrorMessage(t, data?.error?.code, data?.error?.message) ??
           t("admin.users.action.failed");
-        console.warn(`[UserActions ${CLIENT_VERSION}] toggle failed:`, msg);
         alert(msg);
+        setLoading(false);
         return;
       }
 
-      console.log(`[UserActions ${CLIENT_VERSION}] toggle succeeded, server disabled =`, data.data?.user?.disabled);
-
-      // Trigger RSC refresh first
-      try {
-        router.refresh();
-      } catch (e) {
-        console.warn(`[UserActions ${CLIENT_VERSION}] router.refresh threw:`, e);
-      }
-
-      // Hard reload as a fallback. We use location.replace so the back-button
-      // doesn't bring back the stale page.
-      setTimeout(() => {
-        const sep = window.location.href.includes("?") ? "&" : "?";
-        const newUrl = `${window.location.href.split("?")[0]}${sep}_=${Date.now()}`;
-        console.log(`[UserActions ${CLIENT_VERSION}] hard-reloading to`, newUrl);
-        window.location.replace(newUrl);
-      }, 100);
+      // ─── Hard navigation to sync with server ─────────────────────
+      // The DOM update above gives instant feedback. We then force a
+      // full navigation so the parent server component re-renders
+      // with fresh data from Redis (and our optimistic update is
+      // confirmed by the server's response).
+      const baseUrl = window.location.origin + window.location.pathname;
+      const target = `${baseUrl}?_=${Date.now()}`;
+      console.log(`[UserActions ${CLIENT_VERSION}] navigating to`, target);
+      window.location.href = target;
     } catch (err) {
       console.error(`[UserActions ${CLIENT_VERSION}] toggle exception:`, err);
       alert(t("admin.users.action.failed"));
-    } finally {
       setLoading(false);
     }
   }
@@ -110,7 +118,7 @@ export function UserActions({ user: serverUser }: { user: User }) {
       const res = await fetch(`/api/admin/users/${serverUser.id}`, { method: "DELETE" });
       const data = await res.json();
       if (!data.ok) alert(apiErrorMessage(t, data.error?.code, data.error?.message));
-      else window.location.reload();
+      else window.location.href = window.location.origin + window.location.pathname;
     } catch {
       alert(t("admin.users.action.failed"));
     } finally {
