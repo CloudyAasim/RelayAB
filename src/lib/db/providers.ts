@@ -13,7 +13,7 @@
  * admin web panel can decrypt them (just-in-time when forwarding a request).
  */
 import { ProviderSchema, type Provider, type ProviderKind } from "./types";
-import { cache } from "react";
+import { unstable_cache, revalidateTag } from "next/cache";
 import { getRedis, k } from "./redis";
 import { encryptSecret } from "../crypto/secrets";
 import { generateId } from "../crypto/hashing";
@@ -95,6 +95,9 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
     updatedAt: provider.updatedAt,
   });
 
+  // Revalidate the providers cache
+  revalidateTag("providers");
+
   return provider;
 }
 
@@ -109,7 +112,7 @@ export async function getProviderById(id: string): Promise<Provider | null> {
 
 
 /** List all providers (sorted by priority ascending, then by name). */
-export const listProviders = cache(async (opts: {
+export const listProviders = unstable_cache(async (opts: {
   enabledOnly?: boolean;
 } = {}): Promise<Provider[]> => {
   const redis = getRedis();
@@ -131,7 +134,7 @@ export const listProviders = cache(async (opts: {
     return a.name.localeCompare(b.name);
   });
   return out;
-});
+}, ["providers"], { revalidate: 0, tags: ["providers"] });
 
 /**
  * Find providers that can serve the given client-visible model.
@@ -188,6 +191,9 @@ export async function updateProvider(
     updatedAt: merged.updatedAt,
   });
 
+  // Revalidate the providers cache
+  revalidateTag("providers");
+
   return merged;
 }
 
@@ -199,6 +205,10 @@ export async function deleteProvider(id: string): Promise<boolean> {
   const existing = await getProviderById(id);
   if (!existing) return false;
   await getRedis().del(k.provider(id));
+  
+  // Revalidate the providers cache
+  revalidateTag("providers");
+  
   return true;
 }
 

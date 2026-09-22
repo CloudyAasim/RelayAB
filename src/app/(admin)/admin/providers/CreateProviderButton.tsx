@@ -78,7 +78,7 @@ export function CreateProviderButton({ onCreated }: Props) {
     setFetchingModels(true);
     setFetchResult(null);
     try {
-      const res = await fetch(`/api/admin/providers/__probe__/models`, {
+      const res = await fetch(`/api/admin/providers/probe`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ baseUrl, encryptedApiKey: apiKeys.split("\n")[0]?.trim() }),

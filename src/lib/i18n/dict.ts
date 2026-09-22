@@ -56,7 +56,7 @@ const zhCN: Dict = {
   "welcome.users.line3": "在这里修改自己的密码",
   "welcome.admins.title": "我是管理员",
   "welcome.admins.line1": "为用户分配积分、指定可用模型、设置密钥数量上限",
-  "welcome.admins.line2": "配置上游 Provider 与模型映射",
+  "welcome.admins.line2": "配置上游提供商与模型映射",
   "welcome.admins.line3": "查看全局用量与每个账号的消耗",
   "welcome.compat": "同时兼容：",
 
@@ -76,7 +76,7 @@ const zhCN: Dict = {
   "nav.overview": "概览",
   "nav.users": "用户",
   "nav.keys": "Key",
-  "nav.providers": "Provider",
+  "nav.providers": "提供商",
   "nav.docs": "文档",
   "nav.settings": "设置",
   "nav.logout": "退出登录",
@@ -255,13 +255,13 @@ const zhCN: Dict = {
   "admin.overview.usageActiveKeys": "活跃 / 全部 Key",
   "admin.stat.users": "用户",
   "admin.stat.apiKeys": "API Key",
-  "admin.stat.providers": "Provider",
+  "admin.stat.providers": "提供商",
   "admin.stat.requests": "请求数",
   "admin.stat.tokens": "Token 用量",
   "admin.stat.tokensHint": "全部 Key 累计",
   "admin.dailyUsage.title": "每日用量（最近 7 天）",
-  "admin.providers.title": "Provider",
-  "admin.providers.empty.title": "还没有配置 Provider",
+  "admin.providers.title": "提供商管理",
+  "admin.providers.empty.title": "还没有配置提供商",
 
   // ===== Admin Users =====
   "admin.users.title": "用户",
@@ -302,8 +302,8 @@ const zhCN: Dict = {
   "admin.users.allocation.resetUsage": "同时把已消耗清零",
   "admin.users.allocation.modelsTitle": "可访问的模型",
   "admin.users.allocation.allModelsToggle": "允许全部模型",
-  "admin.users.allocation.allModelsHint": "该用户可调用任意已配置 Provider 暴露的模型。",
-  "admin.users.allocation.noModelsConfigured": "还没有配置任何 Provider，请先去 Provider 页面添加。",
+  "admin.users.allocation.allModelsHint": "该用户可调用任意已配置提供商暴露的模型。",
+  "admin.users.allocation.noModelsConfigured": "还没有配置任何提供商，请先去提供商页面添加。",
   "admin.users.allocation.modelSelectionEmpty": "请至少勾选一个模型，否则该用户无法调用任何东西。",
   "admin.users.allocation.models": "可用模型",
   "admin.users.allocation.maxActiveKeys": "活跃 Key 上限",
@@ -315,7 +315,7 @@ const zhCN: Dict = {
   "admin.users.allocation.quotaLimit": "积分总量",
   "admin.users.allocation.quotaLimitHint": "用户自建 Key 时将自动使用此额度。",
   "admin.users.allocation.allowedModels": "允许访问的模型",
-  "admin.users.allocation.allowedModelsHint": "留空表示允许全部已配置 Provider 中的模型。",
+  "admin.users.allocation.allowedModelsHint": "留空表示允许全部已配置提供商中的模型。",
   "admin.users.allocation.maxActiveKeysLabel": "活跃 Key 数上限",
   "admin.users.allocation.maxActiveKeysHint": "0 表示无上限。用户的已启用 Key 超过此值时不能再创建新 Key。",
 
@@ -344,7 +344,7 @@ const zhCN: Dict = {
   "admin.keys.action.failed": "操作失败",
 
   // ===== Admin Providers =====
-  "admin.providers.create": "添加上游 Provider",
+  "admin.providers.create": "添加上游提供商",
   "admin.providers.create.desc": "API Key 在存储前会用 AES-256-GCM 加密。",
   "admin.providers.create.name": "名称",
   "admin.providers.create.baseUrl": "Base URL",

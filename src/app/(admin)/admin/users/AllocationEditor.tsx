@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/Badge";
 import { useT } from "@/components/i18n/I18nProvider";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";
 import { formatCredits, formatNumber } from "@/lib/utils";
+import { CREDIT_SCALE } from "@/lib/quota/credits";
 import type { User } from "@/lib/db/types";
 import { Settings2, Coins, ListChecks, KeyRound, Wallet } from "lucide-react";
 
@@ -145,7 +146,12 @@ function AllocationModal({
 }) {
   const t = useT();
   const [quotaType, setQuotaType] = useState<"credits" | "tokens">(user.quotaType);
-  const [quotaLimit, setQuotaLimit] = useState(String(user.quotaLimit));
+  // quotaLimit is stored in units; convert to credits for form display
+  const [quotaLimit, setQuotaLimit] = useState(
+    user.quotaType === "credits"
+      ? String(user.quotaLimit / CREDIT_SCALE)
+      : String(user.quotaLimit)
+  );
   const [resetUsage, setResetUsage] = useState(false);
   const [selectedModels, setSelectedModels] = useState<Set<string>>(
     new Set(user.allowedModels),
@@ -180,7 +186,9 @@ function AllocationModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           quotaType,
-          quotaLimit: Number(quotaLimit),
+          quotaLimit: user.quotaType === "credits"
+            ? Math.round(Number(quotaLimit) * CREDIT_SCALE)
+            : Number(quotaLimit),
           ...(resetUsage ? { quotaUsed: 0 } : {}),
           allowedModels: allModels ? [] : Array.from(selectedModels),
           maxActiveKeys: Number(maxActiveKeys),
