@@ -141,7 +141,7 @@ export async function listProviders(opts: {
   const redis = getRedis();
 
   // Try the index set first (fast path)
-  let ids = await redis.smembers<string[]>(k.providerIndex()).catch(() => []);
+  let ids: string[] = await redis.smembers(k.providerIndex()).catch(() => []);
 
   // Fallback: SCAN if index is empty (backwards compat with existing data)
   if (!ids || ids.length === 0) {
