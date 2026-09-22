@@ -1,16 +1,19 @@
 /**
  * app/api/admin/keys/[id]/toggle/route.ts
  *
- * POST /api/admin/keys/[id]/toggle  body: { enabled: boolean }
+ * POST /api/admin/keys/[id]/toggle  body: { enabled?: boolean, forceDisabled?: boolean }
  *
- * Quick endpoint for enabling/disabling a key. Same as PATCH with { enabled }.
+ * Quick endpoint for enabling/disabling a key and force-disabling by admin.
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { setApiKeyEnabled } from "@/lib/db/keys";
+import { updateApiKey } from "@/lib/db/keys";
 import { getCurrentUser } from "@/lib/auth/session";
 
-const BodySchema = z.object({ enabled: z.boolean() });
+const BodySchema = z.object({
+  enabled: z.boolean().optional(),
+  forceDisabled: z.boolean().optional(),
+});
 
 export async function POST(
   req: Request,
@@ -37,12 +40,22 @@ export async function POST(
   const parsed = BodySchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      { ok: false, error: { code: "bad_request", message: "enabled (boolean) required" } },
+      { ok: false, error: { code: "bad_request", message: "Invalid request body" } },
       { status: 400 },
     );
   }
 
-  const updated = await setApiKeyEnabled(id, parsed.data.enabled);
+  if (parsed.data.enabled === undefined && parsed.data.forceDisabled === undefined) {
+    return NextResponse.json(
+      { ok: false, error: { code: "bad_request", message: "At least one of enabled or forceDisabled is required" } },
+      { status: 400 },
+    );
+  }
+
+  const updated = await updateApiKey(id, {
+    enabled: parsed.data.enabled,
+    forceDisabled: parsed.data.forceDisabled,
+  });
   if (!updated) {
     return NextResponse.json(
       { ok: false, error: { code: "not_found", message: "API key not found" } },

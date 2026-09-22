@@ -54,14 +54,14 @@ export function Modal({
         aria-modal="true"
         aria-labelledby="modal-title"
         className={cn(
-          "w-full rounded-lg border border-border bg-card text-card-foreground shadow-lg",
+          "w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-card text-card-foreground shadow-lg",
           "max-h-[90vh] overflow-y-auto",
           wide && "max-w-2xl",
           extraWide && "max-w-5xl",
           !wide && !extraWide && "max-w-lg",
         )}
       >
-        <div className="flex items-start justify-between border-b border-border px-6 py-4">
+        <div className="flex items-start justify-between border-b border-slate-200 dark:border-slate-700 px-6 py-4">
           <div>
             <h2 id="modal-title" className="text-base font-semibold text-foreground">
               {title}
@@ -81,7 +81,7 @@ export function Modal({
         </div>
         <div className="px-6 py-4">{children}</div>
         {footer && (
-          <div className="flex justify-end gap-2 border-t border-border bg-muted/30 px-6 py-3">
+          <div className="flex justify-end gap-2 border-t border-slate-200 dark:border-slate-700 bg-muted/30 px-6 py-3">
             {footer}
           </div>
         )}

@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 
-type Tone = "neutral" | "primary" | "success" | "warning" | "danger" | "info" | "purple" | "slate";
+type Tone = "neutral" | "primary" | "success" | "warning" | "danger" | "info" | "purple" | "slate" | "orange";
 
 const toneClass: Record<Tone, string> = {
   neutral:
@@ -20,6 +20,8 @@ const toneClass: Record<Tone, string> = {
     "bg-[color:oklch(0.92_0.06_310)] text-[color:oklch(0.45_0.18_310)] border-[color:oklch(0.85_0.08_310)] dark:bg-[color:oklch(0.32_0.08_310)] dark:text-[color:oklch(0.85_0.14_310)] dark:border-[color:oklch(0.42_0.1_310)]",
   slate:
     "bg-muted text-foreground/80 border-border",
+  orange:
+    "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-800",
 };
 
 export function Badge({
@@ -53,7 +55,7 @@ export function StatusDot({
   pulse = true,
   className,
 }: {
-  tone?: "success" | "warning" | "danger" | "info" | "neutral";
+  tone?: "success" | "warning" | "danger" | "info" | "neutral" | "orange";
   pulse?: boolean;
   className?: string;
 }) {
@@ -63,6 +65,7 @@ export function StatusDot({
     danger: "bg-destructive",
     info: "bg-info",
     neutral: "bg-muted-foreground",
+    orange: "bg-orange-500",
   };
   return (
     <span className={cn("relative inline-flex items-center", className)}>

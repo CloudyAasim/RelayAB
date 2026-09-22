@@ -157,7 +157,12 @@ export default async function DashboardPage() {
                           {formatDate(k.expiresAt)}
                         </TD>
                         <TD>
-                          {k.enabled ? (
+                          {k.forceDisabled ? (
+                            <Badge tone="orange">
+                              <StatusDot tone="orange" pulse={false} className="mr-1" />
+                              {t("admin.keys.status.forceDisabled")}
+                            </Badge>
+                          ) : k.enabled ? (
                             <Badge tone="success">
                               <StatusDot tone="success" pulse={false} className="mr-1" />
                               {t("dashboard.status.enabled")}
@@ -171,6 +176,8 @@ export default async function DashboardPage() {
                           {k.expiresAt && new Date(k.expiresAt) < new Date() && (
                             <Badge tone="warning" className="ml-1">
                               {t("dashboard.status.expired")}
+                            </Badge>
+                          )}
                             </Badge>
                           )}
                         </TD>

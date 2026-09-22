@@ -113,6 +113,10 @@ export const ApiKeySchema = z.object({
   keyHash: z.string().length(64), // sha256 hex
   keyPrefix: z.string().min(8), // "sk-relay-XXXX...YYYY"
   expiresAt: z.string().nullable(),
+  /**
+   * Admin-forced disable. When true, the key cannot be enabled by the user.
+   */
+  forceDisabled: z.boolean().default(false),
   enabled: z.boolean(),
   /**
    * Optional per-key narrowing of the user's model whitelist.

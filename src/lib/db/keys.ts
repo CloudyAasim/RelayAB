@@ -49,6 +49,7 @@ export interface UpdateApiKeyInput {
   expiresAt?: string | null;
   allowedModels?: string[];
   enabled?: boolean;
+  forceDisabled?: boolean;
 }
 
 export interface ApiKeyWithPlaintext {
@@ -80,6 +81,7 @@ export async function createApiKey(input: CreateApiKeyInput): Promise<ApiKeyWith
     keyHash,
     keyPrefix: maskApiKey(plain),
     expiresAt: input.expiresAt ?? null,
+    forceDisabled: false,
     enabled: true,
     allowedModels: input.allowedModels ?? [],
     createdAt: now,
@@ -95,6 +97,7 @@ export async function createApiKey(input: CreateApiKeyInput): Promise<ApiKeyWith
     keyHash: apiKey.keyHash,
     keyPrefix: apiKey.keyPrefix,
     expiresAt: apiKey.expiresAt ?? "",
+    forceDisabled: apiKey.forceDisabled ? "1" : "0",
     enabled: apiKey.enabled ? "1" : "0",
     allowedModels: apiKey.allowedModels.join(","),
     createdAt: apiKey.createdAt,
@@ -195,6 +198,7 @@ export async function listAllApiKeys(opts: {
 // Update
 // ---------------------------------------------------------------------------
 
+
 export async function updateApiKey(
   keyId: string,
   patch: UpdateApiKeyInput,
@@ -208,6 +212,7 @@ export async function updateApiKey(
     expiresAt: patch.expiresAt === undefined ? existing.expiresAt : patch.expiresAt,
     allowedModels: patch.allowedModels ?? existing.allowedModels,
     enabled: patch.enabled === undefined ? existing.enabled : patch.enabled,
+    forceDisabled: patch.forceDisabled === undefined ? existing.forceDisabled : patch.forceDisabled,
   });
 
   await getRedis().hset(k.apiKey(keyId), {
@@ -215,11 +220,11 @@ export async function updateApiKey(
     expiresAt: merged.expiresAt ?? "",
     allowedModels: merged.allowedModels.join(","),
     enabled: merged.enabled ? "1" : "0",
+    forceDisabled: merged.forceDisabled ? "1" : "0",
   });
 
   return merged;
 }
-
 export async function setApiKeyEnabled(
   keyId: string,
   enabled: boolean,
@@ -280,6 +285,7 @@ async function hashToKey(raw: Record<string, string> | null): Promise<ApiKey | n
       keyHash: raw.keyHash,
       keyPrefix: raw.keyPrefix,
       expiresAt: raw.expiresAt && raw.expiresAt !== "" ? raw.expiresAt : null,
+      forceDisabled: raw.forceDisabled === "1",
       enabled: raw.enabled === "1",
       allowedModels: raw.allowedModels ? raw.allowedModels.split(",").filter(Boolean) : [],
       createdAt: raw.createdAt,

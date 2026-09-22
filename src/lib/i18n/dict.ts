@@ -342,6 +342,9 @@ const zhCN: Dict = {
   "admin.keys.createdNotice": "明文 Key 仅显示一次，请立刻复制保存：",
   "admin.keys.action.enable": "启用",
   "admin.keys.action.disable": "停用",
+  "admin.keys.action.forceDisable": "强制停用",
+  "admin.keys.action.removeForceDisable": "取消强制停用",
+  "admin.keys.status.forceDisabled": "强制停用",
   "admin.keys.action.failed": "操作失败",
 
   // ===== Admin Providers =====
@@ -745,6 +748,9 @@ const en: Dict = {
   "admin.keys.createdNotice": "The plain key is shown only once. Copy it now:",
   "admin.keys.action.enable": "Enable",
   "admin.keys.action.disable": "Disable",
+  "admin.keys.action.forceDisable": "Force Disable",
+  "admin.keys.action.removeForceDisable": "Remove Force Disable",
+  "admin.keys.status.forceDisabled": "Force Disabled",
   "admin.keys.action.failed": "Failed",
 
   // ===== Admin Providers =====

@@ -8,13 +8,13 @@ import { useT } from "@/components/i18n/I18nProvider";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";
 import type { ApiKey } from "@/lib/db/types";
 import { formatDate } from "@/lib/utils";
-import { MoreHorizontal, Edit3, Power, Trash2 } from "lucide-react";
+import { MoreHorizontal, Edit3, Power, Trash2, Ban } from "lucide-react";
 
 /**
  * Per-row actions for a key the current user OWNS:
  *   - rename (label)
  *   - change expiry
- *   - toggle enabled
+ *   - toggle enabled (unless admin force-disabled)
  *   - delete
  *
  * Uses a modal-based menu instead of a dropdown to avoid table overflow issues.
@@ -97,6 +97,13 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
     }
   }
 
+  // Determine effective status
+  const effectiveStatus = apiKey.forceDisabled
+    ? "force_disabled"
+    : apiKey.enabled
+    ? "enabled"
+    : "disabled";
+
   return (
     <>
       <Button
@@ -127,18 +134,40 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
             <Edit3 className="mr-2 h-4 w-4" />
             {t("common.edit")}
           </Button>
-          <Button
-            variant="outline"
-            className="w-full justify-start"
-            onClick={() => {
-              setMenuOpen(false);
-              toggle();
-            }}
-            disabled={loading}
-          >
-            <Power className="mr-2 h-4 w-4" />
-            {apiKey.enabled ? t("admin.keys.action.disable") : t("admin.keys.action.enable")}
-          </Button>
+
+          {effectiveStatus === "force_disabled" ? (
+            <div className="flex items-center gap-2 px-3 py-2 text-sm text-orange-600">
+              <Ban className="h-4 w-4" />
+              {t("admin.keys.status.forceDisabled")}
+            </div>
+          ) : effectiveStatus === "enabled" ? (
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              onClick={() => {
+                setMenuOpen(false);
+                toggle();
+              }}
+              disabled={loading}
+            >
+              <Power className="mr-2 h-4 w-4" />
+              {t("admin.keys.action.disable")}
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              onClick={() => {
+                setMenuOpen(false);
+                toggle();
+              }}
+              disabled={loading}
+            >
+              <Power className="mr-2 h-4 w-4" />
+              {t("admin.keys.action.enable")}
+            </Button>
+          )}
+
           <div className="border-t border-border pt-2">
             <Button
               variant="ghost"
@@ -185,8 +214,12 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
               checked={enabled}
               onChange={(e) => setEnabled(e.target.checked)}
               className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
+              disabled={apiKey.forceDisabled}
             />
             {t("dashboard.keyActions.enabled")}
+            {apiKey.forceDisabled && (
+              <span className="text-xs text-orange-600">({t("admin.keys.status.forceDisabled")})</span>
+            )}
           </label>
           {error && (
             <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">

@@ -67,6 +67,14 @@ export async function PATCH(
     );
   }
 
+  // Prevent user from enabling a force-disabled key
+  if (parsed.data.enabled === true && existing.forceDisabled) {
+    return NextResponse.json(
+      { ok: false, error: { code: "key_force_disabled", message: "This key has been disabled by the administrator and cannot be enabled" } },
+      { status: 403 },
+    );
+  }
+
   const updated = await updateApiKey(id, parsed.data);
   if (!updated) {
     return NextResponse.json(
