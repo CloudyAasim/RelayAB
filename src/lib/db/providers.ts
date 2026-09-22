@@ -246,7 +246,8 @@ async function hashToProvider(raw: Record<string, string> | null): Promise<Provi
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
     });
-  } catch {
+  } catch (err) {
+    console.error("[hashToProvider] Failed to parse provider:", err, "Raw:", raw);
     return null;
   }
 }
