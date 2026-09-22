@@ -102,7 +102,33 @@ export function CreateProviderButton({ onCreated }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ baseUrl, apiKey, kind, path: PROVIDER_TEMPLATES.find(t => t.id === templateId)?.modelsListPath }),
       });
-      const data = await res.json();
+      
+      // Handle empty or non-JSON responses
+      const text = await res.text();
+      if (!text) {
+        setFetchResult({
+          count: 0,
+          status: res.status,
+          latencyMs: 0,
+          error: t("common.networkError") + " (empty response)",
+        });
+        setFetchingModels(false);
+        return;
+      }
+      
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        setFetchResult({
+          count: 0,
+          status: res.status,
+          latencyMs: 0,
+          error: t("common.networkError") + " (invalid JSON: " + text.slice(0, 100) + ")",
+        });
+        setFetchingModels(false);
+        return;
+      }
       if (data.ok) {
         const ids: string[] = data.models ?? [];
         setFetchResult({ count: ids.length, status: data.status, latencyMs: data.latencyMs });
@@ -219,7 +245,23 @@ export function CreateProviderButton({ onCreated }: Props) {
           headers: parseHeaders(),
         }),
       });
-      const data = await res.json();
+      
+      // Handle empty or non-JSON responses
+      const text = await res.text();
+      if (!text) {
+        setError(t("common.networkError") + " (empty response)");
+        setLoading(false);
+        return;
+      }
+      
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        setError(t("common.networkError") + " (invalid server response)");
+        setLoading(false);
+        return;
+      }
 
       if (!data.ok) {
         setError(data.error?.message ?? t("common.failed"));
