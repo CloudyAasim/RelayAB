@@ -1,11 +1,17 @@
 /**
  * app/api/admin/users/[id]/toggle/route.ts
  *
- * POST /api/admin/users/[id]/toggle
- * Body: { disabled: boolean }
+ * Toggle a user's disabled flag.
  *
- * Dedicated endpoint for enabling/disabling a user.
- * Returns the updated user on success.
+ * Accepts BOTH:
+ *   - JSON POST  (Content-Type: application/json)  → returns JSON
+ *   - Form POST  (Content-Type: application/x-www-form-urlencoded)  → returns 303 redirect
+ *
+ * The form-POST path lets us drive the mutation from a plain HTML <form>,
+ * which is the most browser-reliable way to trigger a server-side mutation.
+ * No JavaScript required: the browser handles the submit, the server does
+ * the work, and the browser follows the 303 back to /admin/users with
+ * fresh state.
  */
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
@@ -14,14 +20,16 @@ import { getUserById, updateUser } from "@/lib/db/users";
 import { toPublicUser } from "@/lib/db/types";
 import { getCurrentUser } from "@/lib/auth/session";
 
-const BodySchema = z.object({
+const JsonSchema = z.object({
   disabled: z.boolean(),
 });
 
-export async function POST(
-  req: Request,
-  context: { params: Promise<{ id: string }> },
-): Promise<Response> {
+const FormSchema = z.object({
+  userId: z.string().min(1),
+  disabled: z.enum(["true", "false"]),
+});
+
+export async function POST(req: Request): Promise<Response> {
   const me = await getCurrentUser();
   if (!me || me.role !== "admin") {
     return NextResponse.json(
@@ -29,67 +37,106 @@ export async function POST(
       { status: 403 },
     );
   }
-  const { id } = await context.params;
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json(
-      { ok: false, error: { code: "bad_json", message: "Invalid JSON" } },
-      { status: 400 },
-    );
-  }
-  const parsed = BodySchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json(
-      { ok: false, error: { code: "bad_request", message: parsed.error.message } },
-      { status: 400 },
-    );
+  // The route lives at /api/admin/users/[id]/toggle — so we can pull the
+  // user id from the URL segment instead of relying on the form to send it.
+  const url = new URL(req.url);
+  const pathParts = url.pathname.split("/");
+  // /api/admin/users/<id>/toggle  →  [<empty>, "api", "admin", "users", "<id>", "toggle"]
+  const id = pathParts[pathParts.length - 2] ?? "";
+
+  const contentType = req.headers.get("content-type") ?? "";
+  const isFormPost =
+    contentType.includes("application/x-www-form-urlencoded") ||
+    contentType.includes("multipart/form-data");
+
+  let targetDisabled: boolean;
+  if (isFormPost) {
+    const form = await req.formData();
+    // Validate the userId matches the URL (defence-in-depth).
+    const parsed = FormSchema.safeParse({
+      userId: form.get("userId"),
+      disabled: form.get("disabled"),
+    });
+    if (!parsed.success) {
+      return new NextResponse(
+        `<h1>Bad request</h1><p>${parsed.error.message}</p>`,
+        { status: 400, headers: { "Content-Type": "text/html" } },
+      );
+    }
+    if (parsed.data.userId !== id) {
+      return new NextResponse(
+        `<h1>Bad request</h1><p>URL and form userId mismatch.</p>`,
+        { status: 400, headers: { "Content-Type": "text/html" } },
+      );
+    }
+    targetDisabled = parsed.data.disabled === "true";
+  } else {
+    // JSON POST.
+    const body = await req.json().catch(() => null);
+    const parsed = JsonSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { ok: false, error: { code: "bad_request", message: parsed.error.message } },
+        { status: 400 },
+      );
+    }
+    targetDisabled = parsed.data.disabled;
   }
 
   const existing = await getUserById(id);
   if (!existing) {
+    if (isFormPost) {
+      return new NextResponse("<h1>User not found</h1>", {
+        status: 404,
+        headers: { "Content-Type": "text/html" },
+      });
+    }
     return NextResponse.json(
       { ok: false, error: { code: "not_found", message: "User not found" } },
       { status: 404 },
     );
   }
 
-  // Prevent admin from locking themselves out
-  if (id === me.id && parsed.data.disabled === true) {
+  // Refuse self-disable.
+  if (id === me.id && targetDisabled) {
+    if (isFormPost) {
+      return new NextResponse("<h1>Cannot disable your own account</h1>", {
+        status: 400,
+        headers: { "Content-Type": "text/html" },
+      });
+    }
     return NextResponse.json(
       { ok: false, error: { code: "self_disable", message: "Cannot disable your own account" } },
       { status: 400 },
     );
   }
 
-  const updated = await updateUser(id, { disabled: parsed.data.disabled });
+  const updated = await updateUser(id, { disabled: targetDisabled });
   if (!updated) {
+    if (isFormPost) {
+      return new NextResponse("<h1>Update failed</h1>", {
+        status: 500,
+        headers: { "Content-Type": "text/html" },
+      });
+    }
     return NextResponse.json(
-      { ok: false, error: { code: "not_found", message: "User not found" } },
-      { status: 404 },
+      { ok: false, error: { code: "update_failed", message: "Could not update user" } },
+      { status: 500 },
     );
   }
 
-  // Force Next.js to drop any cached RSC payload for the users page so the
-  // very next render of /admin/users reads the new disabled flag from Redis.
-  try {
-    revalidatePath("/admin/users");
-  } catch {
-    // revalidatePath is a no-op in some contexts; safe to ignore.
+  revalidatePath("/admin/users");
+
+  if (isFormPost) {
+    // Browser submitted a plain HTML form → return a 303 redirect back to
+    // the users page. The browser follows the redirect natively and renders
+    // a fresh server-rendered page that reads the latest Redis state.
+    return NextResponse.redirect(new URL("/admin/users", req.url), 303);
   }
 
-  // Disable caching at every layer — the page that requested this MUST
-  // see the new state on the very next render.
   return NextResponse.json(
     { ok: true, data: { user: toPublicUser(updated) } },
-    {
-      headers: {
-        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-        "Pragma": "no-cache",
-        "Expires": "0",
-      },
-    },
+    { headers: { "Cache-Control": "no-store" } },
   );
 }

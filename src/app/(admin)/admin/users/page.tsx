@@ -25,7 +25,7 @@ import { Users as UsersIcon } from "lucide-react";
 // VERSION STAMP — bump on every meaningful change to this page.
 // Visible in the rendered HTML (data attribute + footer line) so we can
 // verify which code is actually deployed without ambiguity.
-const PAGE_VERSION = "v6-server-action-direct-2025-09-22";
+const PAGE_VERSION = "v7-plain-form-2025-09-22";
 
 export default async function UsersPage() {
   const user = await getCurrentUser();

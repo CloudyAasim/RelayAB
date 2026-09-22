@@ -1,70 +1,36 @@
 "use client";
 
-import { useState, useTransition, useRef } from "react";
+import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { useT } from "@/components/i18n/I18nProvider";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";
 import type { User } from "@/lib/db/types";
 import { MoreHorizontal, Power, KeyRound, Trash2 } from "lucide-react";
-import { toggleUserAction, resetPasswordAction, deleteUserAction } from "./actions";
+import { resetPasswordAction } from "./actions";
 
 /**
  * UserActions — per-row action menu for the admin users table.
  *
- * Mutations are dispatched via Server Actions imported from ./actions.
- * Each Server Action ends with redirect("/admin/users") after
- * revalidatePath(); the browser follows the 303 to a freshly-rendered
- * page that reads the new state from Redis.
+ * Toggle and delete use plain HTML forms POSTed to the corresponding
+ * REST route. No JavaScript orchestrates the request — the browser
+ * handles the submit, the server performs the mutation, then returns
+ * a 303 redirect to /admin/users. The browser follows the redirect
+ * and the page re-renders with fresh Redis state.
+ *
+ * Reset-password uses a Server Action because it needs to RETURN the
+ * generated plaintext to the UI (a 303 redirect can't carry that).
  */
 export function UserActions({ user: serverUser }: { user: User }) {
   const t = useT();
   const [menuOpen, setMenuOpen] = useState(false);
   const [passwordModal, setPasswordModal] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
-  const errorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [isResetting, startResetTransition] = useTransition();
 
-  function showError(msg: string) {
-    setError(msg);
-    if (errorTimer.current) clearTimeout(errorTimer.current);
-    errorTimer.current = setTimeout(() => setError(null), 5000);
-  }
-
-  function isNextNavError(e: unknown): boolean {
-    if (!(e instanceof Error)) return false;
-    const msg = e.message;
-    return (
-      msg.includes("NEXT_REDIRECT") ||
-      msg.includes("NEXT_NOT_FOUND") ||
-      // Next.js sometimes attaches the marker on the digest, not the message.
-      (e as { digest?: string }).digest?.startsWith("NEXT_") === true
-    );
-  }
-
-  function runToggle() {
-    setError(null);
-    setMenuOpen(false);
-    startTransition(async () => {
-      try {
-        const fd = new FormData();
-        fd.set("userId", serverUser.id);
-        fd.set("disabled", String(!serverUser.disabled));
-        await toggleUserAction(fd);
-        // On success, toggleUserAction redirected — control never reaches here.
-      } catch (e) {
-        if (isNextNavError(e)) return; // normal redirect, ignore
-        const msg = e instanceof Error ? e.message : "unknown error";
-        console.error("[UserActions] toggle failed:", e);
-        showError(apiErrorMessage(t, undefined, msg));
-        setMenuOpen(true);
-      }
-    });
-  }
-
-  function runReset() {
-    setError(null);
-    startTransition(async () => {
+  async function runReset() {
+    setResetError(null);
+    startResetTransition(async () => {
       try {
         const fd = new FormData();
         fd.set("userId", serverUser.id);
@@ -72,27 +38,9 @@ export function UserActions({ user: serverUser }: { user: User }) {
         setPasswordModal(result.generatedPassword);
         setMenuOpen(false);
       } catch (e) {
-        if (isNextNavError(e)) return;
-        const msg = e instanceof Error ? e.message : "unknown error";
-        showError(apiErrorMessage(t, undefined, msg));
-      }
-    });
-  }
-
-  function runDelete() {
-    if (!confirm(t("admin.users.action.confirmDelete"))) return;
-    setError(null);
-    setMenuOpen(false);
-    startTransition(async () => {
-      try {
-        const fd = new FormData();
-        fd.set("userId", serverUser.id);
-        await deleteUserAction(fd);
-      } catch (e) {
-        if (isNextNavError(e)) return;
-        const msg = e instanceof Error ? e.message : "unknown error";
-        showError(apiErrorMessage(t, undefined, msg));
-        setMenuOpen(true);
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.includes("NEXT_REDIRECT") || msg.includes("NEXT_NOT_FOUND")) return;
+        setResetError(apiErrorMessage(t, undefined, msg));
       }
     });
   }
@@ -104,7 +52,6 @@ export function UserActions({ user: serverUser }: { user: User }) {
         variant="ghost"
         onClick={() => setMenuOpen(true)}
         aria-label={t("common.actions")}
-        disabled={isPending}
       >
         <MoreHorizontal className="h-4 w-4" />
       </Button>
@@ -116,38 +63,72 @@ export function UserActions({ user: serverUser }: { user: User }) {
         description={t("common.actions")}
       >
         <div className="space-y-2">
-          <Button
-            variant="outline"
-            className="w-full justify-start"
-            onClick={runToggle}
-            disabled={isPending}
+          {/*
+            Toggle: plain HTML form. Browser POSTs to the route, server
+            disables/enables the user, then returns 303 to /admin/users.
+            The browser follows the redirect and the page re-renders.
+          */}
+          <form
+            method="POST"
+            action={`/api/admin/users/${serverUser.id}/toggle`}
+            onSubmit={() => setMenuOpen(false)}
           >
-            <Power className="mr-2 h-4 w-4" />
-            {serverUser.disabled ? t("admin.users.action.enable") : t("admin.users.action.disable")}
-          </Button>
+            <input type="hidden" name="userId" value={serverUser.id} />
+            <input
+              type="hidden"
+              name="disabled"
+              value={serverUser.disabled ? "false" : "true"}
+            />
+            <Button
+              type="submit"
+              variant="outline"
+              className="w-full justify-start"
+            >
+              <Power className="mr-2 h-4 w-4" />
+              {serverUser.disabled ? t("admin.users.action.enable") : t("admin.users.action.disable")}
+            </Button>
+          </form>
+
           <Button
             variant="outline"
             className="w-full justify-start"
             onClick={runReset}
-            disabled={isPending}
+            disabled={isResetting}
           >
             <KeyRound className="mr-2 h-4 w-4" />
             {t("admin.users.action.resetPassword")}
           </Button>
+
+          {/*
+            Delete: also a plain form. Same pattern as toggle.
+          */}
           <div className="border-t border-border pt-2">
-            <Button
-              variant="ghost"
-              className="w-full justify-start text-destructive hover:bg-destructive/10"
-              onClick={runDelete}
-              disabled={isPending}
+            <form
+              method="POST"
+              action={`/api/admin/users/${serverUser.id}/delete-form`}
+              onSubmit={(e) => {
+                if (!confirm(t("admin.users.action.confirmDelete"))) {
+                  e.preventDefault();
+                } else {
+                  setMenuOpen(false);
+                }
+              }}
             >
-              <Trash2 className="mr-2 h-4 w-4" />
-              {t("common.delete")}
-            </Button>
+              <input type="hidden" name="userId" value={serverUser.id} />
+              <Button
+                type="submit"
+                variant="ghost"
+                className="w-full justify-start text-destructive hover:bg-destructive/10"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                {t("common.delete")}
+              </Button>
+            </form>
           </div>
-          {error && (
+
+          {resetError && (
             <div className="mt-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {error}
+              {resetError}
             </div>
           )}
         </div>
