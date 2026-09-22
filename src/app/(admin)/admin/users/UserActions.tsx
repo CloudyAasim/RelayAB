@@ -68,60 +68,67 @@ export function UserActions({ user }: { user: User }) {
   }
 
   return (
-    <div className="relative inline-block text-left">
+    <>
       <Button
         size="icon"
         variant="ghost"
-        onClick={() => setMenuOpen(!menuOpen)}
+        onClick={() => setMenuOpen(true)}
         aria-label={t("common.actions")}
         disabled={loading}
       >
         <MoreHorizontal className="h-4 w-4" />
       </Button>
-      {menuOpen && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} aria-hidden />
-          <div className="absolute right-0 top-full z-50 mt-2 w-44 rounded-md border border-border bg-popover text-popover-foreground shadow-lg animate-slide-down">
-            <button
-              type="button"
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent"
-              onClick={() => {
-                setMenuOpen(false);
-                toggle();
-              }}
-              disabled={loading}
-            >
-              <Power className="h-4 w-4 text-muted-foreground" />
-              {user.disabled ? t("admin.users.action.enable") : t("admin.users.action.disable")}
-            </button>
-            <button
-              type="button"
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent"
-              onClick={() => {
-                setMenuOpen(false);
-                reset();
-              }}
-              disabled={loading}
-            >
-              <KeyRound className="h-4 w-4 text-muted-foreground" />
-              {t("admin.users.action.resetPassword")}
-            </button>
-            <button
-              type="button"
-              className="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-sm text-destructive hover:bg-destructive/5"
+
+      {/* Action Menu Modal */}
+      <Modal
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        title={user.username}
+        description={t("common.actions")}
+      >
+        <div className="space-y-2">
+          <Button
+            variant="outline"
+            className="w-full justify-start"
+            onClick={() => {
+              setMenuOpen(false);
+              toggle();
+            }}
+            disabled={loading}
+          >
+            <Power className="mr-2 h-4 w-4" />
+            {user.disabled ? t("admin.users.action.enable") : t("admin.users.action.disable")}
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full justify-start"
+            onClick={() => {
+              setMenuOpen(false);
+              reset();
+            }}
+            disabled={loading}
+          >
+            <KeyRound className="mr-2 h-4 w-4" />
+            {t("admin.users.action.resetPassword")}
+          </Button>
+          <div className="border-t border-border pt-2">
+            <Button
+              variant="ghost"
+              className="w-full justify-start text-destructive hover:bg-destructive/10"
               onClick={() => {
                 setMenuOpen(false);
                 remove();
               }}
               disabled={loading}
             >
-              <Trash2 className="h-4 w-4" />
+              <Trash2 className="mr-2 h-4 w-4" />
               {t("common.delete")}
-            </button>
+            </Button>
           </div>
-        </>
-      )}
+        </div>
+      </Modal>
 
+      {/* Password Reset Modal */}
       <Modal
         open={newPassword !== null}
         onClose={() => setNewPassword(null)}
@@ -140,6 +147,6 @@ export function UserActions({ user }: { user: User }) {
           </div>
         </div>
       </Modal>
-    </div>
+    </>
   );
 }

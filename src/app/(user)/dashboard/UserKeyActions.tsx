@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
@@ -17,19 +17,17 @@ import { MoreHorizontal, Edit3, Power, Trash2 } from "lucide-react";
  *   - toggle enabled
  *   - delete
  *
- * Quota and allowed models are NOT editable from here — those are
- * admin-controlled.
+ * Uses a modal-based menu instead of a dropdown to avoid table overflow issues.
  */
 export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
   const t = useT();
+  const [menuOpen, setMenuOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [label, setLabel] = useState(apiKey.label);
   const [enabled, setEnabled] = useState(apiKey.enabled);
   const [expiresAt, setExpiresAt] = useState(toLocalInput(apiKey.expiresAt));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
 
   function reset() {
     setLabel(apiKey.label);
@@ -37,18 +35,6 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
     setExpiresAt(toLocalInput(apiKey.expiresAt));
     setError(null);
   }
-
-  // Close menu when clicking outside
-  useEffect(() => {
-    if (!menuOpen) return;
-    function handleClickOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [menuOpen]);
 
   async function save(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -112,58 +98,65 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
   }
 
   return (
-    <div className="relative inline-block text-left" ref={menuRef}>
+    <>
       <Button
         size="icon"
         variant="ghost"
-        onClick={() => setMenuOpen(!menuOpen)}
+        onClick={() => setMenuOpen(true)}
         aria-label={t("common.actions")}
       >
         <MoreHorizontal className="h-4 w-4" />
       </Button>
-      {menuOpen && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} aria-hidden />
-          <div className="absolute right-0 top-full z-50 mt-2 w-48 rounded-md border border-border bg-popover text-popover-foreground shadow-lg animate-slide-down">
-            <button
-              type="button"
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent"
-              onClick={() => {
-                setMenuOpen(false);
-                setEditOpen(true);
-              }}
-            >
-              <Edit3 className="h-4 w-4 text-muted-foreground" />
-              {t("common.edit")}
-            </button>
-            <button
-              type="button"
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent"
-              onClick={() => {
-                setMenuOpen(false);
-                toggle();
-              }}
-              disabled={loading}
-            >
-              <Power className="h-4 w-4 text-muted-foreground" />
-              {apiKey.enabled ? t("admin.keys.action.disable") : t("admin.keys.action.enable")}
-            </button>
-            <button
-              type="button"
-              className="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-sm text-destructive hover:bg-destructive/5"
+
+      {/* Action Menu Modal */}
+      <Modal
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        title={apiKey.label}
+        description={t("common.actions")}
+      >
+        <div className="space-y-2">
+          <Button
+            variant="outline"
+            className="w-full justify-start"
+            onClick={() => {
+              setMenuOpen(false);
+              setEditOpen(true);
+            }}
+          >
+            <Edit3 className="mr-2 h-4 w-4" />
+            {t("common.edit")}
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full justify-start"
+            onClick={() => {
+              setMenuOpen(false);
+              toggle();
+            }}
+            disabled={loading}
+          >
+            <Power className="mr-2 h-4 w-4" />
+            {apiKey.enabled ? t("admin.keys.action.disable") : t("admin.keys.action.enable")}
+          </Button>
+          <div className="border-t border-border pt-2">
+            <Button
+              variant="ghost"
+              className="w-full justify-start text-destructive hover:bg-destructive/10"
               onClick={() => {
                 setMenuOpen(false);
                 remove();
               }}
               disabled={loading}
             >
-              <Trash2 className="h-4 w-4" />
+              <Trash2 className="mr-2 h-4 w-4" />
               {t("common.delete")}
-            </button>
+            </Button>
           </div>
-        </>
-      )}
+        </div>
+      </Modal>
 
+      {/* Edit Modal */}
       <Modal
         open={editOpen}
         onClose={() => {
@@ -210,7 +203,7 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
           </div>
         </form>
       </Modal>
-    </div>
+    </>
   );
 }
 
