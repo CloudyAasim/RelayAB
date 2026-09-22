@@ -49,11 +49,20 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  const result = await proxyOpenAIResponse({
-    req: body as Parameters<typeof proxyOpenAIResponse>[0]["req"],
-    apiKey: auth.key as ApiKey,
-    user: owner,
-  });
+  let result;
+  try {
+    result = await proxyOpenAIResponse({
+      req: body as Parameters<typeof proxyOpenAIResponse>[0]["req"],
+      apiKey: auth.key as ApiKey,
+      user: owner,
+    });
+  } catch (err) {
+    console.error("[v1/responses] proxyOpenAIResponse threw:", err);
+    return NextResponse.json(
+      { ok: false, error: { code: "proxy_error", message: String(err) } },
+      { status: 500 },
+    );
+  }
 
   if (!result.ok) {
     return NextResponse.json(

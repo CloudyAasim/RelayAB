@@ -60,40 +60,63 @@ export async function POST(req: Request): Promise<Response> {
   const providers = await findProvidersForModel(requestedModel);
   const provider = providers[0];
 
-  if (provider && provider.upstreamFormat !== "responses") {
-    // Provider doesn't support Responses format - need to convert
-    // Import chat proxy functions dynamically to avoid circular deps
-    const { proxyChatCompletion } = await import("@/lib/proxy/openai");
-    
-    const chatReq = responsesToChatRequest(responseReq);
-    const chatResult = await proxyChatCompletion({
-      req: chatReq,
-      apiKey: auth.key as ApiKey,
-      user: owner,
-    });
+  if (!provider) {
+    return NextResponse.json(
+      { ok: false, error: { code: "no_provider", message: `No provider found for model '${requestedModel}'` } },
+      { status: 400 },
+    );
+  }
 
-    if (!chatResult.ok) {
+  if (provider.upstreamFormat !== "responses") {
+    // Provider doesn't support Responses format - need to convert
+    try {
+      const { proxyChatCompletion } = await import("@/lib/proxy/openai");
+      
+      const chatReq = responsesToChatRequest(responseReq);
+      const chatResult = await proxyChatCompletion({
+        req: chatReq,
+        apiKey: auth.key as ApiKey,
+        user: owner,
+      });
+
+      if (!chatResult.ok) {
+        return NextResponse.json(
+          { ok: false, error: chatResult.error },
+          { status: chatResult.status },
+        );
+      }
+
+      // Convert Chat response back to Responses format
+      const responsesData = chatToResponsesResponse(
+        chatResult.data as any,
+        responseReq,
+      );
+
+      return NextResponse.json(responsesData, { status: chatResult.status });
+    } catch (err) {
+      console.error("[v1/chat/completions/responses] conversion error:", err);
       return NextResponse.json(
-        { ok: false, error: chatResult.error },
-        { status: chatResult.status },
+        { ok: false, error: { code: "conversion_error", message: String(err) } },
+        { status: 500 },
       );
     }
-
-    // Convert Chat response back to Responses format
-    const responsesData = chatToResponsesResponse(
-      chatResult.data as any,
-      responseReq,
-    );
-
-    return NextResponse.json(responsesData, { status: chatResult.status });
   }
 
   // Provider supports Responses format - use original flow
-  const result = await proxyOpenAIResponse({
-    req: responseReq,
-    apiKey: auth.key as ApiKey,
-    user: owner,
-  });
+  let result;
+  try {
+    result = await proxyOpenAIResponse({
+      req: responseReq,
+      apiKey: auth.key as ApiKey,
+      user: owner,
+    });
+  } catch (err) {
+    console.error("[v1/chat/completions/responses] proxyOpenAIResponse threw:", err);
+    return NextResponse.json(
+      { ok: false, error: { code: "proxy_error", message: String(err) } },
+      { status: 500 },
+    );
+  }
 
   if (!result.ok) {
     return NextResponse.json(
