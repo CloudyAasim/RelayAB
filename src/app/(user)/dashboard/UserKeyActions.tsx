@@ -16,8 +16,6 @@ import { MoreHorizontal, Edit3, Power, Trash2, Ban } from "lucide-react";
  *   - change expiry
  *   - toggle enabled (unless admin force-disabled)
  *   - delete
- *
- * Uses a modal-based menu instead of a dropdown to avoid table overflow issues.
  */
 export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
   const t = useT();
@@ -56,6 +54,7 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
         return;
       }
       setEditOpen(false);
+      // 刷新页面以显示更新
       window.location.reload();
     } catch {
       setError(t("common.failed"));
@@ -65,8 +64,7 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
   }
 
   async function toggle() {
-    const newEnabled = !Boolean(apiKey.enabled);
-    console.log("[toggle] apiKey.enabled:", apiKey.enabled, "-> newEnabled:", newEnabled);
+    const newEnabled = !enabled;
     setLoading(true);
     try {
       const res = await fetch(`/api/user/keys/${apiKey.id}`, {
@@ -75,14 +73,14 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
         body: JSON.stringify({ enabled: newEnabled }),
       });
       const data = await res.json();
-      console.log("[toggle] Response:", JSON.stringify(data));
       if (!data.ok) {
         alert(apiErrorMessage(t, data.error?.code, data.error?.message));
         return;
       }
-      window.location.reload();
-    } catch (err) {
-      console.error("[toggle] Error:", err);
+      // 不刷新页面，直接更新本地状态
+      setEnabled(newEnabled);
+      setMenuOpen(false);
+    } catch {
       alert(t("common.failed"));
     } finally {
       setLoading(false);
@@ -104,9 +102,8 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
     }
   }
 
-  // Determine effective status
   const isForceDisabled = apiKey.forceDisabled === true;
-  const isEnabled = apiKey.enabled === true;
+  const isEnabled = enabled;
 
   return (
     <>
@@ -119,11 +116,11 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
         <MoreHorizontal className="h-4 w-4" />
       </Button>
 
-      {/* Action Menu Modal */}
+      {/* 操作菜单弹窗 */}
       <Modal
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
-        title={apiKey.label}
+        title={label}
         description={t("common.actions")}
       >
         <div className="space-y-2">
@@ -189,7 +186,7 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
         </div>
       </Modal>
 
-      {/* Edit Modal */}
+      {/* 编辑弹窗 */}
       <Modal
         open={editOpen}
         onClose={() => {
@@ -244,7 +241,6 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
   );
 }
 
-/** Convert ISO timestamp to `<input type=datetime-local>` value (no seconds / tz). */
 function toLocalInput(iso: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
