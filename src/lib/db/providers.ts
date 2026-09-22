@@ -142,7 +142,7 @@ export async function listProviders(opts: {
  * SCAN through all provider keys. Handles cursor iteration properly.
  * Compatible with both Upstash Redis and Vercel KV.
  */
-async function scanProviderIds(redis: { scan: (cursor: string | number, opts: { match: string; count: number }) => Promise<[string | number, string[]]> }): Promise<string[]> {
+async function scanProviderIds(redis: { scan: (cursor: any, opts: any) => Promise<[any, string[]]> }): Promise<string[]> {
   const ids: string[] = [];
   const prefix = k.provider(""); // "relay:provider:"
   let cursor = 0;
