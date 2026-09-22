@@ -2,8 +2,8 @@
  * src/lib/providers/templates.ts
  * Updated: 2025-09-22
  * 
- * Provider templates with complete model configurations and request headers.
- * Models and headers sourced from official platform documentation.
+ * Provider templates with complete model configurations.
+ * Models sourced from official platform documentation.
  */
 export interface ProviderTemplate {
   id: string;
@@ -39,10 +39,6 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
       "gpt-5.4-nano": "gpt-5.4-nano",
       "gpt-5.3-codex": "gpt-5.3-codex",
     },
-    defaultHeaders: {
-      "Content-Type": "application/json",
-      "Authorization": "Bearer YOUR_API_KEY",
-    },
     description: "OpenAI 官方 API。",
     modelsListPath: "/models",
   },
@@ -63,13 +59,9 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
       "claude-sonnet-4-6": "claude-sonnet-4-6",
       "claude-haiku-4-5": "claude-haiku-4-5",
     },
-    defaultHeaders: {
-      "Content-Type": "application/json",
-      "Authorization": "Bearer YOUR_API_KEY",
-      "anthropic-version": "2023-06-01",
-    },
     description: "Anthropic Claude 系列模型。不支持自动模型列举，请手动添加模型。",
     modelsListPath: "",
+    defaultHeaders: { "anthropic-version": "2023-06-01" },
   },
   {
     id: "azure-openai",
@@ -88,12 +80,9 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
       "gpt-5.3-codex": "gpt-5.3-codex",
       "gpt-oss-120b": "gpt-oss-120b",
     },
-    defaultHeaders: {
-      "Content-Type": "application/json",
-      "api-key": "YOUR_API_KEY",
-    },
-    description: "Azure OpenAI Service。需替换 baseUrl 中的资源名。api-version 通过 URL 查询参数传递。",
+    description: "Azure OpenAI Service。需替换 baseUrl 中的资源名。",
     modelsListPath: "",
+    defaultHeaders: { "api-version": "2024-10-21" },
   },
   {
     id: "deepseek",
@@ -107,10 +96,6 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
       "deepseek-v4-flash": "deepseek-v4-flash",
       "deepseek-v4-flash-vision-exp": "deepseek-v4-flash-vision-exp",
       "deepseek-v3.2": "deepseek-v3.2",
-    },
-    defaultHeaders: {
-      "Content-Type": "application/json",
-      "Authorization": "Bearer YOUR_API_KEY",
     },
     description: "DeepSeek 官方 API（OpenAI 兼容）。注意：deepseek-chat 和 deepseek-reasoner 已退役，不建议使用。",
     modelsListPath: "/models",
@@ -130,10 +115,6 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
       "MiniMax-M2.1": "MiniMax-M2.1",
       "MiniMax-M2": "MiniMax-M2",
     },
-    defaultHeaders: {
-      "Content-Type": "application/json",
-      "Authorization": "Bearer YOUR_API_KEY",
-    },
     description: "MiniMax 海螺 AI（OpenAI 兼容）。海外用户使用 api.minimax.io，国内用户使用 api.minimax.cn。",
     modelsListPath: "/models",
   },
@@ -151,10 +132,6 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
       "llama-4-maverick": "meta-llama/llama-4-maverick-17b-128e-instruct",
       "llama-3.3-70b": "llama-3.3-70b-versatile",
       "gpt-oss-120b": "openai/gpt-oss-120b",
-    },
-    defaultHeaders: {
-      "Content-Type": "application/json",
-      "Authorization": "Bearer YOUR_API_KEY",
     },
     description: "Groq 超低延迟推理（OpenAI 兼容）。",
     modelsListPath: "/models",
@@ -177,12 +154,6 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
       "deepseek-v4-flash": "deepseek/deepseek-v4-flash-0731",
       "minimax-m3": "minimax/minimax-m3",
     },
-    defaultHeaders: {
-      "Content-Type": "application/json",
-      "Authorization": "Bearer YOUR_API_KEY",
-      "HTTP-Referer": "https://your-app.com",
-      "X-OpenRouter-Title": "Your App Name",
-    },
     description: "OpenRouter 统一网关（OpenAI 兼容）。",
     modelsListPath: "/models",
   },
@@ -202,10 +173,6 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
       "qwen3.6-35b-a3b": "Qwen/Qwen3.6-35B-A3B",
       "minimax-m3": "MiniMaxAI/MiniMax-M3",
     },
-    defaultHeaders: {
-      "Content-Type": "application/json",
-      "Authorization": "Bearer YOUR_API_KEY",
-    },
     description: "SiliconFlow 第三方 API（OpenAI 兼容）。",
     modelsListPath: "/models",
   },
@@ -217,10 +184,6 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
     defaultContextLength: 128000,
     defaultMaxOutput: 8192,
     defaultModelMapping: {},
-    defaultHeaders: {
-      "Content-Type": "application/json",
-      "Authorization": "Bearer YOUR_API_KEY",
-    },
     description: "任何兼容 /v1/models 和 /chat/completions 的上游。",
     modelsListPath: "/models",
   },
