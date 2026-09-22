@@ -99,17 +99,16 @@ export function ProviderActions({ providerId, providerName }: Props) {
   }
 
   return (
-    <div className="flex flex-row items-center gap-1">
-        <Button size="sm" variant="ghost" onClick={runTest} loading={busy === "test"}>
-          {t("admin.providers.test")}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={fetchModels} loading={busy === "fetch"}>
-          ↻
-        </Button>
-        <Button size="sm" variant="ghost" onClick={remove} loading={busy === "delete"}>
-          {t("common.delete")}
-        </Button>
-      </div>
+    <div className="flex flex-row items-center gap-2 flex-wrap">
+      <Button size="sm" variant="ghost" onClick={runTest} loading={busy === "test"}>
+        {t("admin.providers.test")}
+      </Button>
+      <Button size="sm" variant="ghost" onClick={fetchModels} loading={busy === "fetch"}>
+        ↻
+      </Button>
+      <Button size="sm" variant="ghost" onClick={remove} loading={busy === "delete"}>
+        {t("common.delete")}
+      </Button>
       {test.phase === "ok" && (
         <span className="text-[10px] font-mono text-emerald-600">
           ✓ HTTP {test.status}, {test.latencyMs}ms
@@ -128,8 +127,6 @@ export function ProviderActions({ providerId, providerName }: Props) {
 }
 
 async function fetchCurrentModelMapping(providerId: string): Promise<Record<string, string>> {
-  // Small helper to fetch existing modelMapping. We don't have a dedicated
-  // single-provider GET endpoint, so we list all and find ours.
   const res = await fetch("/api/admin/providers");
   const data = await res.json();
   if (!data.ok) return {};
