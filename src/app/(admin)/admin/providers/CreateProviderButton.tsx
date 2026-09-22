@@ -100,7 +100,7 @@ export function CreateProviderButton({ onCreated }: Props) {
       const res = await fetch(`/api/admin/providers/probe`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ baseUrl, apiKey, kind, path: PROVIDER_TEMPLATES.find(t => t.id === templateId)?.modelsListPath })),
+        body: JSON.stringify({ baseUrl, apiKey, kind, path: PROVIDER_TEMPLATES.find(t => t.id === templateId)?.modelsListPath }),
       });
       const data = await res.json();
       if (data.ok) {
