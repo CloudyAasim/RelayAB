@@ -13,15 +13,11 @@ export function UserActions({ user: initialUser }: { user: User }) {
   const t = useT();
   const router = useRouter();
 
-  // Local state mirrors the server record. We update it optimistically after a
-  // successful API call so the UI reflects the change immediately.
   const [user, setUser] = useState(initialUser);
   const [newPassword, setNewPassword] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
-  // If the parent server component re-renders with fresher data (e.g. after
-  // a full page navigation), adopt it so the local copy doesn't drift.
   if (
     user.disabled !== initialUser.disabled ||
     user.role !== initialUser.role ||
@@ -34,12 +30,15 @@ export function UserActions({ user: initialUser }: { user: User }) {
     if (loading) return;
 
     const targetDisabled = !user.disabled;
-
     setLoading(true);
     try {
       const res = await fetch(`/api/admin/users/${user.id}/toggle`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+        },
+        cache: "no-store",
         body: JSON.stringify({ disabled: targetDisabled }),
       });
 
@@ -53,15 +52,30 @@ export function UserActions({ user: initialUser }: { user: User }) {
         return;
       }
 
-      // Optimistic update: apply the server's authoritative response immediately.
-      // This bypasses any browser-cache / reload issues.
+      // Apply optimistic update from server response
       if (data.data?.user) {
         const updated = data.data.user as User;
         setUser(updated);
-      } else {
-        // Fallback: mirror the intent locally.
-        setUser((u) => ({ ...u, disabled: targetDisabled }));
       }
+
+      // Force a full server re-render. We try router.refresh() first
+      // (the canonical Next.js way), then fall back to a hard navigation
+      // with a cache-busting query param so no CDN / browser cache can
+      // possibly serve a stale page.
+      try {
+        router.refresh();
+      } catch {
+        // ignore
+      }
+
+      // Belt-and-suspenders: after a tick, do a hard navigation. This is
+      // guaranteed to fetch a fresh server-rendered page because the URL
+      // changes (?_= timestamp) — no cache layer can match.
+      setTimeout(() => {
+        const url = new URL(window.location.href);
+        url.searchParams.set("_", String(Date.now()));
+        window.location.assign(url.toString());
+      }, 150);
     } catch (err) {
       console.error("[toggle] error:", err);
       alert(t("admin.users.action.failed"));
@@ -75,6 +89,8 @@ export function UserActions({ user: initialUser }: { user: User }) {
     try {
       const res = await fetch(`/api/admin/users/${user.id}/reset-password`, {
         method: "POST",
+        headers: { "Cache-Control": "no-store" },
+        cache: "no-store",
       });
       const data = await res.json();
       if (!data.ok) {
@@ -97,7 +113,7 @@ export function UserActions({ user: initialUser }: { user: User }) {
       const res = await fetch(`/api/admin/users/${user.id}`, { method: "DELETE" });
       const data = await res.json();
       if (!data.ok) alert(apiErrorMessage(t, data.error?.code, data.error?.message));
-      else router.refresh();
+      else window.location.reload();
     } catch {
       alert(t("admin.users.action.failed"));
     } finally {
@@ -117,7 +133,6 @@ export function UserActions({ user: initialUser }: { user: User }) {
         <MoreHorizontal className="h-4 w-4" />
       </Button>
 
-      {/* Action Menu Modal */}
       <Modal
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
@@ -166,7 +181,6 @@ export function UserActions({ user: initialUser }: { user: User }) {
         </div>
       </Modal>
 
-      {/* Password Reset Modal */}
       <Modal
         open={newPassword !== null}
         onClose={() => setNewPassword(null)}

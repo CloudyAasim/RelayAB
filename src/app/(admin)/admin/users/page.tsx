@@ -85,7 +85,7 @@ export default async function UsersPage() {
                             : t("admin.users.role.user")}
                         </Badge>
                       </TD>
-                      <TD>
+                      <TD data-user-id={u.id} data-disabled={String(u.disabled)}>
                         <Badge tone={u.disabled ? "neutral" : "success"}>
                           {u.disabled
                             ? t("dashboard.status.disabled")
