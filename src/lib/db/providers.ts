@@ -93,7 +93,8 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
     updatedAt: now,
   });
 
-  await getRedis().hset(k.provider(id), {
+  const r2 = getRedis();
+  await r2.hset(k.provider(id), {
     id: provider.id,
     name: provider.name,
     kind: provider.kind,
@@ -106,6 +107,11 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
     headers: JSON.stringify(provider.headers ?? {}),
     createdAt: provider.createdAt,
     updatedAt: provider.updatedAt,
+  });
+
+  // Add to index set (fast enumeration)
+  await r2.sadd(k.providerIndex(), id).catch((err) => {
+    console.error("[createProvider] Failed to add to index:", err);
   });
 
   // Revalidate the providers cache
@@ -124,20 +130,30 @@ export async function getProviderById(id: string): Promise<Provider | null> {
 }
 
 
-/** List all providers (sorted by priority ascending, then by name). */
+/** List all providers (sorted by priority ascending, then by name).
+ *
+ * Uses a Redis Set (`relay:provider:index`) to track provider IDs for fast
+ * enumeration. Falls back to SCAN if the index is empty (backwards compat).
+ */
 export async function listProviders(opts: {
   enabledOnly?: boolean;
 } = {}): Promise<Provider[]> {
   const redis = getRedis();
-  const [, matched] = await redis.scan(0, {
-    match: `${k.provider("").slice(0, -1)}*`,
-    count: 500,
-  });
-  const keys = matched.filter((key) => key.startsWith(k.provider("")));
+
+  // Try the index set first (fast path)
+  let ids = await redis.smembers<string[]>(k.providerIndex()).catch(() => []);
+
+  // Fallback: SCAN if index is empty (backwards compat with existing data)
+  if (!ids || ids.length === 0) {
+    ids = await scanAllProviderIds(redis);
+  }
 
   const out: Provider[] = [];
-  for (const key of keys) {
-    const p = await hashToProvider(await redis.hgetall<Record<string, string>>(key));
+  for (const id of ids) {
+    if (!id) continue;
+    const p = await hashToProvider(
+      await redis.hgetall<Record<string, string>>(k.provider(id))
+    );
     if (!p) continue;
     if (opts.enabledOnly && !p.enabled) continue;
     out.push(p);
@@ -147,6 +163,31 @@ export async function listProviders(opts: {
     return a.name.localeCompare(b.name);
   });
   return out;
+}
+
+/**
+ * Fallback: SCAN through all provider keys. Handles cursor iteration properly.
+ */
+async function scanAllProviderIds(redis: RedisLike): Promise<string[]> {
+  const ids: string[] = [];
+  let cursor = 0;
+  const prefix = k.provider(""); // "relay:provider:"
+  const pattern = `${prefix}*`;
+  do {
+    const [nextCursor, matched] = await redis.scan(cursor, {
+      match: pattern,
+      count: 100,
+    });
+    for (const key of matched) {
+      // Only pick up "relay:provider:{id}" (not other keys starting with relay:provider)
+      if (key.startsWith(prefix)) {
+        const id = key.slice(prefix.length);
+        if (id && id !== "index") ids.push(id);
+      }
+    }
+    cursor = Number(nextCursor);
+  } while (cursor !== 0);
+  return ids;
 }
 
 /**
@@ -217,7 +258,13 @@ export async function updateProvider(
 export async function deleteProvider(id: string): Promise<boolean> {
   const existing = await getProviderById(id);
   if (!existing) return false;
-  await getRedis().del(k.provider(id));
+  const r3 = getRedis();
+  await r3.del(k.provider(id));
+  
+  // Remove from index set
+  await r3.srem(k.providerIndex(), id).catch((err) => {
+    console.error("[deleteProvider] Failed to remove from index:", err);
+  });
   
   // Revalidate the providers cache
   revalidateTag("providers");
