@@ -141,6 +141,34 @@ export type PublicApiKey = ApiKey;
 // Provider
 // ---------------------------------------------------------------------------
 
+
+// ---------------------------------------------------------------------------
+// ModelConfig
+// ---------------------------------------------------------------------------
+
+/**
+ * Model configuration including context length, output length, and credit cost.
+ */
+export const ModelConfigSchema = z.object({
+  /** Upstream model ID */
+  upstreamId: z.string(),
+  /** Client-facing model ID (alias) */
+  clientId: z.string(),
+  /** Display name */
+  displayName: z.string().optional(),
+  /** Context window size (input tokens) */
+  contextLength: z.number().int().positive().default(128000),
+  /** Maximum output tokens */
+  maxOutputTokens: z.number().int().positive().default(8192),
+  /** Credit cost per 1M input tokens */
+  inputCost: z.number().positive().default(0),
+  /** Credit cost per 1M output tokens */
+  outputCost: z.number().positive().default(0),
+  /** Whether this model is enabled */
+  enabled: z.boolean().default(true),
+});
+
+export type ModelConfig = z.infer<typeof ModelConfigSchema>;
 export const ProviderSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1).max(64),
@@ -222,33 +250,6 @@ export function toPublicProvider(provider: Provider): PublicProvider {
   return rest;
 }
 
-// ---------------------------------------------------------------------------
-// ModelConfig
-// ---------------------------------------------------------------------------
-
-/**
- * Model configuration including context length, output length, and credit cost.
- */
-export const ModelConfigSchema = z.object({
-  /** Upstream model ID */
-  upstreamId: z.string(),
-  /** Client-facing model ID (alias) */
-  clientId: z.string(),
-  /** Display name */
-  displayName: z.string().optional(),
-  /** Context window size (input tokens) */
-  contextLength: z.number().int().positive().default(128000),
-  /** Maximum output tokens */
-  maxOutputTokens: z.number().int().positive().default(8192),
-  /** Credit cost per 1M input tokens */
-  inputCost: z.number().positive().default(0),
-  /** Credit cost per 1M output tokens */
-  outputCost: z.number().positive().default(0),
-  /** Whether this model is enabled */
-  enabled: z.boolean().default(true),
-});
-
-export type ModelConfig = z.infer<typeof ModelConfigSchema>;
 
 /**
  * Provider with model configurations.

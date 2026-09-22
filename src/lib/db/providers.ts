@@ -12,7 +12,7 @@
  * Provider credentials are NEVER exposed via toPublicProvider; only the
  * admin web panel can decrypt them (just-in-time when forwarding a request).
  */
-import { ProviderSchema, type Provider, type ProviderKind } from "./types";
+import { ProviderSchema, type Provider, type ProviderKind, type ModelConfig } from "./types";
 import { revalidateTag } from "next/cache";
 import { getRedis, k } from "./redis";
 import { encryptSecret } from "../crypto/secrets";
