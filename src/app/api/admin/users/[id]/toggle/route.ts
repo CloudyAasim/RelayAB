@@ -47,16 +47,22 @@ export async function POST(
     );
   }
 
+  console.log(`[toggle] id=${id} disabled=${parsed.data.disabled} operator=${me.id}`);
+
   const existing = await getUserById(id);
   if (!existing) {
+    console.log(`[toggle] user ${id} not found`);
     return NextResponse.json(
       { ok: false, error: { code: "not_found", message: "User not found" } },
       { status: 404 },
     );
   }
 
+  console.log(`[toggle] existing disabled=${existing.disabled}`);
+
   // Prevent admin from locking themselves out
   if (id === me.id && parsed.data.disabled === true) {
+    console.log(`[toggle] self-disable blocked`);
     return NextResponse.json(
       { ok: false, error: { code: "self_disable", message: "Cannot disable your own account" } },
       { status: 400 },
@@ -65,11 +71,14 @@ export async function POST(
 
   const updated = await updateUser(id, { disabled: parsed.data.disabled });
   if (!updated) {
+    console.log(`[toggle] updateUser returned null for ${id}`);
     return NextResponse.json(
       { ok: false, error: { code: "not_found", message: "User not found" } },
       { status: 404 },
     );
   }
+
+  console.log(`[toggle] success: user ${id} disabled=${updated.disabled}`);
 
   return NextResponse.json({ ok: true, data: { user: toPublicUser(updated) } });
 }

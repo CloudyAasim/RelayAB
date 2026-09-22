@@ -33,8 +33,6 @@ export default async function UsersPage() {
     listProviders({ enabledOnly: true }),
   ]);
 
-  // Every client-visible model across enabled providers, so the allocation
-  // editor can offer a real checklist instead of a free-text field.
   const availableModels = Array.from(
     new Set(providers.flatMap((p) => Object.keys(p.modelMapping))),
   ).sort();

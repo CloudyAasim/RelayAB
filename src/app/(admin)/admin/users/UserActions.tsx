@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { useT } from "@/components/i18n/I18nProvider";
@@ -8,31 +9,61 @@ import { apiErrorMessage } from "@/lib/i18n/api-errors";
 import type { User } from "@/lib/db/types";
 import { MoreHorizontal, Power, KeyRound, Trash2 } from "lucide-react";
 
-export function UserActions({ user }: { user: User }) {
+export function UserActions({ user: initialUser }: { user: User }) {
   const t = useT();
+  const router = useRouter();
+
+  // Local state mirrors the server record. We update it optimistically after a
+  // successful API call so the UI reflects the change immediately.
+  const [user, setUser] = useState(initialUser);
   const [newPassword, setNewPassword] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
+  // If the parent server component re-renders with fresher data (e.g. after
+  // a full page navigation), adopt it so the local copy doesn't drift.
+  if (
+    user.disabled !== initialUser.disabled ||
+    user.role !== initialUser.role ||
+    user.quotaLimit !== initialUser.quotaLimit
+  ) {
+    setUser(initialUser);
+  }
+
   async function toggle() {
     if (loading) return;
+
     const targetDisabled = !user.disabled;
+
     setLoading(true);
     try {
-      // Use the dedicated toggle endpoint for clarity and to prevent partial
-      // PATCH overwrites from AllocationEditor simultaneous edits.
       const res = await fetch(`/api/admin/users/${user.id}/toggle`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ disabled: targetDisabled }),
       });
+
       const data = await res.json();
-      if (!data.ok) {
-        alert(apiErrorMessage(t, data.error?.code, data.error?.message));
+
+      if (!res.ok || !data.ok) {
+        const msg =
+          apiErrorMessage(t, data?.error?.code, data?.error?.message) ??
+          t("admin.users.action.failed");
+        alert(msg);
         return;
       }
-      window.location.reload();
-    } catch {
+
+      // Optimistic update: apply the server's authoritative response immediately.
+      // This bypasses any browser-cache / reload issues.
+      if (data.data?.user) {
+        const updated = data.data.user as User;
+        setUser(updated);
+      } else {
+        // Fallback: mirror the intent locally.
+        setUser((u) => ({ ...u, disabled: targetDisabled }));
+      }
+    } catch (err) {
+      console.error("[toggle] error:", err);
       alert(t("admin.users.action.failed"));
     } finally {
       setLoading(false);
@@ -66,7 +97,7 @@ export function UserActions({ user }: { user: User }) {
       const res = await fetch(`/api/admin/users/${user.id}`, { method: "DELETE" });
       const data = await res.json();
       if (!data.ok) alert(apiErrorMessage(t, data.error?.code, data.error?.message));
-      else window.location.reload();
+      else router.refresh();
     } catch {
       alert(t("admin.users.action.failed"));
     } finally {
@@ -148,7 +179,9 @@ export function UserActions({ user }: { user: User }) {
               {newPassword}
             </div>
           )}
-          <p className="text-xs text-muted-foreground">{t("admin.users.action.passwordResetHint")}</p>
+          <p className="text-xs text-muted-foreground">
+            {t("admin.users.action.passwordResetHint")}
+          </p>
           <div className="flex justify-end pt-2">
             <Button onClick={() => setNewPassword(null)}>{t("common.close")}</Button>
           </div>
