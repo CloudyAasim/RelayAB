@@ -19,7 +19,7 @@ import { useT } from "@/components/i18n/I18nProvider";
  *   - collapsed: 3.5rem (56px) — just enough for icons
  */
 export function Sidebar({ children }: { children: ReactNode }) {
-  const { state, open, setOpen, isMobile } = useSidebar();
+  const { collapsed, open, setOpen, isMobile } = useSidebar();
 
   return (
     <>
@@ -34,14 +34,14 @@ export function Sidebar({ children }: { children: ReactNode }) {
 
       <aside
         aria-label="Sidebar navigation"
-        data-state={state}
+        data-state={collapsed ? "collapsed" : "expanded"}
         className={cn(
           "fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[transform,width] duration-200 ease-in-out",
           "lg:sticky lg:top-0 lg:h-screen lg:translate-x-0",
           // Mobile drawer behavior
           isMobile && (open ? "translate-x-0 shadow-xl" : "-translate-x-full"),
           // Desktop collapsible
-          !isMobile && state === "collapsed" && "lg:w-14",
+          collapsed && "lg:w-14",
         )}
       >
         {children}
@@ -101,12 +101,11 @@ export function SidebarRail() {
  * no-op on mobile, where the sidebar is a drawer with its own trigger.
  */
 export function SidebarToggle({ className }: { className?: string }) {
-  const { state, toggleSidebar, isMobile } = useSidebar();
+  const { collapsed, toggleSidebar, isMobile } = useSidebar();
   const t = useT();
 
   if (isMobile) return null;
 
-  const collapsed = state === "collapsed";
   return (
     <button
       type="button"
@@ -115,14 +114,14 @@ export function SidebarToggle({ className }: { className?: string }) {
       aria-expanded={!collapsed}
       title={t("nav.toggleSidebar")}
       className={cn(
-        "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+        "flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
         className,
       )}
     >
       {collapsed ? (
-        <PanelLeftOpen className="h-3.5 w-3.5" />
+        <PanelLeftOpen className="h-4 w-4" />
       ) : (
-        <PanelLeftClose className="h-3.5 w-3.5" />
+        <PanelLeftClose className="h-4 w-4" />
       )}
     </button>
   );
@@ -141,12 +140,12 @@ export function SidebarGroup({
   children: ReactNode;
   className?: string;
 }) {
-  const { state } = useSidebar();
+  const { collapsed } = useSidebar();
   return (
     <div className={cn("px-2 py-1", className)}>
       {/* Hide the group heading in rail mode — there is no room for it,
           and a truncated heading reads worse than none. */}
-      {label && state === "expanded" && (
+      {label && !collapsed && (
         <div className="px-3 py-1 text-[11px] font-medium uppercase tracking-wider text-sidebar-foreground/60">
           {label}
         </div>
@@ -181,12 +180,12 @@ export function SidebarMenuButton({
   icon,
   children,
 }: SidebarMenuButtonProps) {
-  const { state, isMobile, setOpen } = useSidebar();
+  const { collapsed, isMobile, setOpen } = useSidebar();
   const baseClass = cn(
     "group flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
     "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
     isActive && "bg-sidebar-accent text-sidebar-accent-foreground",
-    state === "collapsed" && "justify-center px-2",
+    collapsed && "justify-center",
   );
 
   const content = (
@@ -194,14 +193,14 @@ export function SidebarMenuButton({
       {icon && (
         <span className="flex h-4 w-4 shrink-0 items-center justify-center">{icon}</span>
       )}
-      <span className={cn("truncate", state === "collapsed" && "hidden")}>{children}</span>
+      <span className={cn("truncate", collapsed && "hidden")}>{children}</span>
     </>
   );
 
   // In rail mode the label is hidden, so expose it as a native tooltip and
   // to assistive tech via aria-label.
   const collapsedLabel =
-    state === "collapsed" && typeof children === "string" ? children : undefined;
+    collapsed && typeof children === "string" ? children : undefined;
 
   if (href) {
     return (

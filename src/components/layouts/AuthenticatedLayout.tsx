@@ -66,9 +66,8 @@ function SidebarShell({
 }: AuthenticatedLayoutProps) {
   const t = useT();
   const pathname = usePathname();
-  const { state } = useSidebar();
+  const { collapsed } = useSidebar();
   const isActive = (href: string) => pathname === href || pathname?.startsWith(href + "/");
-  const collapsed = state === "collapsed";
 
   return (
     // Sidebar + content must sit side-by-side, so wrap them in a flex-row.

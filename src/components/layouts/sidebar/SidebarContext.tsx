@@ -27,6 +27,14 @@ export type SidebarState = "expanded" | "collapsed";
 
 interface SidebarContextValue {
   state: SidebarState;
+  /**
+   * True when the rail renders icon-only.
+   *
+   * Never true on mobile: there the sidebar is a full 256px drawer, so it
+   * always shows labels even though `state` may be "collapsed" (the viewport
+   * rule marks anything under 1280px collapsed).
+   */
+  collapsed: boolean;
   open: boolean;
   setOpen: (open: boolean) => void;
   toggleSidebar: () => void;
@@ -119,7 +127,13 @@ export function SidebarProvider({
   useEffect(() => {
     if (typeof window === "undefined") return;
     const mq = window.matchMedia("(max-width: 1023px)");
-    const update = () => setIsMobile(mq.matches);
+    const update = () => {
+      const next = mq.matches;
+      setIsMobile(next);
+      // Entering drawer mode always starts closed — otherwise dragging a
+      // desktop window narrower would pop the drawer open over the content.
+      if (next) setOpen(false);
+    };
     update();
     mq.addEventListener("change", update);
     return () => mq.removeEventListener("change", update);
@@ -134,9 +148,13 @@ export function SidebarProvider({
     });
   }, []);
 
+  // Icon-only mode is a desktop concept. The mobile drawer is always 256px
+  // wide, so it keeps its labels even when `state` reads "collapsed".
+  const collapsed = state === "collapsed" && !isMobile;
+
   const value = useMemo<SidebarContextValue>(
-    () => ({ state, open, setOpen, toggleSidebar, isMobile }),
-    [state, open, toggleSidebar, isMobile],
+    () => ({ state, collapsed, open, setOpen, toggleSidebar, isMobile }),
+    [state, collapsed, open, toggleSidebar, isMobile],
   );
 
   return <SidebarContext.Provider value={value}>{children}</SidebarContext.Provider>;
