@@ -270,7 +270,7 @@ export async function proxyChatCompletion(args: {
   const delta = quotaDelta({
     quotaType: user.quotaType,
     creditsUsed,
-    totalTokens: usage.total_tokens,
+    totalTokens,
   });
   if (delta > 0) {
     await incrementUserQuotaUsed(apiKey.userId, delta);
