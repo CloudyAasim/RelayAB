@@ -17,6 +17,7 @@ export default async function PublicDocsPage() {
   const base = await resolvePublicUrl();
   const openaiBase = `${base}/v1`;
   const anthropicBase = `${base}/anthropic`;
+  const responsesBase = `${base}/v1`;
 
   const user = await getCurrentUser().catch(() => null);
 
@@ -63,6 +64,7 @@ export default async function PublicDocsPage() {
             baseUrl={base}
             openaiBase={openaiBase}
             anthropicBase={anthropicBase}
+            responsesBase={responsesBase}
           />
         </div>
       </main>
