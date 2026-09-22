@@ -84,6 +84,7 @@ describe("i18n: client/server boundary", () => {
       .map((f) => f.rel)
       .sort();
     expect(importers).toEqual([
+      "src/app/(admin)/admin/docs/page.tsx",
       "src/app/(admin)/admin/keys/page.tsx",
       "src/app/(admin)/admin/page.tsx",
       "src/app/(admin)/admin/providers/page.tsx",

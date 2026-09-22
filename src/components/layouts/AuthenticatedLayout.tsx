@@ -18,7 +18,8 @@
  * sees personal entries.
  */
 import { type ReactNode } from "react";
-import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarFooter, SidebarRail, SidebarGroup, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarInset } from "./sidebar";
+import { cn } from "@/lib/utils";
+import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarFooter, SidebarRail, SidebarToggle, SidebarGroup, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarInset, useSidebar } from "./sidebar";
 import { AppHeader } from "./AppHeader";
 import { useT } from "@/components/i18n/I18nProvider";
 import { usePathname } from "next/navigation";
@@ -65,7 +66,9 @@ function SidebarShell({
 }: AuthenticatedLayoutProps) {
   const t = useT();
   const pathname = usePathname();
+  const { state } = useSidebar();
   const isActive = (href: string) => pathname === href || pathname?.startsWith(href + "/");
+  const collapsed = state === "collapsed";
 
   return (
     // Sidebar + content must sit side-by-side, so wrap them in a flex-row.
@@ -73,14 +76,27 @@ function SidebarShell({
     // container then just holds the inset full-width.
     <div className="flex min-h-screen w-full flex-1">
       <Sidebar>
-        <SidebarHeader>
-          <Link href="/" className="flex items-center gap-2 truncate">
-            <span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
-              <Server className="h-4 w-4" />
+        <SidebarHeader className={cn(collapsed && "justify-center")}>
+          <Link href="/" className="flex min-w-0 items-center gap-2">
+            {/* Scales proportionally with the rail: both axes shrink together
+                (h-5 w-5 keeps the square), and the mark stays slightly larger
+                than the 16px menu icons below it. */}
+            <span
+              className={cn(
+                "flex shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground transition-[height,width] duration-200 ease-in-out",
+                collapsed ? "h-5 w-5" : "h-7 w-7",
+              )}
+            >
+              <Server
+                className={cn(
+                  "transition-[height,width] duration-200 ease-in-out",
+                  collapsed ? "h-3 w-3" : "h-4 w-4",
+                )}
+              />
             </span>
-            <span className="truncate font-semibold tracking-tight group-data-[state=collapsed]:hidden">
-              RelayAB
-            </span>
+            {!collapsed && (
+              <span className="truncate font-semibold tracking-tight">RelayAB</span>
+            )}
           </Link>
         </SidebarHeader>
         <SidebarContent>
@@ -133,6 +149,11 @@ function SidebarShell({
                       {t("admin.settings.title")}
                     </SidebarMenuButton>
                   </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton href="/admin/docs" icon={<BookOpen className="h-4 w-4" />} isActive={isActive("/admin/docs")}>
+                      {t("admin.docs.title")}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
                 </SidebarMenu>
               </SidebarGroup>
               {/* Admins hold keys of their own too, so the personal
@@ -169,9 +190,20 @@ function SidebarShell({
           )}
         </SidebarContent>
         <SidebarFooter>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Activity className="h-3.5 w-3.5 text-success" />
-            <span>{t("nav.sidebar.statusOnline")}</span>
+          <div
+            className={cn(
+              "flex items-center gap-2",
+              collapsed ? "flex-col" : "justify-between",
+            )}
+          >
+            <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+              <Activity className="h-3.5 w-3.5 shrink-0 text-success" />
+              {/* The rail has no room for the label — keep the status dot. */}
+              {!collapsed && (
+                <span className="truncate">{t("nav.sidebar.statusOnline")}</span>
+              )}
+            </div>
+            <SidebarToggle />
           </div>
         </SidebarFooter>
         <SidebarRail />

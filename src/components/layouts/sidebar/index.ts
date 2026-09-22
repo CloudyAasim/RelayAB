@@ -1,6 +1,7 @@
 export {
   SidebarProvider,
   useSidebar,
+  sidebarStateForViewport,
   type SidebarState,
 } from "./SidebarContext";
 export {
@@ -9,6 +10,7 @@ export {
   SidebarContent,
   SidebarFooter,
   SidebarRail,
+  SidebarToggle,
   SidebarInset,
   SidebarGroup,
   SidebarMenu,

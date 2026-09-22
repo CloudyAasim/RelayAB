@@ -3,7 +3,9 @@
 import { cn } from "@/lib/utils";
 import { type ReactNode } from "react";
 import Link from "next/link";
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useSidebar } from "./SidebarContext";
+import { useT } from "@/components/i18n/I18nProvider";
 
 /**
  * Sidebar — left rail for the authenticated layout.
@@ -88,6 +90,41 @@ export function SidebarRail() {
       onClick={toggleSidebar}
       className="absolute inset-y-0 right-0 hidden w-1.5 translate-x-1/2 cursor-w-resize rounded-full bg-transparent transition-colors hover:bg-sidebar-border lg:block"
     />
+  );
+}
+
+/**
+ * Visible collapse / expand control.
+ *
+ * `SidebarRail` is the hover strip pinned to the rail's edge — discoverable
+ * only if you already know it is there. This is the explicit button. It is a
+ * no-op on mobile, where the sidebar is a drawer with its own trigger.
+ */
+export function SidebarToggle({ className }: { className?: string }) {
+  const { state, toggleSidebar, isMobile } = useSidebar();
+  const t = useT();
+
+  if (isMobile) return null;
+
+  const collapsed = state === "collapsed";
+  return (
+    <button
+      type="button"
+      onClick={toggleSidebar}
+      aria-label={t("nav.toggleSidebar")}
+      aria-expanded={!collapsed}
+      title={t("nav.toggleSidebar")}
+      className={cn(
+        "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+        className,
+      )}
+    >
+      {collapsed ? (
+        <PanelLeftOpen className="h-3.5 w-3.5" />
+      ) : (
+        <PanelLeftClose className="h-3.5 w-3.5" />
+      )}
+    </button>
   );
 }
 
