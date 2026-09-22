@@ -139,6 +139,9 @@ export const k = {
     `${KEY_PREFIX}log:${apiKeyId}:${logId}`,
   usageLogsByKey: (apiKeyId: string) =>
     `${KEY_PREFIX}log:by-apikey:${apiKeyId}`,
+  /** Running per-key totals (tokens / credits / requests), kept in sync by recordUsage. */
+  usageTotalsByKey: (apiKeyId: string) =>
+    `${KEY_PREFIX}stats:key:${apiKeyId}`,
   metaInitialized: () => `${KEY_PREFIX}meta:initialized`,
 } as const;
 
