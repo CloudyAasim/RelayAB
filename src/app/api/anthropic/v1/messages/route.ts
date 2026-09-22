@@ -30,8 +30,13 @@ export async function POST(req: Request): Promise<Response> {
     typeof body === "object" && body !== null && "model" in body
       ? String((body as Record<string, unknown>).model ?? "")
       : "";
+  // Anthropic SDKs (and MiniMax's Anthropic-compatible endpoint) send the key
+  // in `x-api-key`; OpenAI-style clients use `Authorization: Bearer`.
+  const authHeader =
+    req.headers.get("Authorization") ??
+    (req.headers.get("x-api-key") ? `Bearer ${req.headers.get("x-api-key")}` : null);
   const auth = await authenticateBearer({
-    authHeader: req.headers.get("Authorization"),
+    authHeader,
     requestedModel,
   });
 

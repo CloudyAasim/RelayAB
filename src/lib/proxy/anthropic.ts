@@ -13,11 +13,7 @@
  *     the requested client model.
  */
 import { decryptSecret } from "../crypto/secrets";
-import {
-  findProvidersByKind,
-  findProvidersForModel,
-  getProviderById,
-} from "../db/providers";
+import { findProvidersForModel, getProviderById } from "../db/providers";
 import { touchApiKeyLastUsed } from "../db/keys";
 import { incrementUserQuotaUsed } from "../db/users";
 import { recordUsage, quotaDelta } from "../db/usage";
@@ -103,22 +99,21 @@ export async function proxyAnthropicMessage(args: {
     return { ok: false, status: http.status, error: { code: http.code, message: http.message } };
   }
 
-  // 2. Find an anthropic-kind provider that maps this model.
-  const anthropicProviders = await findProvidersByKind("anthropic");
-  const provider = anthropicProviders.find((p) => req.model in p.modelMapping);
+  // 2. Pick a provider that can serve this model over the Anthropic protocol.
+  //    Preference: explicit upstreamFormat="anthropic", then kind="anthropic",
+  //    then any Anthropic-compatible kind. Ordering within each group follows
+  //    the provider priority from `listProviders`.
+  const candidates = await findProvidersForModel(req.model);
+  const provider =
+    candidates.find((p) => p.upstreamFormat === "anthropic") ??
+    candidates.find((p) => p.kind === "anthropic") ??
+    candidates.find((p) => p.kind === "custom-openai");
   if (!provider) {
-    // Fallback: any provider that maps the model (some Anthropic-compat
-    // services aren't tagged as kind=anthropic but still speak the protocol).
-    const fallbacks = await findProvidersForModel(req.model);
-    const fb = fallbacks.find((p) => p.kind === "anthropic" || p.kind === "custom-openai");
-    if (!fb) {
-      return {
-        ok: false,
-        status: 400,
-        error: { code: "model_not_mapped", message: `No Anthropic provider configured for model '${req.model}'` },
-      };
-    }
-    return doProxy({ req, apiKey, user, provider: fb, deps, fetchImpl });
+    return {
+      ok: false,
+      status: 400,
+      error: { code: "model_not_mapped", message: `No Anthropic provider configured for model '${req.model}'` },
+    };
   }
   return doProxy({ req, apiKey, user, provider, deps, fetchImpl });
 }
@@ -233,5 +228,3 @@ async function recordFailure(args: {
 
 // Re-export so callers don't need a separate import.
 export { getProviderById };
-// silence unused-import warning
-void findProvidersForModel;

@@ -25,6 +25,7 @@ import { recordUsage, quotaDelta } from "../db/usage";
 import { checkKeyStatus, reasonToHttp } from "../auth/apikey";
 import { computeCredits } from "../quota/rates";
 import { quotaDeltaFromUsage, shouldRejectBeforeRequest } from "../quota/calculator";
+import { proxyAnthropicMessage } from "./anthropic";
 import type { ApiKey, Provider, User } from "../db/types";
 
 
@@ -93,24 +94,147 @@ export function chatToResponsesResponse(
   chatResp: ChatCompletionResponse,
   originalReq: ResponseAPIRequest,
 ): Record<string, unknown> {
-  const text = chatResp.choices?.[0]?.message?.content ?? "";
-  
+  const message = chatResp.choices?.[0]?.message as
+    | { role?: string; content?: unknown }
+    | undefined;
+  const text = typeof message?.content === "string" ? message.content : "";
+  const id = chatResp.id ?? `resp_${Date.now()}`;
+  const usage = chatResp.usage ?? { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+  const inputTokens = usage.prompt_tokens ?? 0;
+  const outputTokens = usage.completion_tokens ?? 0;
+
   return {
-    id: chatResp.id ?? `resp_${Date.now()}`,
+    id,
     object: "response",
-    created: chatResp.created ?? Math.floor(Date.now() / 1000),
+    created_at: chatResp.created ?? Math.floor(Date.now() / 1000),
+    status: "completed",
     model: chatResp.model ?? originalReq.model,
-    choices: [
-      {
-        index: 0,
-        finish_reason: chatResp.choices?.[0]?.finish_reason ?? "stop",
-        message: chatResp.choices?.[0]?.message,
-      },
-    ],
-    usage: chatResp.usage ?? {
-      prompt_tokens: 0,
-      completion_tokens: 0,
-      total_tokens: 0,
+    output: text
+      ? [
+          {
+            id: `${id}_msg`,
+            type: "message",
+            status: "completed",
+            role: "assistant",
+            content: [{ type: "output_text", text, annotations: [] }],
+          },
+        ]
+      : [],
+    output_text: text,
+    error: null,
+    incomplete_details: null,
+    usage: {
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      total_tokens: usage.total_tokens ?? inputTokens + outputTokens,
+    },
+  };
+}
+
+/**
+ * Convert a Responses API request to the Anthropic Messages format.
+ * Used when the selected provider only speaks the Anthropic protocol.
+ */
+export function responsesToAnthropicRequest(req: ResponseAPIRequest): Record<string, unknown> {
+  const messages: Array<{ role: "user" | "assistant"; content: string }> = [];
+
+  const fromInput = (input: unknown): void => {
+    if (typeof input === "string") {
+      messages.push({ role: "user", content: input });
+      return;
+    }
+    if (Array.isArray(input)) {
+      for (const item of input) fromInput(item);
+      return;
+    }
+    if (input && typeof input === "object") {
+      const item = input as Record<string, unknown>;
+      const role = String(item.role ?? "user").toLowerCase() === "assistant" ? "assistant" : "user";
+      const content = item.content;
+      if (typeof content === "string") {
+        messages.push({ role, content });
+      } else if (Array.isArray(content)) {
+        const text = content
+          .map((block) => {
+            if (typeof block === "string") return block;
+            if (block && typeof block === "object") {
+              const b = block as Record<string, unknown>;
+              return typeof b.text === "string" ? b.text : "";
+            }
+            return "";
+          })
+          .filter(Boolean)
+          .join("\n");
+        if (text) messages.push({ role, content: text });
+      }
+    }
+  };
+
+  fromInput(req.input);
+  if (messages.length === 0) messages.push({ role: "user", content: "" });
+
+  const maxTokens =
+    typeof req.max_output_tokens === "number" ? req.max_output_tokens : 1024;
+  const system = typeof req.instructions === "string" ? req.instructions : undefined;
+
+  return {
+    model: req.model,
+    max_tokens: maxTokens,
+    messages,
+    ...(system ? { system } : {}),
+    ...(typeof req.temperature === "number" ? { temperature: req.temperature } : {}),
+    ...(typeof req.top_p === "number" ? { top_p: req.top_p } : {}),
+    stream: false,
+  };
+}
+
+interface AnthropicMessageResponse {
+  id?: string;
+  model?: string;
+  content?: Array<{ type?: string; text?: string; [k: string]: unknown }>;
+  usage?: { input_tokens?: number; output_tokens?: number };
+  [k: string]: unknown;
+}
+
+/**
+ * Convert an Anthropic Messages response into an OpenAI Responses object.
+ */
+export function anthropicToResponsesResponse(
+  body: AnthropicMessageResponse,
+  originalReq: ResponseAPIRequest,
+): Record<string, unknown> {
+  const id = body.id ?? `resp_${Date.now()}`;
+  const text = (body.content ?? [])
+    .filter((block) => block?.type === "text" && typeof block.text === "string")
+    .map((block) => block.text as string)
+    .join("");
+  const inputTokens = body.usage?.input_tokens ?? 0;
+  const outputTokens = body.usage?.output_tokens ?? 0;
+
+  return {
+    id,
+    object: "response",
+    created_at: Math.floor(Date.now() / 1000),
+    status: "completed",
+    model: body.model ?? originalReq.model,
+    output: text
+      ? [
+          {
+            id: `${id}_msg`,
+            type: "message",
+            status: "completed",
+            role: "assistant",
+            content: [{ type: "output_text", text, annotations: [] }],
+          },
+        ]
+      : [],
+    output_text: text,
+    error: null,
+    incomplete_details: null,
+    usage: {
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      total_tokens: inputTokens + outputTokens,
     },
   };
 }
@@ -196,7 +320,11 @@ export async function proxyChatCompletion(args: {
   }
 
   // 2. Pick a provider that supports this model.
-  const providers = await findProvidersForModel(req.model);
+  // Anthropic-format providers cannot accept a Chat Completions body, so they
+  // are only eligible for the /anthropic endpoint.
+  const providers = (await findProvidersForModel(req.model)).filter(
+    (p) => p.upstreamFormat !== "anthropic",
+  );
   if (providers.length === 0) {
     return {
       ok: false,
@@ -309,16 +437,9 @@ interface ChatCompletionResponse {
 function defaultUpstreamUrl(provider: Provider): string {
   const base = provider.baseUrl ?? "https://api.openai.com";
   const cleanBase = base.replace(/\/$/, "");
-  // Use upstreamFormat to determine the endpoint
-  switch (provider.upstreamFormat) {
-    case "responses":
-      return `${cleanBase}/responses`;
-    case "anthropic":
-      return `${cleanBase}/messages`;
-    case "chat":
-    default:
-      return `${cleanBase}/chat/completions`;
-  }
+  // This proxy always forwards a Chat Completions body, so the target must be
+  // the upstream Chat Completions endpoint regardless of `upstreamFormat`.
+  return `${cleanBase}/chat/completions`;
 }
 
 async function recordFailure(args: {
@@ -413,6 +534,15 @@ export async function proxyOpenAIResponse(args: {
   }
   const provider = providers[0];
   const upstreamModel = provider.modelMapping[req.model];
+
+  // Providers that don't speak the Responses protocol natively are reached
+  // through a conversion hop against their own endpoint.
+  if (provider.upstreamFormat === "chat") {
+    return proxyResponsesViaChat({ req, apiKey, user, deps });
+  }
+  if (provider.upstreamFormat === "anthropic") {
+    return proxyResponsesViaAnthropic({ req, apiKey, user, deps });
+  }
 
   // 3. Build upstream URL - Responses API uses /responses
   const upstreamUrl = deps?.upstreamUrlFor
@@ -510,19 +640,66 @@ export async function proxyOpenAIResponse(args: {
   return { ok: true, status: 200, data: body };
 }
 
+/**
+ * Serve a Responses API request from a provider that only speaks Chat
+ * Completions, by converting the request and the response.
+ */
+async function proxyResponsesViaChat(args: {
+  req: ResponseAPIRequest;
+  apiKey: ApiKey;
+  user: User;
+  deps?: ProxyDeps;
+}): Promise<ProxyResult> {
+  const { req, apiKey, user, deps } = args;
+  const chatResult = await proxyChatCompletion({
+    req: responsesToChatRequest(req),
+    apiKey,
+    user,
+    deps,
+  });
+  if (!chatResult.ok) {
+    return { ok: false, status: chatResult.status, error: chatResult.error };
+  }
+  return {
+    ok: true,
+    status: 200,
+    data: chatToResponsesResponse(chatResult.data as ChatCompletionResponse, req),
+  };
+}
+
+/**
+ * Serve a Responses API request from a provider that only speaks the
+ * Anthropic Messages protocol, by converting the request and the response.
+ */
+async function proxyResponsesViaAnthropic(args: {
+  req: ResponseAPIRequest;
+  apiKey: ApiKey;
+  user: User;
+  deps?: ProxyDeps;
+}): Promise<ProxyResult> {
+  const { req, apiKey, user, deps } = args;
+  const result = await proxyAnthropicMessage({
+    req: responsesToAnthropicRequest(req) as Parameters<typeof proxyAnthropicMessage>[0]["req"],
+    apiKey,
+    user,
+    deps,
+  });
+  if (!result.ok) {
+    return { ok: false, status: result.status, error: result.error };
+  }
+  return {
+    ok: true,
+    status: 200,
+    data: anthropicToResponsesResponse(result.data as AnthropicMessageResponse, req),
+  };
+}
+
 function defaultResponsesUrl(provider: Provider): string {
   const base = provider.baseUrl ?? "https://api.openai.com";
   const cleanBase = base.replace(/\/$/, "");
-  // Use upstreamFormat to determine the endpoint
-  switch (provider.upstreamFormat) {
-    case "responses":
-      return `${cleanBase}/responses`;
-    case "anthropic":
-      return `${cleanBase}/messages`;
-    case "chat":
-    default:
-      return `${cleanBase}/chat/completions`;
-  }
+  // This proxy always forwards a Responses API body, so the target must be the
+  // upstream Responses endpoint regardless of `upstreamFormat`.
+  return `${cleanBase}/responses`;
 }
 
 async function recordFailureResponses(args: {
