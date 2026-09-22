@@ -17,6 +17,7 @@ export default async function DocsPage() {
   const base = await resolvePublicUrl();
   const openaiBase = `${base}/v1`;
   const anthropicBase = `${base}/anthropic`;
+  const responsesBase = `${base}/v1`;
 
   return (
     <AuthenticatedLayout
@@ -31,6 +32,7 @@ export default async function DocsPage() {
             baseUrl={base}
             openaiBase={openaiBase}
             anthropicBase={anthropicBase}
+            responsesBase={responsesBase}
           />
         </SectionPageLayout.Content>
       </SectionPageLayout>

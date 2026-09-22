@@ -18,9 +18,10 @@ interface Props {
   baseUrl: string;
   openaiBase: string;
   anthropicBase: string;
+  responsesBase: string;
 }
 
-export function DocsContent({ baseUrl, openaiBase, anthropicBase }: Props) {
+export function DocsContent({ baseUrl, openaiBase, anthropicBase, responsesBase }: Props) {
   const t = useT();
 
   return (
@@ -131,6 +132,34 @@ export function DocsContent({ baseUrl, openaiBase, anthropicBase }: Props) {
           />
         </div>
       </Card>
+
+      
+        <Card>
+          <CardHeader
+            title={
+              <span className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-muted-foreground" />
+                {t("docs.responses.title")}
+              </span>
+            }
+            description={t("docs.responses.desc")}
+          />
+          <div className="space-y-4 text-sm text-foreground/90">
+            <p>{t("docs.responses.line1")}</p>
+            <CodeBlock label={t("docs.responses.baseUrl")} value={responsesBase} />
+            <CodeBlock
+              label={t("docs.responses.header")}
+              value={`Authorization: Bearer sk-relay-xxxx...`}
+            />
+            <CodeBlock
+              label={t("docs.responses.example")}
+              value={`curl ${responsesBase}/responses \\
+  -H "Authorization: Bearer $RELAYAB_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{\n    "model": "gpt-4o-mini",\n    "input": "Hello!"\n  }'`}
+            />
+          </div>
+        </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
