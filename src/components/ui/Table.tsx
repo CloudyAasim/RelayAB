@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import type { ReactNode } from "react";
+import type { HTMLAttributes, ReactNode } from "react";
 
 export function Table({ children, className }: { children: ReactNode; className?: string }) {
   return (
@@ -27,7 +27,7 @@ export function TR({
   children,
   className,
   ...rest
-}: React.HTMLAttributes<HTMLTableRowElement> & { children: ReactNode }) {
+}: HTMLAttributes<HTMLTableRowElement> & { children: ReactNode }) {
   return (
     <tr className={cn("transition-colors hover:bg-muted/30", className)} {...rest}>
       {children}
@@ -38,24 +38,45 @@ export function TR({
 export function TH({
   children,
   className,
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
-  return <th className={cn("px-4 py-2.5 font-medium", className)}>{children}</th>;
+  ...rest
+}: HTMLAttributes<HTMLTableCellElement> & { children: ReactNode }) {
+  return (
+    <th
+      className={cn("px-4 py-2.5 font-medium", className)}
+      {...rest}
+    >
+      {children}
+    </th>
+  );
 }
 
+/**
+ * TD — table cell.
+ *
+ * IMPORTANT: this component must forward arbitrary HTML attributes
+ * (data-*, aria-*, onClick, etc.) so that callers can attach data
+ * attributes for testing / DOM queries (e.g. `data-user-id="..."`).
+ *
+ * Previously the component only destructured {children, className, colSpan}
+ * which silently dropped any other props. That broke the admin user page
+ * where the toggle action looks up the row by `[data-user-id="…"]`.
+ */
 export function TD({
   children,
   className,
   colSpan,
-}: {
+  ...rest
+}: HTMLAttributes<HTMLTableCellElement> & {
   children: ReactNode;
   className?: string;
   colSpan?: number;
 }) {
   return (
-    <td className={cn("px-4 py-3 align-middle", className)} colSpan={colSpan}>
+    <td
+      className={cn("px-4 py-3 align-middle", className)}
+      colSpan={colSpan}
+      {...rest}
+    >
       {children}
     </td>
   );
