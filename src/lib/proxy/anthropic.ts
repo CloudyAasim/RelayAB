@@ -155,12 +155,19 @@ async function doProxy(args: {
   }
 
   if (!response.ok) {
+    // Surface *which* URL failed. A bare "Upstream 404" is almost impossible
+    // to debug from the client: the usual cause is a provider `baseUrl` that
+    // already ends in `/v1`, giving `<base>/v1/messages` -> 404. The detail is
+    // logged and stored on the usage row (never returned to the caller).
+    const detail = await response.text().catch(() => "");
+    const context = `${upstreamUrl} -> HTTP ${response.status}: ${detail.slice(0, 500)}`;
+    console.error(`[relayab] anthropic upstream failure: ${context}`);
     await recordFailure({
       apiKey,
       provider,
       model: req.model,
       upstreamModel,
-      error: `HTTP ${response.status}`,
+      error: context,
     });
     return { ok: false, status: 502, error: { code: "upstream_error", message: `Upstream ${response.status}` } };
   }

@@ -367,12 +367,17 @@ export async function proxyChatCompletion(args: {
   }
 
   if (!response.ok) {
+    // Record which URL failed — a bare status code is nearly undebuggable and
+    // the usual cause is a provider `baseUrl` with a mismatched path suffix.
+    const detail = await response.text().catch(() => "");
+    const context = `${upstreamUrl} -> HTTP ${response.status}: ${detail.slice(0, 500)}`;
+    console.error(`[relayab] chat upstream failure: ${context}`);
     await recordFailure({
       apiKey,
       provider,
       model: req.model,
       upstreamModel,
-      error: `HTTP ${response.status}`,
+      error: context,
     });
     return {
       ok: false,
