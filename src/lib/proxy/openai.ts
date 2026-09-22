@@ -251,13 +251,17 @@ export async function proxyChatCompletion(args: {
 
   // 6. Parse + extract usage.
   const body = (await response.json()) as ChatCompletionResponse;
-  const usage = body.usage ?? { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+  // Responses API uses input_tokens/output_tokens, Chat uses prompt_tokens/completion_tokens
+  const usage = body.usage ?? {};
+  const promptTokens = (usage as any).prompt_tokens ?? (usage as any).input_tokens ?? 0;
+  const completionTokens = (usage as any).completion_tokens ?? (usage as any).output_tokens ?? 0;
+  const totalTokens = (usage as any).total_tokens ?? (promptTokens + completionTokens);
   // 积分 consumed, in integer 0.001-积分 units, so even a tiny request
   // registers a fraction of a 积分 instead of being rounded up to a whole one.
   const creditsUsed = computeCredits({
     model: upstreamModel,
-    promptTokens: usage.prompt_tokens,
-    completionTokens: usage.completion_tokens,
+    promptTokens,
+    completionTokens,
   });
 
   // 7. Persist usage + charge the owner's pool.
@@ -279,8 +283,8 @@ export async function proxyChatCompletion(args: {
     providerId: provider.id,
     model: req.model,
     upstreamModel,
-    promptTokens: usage.prompt_tokens,
-    completionTokens: usage.completion_tokens,
+    promptTokens,
+    completionTokens,
     creditsUsed,
     status: "success",
   });
@@ -465,20 +469,26 @@ export async function proxyOpenAIResponse(args: {
     };
   }
 
-  // 6. Parse usage
+  // 6. Parse + extract usage.
   const body = (await response.json()) as ResponseAPIResponse;
-  const usage = body.usage ?? { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+  // Responses API uses input_tokens/output_tokens, Chat uses prompt_tokens/completion_tokens
+  const usage = body.usage ?? {};
+  const promptTokens = (usage as any).prompt_tokens ?? (usage as any).input_tokens ?? 0;
+  const completionTokens = (usage as any).completion_tokens ?? (usage as any).output_tokens ?? 0;
+  const totalTokens = (usage as any).total_tokens ?? (promptTokens + completionTokens);
+  // 积分 consumed, in integer 0.001-积分 units, so even a tiny request
+  // registers a fraction of a 积分 instead of being rounded up to a whole one.
   const creditsUsed = computeCredits({
     model: upstreamModel,
-    promptTokens: usage.prompt_tokens,
-    completionTokens: usage.completion_tokens,
+    promptTokens,
+    completionTokens,
   });
 
   // 7. Persist usage
   const delta = quotaDelta({
     quotaType: user.quotaType,
     creditsUsed,
-    totalTokens: usage.total_tokens,
+    totalTokens,
   });
   if (delta > 0) {
     await incrementUserQuotaUsed(apiKey.userId, delta);
@@ -491,8 +501,8 @@ export async function proxyOpenAIResponse(args: {
     providerId: provider.id,
     model: req.model,
     upstreamModel,
-    promptTokens: usage.prompt_tokens,
-    completionTokens: usage.completion_tokens,
+    promptTokens,
+    completionTokens,
     creditsUsed,
     status: "success",
   });
