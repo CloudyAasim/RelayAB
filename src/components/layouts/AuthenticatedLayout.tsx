@@ -19,6 +19,7 @@
  */
 import { type ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { isNavItemActive } from "@/lib/nav";
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarFooter, SidebarRail, SidebarToggle, SidebarGroup, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarInset, useSidebar } from "./sidebar";
 import { AppHeader } from "./AppHeader";
 import { useT } from "@/components/i18n/I18nProvider";
@@ -67,7 +68,8 @@ function SidebarShell({
   const t = useT();
   const pathname = usePathname();
   const { collapsed } = useSidebar();
-  const isActive = (href: string) => pathname === href || pathname?.startsWith(href + "/");
+  const isActive = (href: string, opts?: { exact?: boolean }) =>
+    isNavItemActive(pathname, href, opts);
 
   return (
     // Sidebar + content must sit side-by-side, so wrap them in a flex-row.
@@ -103,7 +105,7 @@ function SidebarShell({
             <SidebarGroup label={t("nav.sidebar.workspace")}>
               <SidebarMenu>
                 <SidebarMenuItem>
-                  <SidebarMenuButton href="/dashboard" icon={<LayoutDashboard className="h-4 w-4" />} isActive={isActive("/dashboard")}>
+                  <SidebarMenuButton href="/dashboard" icon={<LayoutDashboard className="h-4 w-4" />} isActive={isActive("/dashboard", { exact: true })}>
                     {t("nav.dashboard")}
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -124,7 +126,7 @@ function SidebarShell({
               <SidebarGroup label={t("nav.sidebar.admin")}>
                 <SidebarMenu>
                   <SidebarMenuItem>
-                    <SidebarMenuButton href="/admin" icon={<LayoutDashboard className="h-4 w-4" />} isActive={pathname === "/admin"}>
+                    <SidebarMenuButton href="/admin" icon={<LayoutDashboard className="h-4 w-4" />} isActive={isActive("/admin", { exact: true })}>
                       {t("nav.overview")}
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -164,7 +166,7 @@ function SidebarShell({
                     <SidebarMenuButton
                       href="/dashboard"
                       icon={<Wallet className="h-4 w-4" />}
-                      isActive={pathname === "/dashboard"}
+                      isActive={isActive("/dashboard", { exact: true })}
                     >
                       {t("nav.myDashboard")}
                     </SidebarMenuButton>
