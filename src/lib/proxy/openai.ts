@@ -27,6 +27,93 @@ import { computeCredits } from "../quota/rates";
 import { quotaDeltaFromUsage, shouldRejectBeforeRequest } from "../quota/calculator";
 import type { ApiKey, Provider, User } from "../db/types";
 
+
+// ---------------------------------------------------------------------------
+// Request/Response Format Converters (Responses <-> Chat Completions)
+// ---------------------------------------------------------------------------
+
+/**
+ * Convert a Responses API request to Chat Completions format.
+ */
+// Responses <-> Chat Completions converters
+export function responsesToChatRequest(req: ResponseAPIRequest): ChatCompletionRequest {
+  const messages: Array<{ role: string; content: string | { type: string; [key: string]: unknown }[] }> = [];
+  
+  if (Array.isArray(req.input)) {
+    for (const item of req.input) {
+      if (typeof item === "string") {
+        messages.push({ role: "user", content: item });
+      } else if (item && typeof item === "object") {
+        const inputItem = item as Record<string, unknown>;
+        if (inputItem.type === "message" && inputItem.content) {
+          // Handle message content blocks (multi-modal)
+          messages.push({
+            role: String(inputItem.role ?? "user").toLowerCase(),
+            content: inputItem.content as string | { type: string; [key: string]: unknown }[],
+          });
+        } else if (inputItem.role && inputItem.content) {
+          messages.push({
+            role: String(inputItem.role).toLowerCase(),
+            content: String(inputItem.content),
+          });
+        }
+      }
+    }
+  } else if (typeof req.input === "string") {
+    messages.push({ role: "user", content: req.input });
+  }
+  
+  // Build extra_body for MiniMax-specific parameters
+  const extraBody: Record<string, unknown> = {};
+  if (req.extra_body) {
+    if (req.extra_body.thinking !== undefined) extraBody.thinking = req.extra_body.thinking;
+    if (req.extra_body.reasoning_split !== undefined) extraBody.reasoning_split = req.extra_body.reasoning_split;
+    if (req.extra_body.service_tier !== undefined) extraBody.service_tier = req.extra_body.service_tier;
+  }
+  
+  const chatReq: ChatCompletionRequest = {
+    model: req.model,
+    messages: messages as Array<{ role: string; content: string }>,
+    temperature: req.temperature,
+    max_tokens: req.max_output_tokens ?? (req as any).max_tokens ?? 1024,
+    top_p: req.top_p,
+    stream: false,
+  };
+  
+  if (Object.keys(extraBody).length > 0) {
+    chatReq.extra_body = extraBody;
+  }
+  
+  return chatReq;
+}
+
+// Responses <-> Chat Completions converters
+export function chatToResponsesResponse(
+  chatResp: ChatCompletionResponse,
+  originalReq: ResponseAPIRequest,
+): Record<string, unknown> {
+  const text = chatResp.choices?.[0]?.message?.content ?? "";
+  
+  return {
+    id: chatResp.id ?? `resp_${Date.now()}`,
+    object: "response",
+    created: chatResp.created ?? Math.floor(Date.now() / 1000),
+    model: chatResp.model ?? originalReq.model,
+    choices: [
+      {
+        index: 0,
+        finish_reason: chatResp.choices?.[0]?.finish_reason ?? "stop",
+        message: chatResp.choices?.[0]?.message,
+      },
+    ],
+    usage: chatResp.usage ?? {
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      total_tokens: 0,
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
