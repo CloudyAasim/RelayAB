@@ -18,6 +18,8 @@ export interface ProviderTemplate {
   defaultHeaders?: Record<string, string>;
   modelsListPath?: string;
   description: string;
+  /** Default upstream format */
+  defaultUpstreamFormat?: "responses" | "chat" | "anthropic";
 }
 
 export const PROVIDER_TEMPLATES: ProviderTemplate[] = [

@@ -47,6 +47,7 @@ export function CreateProviderButton({ onCreated }: Props) {
   const [priority, setPriority] = useState("0");
   const [enabled, setEnabled] = useState(true);
   const [headers, setHeaders] = useState("");
+  const [upstreamFormat, setUpstreamFormat] = useState<"responses" | "chat" | "anthropic">("chat");
   const [models, setModels] = useState<ModelConfig[]>([]);
 
   // Fetch-models state
@@ -81,6 +82,9 @@ export function CreateProviderButton({ onCreated }: Props) {
     if (tpl.defaultHeaders) {
       setHeaders(Object.entries(tpl.defaultHeaders).map(([k, v]) => `${k}: ${v}`).join("\n"));
     }
+    if (tpl.defaultUpstreamFormat) {
+      setUpstreamFormat(tpl.defaultUpstreamFormat);
+    }
     setFetchResult(null);
   }
 
@@ -88,6 +92,7 @@ export function CreateProviderButton({ onCreated }: Props) {
     setName(""); setBaseUrl(""); setApiKey("");
     setPriority("0"); setEnabled(true); setHeaders("");
     setModels([]); setError(null); setFetchResult(null);
+    setUpstreamFormat("chat");
     setTemplateId("openai");
   }
 
@@ -352,6 +357,26 @@ export function CreateProviderButton({ onCreated }: Props) {
             />
             <p className="mt-1 text-xs text-muted-foreground">{t("admin.providers.create.headersHint")}</p>
           </div>
+
+          {/* Upstream Format */}
+          <div>
+            <label className="block text-sm font-medium mb-1.5">上游格式</label>
+            <select
+              value={upstreamFormat}
+              onChange={(e) => setUpstreamFormat(e.target.value as "responses" | "chat" | "anthropic")}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            >
+              <option value="chat">Chat（直连 Chat Completions）</option>
+              <option value="responses">Responses（原生，直连不转换格式）</option>
+              <option value="anthropic">Anthropic Messages</option>
+            </select>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {upstreamFormat === "chat" && "使用 OpenAI Chat Completions 协议"}
+              {upstreamFormat === "responses" && "使用 OpenAI Responses API，原生直连不转换格式"}
+              {upstreamFormat === "anthropic" && "使用 Anthropic Messages 协议"}
+            </p>
+          </div>
+
 
           {/* Model mapping with config */}
           <div>

@@ -66,6 +66,7 @@ export interface UpdateProviderInput {
   enabled?: boolean;
   priority?: number;
   headers?: Record<string, string>;
+  upstreamFormat?: "responses" | "chat" | "anthropic";
 }
 
 // ---------------------------------------------------------------------------
@@ -297,6 +298,7 @@ async function hashToProvider(raw: Record<string, string> | null): Promise<Provi
       enabled,
       priority: Number(raw.priority ?? "1"),
       headers: safeJsonParse(raw.headers),
+      upstreamFormat: (raw.upstreamFormat as "responses" | "chat" | "anthropic") || "chat",
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
     });

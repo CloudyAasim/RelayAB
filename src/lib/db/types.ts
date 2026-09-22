@@ -29,6 +29,9 @@ export type QuotaType = z.infer<typeof QuotaTypeSchema>;
 export const ProviderKindSchema = z.enum(["openai", "anthropic", "custom-openai", "azure"]);
 export type ProviderKind = z.infer<typeof ProviderKindSchema>;
 
+export const UpstreamFormatSchema = z.enum(["responses", "chat", "anthropic"]);
+export type UpstreamFormat = z.infer<typeof UpstreamFormatSchema>;
+
 // ---------------------------------------------------------------------------
 // User
 // ---------------------------------------------------------------------------
@@ -187,6 +190,8 @@ export const ProviderSchema = z.object({
   priority: z.number().int(),
   // Optional per-provider HTTP headers (e.g. api-version for Azure).
   headers: z.record(z.string(), z.string()).optional().default({}),
+  // Upstream format: responses (native), chat, or anthropic
+  upstreamFormat: UpstreamFormatSchema.default("chat"),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

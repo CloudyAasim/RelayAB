@@ -215,9 +215,18 @@ interface ChatCompletionResponse {
 // ---------------------------------------------------------------------------
 
 function defaultUpstreamUrl(provider: Provider): string {
-  if (provider.baseUrl) return `${provider.baseUrl.replace(/\/$/, "")}/chat/completions`;
-  // Default to OpenAI's standard endpoint; Anthropic should use /messages.
-  return "https://api.openai.com/v1/chat/completions";
+  const base = provider.baseUrl ?? "https://api.openai.com";
+  const cleanBase = base.replace(/\/$/, "");
+  // Use upstreamFormat to determine the endpoint
+  switch (provider.upstreamFormat) {
+    case "responses":
+      return `${cleanBase}/responses`;
+    case "anthropic":
+      return `${cleanBase}/messages`;
+    case "chat":
+    default:
+      return `${cleanBase}/chat/completions`;
+  }
 }
 
 async function recordFailure(args: {
@@ -403,8 +412,18 @@ export async function proxyOpenAIResponse(args: {
 }
 
 function defaultResponsesUrl(provider: Provider): string {
-  if (provider.baseUrl) return `${provider.baseUrl.replace(/\/$/, "")}/responses`;
-  return "https://api.openai.com/v1/responses";
+  const base = provider.baseUrl ?? "https://api.openai.com";
+  const cleanBase = base.replace(/\/$/, "");
+  // Use upstreamFormat to determine the endpoint
+  switch (provider.upstreamFormat) {
+    case "responses":
+      return `${cleanBase}/responses`;
+    case "anthropic":
+      return `${cleanBase}/messages`;
+    case "chat":
+    default:
+      return `${cleanBase}/chat/completions`;
+  }
 }
 
 async function recordFailureResponses(args: {
