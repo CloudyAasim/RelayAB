@@ -238,6 +238,7 @@ pnpm list-usage [--user <name>] [--days N]     # 用量摘要
 | [docs/DATA_MODEL.md](docs/DATA_MODEL.md) | Redis 键命名 + 字段定义 |
 | [docs/API_ROUTES.md](docs/API_ROUTES.md) | API 路由完整规范 |
 | [docs/TESTING.md](docs/TESTING.md) | 测试金字塔 + 工具 |
+| [docs/ADMIN.md](docs/ADMIN.md) | 管理员操作指南（用户/Key/Provider 管理） |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | 部署到 Vercel + 部署保护绕过 + 冒烟测试清单 |
 
 ## 安全要点

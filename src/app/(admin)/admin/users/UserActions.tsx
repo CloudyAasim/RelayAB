@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { useT } from "@/components/i18n/I18nProvider";
@@ -13,14 +13,18 @@ export function UserActions({ user }: { user: User }) {
   const [newPassword, setNewPassword] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  // Use ref to always get the latest disabled state, avoiding stale closure issues
+  const disabledRef = useRef(user.disabled);
+  disabledRef.current = user.disabled;
 
   async function toggle() {
+    const currentDisabled = disabledRef.current;
     setLoading(true);
     try {
       const res = await fetch(`/api/admin/users/${user.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ disabled: !user.disabled }),
+        body: JSON.stringify({ disabled: !currentDisabled }),
       });
       const data = await res.json();
       if (!data.ok) alert(apiErrorMessage(t, data.error?.code, data.error?.message));

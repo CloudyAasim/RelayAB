@@ -13,8 +13,6 @@ export function CreateKeyButton({ users }: { users: UserOpt[] }) {
   const [open, setOpen] = useState(false);
   const [userId, setUserId] = useState(users[0]?.id ?? "");
   const [label, setLabel] = useState("");
-  const [quotaType, setQuotaType] = useState<"credits" | "tokens">("credits");
-  const [quotaLimit, setQuotaLimit] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
   const [allowedModels, setAllowedModels] = useState("");
   const [plainKey, setPlainKey] = useState<string | null>(null);
@@ -22,8 +20,8 @@ export function CreateKeyButton({ users }: { users: UserOpt[] }) {
   const [loading, setLoading] = useState(false);
 
   function reset() {
-    setLabel(""); setQuotaLimit(""); setExpiresAt(""); setAllowedModels("");
-    setPlainKey(null); setError(null); setQuotaType("credits");
+    setLabel(""); setExpiresAt(""); setAllowedModels("");
+    setPlainKey(null); setError(null);
   }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -35,9 +33,12 @@ export function CreateKeyButton({ users }: { users: UserOpt[] }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId, label, quotaType, quotaLimit: Number(quotaLimit),
+          userId,
+          label,
           expiresAt: expiresAt || null,
-          allowedModels: allowedModels ? allowedModels.split(",").map(s => s.trim()).filter(Boolean) : null,
+          allowedModels: allowedModels
+            ? allowedModels.split(",").map(s => s.trim()).filter(Boolean)
+            : undefined,
         }),
       });
       const data = await res.json();
@@ -46,7 +47,6 @@ export function CreateKeyButton({ users }: { users: UserOpt[] }) {
         return;
       }
       setPlainKey(data.data?.plainKey ?? null);
-      // Reload after user copies.
     } catch (err) {
       setError(err instanceof Error ? err.message : t("common.failed"));
     } finally {
@@ -86,29 +86,24 @@ export function CreateKeyButton({ users }: { users: UserOpt[] }) {
                 ))}
               </select>
             </div>
-            <Input label={t("admin.keys.create.label")} required
-                   value={label} onChange={(e) => setLabel(e.target.value)} />
-            <div>
-              <label className="block text-sm font-medium text-slate-700">
-                {t("admin.keys.create.quotaType")}
-              </label>
-              <select
-                value={quotaType}
-                onChange={(e) => setQuotaType(e.target.value as "credits" | "tokens")}
-                className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-              >
-                <option value="credits">{t("admin.keys.create.quotaType.credits")}</option>
-                <option value="tokens">{t("admin.keys.create.quotaType.tokens")}</option>
-              </select>
-            </div>
-            <Input label={t("admin.keys.create.limit", { type: quotaType === "credits" ? t("admin.keys.create.quotaType.credits") : t("admin.keys.create.quotaType.tokens") })}
-                   type="number" required
-                   value={quotaLimit} onChange={(e) => setQuotaLimit(e.target.value)} />
-            <Input label={t("admin.keys.create.expiresAt")}
-                   type="datetime-local"
-                   value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
-            <Input label={t("admin.keys.create.allowedModels")}
-                   value={allowedModels} onChange={(e) => setAllowedModels(e.target.value)} />
+            <Input
+              label={t("admin.keys.create.label")}
+              required
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+            />
+            <Input
+              label={t("admin.keys.create.expiresAt")}
+              type="datetime-local"
+              value={expiresAt}
+              onChange={(e) => setExpiresAt(e.target.value)}
+            />
+            <Input
+              label={t("admin.keys.create.allowedModels")}
+              value={allowedModels}
+              onChange={(e) => setAllowedModels(e.target.value)}
+              hint={t("admin.keys.create.allowedModelsHint")}
+            />
             {error && <p className="text-sm text-red-600">{error}</p>}
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="ghost" onClick={() => { setOpen(false); reset(); }}>
