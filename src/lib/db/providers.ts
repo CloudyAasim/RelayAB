@@ -273,7 +273,7 @@ async function hashToProvider(raw: Record<string, string> | null): Promise<Provi
       encryptedApiKey: raw.encryptedApiKey,
       modelMapping: safeJsonParse(raw.modelMapping),
       modelConfigs: safeJsonParse(raw.modelConfigs),
-      enabled: raw.enabled === "1",
+      enabled: raw.enabled === "1" || raw.enabled === "true" || raw.enabled === true,
       priority: Number(raw.priority ?? "1"),
       headers: safeJsonParse(raw.headers),
       createdAt: raw.createdAt,

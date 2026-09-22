@@ -99,8 +99,7 @@ export function ProviderActions({ providerId, providerName }: Props) {
   }
 
   return (
-    <div className="flex flex-col items-start gap-1">
-      <div className="flex gap-1">
+    <div className="flex flex-row items-center gap-1">
         <Button size="sm" variant="ghost" onClick={runTest} loading={busy === "test"}>
           {t("admin.providers.test")}
         </Button>
