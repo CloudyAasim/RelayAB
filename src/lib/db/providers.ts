@@ -134,7 +134,7 @@ export const listProviders = unstable_cache(async (opts: {
     return a.name.localeCompare(b.name);
   });
   return out;
-}, ["providers"], { revalidate: 0, tags: ["providers"] });
+}, ["providers"], { tags: ["providers"] });
 
 /**
  * Find providers that can serve the given client-visible model.
