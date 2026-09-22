@@ -81,7 +81,7 @@ export function UserActions({ user }: { user: User }) {
       {menuOpen && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} aria-hidden />
-          <div className="absolute right-0 top-full z-50 mt-2 w-44 overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-lg animate-slide-down">
+          <div className="absolute right-0 top-full z-50 mt-2 w-44 rounded-md border border-border bg-popover text-popover-foreground shadow-lg animate-slide-down">
             <button
               type="button"
               className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent"

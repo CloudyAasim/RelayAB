@@ -103,7 +103,7 @@ function UserMenu({
             onClick={() => setOpen(false)}
             aria-hidden
           />
-          <div className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-lg animate-slide-down">
+          <div className="absolute right-0 top-full z-50 mt-2 w-56 rounded-md border border-border bg-popover text-popover-foreground shadow-lg animate-slide-down">
             <div className="border-b border-border px-3 py-2.5">
               <p className="text-sm font-medium">{username}</p>
               <p className="text-xs text-muted-foreground">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
@@ -29,6 +29,7 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   function reset() {
     setLabel(apiKey.label);
@@ -36,6 +37,18 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
     setExpiresAt(toLocalInput(apiKey.expiresAt));
     setError(null);
   }
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    if (!menuOpen) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [menuOpen]);
 
   async function save(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -99,7 +112,7 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
   }
 
   return (
-    <div className="relative inline-block text-left">
+    <div className="relative inline-block text-left" ref={menuRef}>
       <Button
         size="icon"
         variant="ghost"
@@ -111,7 +124,7 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
       {menuOpen && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} aria-hidden />
-          <div className="absolute right-0 top-full z-50 mt-2 w-40 overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-lg animate-slide-down">
+          <div className="absolute right-0 top-full z-50 mt-2 w-48 rounded-md border border-border bg-popover text-popover-foreground shadow-lg animate-slide-down">
             <button
               type="button"
               className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent"
