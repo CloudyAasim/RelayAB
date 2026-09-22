@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { useT } from "@/components/i18n/I18nProvider";
@@ -13,22 +13,25 @@ export function UserActions({ user }: { user: User }) {
   const [newPassword, setNewPassword] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  // Use ref to always get the latest disabled state, avoiding stale closure issues
-  const disabledRef = useRef(user.disabled);
-  disabledRef.current = user.disabled;
 
   async function toggle() {
-    const currentDisabled = disabledRef.current;
+    if (loading) return;
+    const targetDisabled = !user.disabled;
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/users/${user.id}`, {
-        method: "PATCH",
+      // Use the dedicated toggle endpoint for clarity and to prevent partial
+      // PATCH overwrites from AllocationEditor simultaneous edits.
+      const res = await fetch(`/api/admin/users/${user.id}/toggle`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ disabled: !currentDisabled }),
+        body: JSON.stringify({ disabled: targetDisabled }),
       });
       const data = await res.json();
-      if (!data.ok) alert(apiErrorMessage(t, data.error?.code, data.error?.message));
-      else window.location.reload();
+      if (!data.ok) {
+        alert(apiErrorMessage(t, data.error?.code, data.error?.message));
+        return;
+      }
+      window.location.reload();
     } catch {
       alert(t("admin.users.action.failed"));
     } finally {

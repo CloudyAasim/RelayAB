@@ -155,3 +155,23 @@ Authorization: Bearer sk-relay-xxxxxxxxxxxxxxxxxxxxxxxxxxxx
 | 403 | `model_not_allowed` | 该 Key 不允许此模型 |
 | 400 | `model_not_mapped` | 没有任何 Provider 支持此模型 |
 | 502 | `upstream_error` | 上游调用失败 |
+
+---
+
+## 7. 调试技巧
+
+### 7.1 检查用户是否真正被停用
+
+```bash
+# 直接查询 Redis 中用户的 disabled 字段
+curl -H "Authorization: Bearer $UPSTASH_TOKEN" \
+  "$UPSTASH_URL/hgetall relay:user:<userId>"
+```
+
+如果 `disabled` 字段值为 `"1"`，用户已被停用；`"0"` 表示启用。
+
+### 7.2 停用后用户仍能访问？
+
+- 用户的 Session Cookie 会在**下次请求**时失效（每次请求都从 Redis 重新读取用户状态）
+- 如果用户正在使用 API Key，API Key 的每次请求都会检查 `user.disabled` 状态
+- 正在进行的请求（禁用前已发出）会正常完成，但新请求会被拒绝

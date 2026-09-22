@@ -258,7 +258,22 @@ Content-Type: application/json
 ```
 
 #### `PATCH /api/admin/users/[id]`
-更新 `displayName` / `role` / `disabled`。
+更新 `displayName` / `role` / `disabled` 等字段。
+
+#### `POST /api/admin/users/[id]/toggle`
+启用或停用用户。推荐使用此端点而不是 PATCH，可防止与其他字段编辑冲突。
+
+**请求体**：
+```json
+{ "disabled": true }
+```
+
+**响应**：
+```json
+{ "ok": true, "data": { "user": { ... } } }
+```
+
+**错误码**：`self_disable` — 禁止管理员停用自己。
 
 #### `POST /api/admin/users/[id]/reset-password`
 生成新随机密码，返回一次。
