@@ -15,9 +15,8 @@ import type { ApiKey } from "@/lib/db/types";
 import { getUserById as lookupUserById } from "@/lib/db/users";
 
 export const runtime = "nodejs";
-// Allow longer-running streaming responses on Vercel Pro (60s).
-// On Hobby the limit is 30s for streaming.
-export const maxDuration = 60;
+// Long generations must not be cut off at 60s.
+export const maxDuration = 300;
 
 export async function POST(req: Request): Promise<Response> {
   // 1. Parse body.

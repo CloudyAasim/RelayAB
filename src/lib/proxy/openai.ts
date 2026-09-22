@@ -760,6 +760,7 @@ function streamResponsesAnswer(args: {
   const decoder = new TextDecoder();
   let pending = "";
   let usage: StreamUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+  let sawUsage = false;
 
   const consumeLine = (line: string): void => {
     const trimmed = line.trim();
@@ -768,7 +769,11 @@ function streamResponsesAnswer(args: {
     if (!payload || payload === "[DONE]") return;
     try {
       const parsed = JSON.parse(payload) as unknown;
-      usage = usageFromSsePayload(parsed) ?? usage;
+      const found = usageFromSsePayload(parsed);
+      if (found) {
+        usage = found;
+        sawUsage = true;
+      }
     } catch {
       // Partial or non-JSON keep-alive frame — nothing to do.
     }
@@ -788,6 +793,15 @@ function streamResponsesAnswer(args: {
     async flush() {
       pending += decoder.decode();
       if (pending) consumeLine(pending);
+      if (!sawUsage) {
+        // The upstream never sent a usage frame. That happens when the client
+        // disconnects or the function hits maxDuration mid-stream, and it means
+        // this call cannot be billed accurately — make it visible rather than
+        // silently recording zero.
+        console.warn(
+          `[relayab] responses stream for model=${model} ended without a usage frame; recording 0 tokens`,
+        );
+      }
       await settleResponsesUsage({
         apiKey,
         provider,

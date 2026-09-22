@@ -16,7 +16,10 @@ import type { ApiKey } from "@/lib/db/types";
 import { getUserById as lookupUserById } from "@/lib/db/users";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+// Streaming turns can legitimately run for minutes (Codex agent loops, long
+// reasoning). 60s truncated the SSE mid-flight and, worse, the dropped
+// `response.completed` frame meant usage was never billed.
+export const maxDuration = 300;
 
 export async function POST(req: Request): Promise<Response> {
   // 1. Parse body

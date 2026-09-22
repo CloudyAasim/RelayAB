@@ -13,7 +13,8 @@ import type { ApiKey } from "@/lib/db/types";
 import { getUserById as lookupUserById } from "@/lib/db/users";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+// Long generations must not be cut off at 60s.
+export const maxDuration = 300;
 
 export async function POST(req: Request): Promise<Response> {
   let body: unknown;
