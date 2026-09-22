@@ -45,6 +45,16 @@ function deriveHex(authSecret: string, label: string): string {
     .digest("hex");
 }
 
+/**
+ * Convert empty strings to undefined for proper Zod optional handling.
+ * Zod's .optional() only skips validation when value is undefined, not empty string.
+ */
+function emptyToUndefined(value: string | undefined): string | undefined {
+  return value === "" ? undefined : value;
+}
+
+
+
 // ---------------------------------------------------------------------------
 // Schema
 // ---------------------------------------------------------------------------
@@ -141,21 +151,21 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): z.infer<typeof
       (isTest ? "test-relay-auth-must-be-8-chars-long-padding" : undefined),
     // Left undefined when unset; `resolvePublicUrl()` derives a sensible
     // value from VERCEL_URL or the incoming request at render time.
-    RELAY_PUBLIC_URL: env.RELAY_PUBLIC_URL,
+    RELAY_PUBLIC_URL: emptyToUndefined(env.RELAY_PUBLIC_URL),
     // Vercel Upstash Marketplace injects KV_REST_API_* (legacy Vercel KV
     // naming). The Upstash SDK docs use UPSTASH_REDIS_REST_*. Accept either.
-    UPSTASH_REDIS_REST_URL:
-      env.UPSTASH_REDIS_REST_URL ?? env.KV_REST_API_URL ??
+    UPSTASH_REDIS_REST_URL: emptyToUndefined(
+      env.UPSTASH_REDIS_REST_URL ?? env.KV_REST_API_URL) ??
       (isTest ? "http://localhost:13700" : undefined),
-    UPSTASH_REDIS_REST_TOKEN:
-      env.UPSTASH_REDIS_REST_TOKEN ?? env.KV_REST_API_TOKEN ??
+    UPSTASH_REDIS_REST_TOKEN: emptyToUndefined(
+      env.UPSTASH_REDIS_REST_TOKEN ?? env.KV_REST_API_TOKEN) ??
       (isTest ? "test-token" : undefined),
     RELAY_MASTER_KEY_HEX: env.RELAY_MASTER_KEY_HEX,
-    RELAY_ADMIN_USERNAME: env.RELAY_ADMIN_USERNAME ?? "admin",
+    RELAY_ADMIN_USERNAME: emptyToUndefined(env.RELAY_ADMIN_USERNAME) ?? "admin",
     // Passed through explicitly: zod's `.default()` only fires when the key
     // is absent, so omitting it here would silently ignore the env var and
     // pin every deployment to zh-CN.
-    RELAY_DEFAULT_LOCALE: env.RELAY_DEFAULT_LOCALE,
+    RELAY_DEFAULT_LOCALE: emptyToUndefined(env.RELAY_DEFAULT_LOCALE),
     OPENAI_KEYS: env.OPENAI_KEYS,
     OPENAI_BASE_URL: env.OPENAI_BASE_URL,
     ANTHROPIC_KEYS: env.ANTHROPIC_KEYS,

@@ -4,6 +4,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { loadConfig, __resetConfigForTest } from "@/lib/config";
+import { computeHealth } from "@/lib/health";
 import { __resetRedisForTest, getRedis } from "@/lib/db/redis";
 import * as fs from "node:fs";
 
@@ -78,53 +79,85 @@ describe("Test 4 · config.ts: UPSTASH_* wins over KV_*", () => {
   });
 });
 
-describe("Test 5 · /healthz logic (re-implemented for in-process test)", () => {
-  function checkHealth(env: Record<string, string | undefined>) {
-    const readUrl = () => env.UPSTASH_REDIS_REST_URL ?? env.KV_REST_API_URL;
-    const readToken = () => env.UPSTASH_REDIS_REST_TOKEN ?? env.KV_REST_API_TOKEN;
-    const upstashUrl = readUrl();
-    const upstashToken = readToken();
-    const upstashOk = !!(upstashUrl?.trim() && upstashToken?.trim());
-    const missing: string[] = [];
-    if (!env.RELAY_AUTH?.trim()) missing.push("RELAY_AUTH");
-    if (!upstashUrl?.trim()) missing.push("UPSTASH_REDIS_REST_URL (or KV_REST_API_URL)");
-    if (!upstashToken?.trim()) missing.push("UPSTASH_REDIS_REST_TOKEN (or KV_REST_API_TOKEN)");
-    const totalRequired = 3;
-    const configured = totalRequired - missing.length;
-    const status =
-      missing.length === 0 ? "ok" :
-      missing.length === totalRequired ? "unconfigured" : "degraded";
-    return { status, configured, totalRequired, missing };
-  }
+describe("Test 5 · /healthz logic", () => {
+  // Exercises the REAL implementation from lib/health.ts. This block used to
+  // carry its own copy of the rules, which meant a change to /healthz left the
+  // test asserting stale behaviour.
 
-  it("all empty → unconfigured (0/3)", () => {
-    expect(checkHealth({})).toEqual({ status: "unconfigured", configured: 0, totalRequired: 3, missing: expect.any(Array) });
+  it("production with nothing set → unconfigured", () => {
+    const r = computeHealth({ NODE_ENV: "production" });
+    expect(r.status).toBe("unconfigured");
+    expect(r.required).toBe(3);
+    expect(r.configured).toBe(0);
+    expect(r.storage).toBe("upstash");
   });
-  it("only RELAY_AUTH → degraded (1/3)", () => {
-    expect(checkHealth({ RELAY_AUTH: "x" })).toEqual({ status: "degraded", configured: 1, totalRequired: 3, missing: expect.any(Array) });
+
+  it("production with only RELAY_AUTH → degraded", () => {
+    const r = computeHealth({ NODE_ENV: "production", RELAY_AUTH: "x" });
+    expect(r.status).toBe("degraded");
+    expect(r.configured).toBe(1);
+    expect(r.required).toBe(3);
   });
-  it("Upstash via KV_* (Marketplace-injected) → ok (3/3)", () => {
-    const r = checkHealth({
-      RELAY_AUTH: "x", KV_REST_API_URL: "https://x.upstash.io", KV_REST_API_TOKEN: "t",
+
+  it("production, Upstash via KV_* (Marketplace-injected) → ok (3/3)", () => {
+    const r = computeHealth({
+      NODE_ENV: "production",
+      RELAY_AUTH: "x",
+      KV_REST_API_URL: "https://x.upstash.io",
+      KV_REST_API_TOKEN: "t",
     });
     expect(r.status).toBe("ok");
     expect(r.configured).toBe(3);
-    expect(r.missing).toHaveLength(0);
+    expect(r.missing).toBeUndefined();
   });
-  it("Upstash via UPSTASH_* (manually-set) → ok (3/3)", () => {
-    const r = checkHealth({
-      RELAY_AUTH: "x", UPSTASH_REDIS_REST_URL: "https://x.upstash.io", UPSTASH_REDIS_REST_TOKEN: "t",
+
+  it("production, Upstash via UPSTASH_* (manually set) → ok (3/3)", () => {
+    const r = computeHealth({
+      NODE_ENV: "production",
+      RELAY_AUTH: "x",
+      UPSTASH_REDIS_REST_URL: "https://x.upstash.io",
+      UPSTASH_REDIS_REST_TOKEN: "t",
     });
     expect(r.status).toBe("ok");
     expect(r.configured).toBe(3);
   });
-  it("RELAY_AUTH + URL only (missing token) → degraded", () => {
-    const r = checkHealth({
-      RELAY_AUTH: "x", UPSTASH_REDIS_REST_URL: "https://x.upstash.io",
+
+  it("production, RELAY_AUTH + URL but no token → degraded", () => {
+    const r = computeHealth({
+      NODE_ENV: "production",
+      RELAY_AUTH: "x",
+      UPSTASH_REDIS_REST_URL: "https://x.upstash.io",
     });
     expect(r.status).toBe("degraded");
-    // 1 missing (TOKEN) → 3-1=2 configured
-    expect(r.missing.some(m => m.includes("TOKEN"))).toBe(true);
+    expect(r.configured).toBe(2);
+    expect(r.missing?.some((m) => m.includes("TOKEN"))).toBe(true);
+  });
+
+  it("development with only RELAY_AUTH → ok, because storage is the in-memory mock", () => {
+    // This is the case that used to be reported as "degraded" even though the
+    // app was fully functional.
+    const r = computeHealth({ NODE_ENV: "development", RELAY_AUTH: "x" });
+    expect(r.status).toBe("ok");
+    expect(r.storage).toBe("memory");
+    expect(r.required).toBe(1);
+    expect(r.configured).toBe(1);
+  });
+
+  it("development with RELAY_AUTH unset → unconfigured (still needs the secret)", () => {
+    const r = computeHealth({ NODE_ENV: "development" });
+    expect(r.status).toBe("unconfigured");
+    expect(r.required).toBe(1);
+  });
+
+  it("production only uses the mock when explicitly opted in", () => {
+    expect(computeHealth({ NODE_ENV: "production", RELAY_AUTH: "x" }).storage).toBe("upstash");
+    expect(
+      computeHealth({
+        NODE_ENV: "production",
+        RELAY_AUTH: "x",
+        EMULATE_VERCEL_LOCAL: "1",
+      }).storage,
+    ).toBe("memory");
   });
 });
 
