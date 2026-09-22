@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { Badge, StatusDot } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
 import { useT } from "@/components/i18n/I18nProvider";
@@ -11,17 +12,15 @@ import { formatDate } from "@/lib/utils";
 import { MoreHorizontal, Edit3, Power, Trash2, Ban } from "lucide-react";
 
 /**
- * Per-row actions for a key the current user OWNS:
- *   - rename (label)
- *   - change expiry
- *   - toggle enabled (unless admin force-disabled)
- *   - delete
+ * Per-row actions for a key the current user OWNS.
+ * Includes the status badge because toggle updates it directly.
  */
 export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
   const t = useT();
   const [menuOpen, setMenuOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [label, setLabel] = useState(apiKey.label);
+  // 初始化时使用 apiKey.enabled，toggle 时更新这个状态
   const [enabled, setEnabled] = useState(Boolean(apiKey.enabled));
   const [expiresAt, setExpiresAt] = useState(toLocalInput(apiKey.expiresAt));
   const [loading, setLoading] = useState(false);
@@ -54,7 +53,6 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
         return;
       }
       setEditOpen(false);
-      // 刷新页面以显示更新
       window.location.reload();
     } catch {
       setError(t("common.failed"));
@@ -77,7 +75,7 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
         alert(apiErrorMessage(t, data.error?.code, data.error?.message));
         return;
       }
-      // 不刷新页面，直接更新本地状态
+      // 直接更新本地状态，不刷新页面
       setEnabled(newEnabled);
       setMenuOpen(false);
     } catch {
@@ -103,10 +101,28 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
   }
 
   const isForceDisabled = apiKey.forceDisabled === true;
-  const isEnabled = enabled;
 
   return (
-    <>
+    <div className="flex items-center gap-2">
+      {/* 状态徽章 - 直接使用 enabled 状态 */}
+      {isForceDisabled ? (
+        <Badge tone="orange">
+          <StatusDot tone="orange" pulse={false} className="mr-1" />
+          {t("admin.keys.status.forceDisabled")}
+        </Badge>
+      ) : enabled ? (
+        <Badge tone="success">
+          <StatusDot tone="success" pulse={false} className="mr-1" />
+          {t("dashboard.status.enabled")}
+        </Badge>
+      ) : (
+        <Badge tone="neutral">
+          <StatusDot tone="neutral" pulse={false} className="mr-1" />
+          {t("dashboard.status.disabled")}
+        </Badge>
+      )}
+
+      {/* 操作按钮 */}
       <Button
         size="icon"
         variant="ghost"
@@ -141,7 +157,7 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
               <Ban className="h-4 w-4" />
               {t("admin.keys.status.forceDisabled")}
             </div>
-          ) : isEnabled ? (
+          ) : enabled ? (
             <Button
               variant="outline"
               className="w-full justify-start"
@@ -237,7 +253,7 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
           </div>
         </form>
       </Modal>
-    </>
+    </div>
   );
 }
 

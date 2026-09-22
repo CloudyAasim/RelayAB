@@ -156,29 +156,6 @@ export default async function DashboardPage() {
                         <TD className="text-muted-foreground">
                           {formatDate(k.expiresAt)}
                         </TD>
-                        <TD>
-                          {k.forceDisabled === true ? (
-                            <Badge tone="orange">
-                              <StatusDot tone="orange" pulse={false} className="mr-1" />
-                              {t("admin.keys.status.forceDisabled")}
-                            </Badge>
-                          ) : k.enabled ? (
-                            <Badge tone="success">
-                              <StatusDot tone="success" pulse={false} className="mr-1" />
-                              {t("dashboard.status.enabled")}
-                            </Badge>
-                          ) : (
-                            <Badge tone="neutral">
-                              <StatusDot tone="neutral" pulse={false} className="mr-1" />
-                              {t("dashboard.status.disabled")}
-                            </Badge>
-                          )}
-                          {k.expiresAt && new Date(k.expiresAt) < new Date() && (
-                            <Badge tone="warning" className="ml-1">
-                              {t("dashboard.status.expired")}
-                            </Badge>
-                          )}
-                        </TD>
                         <TD className="text-right">
                           <UserKeyActions apiKey={k} />
                         </TD>
