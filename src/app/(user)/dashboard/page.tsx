@@ -77,7 +77,7 @@ export default async function DashboardPage() {
               label={t("dashboard.stat.creditsUsed")}
               value={formatCredits(agg.creditsUsed)}
               icon={<Coins className="h-4 w-4" />}
-              tone="success"
+              tone="orange"
             />
           </div>
 
@@ -176,8 +176,6 @@ export default async function DashboardPage() {
                           {k.expiresAt && new Date(k.expiresAt) < new Date() && (
                             <Badge tone="warning" className="ml-1">
                               {t("dashboard.status.expired")}
-                            </Badge>
-                          )}
                             </Badge>
                           )}
                         </TD>
