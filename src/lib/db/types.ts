@@ -161,9 +161,9 @@ export const ModelConfigSchema = z.object({
   /** Maximum output tokens */
   maxOutputTokens: z.number().int().positive().default(8192),
   /** Credit cost per 1M input tokens */
-  inputCost: z.number().positive().default(0),
+  inputCost: z.number().nonnegative().default(0),
   /** Credit cost per 1M output tokens */
-  outputCost: z.number().positive().default(0),
+  outputCost: z.number().nonnegative().default(0),
   /** Whether this model is enabled */
   enabled: z.boolean().default(true),
 });
