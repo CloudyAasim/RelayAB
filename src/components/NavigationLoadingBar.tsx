@@ -1,37 +1,54 @@
 "use client";
 
-import { useNavigation } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { Loader2 } from "lucide-react";
 
 /**
  * Global navigation loading indicator.
- * Shows a centered spinner overlay during client-side navigation,
- * preventing the "frozen/frozen screen" feeling when switching pages.
+ * Shows a top progress bar during client-side navigation.
+ * Works with Next.js App Router's default navigation behavior.
  */
 export function NavigationLoadingBar() {
-  const navigation = useNavigation();
-  const [visible, setVisible] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (navigation.state === "loading") {
-      // Small delay to avoid showing loader for very fast navigations
-      const showTimer = setTimeout(() => setVisible(true), 100);
-      return () => clearTimeout(showTimer);
-    } else {
-      // Hide after navigation completes
-      const hideTimer = setTimeout(() => setVisible(false), 150);
-      return () => clearTimeout(hideTimer);
-    }
-  }, [navigation.state]);
+    let timeout: NodeJS.Timeout;
 
-  if (!visible) return null;
+    const handleStart = () => {
+      // Debounce to avoid showing loader for very fast navigations
+      timeout = setTimeout(() => setLoading(true), 80);
+    };
+
+    const handleComplete = () => {
+      clearTimeout(timeout);
+      setLoading(false);
+    };
+
+    // Next.js App Router dispatches custom events during navigation
+    window.addEventListener("next-route-change-start", handleStart);
+    window.addEventListener("next-route-change-complete", handleComplete);
+
+    // Also handle native popstate for back/forward navigation
+    window.addEventListener("popstate", handleComplete);
+
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener("next-route-change-start", handleStart);
+      window.removeEventListener("next-route-change-complete", handleComplete);
+      window.removeEventListener("popstate", handleComplete);
+    };
+  }, []);
+
+  if (!loading) return null;
 
   return (
-    <div className="navigation-loading-overlay">
-      <Loader2
-        className="h-8 w-8 animate-spin text-primary"
-        style={{ animation: "spin 0.8s linear infinite" }}
+    <div className="fixed top-0 left-0 right-0 z-[9999] h-0.5 bg-primary overflow-hidden">
+      <div 
+        className="h-full bg-primary"
+        style={{
+          animation: "navigationProgress 0.8s ease-in-out infinite",
+          width: "40%",
+        }}
       />
     </div>
   );
