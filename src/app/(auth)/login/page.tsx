@@ -91,7 +91,7 @@ export default function LoginPage() {
           {/* Form card */}
           <Card className="shadow-xl">
             <CardHeader title={t("login.signIn")} description={t("login.signInDesc")} />
-            <form onSubmit={onSubmit} className="space-y-3 px-4 pb-4 sm:px-6 sm:pb-6 sm:space-y-4">
+            <form onSubmit={onSubmit} className="space-y-3 sm:space-y-4">
               <div className="space-y-1">
                 <label htmlFor="username" className="block text-xs font-medium text-foreground sm:text-sm">
                   {t("login.username")}

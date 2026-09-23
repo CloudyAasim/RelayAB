@@ -10,6 +10,10 @@ import { defineConfig } from "vitest/config";
 import { resolve } from "path";
 
 export default defineConfig({
+  // Next.js compiles JSX with the automatic runtime; the test transform has to
+  // match it or rendering a `.tsx` component from a test throws
+  // "React is not defined" (those files don't import React themselves).
+  esbuild: { jsx: "automatic" },
   test: {
     environment: "node",
     globals: true,

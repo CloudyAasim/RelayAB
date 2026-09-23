@@ -52,7 +52,7 @@ export function AllocationEditor({ users, availableModels }: Props) {
     <>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {users.map((u) => (
-          <Card key={u.id} className="p-4 hover:border-primary/40 hover:shadow-md transition-all">
+          <Card key={u.id} className="hover:border-primary/40 hover:shadow-md transition-all">
             <div className="flex items-start justify-between gap-2">
               <div>
                 <div className="font-medium text-foreground">{u.username}</div>

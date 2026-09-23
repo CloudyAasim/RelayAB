@@ -24,12 +24,26 @@ import {
 } from "react";
 
 /** Card root container. */
-const Card = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
-  ({ className, ...props }, ref) => (
+interface CardProps extends HTMLAttributes<HTMLDivElement> {
+  /**
+   * Inset the card's own content (`p-4 sm:p-6`).
+   *
+   * Defaults to true because the overwhelming majority of call sites are
+   * written as `<Card><CardHeader …/>…</Card>` and expect the surface to pad
+   * itself. Pass `padded={false}` when composing with the compound parts
+   * (`CardHeaderNew` / `CardContent`), which carry their own padding the way
+   * shadcn/ui defines them — otherwise the padding doubles up.
+   */
+  padded?: boolean;
+}
+
+const Card = forwardRef<HTMLDivElement, CardProps>(
+  ({ className, padded = true, ...props }, ref) => (
     <div
       ref={ref}
       className={cn(
         "rounded-lg border border-border bg-card text-card-foreground shadow-sm",
+        padded && "p-4 sm:p-6",
         className,
       )}
       {...props}

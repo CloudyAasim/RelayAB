@@ -13,7 +13,7 @@ export default function SettingsLoading() {
           title={<Skeleton className="h-5 w-24" />}
           description={<Skeleton className="h-4 w-48 mt-1" />}
         />
-        <div className="space-y-4 p-6 pt-0">
+        <div className="space-y-4">
           <div className="space-y-2">
             <Skeleton className="h-4 w-16" />
             <Skeleton className="h-10 w-full max-w-md" />
@@ -35,7 +35,7 @@ export default function SettingsLoading() {
           title={<Skeleton className="h-5 w-24" />}
           description={<Skeleton className="h-4 w-36 mt-1" />}
         />
-        <div className="space-y-4 p-6 pt-0">
+        <div className="space-y-4">
           <div className="space-y-2">
             <Skeleton className="h-4 w-28" />
             <Skeleton className="h-10 w-full max-w-md" />
