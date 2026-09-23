@@ -146,7 +146,7 @@ export default async function WelcomePage() {
         {/* ---- Two audiences ---- */}
         <section className="mt-14 grid gap-4 lg:grid-cols-2">
           <div className="rounded-lg border border-border bg-card p-6">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-0">
               <Users className="h-4 w-4 text-muted-foreground" />
               <h3 className="text-base font-semibold text-foreground">
                 {t("welcome.users.title")}
@@ -159,7 +159,7 @@ export default async function WelcomePage() {
             </ul>
           </div>
           <div className="rounded-lg border border-border bg-card p-6">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-0">
               <ShieldCheck className="h-4 w-4 text-muted-foreground" />
               <h3 className="text-base font-semibold text-foreground">
                 {t("welcome.admins.title")}
@@ -197,7 +197,7 @@ function Step({
 }) {
   return (
     <div className="rounded-lg border border-border bg-card p-5">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-0">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
           {icon}
         </span>
