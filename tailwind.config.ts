@@ -2,6 +2,7 @@ import type { Config } from "tailwindcss";
 // Loaded as ESM by Next.js/tsx, where `require` is unavailable — import the
 // plugins instead of calling require() in the plugins array.
 import forms from "@tailwindcss/forms";
+import animate from "tailwindcss-animate";
 import typography from "@tailwindcss/typography";
 
 /**
@@ -140,7 +141,7 @@ const config: Config = {
       },
     },
   },
-  plugins: [forms, typography],
+  plugins: [forms, typography, animate],
 };
 
 export default config;

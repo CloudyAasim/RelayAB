@@ -344,7 +344,7 @@ const zhCN: Dict = {
   "admin.users.allocation.allowedModels": "允许访问的模型",
   "admin.users.allocation.allowedModelsHint": "留空表示允许全部已配置提供商中的模型。",
   "admin.users.allocation.maxActiveKeysLabel": "活跃密钥数上限",
-  "admin.users.allocation.maxActive密钥sHint": "0 表示无上限。用户的已启用 密钥 超过此值时不能再创建新 密钥。",
+  "admin.users.allocation.maxActiveKeysHint": "0 表示无上限。用户的已启用 密钥 超过此值时不能再创建新 密钥。",
 
   // ===== Admin Keys =====
   "admin.keys.title": "接口密钥",
@@ -463,7 +463,7 @@ const zhCN: Dict = {
   "admin.docs.link": "管理员文档",
   "admin.providers.test": "测试连接",
   "admin.providers.create.template": "模板",
-  "admin.providers.create.api密钥Hint": "（一行一个 密钥；首个为主 密钥，其余用于轮换——目前只保存首个）",
+  "admin.providers.create.apiKeyHint": "（一行一个 密钥；首个为主 密钥，其余用于轮换——目前只保存首个）",
   "admin.providers.create.headers": "自定义请求头",
   "admin.providers.create.headersHint": "（每行一个 Key: Value，例如 Azure 的 api-version: ...）",
   "admin.providers.create.models": "模型映射",

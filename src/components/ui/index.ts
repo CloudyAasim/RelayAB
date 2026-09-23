@@ -1,18 +1,17 @@
-// Single entry point for the UI primitives. Importing from
-// "@/components/ui" gives a tidy surface that mirrors new-api's
-// @/components/ui convention.
-export { Button } from "./Button";
-export { Card, CardHeader, StatCard } from "./Card";
-export { Badge, StatusDot } from "./Badge";
-export { Input, Textarea } from "./Input";
-export { Modal } from "./Modal";
-export {
-  Table,
-  THead,
-  TBody,
-  TR,
-  TH,
-  TD,
-  EmptyState,
-  Skeleton,
-} from "./Table";
+/**
+ * UI primitives — shadcn/ui style components.
+ *
+ * New code should import directly from the specific file (e.g.
+ * `import { Button } from "@/components/ui/Button"`), but the barrel
+ * re-export is preserved for existing callers.
+ */
+export * from "./Button";
+export * from "./Badge";
+export * from "./Card";
+export * from "./Input";
+export * from "./Modal";
+export * from "./PageSkeleton";
+export * from "./Sheet";
+export * from "./Separator";
+export * from "./Tabs";
+export * from "./Table";

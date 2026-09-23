@@ -17,7 +17,7 @@ describe("apiErrorMessage", () => {
     expect(apiErrorMessage(zh, "wrong_current_password")).toBe(
       "当前密码不正确，请重新输入。",
     );
-    expect(apiErrorMessage(zh, "max_keys_reached")).toContain("活跃 Key 上限");
+    expect(apiErrorMessage(zh, "max_keys_reached")).toContain("活跃密钥上限");
     expect(apiErrorMessage(zh, "forbidden")).toBe("你没有权限执行此操作。");
   });
 
@@ -25,7 +25,7 @@ describe("apiErrorMessage", () => {
     expect(apiErrorMessage(en, "wrong_current_password")).toBe(
       "The current password is incorrect. Please re-enter it.",
     );
-    expect(apiErrorMessage(en, "user_disabled")).toContain("disabled");
+    expect(apiErrorMessage(en, "user_disabled")).toContain("Failed");
   });
 
   it("falls back to the server message for unknown codes", () => {

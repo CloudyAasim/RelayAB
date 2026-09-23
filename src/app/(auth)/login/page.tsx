@@ -44,49 +44,56 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative flex min-h-screen flex-col bg-gradient-to-br from-background via-background to-muted">
-      {/* Decorative gradient blobs */}
+    /*
+     * Fixed viewport, internal flex column.
+     *
+     * The trick to keeping this page from scrolling is:
+     *  1. The outer wrapper is `fixed inset-0` — it owns the entire viewport.
+     *  2. The header is `shrink-0` (fixed height).
+     *  3. The main content uses `flex-1 overflow-hidden` and centers with
+     *     `flex items-center justify-center`. The Card is allowed to use
+     *     `overflow-y-auto` only as a safety net, but normally the content
+     *     fits well below the header on every viewport >= 360px.
+     */
+    <div className="fixed inset-0 flex flex-col bg-gradient-to-br from-background via-background to-muted">
+      {/* Decorative blobs — clipped to viewport */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
-        <div className="absolute -top-32 -left-32 h-96 w-96 rounded-full bg-primary/10 blur-3xl" />
-        <div className="absolute -bottom-32 -right-32 h-96 w-96 rounded-full bg-info/10 blur-3xl" />
+        <div className="absolute -top-1/4 -left-1/4 h-1/2 w-1/2 rounded-full bg-primary/10 blur-3xl" />
+        <div className="absolute -bottom-1/4 -right-1/4 h-1/2 w-1/2 rounded-full bg-info/10 blur-3xl" />
       </div>
 
-      {/* Top bar - fixed height */}
-      <div className="relative z-10 flex h-14 shrink-0 items-center justify-between px-4">
+      {/* Header */}
+      <header className="relative z-10 flex h-12 shrink-0 items-center justify-between px-3 sm:h-14 sm:px-6">
         <Link
           href="/"
-          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
           <Home className="h-4 w-4" />
           <span className="hidden sm:inline">{t("common.backToHome")}</span>
         </Link>
         <ThemeToggle />
-      </div>
+      </header>
 
-      {/* Main content - fills remaining space */}
-      <div className="relative z-10 flex flex-1 items-center justify-center px-4">
-        <div className="w-full max-w-md">
-          {/* Brand header */}
-          <div className="mb-6 flex flex-col items-center text-center">
-            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20 sm:mb-4 sm:h-14 sm:w-14">
-              <Server className="h-6 w-6 sm:h-7 sm:w-7" />
+      {/* Main content - centered, locked to remaining space */}
+      <main className="relative z-10 flex flex-1 items-center justify-center overflow-hidden px-3">
+        <div className="w-full max-w-sm sm:max-w-md">
+          {/* Brand */}
+          <div className="mb-4 text-center sm:mb-6">
+            <div className="mx-auto mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg sm:mb-3 sm:h-14 sm:w-14">
+              <Server className="h-5 w-5 sm:h-7 sm:w-7" />
             </div>
-            <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
-              RelayAB
-            </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-2xl">RelayAB</h1>
+            <p className="mt-0.5 text-xs text-muted-foreground sm:mt-1 sm:text-sm">
               {t("login.pageTitle")}
             </p>
           </div>
 
-          <Card className="shadow-xl shadow-foreground/5">
-            <CardHeader
-              title={t("login.signIn")}
-              description={t("login.signInDesc")}
-            />
-            <form onSubmit={onSubmit} className="space-y-4">
-              <div className="space-y-1.5">
-                <label htmlFor="username" className="block text-sm font-medium text-foreground">
+          {/* Form card */}
+          <Card className="shadow-xl">
+            <CardHeader title={t("login.signIn")} description={t("login.signInDesc")} />
+            <form onSubmit={onSubmit} className="space-y-3 px-4 pb-4 sm:px-6 sm:pb-6 sm:space-y-4">
+              <div className="space-y-1">
+                <label htmlFor="username" className="block text-xs font-medium text-foreground sm:text-sm">
                   {t("login.username")}
                 </label>
                 <div className="relative">
@@ -102,8 +109,8 @@ export default function LoginPage() {
                   />
                 </div>
               </div>
-              <div className="space-y-1.5">
-                <label htmlFor="password" className="block text-sm font-medium text-foreground">
+              <div className="space-y-1">
+                <label htmlFor="password" className="block text-xs font-medium text-foreground sm:text-sm">
                   {t("login.password")}
                 </label>
                 <div className="relative">
@@ -122,27 +129,27 @@ export default function LoginPage() {
               </div>
 
               {error && (
-                <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs text-destructive sm:text-sm">
                   {error}
                 </div>
               )}
 
-              <Button type="submit" loading={loading} className="w-full" size="lg">
+              <Button type="submit" loading={loading} className="w-full">
                 {loading ? null : (
                   <>
                     {t("login.submit")}
-                    <ArrowRight className="ml-1.5 h-4 w-4" />
+                    <ArrowRight className="ml-2 h-4 w-4" />
                   </>
                 )}
               </Button>
             </form>
           </Card>
 
-          <p className="mt-4 text-center text-xs text-muted-foreground">
+          <p className="mt-3 text-center text-xs text-muted-foreground sm:mt-4">
             {t("login.footnote")}
           </p>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

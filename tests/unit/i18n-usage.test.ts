@@ -96,7 +96,6 @@ describe("i18n: client/server boundary", () => {
       // Route handlers may import the server-only helper too: they are
       // server-side by construction (they localize flash-banner messages).
       "src/app/api/admin/users/[id]/delete-form/route.ts",
-      "src/app/api/admin/users/[id]/toggle/route.ts",
       "src/app/docs/page.tsx",
       "src/app/layout.tsx",
       "src/app/license/page.tsx",
