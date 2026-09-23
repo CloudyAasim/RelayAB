@@ -56,10 +56,16 @@ export default async function WelcomePage() {
       <div className="relative mx-auto max-w-5xl px-4 pb-16 pt-14 sm:px-6 sm:pt-20">
         {/* ---- Hero ---- */}
         <div className="flex flex-col items-center text-center">
-          <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
-            <Server className="h-7 w-7" />
+          {/* Brand: icon + name */}
+          <div className="mb-5 flex items-center gap-3">
+            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
+              <Server className="h-7 w-7" />
+            </div>
+            <span className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+              RelayAB
+            </span>
           </div>
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+          <h1 className="text-xl font-medium tracking-tight text-muted-foreground sm:text-2xl">
             {t("welcome.title")}
           </h1>
           <p className="mt-3 max-w-2xl text-base text-muted-foreground">
@@ -116,25 +122,21 @@ export default async function WelcomePage() {
           <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Step
               icon={<ShieldCheck className="h-4 w-4" />}
-              n="1"
               title={t("welcome.how.step1.title")}
               body={t("welcome.how.step1.body")}
             />
             <Step
               icon={<Coins className="h-4 w-4" />}
-              n="2"
               title={t("welcome.how.step2.title")}
               body={t("welcome.how.step2.body")}
             />
             <Step
               icon={<KeyRound className="h-4 w-4" />}
-              n="3"
               title={t("welcome.how.step3.title")}
               body={t("welcome.how.step3.body")}
             />
             <Step
               icon={<BookOpen className="h-4 w-4" />}
-              n="4"
               title={t("welcome.how.step4.title")}
               body={t("welcome.how.step4.body")}
             />
@@ -186,12 +188,10 @@ export default async function WelcomePage() {
 
 function Step({
   icon,
-  n,
   title,
   body,
 }: {
   icon: React.ReactNode;
-  n: string;
   title: string;
   body: string;
 }) {
@@ -200,9 +200,6 @@ function Step({
       <div className="flex items-center gap-2">
         <span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 text-primary">
           {icon}
-        </span>
-        <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          {n}
         </span>
       </div>
       <h3 className="mt-3 text-sm font-semibold text-foreground">{title}</h3>
