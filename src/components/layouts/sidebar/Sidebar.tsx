@@ -205,7 +205,7 @@ export function SidebarMenuButton({
   if (href) {
     return (
       <Link
-        prefetch="render"
+        
         href={href}
         className={baseClass}
         aria-current={isActive ? "page" : undefined}
