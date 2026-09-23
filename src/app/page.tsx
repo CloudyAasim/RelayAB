@@ -4,6 +4,7 @@ import { getT } from "@/lib/i18n/server";
 import { resolvePublicUrl } from "@/lib/public-url";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { ThemeToggle } from "@/components/layouts/ThemeToggle";
 import {
   ArrowRight,
   BookOpen,
@@ -51,6 +52,11 @@ export default async function WelcomePage() {
       <div className="pointer-events-none absolute inset-0" aria-hidden>
         <div className="absolute -top-40 left-1/4 h-96 w-96 rounded-full bg-primary/10 blur-3xl" />
         <div className="absolute -top-24 right-1/4 h-80 w-80 rounded-full bg-info/10 blur-3xl" />
+      </div>
+
+      {/* Theme toggle - top right */}
+      <div className="absolute right-4 top-4 z-10">
+        <ThemeToggle />
       </div>
 
       <div className="relative mx-auto max-w-5xl px-4 pb-16 pt-14 sm:px-6 sm:pt-20">
@@ -145,7 +151,7 @@ export default async function WelcomePage() {
 
         {/* ---- Two audiences ---- */}
         <section className="mt-14 grid gap-4 lg:grid-cols-2">
-          <div className="rounded-lg border border-border bg-card p-6">
+          <div className="rounded-lg border border-border bg-card p-5">
             <div className="flex items-center gap-2">
               <Users className="h-4 w-4 text-muted-foreground" />
               <h3 className="text-base font-semibold text-foreground">
@@ -158,7 +164,7 @@ export default async function WelcomePage() {
               <li>{t("welcome.users.line3")}</li>
             </ul>
           </div>
-          <div className="rounded-lg border border-border bg-card p-6">
+          <div className="rounded-lg border border-border bg-card p-5">
             <div className="flex items-center gap-2">
               <ShieldCheck className="h-4 w-4 text-muted-foreground" />
               <h3 className="text-base font-semibold text-foreground">

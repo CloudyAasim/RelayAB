@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { useT } from "@/components/i18n/I18nProvider";
+import { ThemeToggle } from "@/components/layouts/ThemeToggle";
 import { Server, Lock, User as UserIcon, ArrowRight, Home } from "lucide-react";
 
 export default function LoginPage() {
@@ -58,6 +59,11 @@ export default function LoginPage() {
         <Home className="h-4 w-4" />
         {t("common.backToHome")}
       </Link>
+
+      {/* Theme toggle */}
+      <div className="absolute right-4 top-4">
+        <ThemeToggle />
+      </div>
 
       <div className="relative w-full max-w-md">
         {/* Brand header */}
