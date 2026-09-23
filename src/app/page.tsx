@@ -59,43 +59,44 @@ export default async function WelcomePage() {
         <ThemeToggle />
       </div>
 
-      <div className="relative mx-auto max-w-5xl px-4 pb-16 pt-14 sm:px-6 sm:pt-20">
+      <div className="relative mx-auto max-w-5xl px-4 pb-12 pt-14 sm:px-6 sm:pb-16 sm:pt-20">
         {/* ---- Hero ---- */}
         <div className="flex flex-col items-center text-center">
           {/* Brand: icon + name */}
-          <div className="mb-5 flex items-center gap-3">
-            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
-              <Server className="h-7 w-7" />
+          <div className="mb-4 flex items-center gap-2 sm:mb-5 sm:gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20 sm:h-14 sm:w-14">
+              <Server className="h-6 w-6 sm:h-7 sm:w-7" />
             </div>
-            <span className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+            <span className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl sm:font-semibold sm:tracking-tight">
               RelayAB
             </span>
           </div>
-          <h1 className="text-xl font-medium tracking-tight text-muted-foreground sm:text-2xl">
+          <h1 className="mt-2 text-lg font-medium tracking-tight text-muted-foreground sm:text-xl sm:font-medium sm:tracking-tight">
             {t("welcome.title")}
           </h1>
-          <p className="mt-3 max-w-2xl text-base text-muted-foreground">
+          <p className="mt-2 max-w-2xl text-sm text-muted-foreground sm:mt-3 sm:text-base">
             {t("welcome.subtitle")}
           </p>
 
-          <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
+          {/* Buttons - stacked on mobile, row on desktop */}
+          <div className="mt-6 flex w-full flex-col items-center gap-2 sm:mt-7 sm:flex-row sm:flex-wrap sm:justify-center sm:gap-3">
             {user ? (
-              <Link href={consoleHref}>
-                <Button size="lg">
+              <Link href={consoleHref} className="w-full sm:w-auto">
+                <Button size="lg" className="w-full sm:w-auto">
                   <LayoutDashboard className="mr-2 h-4 w-4" />
                   {t("welcome.enterConsole")}
                 </Button>
               </Link>
             ) : (
-              <Link href="/login">
-                <Button size="lg">
+              <Link href="/login" className="w-full sm:w-auto">
+                <Button size="lg" className="w-full sm:w-auto">
                   {t("welcome.signIn")}
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </Link>
             )}
-            <Link href="/docs">
-              <Button size="lg" variant="outline">
+            <Link href="/docs" className="w-full sm:w-auto">
+              <Button size="lg" variant="outline" className="w-full sm:w-auto">
                 <BookOpen className="mr-2 h-4 w-4" />
                 {t("welcome.readDocs")}
               </Button>
@@ -111,7 +112,7 @@ export default async function WelcomePage() {
 
         {/* ---- Endpoint ---- */}
         {openaiBase && (
-          <div className="mx-auto mt-12 max-w-2xl">
+          <div className="mx-auto mt-10 max-w-2xl sm:mt-12">
             <CopyEndpoint
               label={t("welcome.endpointLabel")}
               value={openaiBase}
@@ -121,11 +122,12 @@ export default async function WelcomePage() {
         )}
 
         {/* ---- How it works ---- */}
-        <section className="mt-16">
-          <h2 className="text-center text-lg font-semibold tracking-tight text-foreground">
+        <section className="mt-12 sm:mt-16">
+          <h2 className="text-center text-base font-semibold tracking-tight text-foreground sm:text-lg sm:font-semibold sm:tracking-tight">
             {t("welcome.how.title")}
           </h2>
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Single column on mobile, 2 columns on tablet, 4 columns on desktop */}
+          <div className="mt-4 grid gap-3 sm:mt-6 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
             <Step
               icon={<ShieldCheck className="h-4 w-4" />}
               title={t("welcome.how.step1.title")}
@@ -150,28 +152,28 @@ export default async function WelcomePage() {
         </section>
 
         {/* ---- Two audiences ---- */}
-        <section className="mt-14 grid gap-4 lg:grid-cols-2">
-          <div className="rounded-lg border border-border bg-card p-5">
+        <section className="mt-10 grid gap-3 sm:mt-14 sm:grid-cols-2 sm:gap-4">
+          <div className="rounded-lg border border-border bg-card p-4 sm:p-5">
             <div className="flex items-center gap-2">
               <Users className="h-4 w-4 text-muted-foreground" />
-              <h3 className="text-base font-semibold text-foreground">
+              <h3 className="text-sm font-semibold text-foreground sm:text-base">
                 {t("welcome.users.title")}
               </h3>
             </div>
-            <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
+            <ul className="mt-2 space-y-1.5 text-xs text-muted-foreground sm:mt-3 sm:space-y-2 sm:text-sm">
               <li>{t("welcome.users.line1")}</li>
               <li>{t("welcome.users.line2")}</li>
               <li>{t("welcome.users.line3")}</li>
             </ul>
           </div>
-          <div className="rounded-lg border border-border bg-card p-5">
+          <div className="rounded-lg border border-border bg-card p-4 sm:p-5">
             <div className="flex items-center gap-2">
               <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-              <h3 className="text-base font-semibold text-foreground">
+              <h3 className="text-sm font-semibold text-foreground sm:text-base">
                 {t("welcome.admins.title")}
               </h3>
             </div>
-            <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
+            <ul className="mt-2 space-y-1.5 text-xs text-muted-foreground sm:mt-3 sm:space-y-2 sm:text-sm">
               <li>{t("welcome.admins.line1")}</li>
               <li>{t("welcome.admins.line2")}</li>
               <li>{t("welcome.admins.line3")}</li>
@@ -180,7 +182,7 @@ export default async function WelcomePage() {
         </section>
 
         {/* ---- Compatibility footer ---- */}
-        <div className="mt-12 flex flex-wrap items-center justify-center gap-2">
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-2 sm:mt-12">
           <span className="text-xs text-muted-foreground">
             {t("welcome.compat")}
           </span>
@@ -202,14 +204,14 @@ function Step({
   body: string;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-card p-5">
+    <div className="rounded-lg border border-border bg-card p-4 sm:p-5">
       <div className="flex items-center gap-2">
         <span className="text-primary">
           {icon}
         </span>
-        <h3 className="text-base font-semibold text-foreground">{title}</h3>
+        <h3 className="text-sm font-semibold text-foreground sm:text-base">{title}</h3>
       </div>
-      <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{body}</p>
+      <p className="mt-2 text-xs leading-relaxed text-muted-foreground sm:mt-3 sm:text-sm">{body}</p>
     </div>
   );
 }
