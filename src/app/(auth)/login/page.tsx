@@ -44,15 +44,15 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-gradient-to-br from-background via-background to-muted">
+    <div className="relative flex min-h-screen flex-col bg-gradient-to-br from-background via-background to-muted">
       {/* Decorative gradient blobs */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
         <div className="absolute -top-32 -left-32 h-96 w-96 rounded-full bg-primary/10 blur-3xl" />
         <div className="absolute -bottom-32 -right-32 h-96 w-96 rounded-full bg-info/10 blur-3xl" />
       </div>
 
-      {/* Top bar */}
-      <div className="relative z-10 flex items-center justify-between px-4 py-3">
+      {/* Top bar - fixed height */}
+      <div className="relative z-10 flex h-14 shrink-0 items-center justify-between px-4">
         <Link
           href="/"
           className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -63,18 +63,18 @@ export default function LoginPage() {
         <ThemeToggle />
       </div>
 
-      {/* Main content - centered */}
-      <div className="relative z-10 flex flex-1 items-center justify-center px-4 py-6">
+      {/* Main content - fills remaining space */}
+      <div className="relative z-10 flex flex-1 items-center justify-center px-4">
         <div className="w-full max-w-md">
           {/* Brand header */}
-          <div className="mb-6 flex flex-col items-center text-center sm:mb-8">
+          <div className="mb-6 flex flex-col items-center text-center">
             <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20 sm:mb-4 sm:h-14 sm:w-14">
               <Server className="h-6 w-6 sm:h-7 sm:w-7" />
             </div>
             <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
               RelayAB
             </h1>
-            <p className="mt-1 text-sm text-muted-foreground sm:mt-1.5">
+            <p className="mt-1 text-sm text-muted-foreground">
               {t("login.pageTitle")}
             </p>
           </div>
@@ -138,7 +138,7 @@ export default function LoginPage() {
             </form>
           </Card>
 
-          <p className="mt-4 text-center text-xs text-muted-foreground sm:mt-6">
+          <p className="mt-4 text-center text-xs text-muted-foreground">
             {t("login.footnote")}
           </p>
         </div>

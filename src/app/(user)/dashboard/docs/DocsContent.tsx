@@ -186,7 +186,7 @@ console.log(msg.content);`}
       </Card>
 
       {/* Code examples - responsive grid */}
-      <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader title={t("docs.python.title")} description={t("docs.python.desc")} />
           <CodeBlock
