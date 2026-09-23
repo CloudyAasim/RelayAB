@@ -10,6 +10,7 @@
 import { type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { isNavItemActive } from "@/lib/nav";
+import { TooltipProvider } from "@/components/ui/Tooltip";
 import {
   SidebarProvider,
   Sidebar,
@@ -100,11 +101,13 @@ interface AuthenticatedLayoutProps {
 
 export function AuthenticatedLayout({ role, username, displayName, children }: AuthenticatedLayoutProps) {
   return (
+    <TooltipProvider delayDuration={300}>
     <SidebarProvider>
       <SidebarShell role={role} username={username} displayName={displayName}>
         {children}
       </SidebarShell>
     </SidebarProvider>
+    </TooltipProvider>
   );
 }
 

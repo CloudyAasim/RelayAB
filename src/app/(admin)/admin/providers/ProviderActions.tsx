@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useTransition } from "react";
 import { Button } from "@/components/ui/Button";
-import { Modal } from "@/components/ui/Modal";
+import { LegacyModal as Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
 import { useT } from "@/components/i18n/I18nProvider";
 import { RefreshCw, Pencil, Trash2, Zap, X } from "lucide-react";

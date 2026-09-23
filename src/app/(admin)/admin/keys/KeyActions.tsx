@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { Modal } from "@/components/ui/Modal";
+import { LegacyModal as Modal } from "@/components/ui/Modal";
 import { useT } from "@/components/i18n/I18nProvider";
 import type { ApiKey } from "@/lib/db/types";
 import { MoreHorizontal, Power, Trash2, Ban } from "lucide-react";

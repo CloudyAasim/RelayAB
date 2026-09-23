@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { Modal } from "@/components/ui/Modal";
+import { LegacyModal as Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
 import { useT } from "@/components/i18n/I18nProvider";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";

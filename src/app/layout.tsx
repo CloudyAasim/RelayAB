@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { Footer } from "@/components/layouts/Footer";
 import { I18nProvider } from "@/components/i18n/I18nProvider";
 import { ThemeProvider } from "@/components/layouts/ThemeProvider";
+import { Toaster } from "@/components/layouts/Toaster";
 import { getServerLocale } from "@/lib/i18n/server";
 import { NavigationLoadingBar } from "@/components/NavigationLoadingBar";
 
@@ -25,9 +26,11 @@ export default async function RootLayout({
       <body className="flex min-h-screen flex-col antialiased">
         <ThemeProvider>
           <I18nProvider initialLocale={initialLocale}>
-            <NavigationLoadingBar />
-            <div className="flex flex-1 flex-col">{children}</div>
-            <Footer />
+            <Toaster>
+              <NavigationLoadingBar />
+              <div className="flex flex-1 flex-col">{children}</div>
+              <Footer />
+            </Toaster>
           </I18nProvider>
         </ThemeProvider>
       </body>

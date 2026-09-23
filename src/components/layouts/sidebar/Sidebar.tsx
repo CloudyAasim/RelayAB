@@ -6,6 +6,7 @@ import Link, { useLinkStatus } from "next/link";
 import { Loader2, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useSidebar } from "./SidebarContext";
 import { useT } from "@/components/i18n/I18nProvider";
+import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/Tooltip";
 
 /**
  * Sidebar — left rail for the authenticated layout.
@@ -177,23 +178,20 @@ export function SidebarMenuButton({
 
   const collapsedLabel = collapsed && typeof children === "string" ? children : undefined;
 
-  if (href) {
-    return (
-      <Link
-        href={href}
-        className={baseClass}
-        aria-current={isActive ? "page" : undefined}
-        aria-label={collapsedLabel}
-        title={collapsedLabel}
-        onClick={() => {
-          if (isMobile) setOpen(false);
-        }}
-      >
-        {content}
-      </Link>
-    );
-  }
-  return (
+  const triggerButton = href ? (
+    <Link
+      href={href}
+      className={baseClass}
+      aria-current={isActive ? "page" : undefined}
+      aria-label={collapsedLabel}
+      title={collapsedLabel}
+      onClick={() => {
+        if (isMobile) setOpen(false);
+      }}
+    >
+      {content}
+    </Link>
+  ) : (
     <button
       type="button"
       onClick={onClick}
@@ -205,8 +203,21 @@ export function SidebarMenuButton({
       {content}
     </button>
   );
-}
 
+  // Show Radix Tooltip in collapsed icon-only mode (desktop only) for keyboard users.
+  if (collapsed && !isMobile && collapsedLabel) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>{triggerButton}</TooltipTrigger>
+        <TooltipContent side="right" sideOffset={8}>
+          {collapsedLabel}
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  return triggerButton;
+}
 function LinkPendingIndicator() {
   const { pending } = useLinkStatus();
   if (!pending) return null;

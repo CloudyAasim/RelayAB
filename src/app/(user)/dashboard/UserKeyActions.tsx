@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Badge, StatusDot } from "@/components/ui/Badge";
-import { Modal } from "@/components/ui/Modal";
+import { LegacyModal as Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
 import { useT } from "@/components/i18n/I18nProvider";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";
