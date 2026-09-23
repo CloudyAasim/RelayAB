@@ -1,7 +1,7 @@
 "use client";
 
 import { useT } from "@/components/i18n/I18nProvider";
-import { formatCredits, formatNumber } from "@/lib/utils";
+import { formatCredits, formatCreditsOverview, formatNumber } from "@/lib/utils";
 import { ListChecks, KeyRound, Wallet } from "lucide-react";
 
 interface Props {
@@ -19,6 +19,9 @@ interface Props {
  * The headline is the credit pool: one balance shared by every key the user
  * holds. That is the model the rest of the app assumes, and showing it here
  * is what stops a user from wondering whether each key has its own budget.
+ *
+ * Note: Overview contexts use formatCreditsOverview (integer display) to avoid
+ * visual confusion between decimal points and thousand-separators.
  */
 export function AllocationSummary({
   quotaType,
@@ -30,8 +33,11 @@ export function AllocationSummary({
 }: Props) {
   const t = useT();
 
+  //精细场景用 formatCredits，总览用 formatCreditsOverview
   const fmt = (n: number) =>
     quotaType === "tokens" ? `${formatNumber(n)} tokens` : `${formatCredits(n)} 积分`;
+  const fmtOverview = (n: number) =>
+    quotaType === "tokens" ? `${formatNumber(n)} tokens` : `${formatCreditsOverview(n)} 积分`;
 
   const remaining = Math.max(0, quotaLimit - quotaUsed);
   const pct = quotaLimit > 0 ? Math.min(100, (quotaUsed / quotaLimit) * 100) : 0;
@@ -59,16 +65,14 @@ export function AllocationSummary({
                 {t("dashboard.pool.title")}
               </div>
               <div className="mt-1 text-2xl font-semibold tracking-tight text-foreground">
-                {neverGranted ? t("dashboard.pool.none") : fmt(remaining)}
+                {neverGranted ? t("dashboard.pool.none") : fmtOverview(remaining)}
               </div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                {neverGranted
-                  ? t("dashboard.pool.noneHint")
-                  : t("dashboard.pool.usedOf", {
-                      used: fmt(quotaUsed),
-                      total: fmt(quotaLimit),
-                    })}
-              </div>
+              {/* 仅显示已用积分，不与总量对比显示，避免小数点/逗号混淆 */}
+              {!neverGranted && (
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {t("dashboard.pool.used", { used: fmtOverview(quotaUsed) })}
+                </div>
+              )}
             </div>
           </div>
           {exhausted && (

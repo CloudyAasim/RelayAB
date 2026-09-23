@@ -8,7 +8,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
 import { useT } from "@/components/i18n/I18nProvider";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";
-import { formatCredits, formatNumber } from "@/lib/utils";
+import { formatCredits, formatCreditsOverview, formatNumber } from "@/lib/utils";
 import { CREDIT_SCALE } from "@/lib/quota/credits";
 import type { PublicUser } from "@/lib/db/types";
 import { Settings2, Coins, ListChecks, KeyRound, Wallet } from "lucide-react";
@@ -18,7 +18,15 @@ import { Settings2, Coins, ListChecks, KeyRound, Wallet } from "lucide-react";
  * Locale-neutral on purpose — the surrounding template supplies the wording.
  */
 function amount(type: PublicUser["quotaType"], n: number): string {
-  return type === "tokens" ? formatNumber(n) : formatCredits(n);
+  return type === "tokens" ? formatNumber(n) : formatCreditsOverview(n);
+}
+
+/**
+ * Integer-format version for card/overview displays.
+ * Uses floor (not rounding) to avoid decimal/comma confusion.
+ */
+function amountOverview(type: PublicUser["quotaType"], n: number): string {
+  return type === "tokens" ? formatNumber(n) : formatCreditsOverview(n);
 }
 
 interface Props {
@@ -66,9 +74,9 @@ export function AllocationEditor({ users, availableModels }: Props) {
                   u.quotaLimit === 0
                     ? "—"
                     : t("admin.users.allocation.poolUsedValue", {
-                        used: amount(u.quotaType, u.quotaUsed),
-                        total: amount(u.quotaType, u.quotaLimit),
-                        remaining: amount(
+                        used: amountOverview(u.quotaType, u.quotaUsed),
+                        total: amountOverview(u.quotaType, u.quotaLimit),
+                        remaining: amountOverview(
                           u.quotaType,
                           Math.max(0, u.quotaLimit - u.quotaUsed),
                         ),

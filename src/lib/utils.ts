@@ -29,6 +29,20 @@ export function formatCredits(units: number): string {
   }).format(credits);
 }
 
+/**
+ * Format credits for overview/dashboard summary contexts.
+ * Uses floor (not rounding) so 4.1 and 4.8 both display as "4".
+ * This avoids visual confusion between decimal points and thousand-separators.
+ */
+export function formatCreditsOverview(units: number): string {
+  const credits = unitsToCredits(units);
+  const floored = Math.floor(credits);
+  return new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(floored);
+}
+
 /** Format a number with thousand separators. */
 export function formatNumber(n: number): string {
   return new Intl.NumberFormat("en-US").format(n);
