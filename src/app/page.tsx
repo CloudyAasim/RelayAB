@@ -197,13 +197,13 @@ function Step({
 }) {
   return (
     <div className="rounded-lg border border-border bg-card p-5">
-      <div className="flex items-center gap-0">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+      <div className="flex items-center gap-2">
+        <span className="text-primary">
           {icon}
         </span>
-        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+        <h3 className="text-base font-semibold text-foreground">{title}</h3>
       </div>
-      <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{body}</p>
+      <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{body}</p>
     </div>
   );
 }
