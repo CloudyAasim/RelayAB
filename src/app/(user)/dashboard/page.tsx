@@ -31,7 +31,6 @@ export default async function DashboardPage() {
   const sessionUser = await getCurrentUser();
   if (!sessionUser) redirect("/login");
 
-  // Use cached functions to deduplicate requests within this render cycle
   const [{ t }, fullUser, keyPage] = await Promise.all([
     getT(),
     cachedGetUserById(sessionUser.id),
@@ -57,8 +56,8 @@ export default async function DashboardPage() {
         <CreateKeyButton allocation={allocation} />
       </SectionPageLayout.Actions>
       <SectionPageLayout.Content>
-        {/* Stats row - responsive grid: 1 col on mobile, 2 on small tablets, 3 on desktop */}
-        <div className="grid gap-3 grid-cols-1 xs:grid-cols-2 sm:grid-cols-3">
+        {/* Stats row - responsive: 1 col → 2 cols → 3 cols */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
           <StatCard
             label={t("dashboard.stat.activeKeys")}
             value={formatNumber(keys.filter((k) => k.enabled).length)}
@@ -118,17 +117,17 @@ export default async function DashboardPage() {
                 }
               />
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto -mx-3 sm:mx-0">
                 <Table>
                   <THead>
                     <TR>
-                      <TH className="min-w-[100px]">{t("admin.keys.create.label")}</TH>
-                      <TH className="min-w-[80px]">{t("dashboard.table.key")}</TH>
-                      <TH className="hidden sm:table-cell">{t("dashboard.table.modelScope")}</TH>
-                      <TH className="hidden md:table-cell">{t("dashboard.table.lastUsed")}</TH>
-                      <TH className="hidden lg:table-cell">{t("admin.keys.create.expiresAt")}</TH>
-                      <TH className="w-20 text-center sm:w-auto">{t("dashboard.table.status")}</TH>
-                      <TH className="w-20 text-right sm:w-28">{t("common.actions")}</TH>
+                      <TH className="whitespace-nowrap">{t("admin.keys.create.label")}</TH>
+                      <TH className="whitespace-nowrap">{t("dashboard.table.key")}</TH>
+                      <TH className="hidden md:table-cell whitespace-nowrap">{t("dashboard.table.modelScope")}</TH>
+                      <TH className="hidden lg:table-cell whitespace-nowrap">{t("dashboard.table.lastUsed")}</TH>
+                      <TH className="hidden xl:table-cell whitespace-nowrap">{t("admin.keys.create.expiresAt")}</TH>
+                      <TH className="whitespace-nowrap text-center">{t("dashboard.table.status")}</TH>
+                      <TH className="whitespace-nowrap text-right">{t("common.actions")}</TH>
                     </TR>
                   </THead>
                   <TBody>
@@ -140,22 +139,22 @@ export default async function DashboardPage() {
                             {k.keyPrefix}
                           </code>
                         </TD>
-                        <TD className="hidden sm:table-cell text-muted-foreground">
+                        <TD className="hidden md:table-cell text-muted-foreground">
                           {k.allowedModels.length > 0
                             ? k.allowedModels.join(", ")
                             : t("dashboard.table.inheritsAccount")}
                         </TD>
-                        <TD className="hidden md:table-cell text-muted-foreground">
+                        <TD className="hidden lg:table-cell text-muted-foreground">
                           {formatDate(k.lastUsedAt)}
                         </TD>
-                        <TD className="hidden lg:table-cell text-muted-foreground">
+                        <TD className="hidden xl:table-cell text-muted-foreground">
                           {formatDate(k.expiresAt)}
                         </TD>
-                        <TD className="text-center sm:text-left">
-                          <UserKeyActions apiKey={k} />
+                        <TD className="text-center">
+                          <StatusDot tone={k.enabled ? "success" : "danger"} />
                         </TD>
                         <TD className="text-right">
-                          <StatusDot enabled={k.enabled} />
+                          <UserKeyActions apiKey={k} />
                         </TD>
                       </TR>
                     ))}

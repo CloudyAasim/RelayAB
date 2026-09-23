@@ -10,14 +10,14 @@ import { useT } from "@/components/i18n/I18nProvider";
 /**
  * Sidebar — left rail for the authenticated layout.
  *
- * Behavior:
- *   - On `lg+` viewports: persistent left rail, collapsible via the icon-only rail.
- *   - On `<lg` viewports: slide-in drawer (controlled by `open`).
+ * Responsive breakpoints:
+ * - Mobile (< 1024px): slide-in drawer
+ * - Desktop (≥ 1024px): persistent rail, collapsible
  *
- * Width tokens (Tailwind w-*):
- *   - mobile drawer: 72 (288px)
- *   - expanded: 64 (256px)
- *   - collapsed: 14 (56px) — just enough for icons
+ * Width:
+ * - Mobile drawer: 72 (288px)
+ * - Desktop expanded: 64 (256px)
+ * - Desktop collapsed: 14 (56px)
  */
 export function Sidebar({ children }: { children: ReactNode }) {
   const { collapsed, open, setOpen, isMobile } = useSidebar();
@@ -37,11 +37,8 @@ export function Sidebar({ children }: { children: ReactNode }) {
         aria-label="Sidebar navigation"
         data-state={collapsed ? "collapsed" : "expanded"}
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-[288px] flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[transform,width] duration-200 ease-in-out md:w-64",
-          "lg:sticky lg:top-0 lg:h-screen lg:translate-x-0",
-          // Mobile drawer behavior
-          isMobile && (open ? "translate-x-0 shadow-xl" : "-translate-x-full"),
-          // Desktop collapsible
+          "fixed inset-y-0 left-0 z-50 flex w-[288px] flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-transform duration-200 ease-in-out lg:sticky lg:top-0 lg:h-screen lg:translate-x-0",
+          isMobile ? (open ? "translate-x-0 shadow-xl" : "-translate-x-full") : "",
           collapsed && "lg:w-14",
         )}
       >
@@ -53,29 +50,19 @@ export function Sidebar({ children }: { children: ReactNode }) {
 
 export function SidebarHeader({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div
-      className={cn(
-        "flex h-12 items-center gap-2 border-b border-sidebar-border px-3 md:h-14 md:px-4",
-        className,
-      )}
-    >
+    <div className={cn("flex h-14 items-center gap-2 border-b border-sidebar-border px-4", className)}>
       {children}
     </div>
   );
 }
 
 export function SidebarContent({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("flex-1 overflow-y-auto px-2 py-2", className)}>{children}</div>;
+  return <div className={cn("flex-1 overflow-y-auto px-3 py-3", className)}>{children}</div>;
 }
 
 export function SidebarFooter({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div
-      className={cn(
-        "border-t border-sidebar-border px-2 py-2 md:px-3 md:py-3",
-        className,
-      )}
-    >
+    <div className={cn("border-t border-sidebar-border px-3 py-3", className)}>
       {children}
     </div>
   );
@@ -89,18 +76,11 @@ export function SidebarRail() {
       type="button"
       aria-label="Toggle sidebar"
       onClick={toggleSidebar}
-      className="absolute inset-y-0 right-0 hidden w-1.5 translate-x-1/2 cursor-w-resize items-center justify-center rounded-full bg-transparent transition-colors hover:bg-sidebar-border lg:flex"
+      className="absolute inset-y-0 right-0 hidden w-1 cursor-w-resize items-center justify-center rounded-full bg-transparent transition-colors hover:bg-sidebar-border lg:flex xl:hidden"
     />
   );
 }
 
-/**
- * Visible collapse / expand control.
- *
- * `SidebarRail` is the hover strip pinned to the rail's edge — discoverable
- * only if you already know it is there. This is the explicit button. It is a
- * no-op on mobile, where the sidebar is a drawer with its own trigger.
- */
 export function SidebarToggle({ className }: { className?: string }) {
   const { collapsed, toggleSidebar, isMobile } = useSidebar();
   const t = useT();
@@ -143,9 +123,7 @@ export function SidebarGroup({
 }) {
   const { collapsed } = useSidebar();
   return (
-    <div className={cn("px-2 py-1", className)}>
-      {/* Hide the group heading in rail mode — there is no room for it,
-          and a truncated heading reads worse than none. */}
+    <div className={cn("py-1", className)}>
       {label && !collapsed && (
         <div className="px-3 py-1 text-[11px] font-medium uppercase tracking-wider text-sidebar-foreground/60">
           {label}
@@ -170,8 +148,6 @@ interface SidebarMenuButtonProps {
   onClick?: () => void;
   icon?: ReactNode;
   children: ReactNode;
-  /** Render the icon when collapsed (otherwise only label is hidden). */
-  showIconWhenCollapsed?: boolean;
 }
 
 export function SidebarMenuButton({
@@ -199,10 +175,7 @@ export function SidebarMenuButton({
     </>
   );
 
-  // In rail mode the label is hidden, so expose it as a native tooltip and
-  // to assistive tech via aria-label.
-  const collapsedLabel =
-    collapsed && typeof children === "string" ? children : undefined;
+  const collapsedLabel = collapsed && typeof children === "string" ? children : undefined;
 
   if (href) {
     return (
@@ -213,7 +186,6 @@ export function SidebarMenuButton({
         aria-label={collapsedLabel}
         title={collapsedLabel}
         onClick={() => {
-          // On mobile the sidebar is a drawer — close it after navigating.
           if (isMobile) setOpen(false);
         }}
       >
@@ -235,23 +207,8 @@ export function SidebarMenuButton({
   );
 }
 
-/**
- * Shows a spinner on the link that was just clicked, while its RSC payload is
- * still in flight.
- *
- * `useLinkStatus` reports the pending state of the enclosing `<Link>`, so this
- * only works as a child of one — which is exactly where it is rendered. It is
- * the click-level companion to the global progress bar: the feedback appears
- * where the user's pointer already is, which is what makes a navigation feel
- * responsive even when the server takes a moment.
- */
 function LinkPendingIndicator() {
   const { pending } = useLinkStatus();
   if (!pending) return null;
-  return (
-    <Loader2
-      aria-hidden
-      className="ml-auto h-3.5 w-3.5 shrink-0 animate-spin opacity-70"
-    />
-  );
+  return <Loader2 aria-hidden className="ml-auto h-3.5 w-3.5 shrink-0 animate-spin opacity-70" />;
 }

@@ -1,17 +1,7 @@
 /**
  * SectionPageLayout — compound component for individual page layouts.
  *
- * Pattern (borrowed from new-api):
- *   <SectionPageLayout>
- *     <SectionPageLayout.Breadcrumb>…</SectionPageLayout.Breadcrumb>
- *     <SectionPageLayout.Title>我的面板</SectionPageLayout.Title>
- *     <SectionPageLayout.Actions><Button>…</Button></SectionPageLayout.Actions>
- *     <SectionPageLayout.Content>…</SectionPageLayout.Content>
- *   </SectionPageLayout>
- *
- * Splitting the page into named slots keeps every page consistent: a
- * title row at the top, a content row underneath, optional actions
- * aligned right, and optional breadcrumb above the title.
+ * Responsive: title and actions stack on narrow, inline on wider.
  */
 import { Children, isValidElement, type ReactElement, type ReactNode } from "react";
 
@@ -31,7 +21,6 @@ Breadcrumb.displayName = "SectionPageLayout.Breadcrumb";
 
 export interface SectionPageLayoutProps {
   children: ReactNode;
-  /** When true, the content area scrolls independently. Default true. */
   scrollContent?: boolean;
 }
 
@@ -52,26 +41,20 @@ export function SectionPageLayout({ children, scrollContent = true }: SectionPag
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="shrink-0 pb-3 sm:pb-4">
+      <div className="pb-3 sm:pb-4">
         {breadcrumb != null && <div className="mb-2">{breadcrumb}</div>}
-        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-4">
-          <h2 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3 sm:gap-x-4">
+          <h2 className="text-base font-semibold tracking-tight text-foreground sm:text-lg md:text-xl">
             {title}
           </h2>
           {actions != null && (
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {actions}
             </div>
           )}
         </div>
       </div>
-      <div
-        className={
-          scrollContent
-            ? "min-h-0 flex-1"
-            : "min-h-0 flex-1 overflow-hidden"
-        }
-      >
+      <div className={scrollContent ? "min-h-0 flex-1" : "min-h-0 flex-1 overflow-hidden"}>
         {content}
       </div>
     </div>

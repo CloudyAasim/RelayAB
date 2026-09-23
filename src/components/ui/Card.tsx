@@ -14,7 +14,7 @@ export function Card({ className, padded = true, ...rest }: CardProps) {
     <div
       className={cn(
         "rounded-lg border border-border bg-card text-card-foreground shadow-sm",
-        padded && "p-6",
+        padded && "p-4 sm:p-6",
         className,
       )}
       {...rest}
@@ -32,9 +32,9 @@ export function CardHeader({
   action?: ReactNode;
 }) {
   return (
-    <div className="mb-4 flex items-start justify-between gap-4">
+    <div className="mb-3 sm:mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
       <div>
-        <h2 className="text-base font-semibold tracking-tight text-foreground">{title}</h2>
+        <h2 className="text-base font-semibold tracking-tight text-foreground sm:text-lg">{title}</h2>
         {description && (
           <p className="mt-1 text-sm text-muted-foreground">{description}</p>
         )}
@@ -45,8 +45,8 @@ export function CardHeader({
 }
 
 /**
- * Card — small stat card for dashboard overviews.
- *   <StatCard label="活跃 Key" value="3" icon={<Key />} trend="+1" />
+ * StatCard — small stat card for dashboard overviews.
+ * Responsive: stacks on narrow screens, side-by-side on wider.
  */
 export function StatCard({
   label,
@@ -82,18 +82,18 @@ export function StatCard({
   return (
     <div
       className={cn(
-        "rounded-lg border border-border bg-card p-5 shadow-sm transition-colors",
+        "rounded-lg border border-border bg-card p-3 shadow-sm transition-colors sm:p-5",
         className,
       )}
     >
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-xs uppercase tracking-wider text-muted-foreground">
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground sm:text-xs">
           {label}
         </span>
         {icon && (
           <span
             className={cn(
-              "flex h-8 w-8 items-center justify-center rounded-md",
+              "flex h-7 w-7 shrink-0 items-center justify-center rounded-md sm:h-8 sm:w-8",
               iconBg[tone],
             )}
           >
@@ -101,11 +101,11 @@ export function StatCard({
           </span>
         )}
       </div>
-      <div className="mt-3 text-2xl font-semibold tracking-tight text-foreground">
+      <div className="mt-2 text-xl font-semibold tracking-tight text-foreground sm:mt-3 sm:text-2xl">
         {value}
       </div>
       {(hint || trend) && (
-        <div className="mt-1.5 flex items-center gap-2 text-xs text-muted-foreground">
+        <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground sm:mt-1.5 sm:text-xs">
           {trend && (
             <span className={cn("font-medium", trendClass[trend.direction])}>
               {trend.direction === "up" ? "↑" : trend.direction === "down" ? "↓" : "→"}{" "}
