@@ -12,7 +12,7 @@
  * (Redis pipelines); beyond that we'd add a HASH hour-counter (v2).
  */
 import { UsageLogSchema, type UsageLog, type QuotaType } from "./types";
-import { getRedis, k } from "./redis";
+import { getRedis, hgetallMany, k } from "./redis";
 import { mapWithConcurrency } from "./concurrency";
 import { generateId } from "../crypto/hashing";
 
@@ -109,14 +109,48 @@ export async function listUsageByKey(
   const limit = Math.max(1, Math.min(opts.limit ?? 50, MAX_LOGS_PER_KEY));
   const redis = getRedis();
   const ids = await redis.lrange(k.usageLogsByKey(apiKeyId), 0, limit - 1);
-  // Read the hashes concurrently. Fetching them one-by-one cost a full HTTP
+  // One pipelined read per chunk. Fetching these one-by-one cost a full HTTP
   // round-trip per log (up to MAX_LOGS_PER_KEY of them), which dominated
   // dashboard and usage-page load time on a REST-backed Redis.
-  const rows = await mapWithConcurrency(ids, 32, (id) =>
-    redis.hgetall<Record<string, string>>(k.usageLog(apiKeyId, id)),
+  const rows = await hgetallMany(
+    redis,
+    ids.map((id) => k.usageLog(apiKeyId, id)),
   );
   const parsed = await Promise.all(rows.map((raw) => hashToLog(raw)));
   return parsed.filter((log): log is UsageLog => log !== null);
+}
+
+/**
+ * Aggregate totals for many keys at once.
+ *
+ * Keys whose running counter exists resolve from a *single* pipelined read.
+ * Only keys that predate the counter (i.e. the first read after upgrading)
+ * fall back to scanning their logs, and that fallback backfills the counter so
+ * the next load is a single read again.
+ */
+export async function aggregateByKeyMany(
+  apiKeyIds: readonly string[],
+): Promise<UsageAggregate[]> {
+  if (apiKeyIds.length === 0) return [];
+
+  const totals = await readKeyTotalsMany(apiKeyIds);
+  const out = new Array<UsageAggregate>(apiKeyIds.length);
+  const missing: number[] = [];
+  totals.forEach((totalsForKey, index) => {
+    if (totalsForKey) out[index] = totalsForKey;
+    else missing.push(index);
+  });
+
+  if (missing.length > 0) {
+    const filled = await mapWithConcurrency(missing, 16, (index) =>
+      aggregateByKey(apiKeyIds[index]),
+    );
+    missing.forEach((index, n) => {
+      out[index] = filled[n];
+    });
+  }
+
+  return out;
 }
 
 /**
@@ -161,7 +195,7 @@ export async function aggregateByUser(
 ): Promise<UsageAggregate> {
   // Sum the per-key counters instead of re-reading every log hash.
   if (!opts.from && !opts.to) {
-    const perKey = await Promise.all(apiKeyIds.map((id) => aggregateByKey(id)));
+    const perKey = await aggregateByKeyMany(apiKeyIds);
     return perKey.reduce<UsageAggregate>(
       (acc, x) => ({
         promptTokens: acc.promptTokens + x.promptTokens,
@@ -253,6 +287,26 @@ async function readKeyTotals(apiKeyId: string): Promise<UsageAggregate | null> {
   const raw = await getRedis().hgetall<Record<string, string>>(
     k.usageTotalsByKey(apiKeyId),
   );
+  return parseKeyTotals(raw);
+}
+
+/**
+ * Read the running totals for many keys in one pipelined request.
+ * Entries are `null` where the key has no counter yet.
+ */
+async function readKeyTotalsMany(
+  apiKeyIds: readonly string[],
+): Promise<Array<UsageAggregate | null>> {
+  const rows = await hgetallMany(
+    getRedis(),
+    apiKeyIds.map((id) => k.usageTotalsByKey(id)),
+  );
+  return rows.map((raw) => parseKeyTotals(raw));
+}
+
+function parseKeyTotals(
+  raw: Record<string, string> | null,
+): UsageAggregate | null {
   if (!raw || Object.keys(raw).length === 0) return null;
 
   const num = (value: unknown): number => {

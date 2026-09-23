@@ -15,8 +15,7 @@
 import { hashPassword } from "../crypto/password";
 import { generateId } from "../crypto/hashing";
 import { UserSchema, DEFAULT_USER_ALLOCATION, type User } from "./types";
-import { getRedis, k } from "./redis";
-import { mapWithConcurrency } from "./concurrency";
+import { getRedis, hgetallMany, k } from "./redis";
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -188,10 +187,8 @@ export async function listUsers(opts: { limit?: number; cursor?: string } = {}):
   );
 
   const users: User[] = [];
-  // One concurrent wave instead of one round-trip per user record.
-  const rows = await mapWithConcurrency(userKeys, 16, (key) =>
-    redis.hgetall<Record<string, string>>(key),
-  );
+  // One pipelined read instead of one round-trip per user record.
+  const rows = await hgetallMany(redis, userKeys);
   const parsed = await Promise.all(rows.map((raw) => hashToUser(raw)));
   for (const user of parsed) {
     if (user) users.push(user);

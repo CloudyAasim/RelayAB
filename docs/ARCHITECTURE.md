@@ -77,6 +77,31 @@
 | UI | Tailwind CSS + 自写组件 | 体积小、可控；不引入 shadcn 减少认知负担 |
 | 测试 | Vitest + Playwright | Vitest 与 Vite/Turbopack 集成好；Playwright 是 Vercel 推荐 E2E |
 
+### 2.2 界面渲染与响应速度
+
+登录后的应用外壳（侧边栏 + 顶栏）由**分段 layout**（`(admin)/admin/layout.tsx`、
+`(user)/dashboard/layout.tsx`）渲染，**页面只负责内容列**。这不是风格选择，
+而是 App Router 的核心行为决定的：
+
+- **layout 在子路由之间保持挂载，page 的整棵子树会被替换。** 早期版本让每个页面
+  自己渲染外壳，结果是每次点击侧边栏都会把侧边栏、顶栏以及它们内部的
+  `matchMedia` 监听、cookie 读取、折叠动画全部销毁重建。用 Chromium 实测：切换
+  `/admin` → `/admin/users` 时 `aside` / `header` 的 DOM 节点引用都变了。
+  移到 layout 后同一测量显示节点引用保持不变，只有内容列被替换。
+- **骨架屏只应替换内容列。** 外壳在 page 里时，segment 的 `loading.tsx` 会把整屏
+  （含导航）换成骨架；实测慢速服务端下会先出现**整屏空白且没有任何加载提示**，
+  这正是“像断网了”的来源。外壳移到 layout 后，骨架出现在 `<main>` 内，导航保持
+  可见。
+- **导航反馈**：App Router 不派发路由变化事件，`NavigationLoadingBar` 因此改为
+  自己侦测（同源链接点击 + `popstate`，路径变化即结束），侧边栏链接用
+  `useLinkStatus` 在点击处显示 spinner。
+- **客户端路由缓存**：`experimental.staleTimes.dynamic = 30`，否则动态页面每次
+  切换都会重新请求 serverless 函数；写操作走 Server Action / `router.refresh()`，
+  不受该窗口影响。
+- **数据访问**：每条 Redis 命令在 REST 后端就是一次 HTTP 请求，因此读多行记录一律
+  走 `hgetallMany()`（MULTI 管线，每 100 条一个请求）；同一请求内重复读取当前用户
+  由 React `cache()` 去重。
+
 ---
 
 ## 3. 数据模型

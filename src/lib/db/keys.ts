@@ -18,8 +18,7 @@
  */
 import { sha256Hex, generateApiKey, maskApiKey } from "../crypto/hashing";
 import { ApiKeySchema, type ApiKey } from "./types";
-import { getRedis, k } from "./redis";
-import { mapWithConcurrency } from "./concurrency";
+import { getRedis, hgetallMany, k } from "./redis";
 import { generateId } from "../crypto/hashing";
 
 // ---------------------------------------------------------------------------
@@ -141,9 +140,10 @@ export async function listApiKeysByUser(
   const redis = getRedis();
   const allIds = await redis.smembers(k.apiKeyByUser(userId));
 
-  // Resolve the key records concurrently — one round-trip per key otherwise.
-  const fetched = await mapWithConcurrency(allIds, 16, (id) => getApiKeyById(id));
-  const keys = fetched.filter((key): key is ApiKey => key !== null);
+  // Resolve every key record in one pipelined request.
+  const rows = await hgetallMany(redis, allIds.map((id) => k.apiKey(id)));
+  const parsed = await Promise.all(rows.map((raw) => hashToKey(raw)));
+  const keys = parsed.filter((key): key is ApiKey => key !== null);
   keys.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
   let startIdx = 0;
@@ -182,10 +182,8 @@ export async function listAllApiKeys(opts: {
   );
 
   const out: ApiKey[] = [];
-  // One concurrent wave instead of one round-trip per key record.
-  const rows = await mapWithConcurrency(keyIds, 16, (key) =>
-    redis.hgetall<Record<string, string>>(key),
-  );
+  // One pipelined read instead of one round-trip per key record.
+  const rows = await hgetallMany(redis, keyIds);
   const parsed = await Promise.all(rows.map((raw) => hashToKey(raw)));
   for (const key of parsed) {
     if (!key) continue;

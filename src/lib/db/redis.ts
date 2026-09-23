@@ -155,3 +155,50 @@ export async function scanByPrefix(
   const result = await redis.scan(0, { match: `${prefix}*`, count: 100 });
   return result[1];
 }
+
+// ---------------------------------------------------------------------------
+// Batched reads
+// ---------------------------------------------------------------------------
+
+/**
+ * How many commands to put in one pipeline request.
+ *
+ * A pipeline travels as a single HTTP request, so this is a request-size and
+ * server-limit guard, not a latency tradeoff: one chunk is still one round
+ * trip, and the chunks are issued concurrently below.
+ */
+const PIPELINE_CHUNK = 100;
+
+/**
+ * HGETALL many keys with one round trip per chunk instead of one per key.
+ *
+ * Every command against a REST-backed Redis is an HTTP request. Reading N
+ * records with `Promise.all` therefore costs N requests and dominates list
+ * pages as soon as there is more than a handful of rows; a MULTI pipeline
+ * carries the whole chunk in a single request. Results are returned in the
+ * same order as `keys`, with `null` for keys that do not exist or hold a
+ * non-hash type.
+ */
+export async function hgetallMany(
+  redis: RedisLike,
+  keys: readonly string[],
+): Promise<Array<Record<string, string> | null>> {
+  if (keys.length === 0) return [];
+
+  const chunks: string[][] = [];
+  for (let i = 0; i < keys.length; i += PIPELINE_CHUNK) {
+    chunks.push(keys.slice(i, i + PIPELINE_CHUNK));
+  }
+
+  const chunkResults = await Promise.all(
+    chunks.map(async (chunk) => {
+      const pipeline = redis.multi();
+      for (const key of chunk) pipeline.hgetall(key);
+      return pipeline.exec();
+    }),
+  );
+
+  return chunkResults.flat().map((raw) =>
+    raw && typeof raw === "object" ? (raw as Record<string, string>) : null,
+  );
+}

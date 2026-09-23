@@ -3,7 +3,6 @@
 /**
  * AuthenticatedLayout — the shell that wraps every logged-in page.
  *
- * Layout:
  *   ┌──────────────┬─────────────────────────────────┐
  *   │              │  AppHeader  (theme, user menu)  │
  *   │   Sidebar    ├─────────────────────────────────┤
@@ -11,16 +10,40 @@
  *   │              │       main content (slot)        │
  *   └──────────────┴─────────────────────────────────┘
  *
- * On `<lg` viewports the sidebar collapses into a drawer triggered by the
- * hamburger in the AppHeader.
+ * IMPORTANT — render this from a segment layout
+ * (`(admin)/admin/layout.tsx`, `(user)/dashboard/layout.tsx`), never from an
+ * individual page.
  *
- * The sidebar links are role-aware: admin sees admin entries, regular user
- * sees personal entries.
+ * App Router keeps a layout mounted while you navigate between its children,
+ * but replaces a page's whole subtree. When every page rendered its own shell
+ * the sidebar, the header and every effect inside them (matchMedia listeners,
+ * cookie reads, collapse animation) were torn down and rebuilt on each click —
+ * measured as a full re-mount of the shell DOM on every navigation. Hosting
+ * the shell in the layout means a navigation only swaps the content column,
+ * and the segment's `loading.tsx` skeleton appears *inside* that column
+ * instead of blanking out the navigation.
+ *
+ * The header title is derived from the active nav entry rather than passed
+ * down per page, so pages stay pure content.
  */
 import { type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { isNavItemActive } from "@/lib/nav";
-import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarFooter, SidebarRail, SidebarToggle, SidebarGroup, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarInset, useSidebar } from "./sidebar";
+import {
+  SidebarProvider,
+  Sidebar,
+  SidebarHeader,
+  SidebarContent,
+  SidebarFooter,
+  SidebarRail,
+  SidebarToggle,
+  SidebarGroup,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+  SidebarInset,
+  useSidebar,
+} from "./sidebar";
 import { AppHeader } from "./AppHeader";
 import { useT } from "@/components/i18n/I18nProvider";
 import { usePathname } from "next/navigation";
@@ -34,15 +57,113 @@ import {
   Users,
   Activity,
   Wallet,
+  type LucideIcon,
 } from "lucide-react";
+
+interface NavItem {
+  href: string;
+  /** Dictionary key for the sidebar label. */
+  labelKey: string;
+  /** Dictionary key for the header breadcrumb. Defaults to `labelKey`. */
+  titleKey?: string;
+  icon: LucideIcon;
+  /** Section roots must match exactly (see `isNavItemActive`). */
+  exact?: boolean;
+}
+
+interface NavSection {
+  labelKey: string;
+  items: NavItem[];
+}
+
+const USER_NAV: NavSection[] = [
+  {
+    labelKey: "nav.sidebar.workspace",
+    items: [
+      {
+        href: "/dashboard",
+        labelKey: "nav.dashboard",
+        titleKey: "dashboard.title",
+        icon: LayoutDashboard,
+        exact: true,
+      },
+      { href: "/dashboard/docs", labelKey: "nav.docs", titleKey: "docs.title", icon: BookOpen },
+      {
+        href: "/dashboard/settings",
+        labelKey: "nav.settings",
+        titleKey: "settings.title",
+        icon: Settings,
+      },
+    ],
+  },
+];
+
+const ADMIN_NAV: NavSection[] = [
+  {
+    labelKey: "nav.sidebar.admin",
+    items: [
+      {
+        href: "/admin",
+        labelKey: "nav.overview",
+        titleKey: "admin.overview.title",
+        icon: LayoutDashboard,
+        exact: true,
+      },
+      {
+        href: "/admin/users",
+        labelKey: "nav.users",
+        titleKey: "admin.users.title",
+        icon: Users,
+      },
+      {
+        href: "/admin/keys",
+        labelKey: "nav.keys",
+        titleKey: "admin.keys.title",
+        icon: KeyRound,
+      },
+      {
+        href: "/admin/providers",
+        labelKey: "nav.providers",
+        titleKey: "admin.providers.title",
+        icon: Server,
+      },
+      { href: "/admin/settings", labelKey: "admin.settings.title", icon: Settings },
+      { href: "/admin/docs", labelKey: "admin.docs.title", icon: BookOpen },
+    ],
+  },
+  {
+    // Admins hold keys of their own too, so the personal dashboard is a real
+    // destination for them, not just for regular users.
+    labelKey: "nav.sidebar.personal",
+    items: [
+      {
+        href: "/dashboard",
+        labelKey: "nav.myDashboard",
+        titleKey: "dashboard.title",
+        icon: Wallet,
+        exact: true,
+      },
+    ],
+  },
+  {
+    labelKey: "nav.sidebar.reference",
+    items: [
+      { href: "/dashboard/docs", labelKey: "nav.docs", titleKey: "docs.title", icon: BookOpen },
+      {
+        href: "/dashboard/settings",
+        labelKey: "nav.settings",
+        titleKey: "settings.title",
+        icon: Settings,
+      },
+    ],
+  },
+];
 
 interface AuthenticatedLayoutProps {
   role: "admin" | "user";
   username: string;
   /** Friendly name shown in the user menu; falls back to the username. */
   displayName?: string;
-  /** Optional page title for the top bar breadcrumb. */
-  pageTitle?: ReactNode;
   children: ReactNode;
 }
 
@@ -50,12 +171,11 @@ export function AuthenticatedLayout({
   role,
   username,
   displayName,
-  pageTitle,
   children,
 }: AuthenticatedLayoutProps) {
   return (
     <SidebarProvider>
-      <SidebarShell role={role} username={username} displayName={displayName} pageTitle={pageTitle}>
+      <SidebarShell role={role} username={username} displayName={displayName}>
         {children}
       </SidebarShell>
     </SidebarProvider>
@@ -66,14 +186,25 @@ function SidebarShell({
   role,
   username,
   displayName,
-  pageTitle,
   children,
 }: AuthenticatedLayoutProps) {
   const t = useT();
   const pathname = usePathname();
   const { collapsed } = useSidebar();
-  const isActive = (href: string, opts?: { exact?: boolean }) =>
-    isNavItemActive(pathname, href, opts);
+  const sections = role === "user" ? USER_NAV : ADMIN_NAV;
+
+  // The header breadcrumb mirrors the sidebar's active entry, so pages never
+  // have to thread a title through the server tree.
+  let pageTitle: string | undefined;
+  for (const section of sections) {
+    for (const item of section.items) {
+      if (isNavItemActive(pathname, item.href, { exact: item.exact })) {
+        pageTitle = t(item.titleKey ?? item.labelKey);
+        break;
+      }
+    }
+    if (pageTitle) break;
+  }
 
   return (
     // Sidebar + content must sit side-by-side, so wrap them in a flex-row.
@@ -105,94 +236,31 @@ function SidebarShell({
           </Link>
         </SidebarHeader>
         <SidebarContent>
-          {role === "user" ? (
-            <SidebarGroup label={t("nav.sidebar.workspace")}>
+          {sections.map((section, sectionIndex) => (
+            <SidebarGroup
+              key={`${section.labelKey}-${sectionIndex}`}
+              label={t(section.labelKey)}
+            >
               <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton href="/dashboard" icon={<LayoutDashboard className="h-4 w-4" />} isActive={isActive("/dashboard", { exact: true })}>
-                    {t("nav.dashboard")}
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton href="/dashboard/docs" icon={<BookOpen className="h-4 w-4" />} isActive={isActive("/dashboard/docs")}>
-                    {t("nav.docs")}
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton href="/dashboard/settings" icon={<Settings className="h-4 w-4" />} isActive={isActive("/dashboard/settings")}>
-                    {t("nav.settings")}
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+                {section.items.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <SidebarMenuItem key={item.href}>
+                      <SidebarMenuButton
+                        href={item.href}
+                        icon={<Icon className="h-4 w-4" />}
+                        isActive={isNavItemActive(pathname, item.href, {
+                          exact: item.exact,
+                        })}
+                      >
+                        {t(item.labelKey)}
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
               </SidebarMenu>
             </SidebarGroup>
-          ) : (
-            <>
-              <SidebarGroup label={t("nav.sidebar.admin")}>
-                <SidebarMenu>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton href="/admin" icon={<LayoutDashboard className="h-4 w-4" />} isActive={isActive("/admin", { exact: true })}>
-                      {t("nav.overview")}
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton href="/admin/users" icon={<Users className="h-4 w-4" />} isActive={isActive("/admin/users")}>
-                      {t("nav.users")}
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton href="/admin/keys" icon={<KeyRound className="h-4 w-4" />} isActive={isActive("/admin/keys")}>
-                      {t("nav.keys")}
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton href="/admin/providers" icon={<Server className="h-4 w-4" />} isActive={isActive("/admin/providers")}>
-                      {t("nav.providers")}
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton href="/admin/settings" icon={<Settings className="h-4 w-4" />} isActive={isActive("/admin/settings")}>
-                      {t("admin.settings.title")}
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton href="/admin/docs" icon={<BookOpen className="h-4 w-4" />} isActive={isActive("/admin/docs")}>
-                      {t("admin.docs.title")}
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                </SidebarMenu>
-              </SidebarGroup>
-              {/* Admins hold keys of their own too, so the personal
-                  dashboard is a real destination for them, not just for
-                  regular users. */}
-              <SidebarGroup label={t("nav.sidebar.personal")}>
-                <SidebarMenu>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      href="/dashboard"
-                      icon={<Wallet className="h-4 w-4" />}
-                      isActive={isActive("/dashboard", { exact: true })}
-                    >
-                      {t("nav.myDashboard")}
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                </SidebarMenu>
-              </SidebarGroup>
-              <SidebarGroup label={t("nav.sidebar.reference")}>
-                <SidebarMenu>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton href="/dashboard/docs" icon={<BookOpen className="h-4 w-4" />} isActive={isActive("/dashboard/docs")}>
-                      {t("nav.docs")}
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton href="/dashboard/settings" icon={<Settings className="h-4 w-4" />} isActive={isActive("/dashboard/settings")}>
-                      {t("nav.settings")}
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                </SidebarMenu>
-              </SidebarGroup>
-            </>
-          )}
+          ))}
         </SidebarContent>
         <SidebarFooter>
           <div

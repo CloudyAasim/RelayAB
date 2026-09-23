@@ -7,8 +7,7 @@
  */
 import { ProviderSchema, type Provider, type ProviderKind, type ModelConfig } from "./types";
 import { revalidateTag, unstable_cache } from "next/cache";
-import { getRedis, k } from "./redis";
-import { mapWithConcurrency } from "./concurrency";
+import { getRedis, hgetallMany, k } from "./redis";
 import { encryptSecret } from "../crypto/secrets";
 import { generateId } from "../crypto/hashing";
 
@@ -131,8 +130,7 @@ export async function getProviderById(id: string): Promise<Provider | null> {
 }
 
 /**
- * Un-cached provider read: one SCAN, then one concurrent wave of HGETALLs
- * (previously these were awaited one at a time).
+ * Un-cached provider read: one SCAN, then one pipelined HGETALL wave.
  */
 async function readProviders(enabledOnly: boolean): Promise<Provider[]> {
   const redis = getRedis();
@@ -140,9 +138,7 @@ async function readProviders(enabledOnly: boolean): Promise<Provider[]> {
   // Use SCAN to find all provider keys - works with both Upstash Redis and Vercel KV
   const providerIds = await scanProviderIds(redis);
 
-  const rows = await mapWithConcurrency(providerIds, 16, (id) =>
-    redis.hgetall<Record<string, string>>(k.provider(id)),
-  );
+  const rows = await hgetallMany(redis, providerIds.map((id) => k.provider(id)));
   const parsed = await Promise.all(rows.map((raw) => hashToProvider(raw)));
 
   const out: Provider[] = [];

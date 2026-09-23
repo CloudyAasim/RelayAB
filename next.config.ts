@@ -20,6 +20,22 @@ const baseConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: "2mb",
     },
+    /**
+     * Client Router Cache lifetimes (seconds).
+     *
+     * Next.js defaults `dynamic` to 0, which means every client-side
+     * navigation to one of these (cookie-gated, therefore dynamic) pages
+     * throws away the RSC payload and re-hits the serverless function again —
+     * including for links the router already prefetched. A short window makes
+     * going back/forward and hopping between the sidebar entries instant.
+     *
+     * Server Actions still invalidate the cache, so a create/rename/delete is
+     * visible immediately; the window only covers reads.
+     */
+    staleTimes: {
+      dynamic: 30,
+      static: 180,
+    },
   },
   /**
    * Public proxy paths are OpenAI/Anthropic compatible, while the handlers

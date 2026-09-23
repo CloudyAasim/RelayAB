@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/Table";
 import { formatDate } from "@/lib/utils";
 import { getT } from "@/lib/i18n/server";
-import { AuthenticatedLayout, SectionPageLayout } from "@/components/layouts";
+import { SectionPageLayout } from "@/components/layouts";
 import { CreateUserButton } from "./CreateUserButton";
 import { UserActions } from "./UserActions";
 import { AllocationEditor } from "./AllocationEditor";
@@ -41,77 +41,70 @@ export default async function UsersPage() {
   const publicUsers = users.map(toPublicUser);
 
   return (
-    <AuthenticatedLayout
-      role={user.role}
-      username={user.username}
-      displayName={user.displayName}
-      pageTitle={t("admin.users.title")}
-    >
-      <SectionPageLayout>
-        <SectionPageLayout.Title>{t("admin.users.title")}</SectionPageLayout.Title>
-        <SectionPageLayout.Actions>
-          <CreateUserButton />
-        </SectionPageLayout.Actions>
-        <SectionPageLayout.Content>
-          <Card data-users-table>
-            {publicUsers.length === 0 ? (
-              <EmptyState
-                icon={<UsersIcon className="h-5 w-5" />}
-                title={t("admin.users.empty.title")}
-                description={t("admin.users.empty.description")}
-                action={<CreateUserButton />}
-              />
-            ) : (
-              <Table>
-                <THead>
-                  <TR>
-                    <TH>{t("admin.users.create.username")}</TH>
-                    <TH>{t("admin.users.create.displayName")}</TH>
-                    <TH>{t("admin.users.create.role")}</TH>
-                    <TH>{t("dashboard.table.time")}</TH>
-                    <TH className="w-48 text-right">{t("common.actions")}</TH>
-                  </TR>
-                </THead>
-                <TBody>
-                  {publicUsers.map((u) => (
-                    <TR key={u.id}>
-                      <TD>
-                        <div className="font-medium">{u.username}</div>
-                        <div className="text-xs text-muted-foreground">{u.displayName}</div>
-                      </TD>
-                      <TD className="text-muted-foreground">{u.displayName}</TD>
-                      <TD>
-                        <Badge tone={u.role === "admin" ? "primary" : "neutral"}>
-                          {u.role === "admin"
-                            ? t("admin.users.role.admin")
-                            : t("admin.users.role.user")}
-                        </Badge>
-                      </TD>
-                      <TD className="text-muted-foreground">{formatDate(u.createdAt)}</TD>
-                      <TD className="text-right">
-                        <UserActions user={u} />
-                      </TD>
-                    </TR>
-                  ))}
-                </TBody>
-              </Table>
-            )}
-          </Card>
-
-          <Card className="mt-6">
-            <CardHeader
-              title={
-                <span className="flex items-center gap-2">
-                  <UsersIcon className="h-4 w-4 text-muted-foreground" />
-                  {t("admin.users.allocation.title")}
-                </span>
-              }
-              description={t("admin.users.allocation.desc")}
+    <SectionPageLayout>
+      <SectionPageLayout.Title>{t("admin.users.title")}</SectionPageLayout.Title>
+      <SectionPageLayout.Actions>
+        <CreateUserButton />
+      </SectionPageLayout.Actions>
+      <SectionPageLayout.Content>
+        <Card data-users-table>
+          {publicUsers.length === 0 ? (
+            <EmptyState
+              icon={<UsersIcon className="h-5 w-5" />}
+              title={t("admin.users.empty.title")}
+              description={t("admin.users.empty.description")}
+              action={<CreateUserButton />}
             />
-            <AllocationEditor users={publicUsers} availableModels={availableModels} />
-          </Card>
-        </SectionPageLayout.Content>
-      </SectionPageLayout>
-    </AuthenticatedLayout>
+          ) : (
+            <Table>
+              <THead>
+                <TR>
+                  <TH>{t("admin.users.create.username")}</TH>
+                  <TH>{t("admin.users.create.displayName")}</TH>
+                  <TH>{t("admin.users.create.role")}</TH>
+                  <TH>{t("dashboard.table.time")}</TH>
+                  <TH className="w-48 text-right">{t("common.actions")}</TH>
+                </TR>
+              </THead>
+              <TBody>
+                {publicUsers.map((u) => (
+                  <TR key={u.id}>
+                    <TD>
+                      <div className="font-medium">{u.username}</div>
+                      <div className="text-xs text-muted-foreground">{u.displayName}</div>
+                    </TD>
+                    <TD className="text-muted-foreground">{u.displayName}</TD>
+                    <TD>
+                      <Badge tone={u.role === "admin" ? "primary" : "neutral"}>
+                        {u.role === "admin"
+                          ? t("admin.users.role.admin")
+                          : t("admin.users.role.user")}
+                      </Badge>
+                    </TD>
+                    <TD className="text-muted-foreground">{formatDate(u.createdAt)}</TD>
+                    <TD className="text-right">
+                      <UserActions user={u} />
+                    </TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+          )}
+        </Card>
+
+        <Card className="mt-6">
+          <CardHeader
+            title={
+              <span className="flex items-center gap-2">
+                <UsersIcon className="h-4 w-4 text-muted-foreground" />
+                {t("admin.users.allocation.title")}
+              </span>
+            }
+            description={t("admin.users.allocation.desc")}
+          />
+          <AllocationEditor users={publicUsers} availableModels={availableModels} />
+        </Card>
+      </SectionPageLayout.Content>
+    </SectionPageLayout>
   );
 }

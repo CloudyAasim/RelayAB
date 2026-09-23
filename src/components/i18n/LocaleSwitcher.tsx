@@ -27,9 +27,15 @@ export function LocaleSwitcher() {
   const [isPending, startTransition] = useTransition();
 
   const handleLocaleChange = (next: Locale) => {
+    // The dictionary ships in the client bundle, so re-labelling the UI needs
+    // no server work and must not wait for any. Previously `setLocale` and
+    // `router.refresh()` were in the *same* transition, which held the new
+    // language back until the RSC round trip finished — on a slow server the
+    // language appeared to "not switch" at all.
+    setLocale(next);
+    // Only the server-rendered text (error banners, flash messages) needs the
+    // refresh, so it stays non-urgent and off the critical path.
     startTransition(() => {
-      setLocale(next);
-      // Trigger server re-render with new locale
       router.refresh();
     });
   };

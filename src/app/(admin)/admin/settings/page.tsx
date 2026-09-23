@@ -3,7 +3,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { getSettings } from "@/lib/db/settings";
 import { loadConfig } from "@/lib/config";
 import { Card } from "@/components/ui/Card";
-import { AuthenticatedLayout, SectionPageLayout } from "@/components/layouts";
+import { SectionPageLayout } from "@/components/layouts";
 import { getT } from "@/lib/i18n/server";
 import { SettingsForm } from "./SettingsForm";
 
@@ -36,31 +36,24 @@ export default async function SettingsPage() {
   const currentUrl = dbPublicUrl ?? envPublicUrl ?? "";
 
   return (
-    <AuthenticatedLayout
-      role={user.role}
-      username={user.username}
-      displayName={user.displayName}
-      pageTitle={t("admin.settings.title")}
-    >
-      <SectionPageLayout>
-        <SectionPageLayout.Title>{t("admin.settings.title")}</SectionPageLayout.Title>
-        <SectionPageLayout.Content>
-          <Card className="max-w-2xl">
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-medium mb-2">{t("admin.settings.publicUrl")}</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  {t("admin.settings.publicUrlDescription")}
-                </p>
-                <SettingsForm 
-                  currentUrl={currentUrl}
-                  envConfigured={!!envPublicUrl}
-                />
-              </div>
+    <SectionPageLayout>
+      <SectionPageLayout.Title>{t("admin.settings.title")}</SectionPageLayout.Title>
+      <SectionPageLayout.Content>
+        <Card className="max-w-2xl">
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-lg font-medium mb-2">{t("admin.settings.publicUrl")}</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                {t("admin.settings.publicUrlDescription")}
+              </p>
+              <SettingsForm 
+                currentUrl={currentUrl}
+                envConfigured={!!envPublicUrl}
+              />
             </div>
-          </Card>
-        </SectionPageLayout.Content>
-      </SectionPageLayout>
-    </AuthenticatedLayout>
+          </div>
+        </Card>
+      </SectionPageLayout.Content>
+    </SectionPageLayout>
   );
 }

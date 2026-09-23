@@ -25,6 +25,7 @@
  * cookie works on http://localhost.
  */
 import { getIronSession, type IronSession, type SessionOptions } from "iron-session";
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { isProduction, getSessionPassword } from "../config";
 import { ensureBootstrapped } from "../db/bootstrap";
@@ -130,7 +131,7 @@ export interface CurrentUserLookup {
  * We don't throw here because the response shape depends on context
  * (page vs API route).
  */
-export async function lookupCurrentUser(): Promise<CurrentUserLookup> {
+async function lookupCurrentUserUncached(): Promise<CurrentUserLookup> {
   // Read the session first: `cookies()` is what makes the enclosing server
   // component dynamic. Doing this before the bootstrap keeps `next build` from
   // running bootstrap while prerendering (build machines have no env vars and
@@ -164,6 +165,20 @@ export async function lookupCurrentUser(): Promise<CurrentUserLookup> {
     },
   };
 }
+
+/**
+ * Request-scoped memoized lookup.
+ *
+ * A single page render asks for the current user several times — the segment
+ * layout (auth gate + shell), the page itself (defence-in-depth role check),
+ * and any helper that needs the id. Without memoization each call re-read the
+ * user hash from Redis, which on a REST-backed Redis is a full round trip per
+ * call. `cache()` collapses them into one read per request.
+ *
+ * Outside a React render (route handlers, scripts, tests) `cache()` simply
+ * calls through, so this stays correct everywhere.
+ */
+export const lookupCurrentUser = cache(lookupCurrentUserUncached);
 
 /**
  * Return the currently authenticated user, or null when the caller must be

@@ -13,10 +13,7 @@ import {
 } from "@/components/ui/Table";
 import { formatCredits, formatNumber, formatDate } from "@/lib/utils";
 import { getT } from "@/lib/i18n/server";
-import {
-  AuthenticatedLayout,
-  SectionPageLayout,
-} from "@/components/layouts";
+import { SectionPageLayout } from "@/components/layouts";
 import {
   CreateKeyButton,
   type UserAllocation,
@@ -52,131 +49,124 @@ export default async function DashboardPage() {
     : null;
 
   return (
-    <AuthenticatedLayout
-      role={sessionUser.role}
-      username={sessionUser.username}
-      displayName={sessionUser.displayName}
-      pageTitle={t("dashboard.title")}
-    >
-      <SectionPageLayout>
-        <SectionPageLayout.Title>
-          {t("dashboard.welcome", { username: sessionUser.username })}
-        </SectionPageLayout.Title>
-        <SectionPageLayout.Actions>
-          <CreateKeyButton allocation={allocation} />
-        </SectionPageLayout.Actions>
-        <SectionPageLayout.Content>
-          {/* Stats row */}
-          <div className="grid gap-4 sm:grid-cols-3">
-            <StatCard
-              label={t("dashboard.stat.activeKeys")}
-              value={formatNumber(keys.filter((k) => k.enabled).length)}
-              icon={<KeyRound className="h-4 w-4" />}
-              tone="primary"
-            />
-            <StatCard
-              label={t("dashboard.stat.tokensUsed")}
-              value={formatNumber(agg.totalTokens)}
-              icon={<Activity className="h-4 w-4" />}
-              tone="info"
-            />
-            <StatCard
-              label={t("dashboard.stat.creditsUsed")}
-              value={formatCredits(agg.creditsUsed)}
-              icon={<Coins className="h-4 w-4" />}
-              tone="orange"
-            />
-          </div>
+    <SectionPageLayout>
+      <SectionPageLayout.Title>
+        {t("dashboard.welcome", { username: sessionUser.username })}
+      </SectionPageLayout.Title>
+      <SectionPageLayout.Actions>
+        <CreateKeyButton allocation={allocation} />
+      </SectionPageLayout.Actions>
+      <SectionPageLayout.Content>
+        {/* Stats row */}
+        <div className="grid gap-4 sm:grid-cols-3">
+          <StatCard
+            label={t("dashboard.stat.activeKeys")}
+            value={formatNumber(keys.filter((k) => k.enabled).length)}
+            icon={<KeyRound className="h-4 w-4" />}
+            tone="primary"
+          />
+          <StatCard
+            label={t("dashboard.stat.tokensUsed")}
+            value={formatNumber(agg.totalTokens)}
+            icon={<Activity className="h-4 w-4" />}
+            tone="info"
+          />
+          <StatCard
+            label={t("dashboard.stat.creditsUsed")}
+            value={formatCredits(agg.creditsUsed)}
+            icon={<Coins className="h-4 w-4" />}
+            tone="orange"
+          />
+        </div>
 
-          {/* Allocation banner */}
-          {fullUser && (
-            <div className="mt-6">
-              <AllocationSummary
-                quotaType={fullUser.quotaType}
-                quotaLimit={fullUser.quotaLimit}
-                quotaUsed={fullUser.quotaUsed}
-                allowedModels={fullUser.allowedModels}
-                maxActiveKeys={fullUser.maxActiveKeys}
-                activeKeyCount={keys.filter((k) => k.enabled).length}
-              />
-            </div>
-          )}
-
-          {/* API Keys list */}
+        {/* Allocation banner */}
+        {fullUser && (
           <div className="mt-6">
-            <Card>
-              <CardHeader
-                title={t("dashboard.apiKeys.title")}
-                description={t("dashboard.apiKeys.description")}
-              />
-              {keys.length === 0 ? (
-                <EmptyState
-                  icon={<Sparkles className="h-5 w-5" />}
-                  title={t("dashboard.apiKeys.empty.title")}
-                  description={t("dashboard.apiKeys.empty.description")}
-                  action={
-                    <CreateKeyButton
-                      allocation={allocation}
-                      label={
-                        <>
-                          <Plus className="mr-1.5 h-4 w-4" />
-                          {t("dashboard.createKey.button")}
-                        </>
-                      }
-                    />
-                  }
-                />
-              ) : (
-                <Table>
-                  <THead>
-                    <TR>
-                      <TH>{t("admin.keys.create.label")}</TH>
-                      <TH>{t("dashboard.table.key")}</TH>
-                      <TH>{t("dashboard.table.modelScope")}</TH>
-                      <TH>{t("dashboard.table.lastUsed")}</TH>
-                      <TH>{t("admin.keys.create.expiresAt")}</TH>
-                      <TH>{t("dashboard.table.status")}</TH>
-                      <TH className="w-32 text-right">
-                        {t("common.actions")}
-                      </TH>
-                    </TR>
-                  </THead>
-                  <TBody>
-                    {keys.map((k) => (
-                      <TR key={k.id}>
-                        <TD className="font-medium">{k.label}</TD>
-                        <TD>
-                          <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
-                            {k.keyPrefix}
-                          </code>
-                        </TD>
-                        <TD className="text-muted-foreground">
-                          {k.allowedModels.length > 0
-                            ? k.allowedModels.join(", ")
-                            : t("dashboard.table.inheritsAccount")}
-                        </TD>
-                        <TD className="text-muted-foreground">
-                          {formatDate(k.lastUsedAt)}
-                        </TD>
-                        <TD className="text-muted-foreground">
-                          {formatDate(k.expiresAt)}
-                        </TD>
-                        <TD className="text-right">
-                          <UserKeyActions apiKey={k} />
-                        </TD>
-                      </TR>
-                    ))}
-                  </TBody>
-                </Table>
-              )}
-            </Card>
+            <AllocationSummary
+              quotaType={fullUser.quotaType}
+              quotaLimit={fullUser.quotaLimit}
+              quotaUsed={fullUser.quotaUsed}
+              allowedModels={fullUser.allowedModels}
+              maxActiveKeys={fullUser.maxActiveKeys}
+              activeKeyCount={keys.filter((k) => k.enabled).length}
+            />
           </div>
+        )}
 
-          <p className="mt-8 text-center text-xs text-muted-foreground">
-            {t("dashboard.help.contactAdmin")}
-          </p>
-        </SectionPageLayout.Content>
-      </SectionPageLayout>
-    </AuthenticatedLayout>
+        {/* API Keys list */}
+        <div className="mt-6">
+          <Card>
+            <CardHeader
+              title={t("dashboard.apiKeys.title")}
+              description={t("dashboard.apiKeys.description")}
+            />
+            {keys.length === 0 ? (
+              <EmptyState
+                icon={<Sparkles className="h-5 w-5" />}
+                title={t("dashboard.apiKeys.empty.title")}
+                description={t("dashboard.apiKeys.empty.description")}
+                action={
+                  <CreateKeyButton
+                    allocation={allocation}
+                    label={
+                      <>
+                        <Plus className="mr-1.5 h-4 w-4" />
+                        {t("dashboard.createKey.button")}
+                      </>
+                    }
+                  />
+                }
+              />
+            ) : (
+              <Table>
+                <THead>
+                  <TR>
+                    <TH>{t("admin.keys.create.label")}</TH>
+                    <TH>{t("dashboard.table.key")}</TH>
+                    <TH>{t("dashboard.table.modelScope")}</TH>
+                    <TH>{t("dashboard.table.lastUsed")}</TH>
+                    <TH>{t("admin.keys.create.expiresAt")}</TH>
+                    <TH>{t("dashboard.table.status")}</TH>
+                    <TH className="w-32 text-right">
+                      {t("common.actions")}
+                    </TH>
+                  </TR>
+                </THead>
+                <TBody>
+                  {keys.map((k) => (
+                    <TR key={k.id}>
+                      <TD className="font-medium">{k.label}</TD>
+                      <TD>
+                        <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                          {k.keyPrefix}
+                        </code>
+                      </TD>
+                      <TD className="text-muted-foreground">
+                        {k.allowedModels.length > 0
+                          ? k.allowedModels.join(", ")
+                          : t("dashboard.table.inheritsAccount")}
+                      </TD>
+                      <TD className="text-muted-foreground">
+                        {formatDate(k.lastUsedAt)}
+                      </TD>
+                      <TD className="text-muted-foreground">
+                        {formatDate(k.expiresAt)}
+                      </TD>
+                      <TD className="text-right">
+                        <UserKeyActions apiKey={k} />
+                      </TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+            )}
+          </Card>
+        </div>
+
+        <p className="mt-8 text-center text-xs text-muted-foreground">
+          {t("dashboard.help.contactAdmin")}
+        </p>
+      </SectionPageLayout.Content>
+    </SectionPageLayout>
   );
 }

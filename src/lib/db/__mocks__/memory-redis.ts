@@ -75,10 +75,12 @@ export interface Pipeline {
   set(key: string, value: RedisValue, opts?: { ex?: number }): Pipeline;
   del(...keys: string[]): Pipeline;
   hset(key: string, values: Record<string, RedisValue>): Pipeline;
+  hgetall(key: string): Pipeline;
   hdel(key: string, ...fields: string[]): Pipeline;
   hincrby(key: string, field: string, increment: number): Pipeline;
   sadd(key: string, ...members: string[]): Pipeline;
   srem(key: string, ...members: string[]): Pipeline;
+  smembers(key: string): Pipeline;
   lpush(key: string, ...values: RedisValue[]): Pipeline;
   ltrim(key: string, start: number, stop: number): Pipeline;
   expire(key: string, seconds: number): Pipeline;
@@ -359,10 +361,12 @@ export function createMemoryRedis(): RedisLike {
         set(key, value, opts) { queue.push(() => self.set(key, value, opts)); return pipeline; },
         del(...keys) { queue.push(() => self.del(...keys)); return pipeline; },
         hset(key, values) { queue.push(() => self.hset(key, values)); return pipeline; },
+        hgetall(key) { queue.push(() => self.hgetall(key)); return pipeline; },
         hdel(key, ...fields) { queue.push(() => self.hdel(key, ...fields)); return pipeline; },
         hincrby(key, field, increment) { queue.push(() => self.hincrby(key, field, increment)); return pipeline; },
         sadd(key, ...members) { queue.push(() => self.sadd(key, ...members)); return pipeline; },
         srem(key, ...members) { queue.push(() => self.srem(key, ...members)); return pipeline; },
+        smembers(key) { queue.push(() => self.smembers(key)); return pipeline; },
         lpush(key, ...values) { queue.push(() => self.lpush(key, ...values)); return pipeline; },
         ltrim(key, start, stop) { queue.push(() => self.ltrim(key, start, stop)); return pipeline; },
         expire(key, seconds) { queue.push(() => self.expire(key, seconds)); return pipeline; },

@@ -2,8 +2,8 @@
 
 import { cn } from "@/lib/utils";
 import { type ReactNode } from "react";
-import Link from "next/link";
-import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import Link, { useLinkStatus } from "next/link";
+import { Loader2, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useSidebar } from "./SidebarContext";
 import { useT } from "@/components/i18n/I18nProvider";
 
@@ -194,6 +194,7 @@ export function SidebarMenuButton({
         <span className="flex h-4 w-4 shrink-0 items-center justify-center">{icon}</span>
       )}
       <span className={cn("truncate", collapsed && "hidden")}>{children}</span>
+      {href && <LinkPendingIndicator />}
     </>
   );
 
@@ -231,5 +232,26 @@ export function SidebarMenuButton({
     >
       {content}
     </button>
+  );
+}
+
+/**
+ * Shows a spinner on the link that was just clicked, while its RSC payload is
+ * still in flight.
+ *
+ * `useLinkStatus` reports the pending state of the enclosing `<Link>`, so this
+ * only works as a child of one — which is exactly where it is rendered. It is
+ * the click-level companion to the global progress bar: the feedback appears
+ * where the user's pointer already is, which is what makes a navigation feel
+ * responsive even when the server takes a moment.
+ */
+function LinkPendingIndicator() {
+  const { pending } = useLinkStatus();
+  if (!pending) return null;
+  return (
+    <Loader2
+      aria-hidden
+      className="ml-auto h-3.5 w-3.5 shrink-0 animate-spin opacity-70"
+    />
   );
 }
