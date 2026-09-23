@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { useT } from "@/components/i18n/I18nProvider";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";
-import { formatCredits, formatNumber } from "@/lib/utils";
 import { KeyRound, Plus } from "lucide-react";
 
 export interface UserAllocation {
@@ -18,23 +18,12 @@ export interface UserAllocation {
 interface Props {
   allocation: UserAllocation | null;
   primary?: boolean;
-  /** Custom label (e.g. for use inside EmptyState). Defaults to localized default. */
   label?: ReactNode;
 }
 
-/**
- * Self-service "Create API Key" button for a regular user.
- *
- * The user picks:
- *   - label          (required)
- *   - expiresAt      (optional)
- *
- * Everything else (quota, allowed models) is fixed by the admin's allocation
- * for this user — surfaced as read-only "preview" so the user understands
- * what the new key will inherit.
- */
 export function CreateKeyButton({ allocation, primary, label }: Props) {
   const t = useT();
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [keyLabel, setKeyLabel] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
@@ -80,6 +69,12 @@ export function CreateKeyButton({ allocation, primary, label }: Props) {
     }
   }
 
+  function handleClose() {
+    setOpen(false);
+    if (plainKey) router.refresh();
+    reset();
+  }
+
   return (
     <>
       <Button
@@ -100,11 +95,7 @@ export function CreateKeyButton({ allocation, primary, label }: Props) {
       </Button>
       <Modal
         open={open}
-        onClose={() => {
-          setOpen(false);
-          if (plainKey) window.location.reload();
-          reset();
-        }}
+        onClose={handleClose}
         title={
           plainKey ? t("dashboard.createKey.created") : t("dashboard.createKey.button")
         }
@@ -117,13 +108,7 @@ export function CreateKeyButton({ allocation, primary, label }: Props) {
             </div>
             <p className="text-xs text-muted-foreground">{t("dashboard.createKey.createdHint")}</p>
             <div className="flex justify-end pt-2">
-              <Button
-                onClick={() => {
-                  setOpen(false);
-                  reset();
-                  window.location.reload();
-                }}
-              >
+              <Button onClick={handleClose}>
                 {t("common.close")}
               </Button>
             </div>
@@ -150,8 +135,6 @@ export function CreateKeyButton({ allocation, primary, label }: Props) {
                 <KeyRound className="h-3.5 w-3.5 text-muted-foreground" />
                 {t("dashboard.createKey.inheritsTitle")}
               </div>
-              {/* No per-key quota line: keys draw from the account's single
-                  pool, and the dashboard already shows that balance. */}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">{t("dashboard.createKey.inheritsModels")}</span>
                 <span className="font-medium text-foreground">

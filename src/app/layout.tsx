@@ -4,6 +4,7 @@ import { Footer } from "@/components/layouts/Footer";
 import { I18nProvider } from "@/components/i18n/I18nProvider";
 import { ThemeProvider } from "@/components/layouts/ThemeProvider";
 import { getServerLocale } from "@/lib/i18n/server";
+import { NavigationLoadingBar } from "@/components/NavigationLoadingBar";
 
 export const metadata: Metadata = {
   title: {
@@ -20,13 +21,11 @@ export default async function RootLayout({
 }) {
   const initialLocale = await getServerLocale();
   return (
-    // next-themes writes the `class` attribute on <html> client-side; we
-    // suppress the resulting hydration warning because the class is
-    // expected to differ between server and client.
     <html lang={initialLocale} suppressHydrationWarning>
       <body className="flex min-h-screen flex-col antialiased">
         <ThemeProvider>
           <I18nProvider initialLocale={initialLocale}>
+            <NavigationLoadingBar />
             <div className="flex flex-1 flex-col">{children}</div>
             <Footer />
           </I18nProvider>

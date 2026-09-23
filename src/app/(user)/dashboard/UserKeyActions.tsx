@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Badge, StatusDot } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
@@ -17,10 +18,10 @@ import { MoreHorizontal, Edit3, Power, Trash2, Ban } from "lucide-react";
  */
 export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
   const t = useT();
+  const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [label, setLabel] = useState(apiKey.label);
-  // 初始化时使用 apiKey.enabled，toggle 时更新这个状态
   const [enabled, setEnabled] = useState(Boolean(apiKey.enabled));
   const [expiresAt, setExpiresAt] = useState(toLocalInput(apiKey.expiresAt));
   const [loading, setLoading] = useState(false);
@@ -53,7 +54,7 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
         return;
       }
       setEditOpen(false);
-      window.location.reload();
+      router.refresh();
     } catch {
       setError(t("common.failed"));
     } finally {
@@ -75,7 +76,6 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
         alert(apiErrorMessage(t, data.error?.code, data.error?.message));
         return;
       }
-      // 直接更新本地状态，不刷新页面
       setEnabled(newEnabled);
       setMenuOpen(false);
     } catch {
@@ -92,7 +92,7 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
       const res = await fetch(`/api/user/keys/${apiKey.id}`, { method: "DELETE" });
       const data = await res.json();
       if (!data.ok) alert(apiErrorMessage(t, data.error?.code, data.error?.message));
-      else window.location.reload();
+      else router.refresh();
     } catch {
       alert(t("common.failed"));
     } finally {
@@ -104,7 +104,6 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
 
   return (
     <div className="flex items-center gap-2">
-      {/* 状态徽章 - 直接使用 enabled 状态 */}
       {isForceDisabled ? (
         <Badge tone="orange">
           <StatusDot tone="orange" pulse={false} className="mr-1" />
@@ -122,7 +121,6 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
         </Badge>
       )}
 
-      {/* 操作按钮 */}
       <Button
         size="icon"
         variant="ghost"
@@ -132,7 +130,6 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
         <MoreHorizontal className="h-4 w-4" />
       </Button>
 
-      {/* 操作菜单弹窗 */}
       <Modal
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
@@ -202,7 +199,6 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
         </div>
       </Modal>
 
-      {/* 编辑弹窗 */}
       <Modal
         open={editOpen}
         onClose={() => {
