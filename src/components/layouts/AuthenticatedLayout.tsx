@@ -37,6 +37,7 @@ import {
   Users,
   Activity,
   Wallet,
+  FileText,
   type LucideIcon,
 } from "lucide-react";
 
@@ -73,7 +74,13 @@ const ADMIN_NAV: NavSection[] = [
       { href: "/admin/keys", labelKey: "nav.keys", titleKey: "admin.keys.title", icon: KeyRound },
       { href: "/admin/providers", labelKey: "nav.providers", titleKey: "admin.providers.title", icon: Server },
       { href: "/admin/settings", labelKey: "admin.settings.title", icon: Settings },
-      { href: "/admin/docs", labelKey: "admin.docs.title", icon: BookOpen },
+    ],
+  },
+  {
+    labelKey: "nav.sidebar.reference",
+    items: [
+      { href: "/admin/docs", labelKey: "admin.docs.title", titleKey: "admin.docs.title", icon: BookOpen },
+      { href: "/dashboard/docs", labelKey: "nav.userDocs", titleKey: "docs.title", icon: FileText },
     ],
   },
   {
