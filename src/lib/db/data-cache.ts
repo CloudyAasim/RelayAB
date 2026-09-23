@@ -16,9 +16,10 @@
 import { cache } from "react";
 import { getUserById as _getUserById } from "./users";
 import { listApiKeysByUser as _listApiKeysByUser } from "./keys";
-import { aggregateByUser as _aggregateByUser } from "./usage";
+import { aggregateByUser } from "./usage";
 import type { User } from "./types";
 import type { ApiKey } from "./types";
+import type { UsageAggregate } from "./usage";
 
 // Re-export types
 export type { User, ApiKey };
@@ -46,12 +47,7 @@ export const cachedListApiKeysByUser = cache(
  * Multiple calls with the same key IDs within one render are deduplicated.
  */
 export const cachedAggregateByUser = cache(
-  async (keyIds: string[]): Promise<{
-    totalTokens: number;
-    totalCredits: number;
-    creditsUsed: number;
-    byModel: Record<string, { tokens: number; credits: number }>;
-  }> => {
-    return _aggregateByUser(keyIds);
+  async (keyIds: string[]): Promise<UsageAggregate> => {
+    return aggregateByUser(keyIds);
   }
 );
