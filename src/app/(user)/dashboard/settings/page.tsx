@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
-import { getUserById } from "@/lib/db/users";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { getT } from "@/lib/i18n/server";
 import {
@@ -9,17 +8,15 @@ import {
 } from "@/components/layouts";
 import { ChangePasswordForm } from "./ChangePasswordForm";
 import { DisplayNameForm } from "./DisplayNameForm";
+import { cachedGetUserById } from "@/lib/db/data-cache";
 
 export default async function SettingsPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   const { t } = await getT();
 
-  // The session caches the display name so the shell can render it without a
-  // Redis read on every page. This page is the editing surface, so it reads the
-  // authoritative value — otherwise a change made in another browser would show
-  // a stale seed here and saving would look like a no-op.
-  const fresh = await getUserById(user.id);
+  // Use cached function to avoid redundant Redis calls
+  const fresh = await cachedGetUserById(user.id);
   const displayName = fresh?.displayName ?? user.displayName ?? user.username;
 
   return (

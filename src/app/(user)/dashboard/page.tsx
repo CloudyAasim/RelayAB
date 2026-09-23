@@ -1,8 +1,5 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
-import { listApiKeysByUser } from "@/lib/db/keys";
-import { aggregateByUser } from "@/lib/db/usage";
-import { getUserById } from "@/lib/db/users";
 import { Card, StatCard, CardHeader } from "@/components/ui/Card";
 import { Badge, StatusDot } from "@/components/ui/Badge";
 import {
@@ -27,19 +24,24 @@ import {
 import { UserKeyActions } from "./UserKeyActions";
 import { AllocationSummary } from "./AllocationSummary";
 import { KeyRound, Coins, Activity, Plus, Sparkles } from "lucide-react";
+import {
+  cachedGetUserById,
+  cachedListApiKeysByUser,
+  cachedAggregateByUser,
+} from "@/lib/db/data-cache";
 
 export default async function DashboardPage() {
   const sessionUser = await getCurrentUser();
   if (!sessionUser) redirect("/login");
 
-  // These three are independent — fetch them in one wave instead of three.
+  // Use cached functions to deduplicate requests within this render cycle
   const [{ t }, fullUser, keyPage] = await Promise.all([
     getT(),
-    getUserById(sessionUser.id),
-    listApiKeysByUser(sessionUser.id, { limit: 200 }),
+    cachedGetUserById(sessionUser.id),
+    cachedListApiKeysByUser(sessionUser.id, 200),
   ]);
   const keys = keyPage.keys;
-  const agg = await aggregateByUser(keys.map((k) => k.id));
+  const agg = await cachedAggregateByUser(keys.map((k) => k.id));
 
   const allocation: UserAllocation | null = fullUser
     ? {
@@ -148,8 +150,6 @@ export default async function DashboardPage() {
                             {k.keyPrefix}
                           </code>
                         </TD>
-                        {/* Quota is shared, so this column shows the key's own
-                            model scope instead of a per-key balance. */}
                         <TD className="text-muted-foreground">
                           {k.allowedModels.length > 0
                             ? k.allowedModels.join(", ")
