@@ -12,6 +12,7 @@ import {
   checkKeyStatus,
   authenticateBearer,
   reasonToHttp,
+  resolveAuthHeader,
 } from "@/lib/auth/apikey";
 import { getRedis, k, __resetRedisForTest } from "@/lib/db/redis";
 import { generateApiKey, sha256Hex } from "@/lib/crypto/hashing";
@@ -127,6 +128,55 @@ describe("parseBearer", () => {
   it("rejects non-string", () => {
     // @ts-expect-error runtime check
     expect(parseBearer(123)).toBeNull();
+  });
+});
+
+describe("resolveAuthHeader", () => {
+  function request(url: string, headers: Record<string, string> = {}): Request {
+    return new Request(`https://relay.test${url}`, { headers });
+  }
+
+  it("prefers a well-formed Authorization Bearer header", () => {
+    const out = resolveAuthHeader(
+      request("/v1/models", {
+        Authorization: "Bearer sk-relay-abc",
+        "x-api-key": "sk-relay-other",
+      }),
+    );
+    expect(out).toBe("Bearer sk-relay-abc");
+  });
+
+  it("accepts x-api-key when Authorization is absent (Anthropic / OnlyOffice)", () => {
+    const out = resolveAuthHeader(
+      request("/v1/chat/completions", { "x-api-key": "sk-relay-abc" }),
+    );
+    expect(out).toBe("Bearer sk-relay-abc");
+  });
+
+  it("accepts the legacy ?api_key= query param (OpenAI-compatible clients)", () => {
+    const out = resolveAuthHeader(request("/v1/models?api_key=sk-relay-abc"));
+    expect(out).toBe("Bearer sk-relay-abc");
+  });
+
+  it("falls back to a raw Authorization header so errors stay precise", () => {
+    // "Basic" is not a Bearer; parseBearer fails, but we still hand the
+    // header to authenticateBearer so it can report the right reason.
+    const out = resolveAuthHeader(
+      request("/v1/models", { Authorization: "Basic dXNlcjpwYXNz" }),
+    );
+    expect(out).toBe("Basic dXNlcjpwYXNz");
+  });
+
+  it("returns null when no carrier is present", () => {
+    const out = resolveAuthHeader(request("/v1/models"));
+    expect(out).toBeNull();
+  });
+
+  it("ignores blank header values but still falls through to other carriers", () => {
+    const out = resolveAuthHeader(
+      request("/v1/models", { Authorization: "   ", "x-api-key": "sk-relay-abc" }),
+    );
+    expect(out).toBe("Bearer sk-relay-abc");
   });
 });
 

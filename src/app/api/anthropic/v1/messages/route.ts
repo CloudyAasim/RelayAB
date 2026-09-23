@@ -7,7 +7,7 @@
  * Body: { model, messages, max_tokens, ... }
  */
 import { NextResponse } from "next/server";
-import { authenticateBearer, reasonToHttp } from "@/lib/auth/apikey";
+import { authenticateBearer, reasonToHttp, resolveAuthHeader } from "@/lib/auth/apikey";
 import { proxyAnthropicMessage } from "@/lib/proxy/anthropic";
 import { proxyResultToResponse } from "@/lib/proxy/respond";
 import type { ApiKey } from "@/lib/db/types";
@@ -32,11 +32,11 @@ export async function POST(req: Request): Promise<Response> {
     typeof body === "object" && body !== null && "model" in body
       ? String((body as Record<string, unknown>).model ?? "")
       : "";
-  // Anthropic SDKs (and MiniMax's Anthropic-compatible endpoint) send the key
-  // in `x-api-key`; OpenAI-style clients use `Authorization: Bearer`.
-  const authHeader =
-    req.headers.get("Authorization") ??
-    (req.headers.get("x-api-key") ? `Bearer ${req.headers.get("x-api-key")}` : null);
+  // Anthropic SDKs (and OnlyOffice's Anthropic template) send the key in
+  // `x-api-key`; OpenAI-style clients use `Authorization: Bearer`. Both
+  // carriers are normalised by `resolveAuthHeader`, which also honours the
+  // legacy `?api_key=` query-param style.
+  const authHeader = resolveAuthHeader(req);
   const auth = await authenticateBearer({
     authHeader,
     requestedModel,

@@ -7,14 +7,14 @@
  * is allowed to call, intersected with what providers actually support.
  */
 import { NextResponse } from "next/server";
-import { authenticateBearer, reasonToHttp } from "@/lib/auth/apikey";
+import { authenticateBearer, reasonToHttp, resolveAuthHeader } from "@/lib/auth/apikey";
 import { listProviders } from "@/lib/db/providers";
 
 export const runtime = "nodejs";
 
 export async function GET(req: Request): Promise<Response> {
   const auth = await authenticateBearer({
-    authHeader: req.headers.get("Authorization"),
+    authHeader: resolveAuthHeader(req),
   });
   if (!auth.ok || !auth.key) {
     const http = reasonToHttp(auth.reason);

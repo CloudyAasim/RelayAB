@@ -58,6 +58,44 @@ export function parseBearer(authHeader: string | null | undefined): string | nul
   return token;
 }
 
+/**
+ * Resolve the customer API key from whichever of the supported carriers is
+ * present, in priority order:
+ *
+ *   1. `Authorization: Bearer <key>`   — OpenAI spec; what RelayAB mints keys for
+ *   2. `x-api-key: <key>`             — Anthropic convention; many gateways
+ *      (including OnlyOffice's Anthropic template) send the key this way
+ *   3. `?api_key=<key>` query param   — legacy OpenAI-style clients and some
+ *      "OpenAI-compatible" integrations (e.g. OnlyOffice's OpenAI template)
+ *
+ * Returns an `Authorization`-shaped string (`Bearer <key>`) so the result can
+ * be fed straight into `authenticateBearer`, or `null` when no carrier is
+ * present. Carriers are checked top-down; the first non-empty one wins.
+ */
+export function resolveAuthHeader(req: Request): string | null {
+  const auth = req.headers.get("Authorization");
+  if (auth && auth.trim().length > 0) {
+    // Fast path: a well-formed Bearer header is what our own keys use.
+    if (parseBearer(auth)) return auth;
+  }
+
+  const xApiKey = req.headers.get("x-api-key");
+  if (xApiKey && xApiKey.trim().length > 0) {
+    return `Bearer ${xApiKey.trim()}`;
+  }
+
+  const url = new URL(req.url);
+  const queryKey = url.searchParams.get("api_key");
+  if (queryKey && queryKey.length > 0) {
+    return `Bearer ${queryKey}`;
+  }
+
+  // No recognised carrier. Fall back to the raw Authorization header (if any)
+  // so a malformed-but-present Bearer still reaches `authenticateBearer` and
+  // yields a precise `missing_key`/`key_not_found` rather than a generic one.
+  return auth;
+}
+
 // ---------------------------------------------------------------------------
 // Key lookup
 // ---------------------------------------------------------------------------

@@ -10,7 +10,7 @@
  * `proxyOpenAIResponse`, so both paths behave identically.
  */
 import { NextResponse } from "next/server";
-import { authenticateBearer, reasonToHttp } from "@/lib/auth/apikey";
+import { authenticateBearer, reasonToHttp, resolveAuthHeader } from "@/lib/auth/apikey";
 import { proxyOpenAIResponse } from "@/lib/proxy/openai";
 import { proxyResultToResponse } from "@/lib/proxy/respond";
 import type { ApiKey } from "@/lib/db/types";
@@ -38,7 +38,7 @@ export async function POST(req: Request): Promise<Response> {
       ? String((body as Record<string, unknown>).model ?? "")
       : "";
   const auth = await authenticateBearer({
-    authHeader: req.headers.get("Authorization"),
+    authHeader: resolveAuthHeader(req),
     requestedModel,
   });
 
