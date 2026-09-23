@@ -9,6 +9,7 @@
 import { NextResponse } from "next/server";
 import { authenticateBearer, reasonToHttp } from "@/lib/auth/apikey";
 import { proxyAnthropicMessage } from "@/lib/proxy/anthropic";
+import { proxyResultToResponse } from "@/lib/proxy/respond";
 import type { ApiKey } from "@/lib/db/types";
 import { getUserById as lookupUserById } from "@/lib/db/users";
 
@@ -61,10 +62,15 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
+  const requestedStream =
+    typeof body === "object" && body !== null && "stream" in body &&
+    Boolean((body as Record<string, unknown>).stream);
   const result = await proxyAnthropicMessage({
     req: body as Parameters<typeof proxyAnthropicMessage>[0]["req"],
     apiKey: auth.key as ApiKey,
     user: owner,
+    // Let a client disconnect settle the usage row instead of dropping it.
+    signal: req.signal,
   });
 
   if (!result.ok) {
@@ -73,5 +79,5 @@ export async function POST(req: Request): Promise<Response> {
       { status: result.status },
     );
   }
-  return NextResponse.json(result.data, { status: result.status });
+  return proxyResultToResponse(result, { streamRequest: requestedStream });
 }

@@ -65,6 +65,8 @@ export async function POST(req: Request): Promise<Response> {
     req: body as Parameters<typeof proxyOpenAIResponse>[0]["req"],
     apiKey: auth.key as ApiKey,
     user: owner,
+    // Let a client disconnect settle the usage row instead of dropping it.
+    signal: req.signal,
   });
 
   return proxyResultToResponse(result);

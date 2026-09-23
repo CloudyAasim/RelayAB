@@ -115,8 +115,11 @@ export function DocsContent({ baseUrl, openaiBase, anthropicBase, responsesBase 
         />
         <div className="space-y-3 text-xs text-foreground/90 sm:text-sm sm:space-y-4">
           <p>{t("docs.anthropic.line1")}</p>
+          <p className="text-xs text-muted-foreground">{t("docs.anthropic.baseUrl.official")}</p>
+          <p className="text-xs text-muted-foreground">{t("docs.anthropic.baseUrl.aiSdk")}</p>
           <CodeBlock label={t("docs.anthropic.baseUrl")} value={anthropicBase} />
           <CodeBlock label={t("docs.anthropic.header")} value="x-api-key: sk-relay-xxxx..." />
+          <p className="text-xs text-amber-600 dark:text-amber-400">{t("docs.anthropic.baseUrl.tip")}</p>
           <CodeBlock
             label={t("docs.anthropic.example")}
             value={`curl ${anthropicBase}/v1/messages \\

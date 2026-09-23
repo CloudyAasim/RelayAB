@@ -35,6 +35,7 @@ export async function GET(): Promise<Response> {
         configured: report.configured,
         missing: report.missing,
       },
+      revision: report.revision,
     },
   };
 

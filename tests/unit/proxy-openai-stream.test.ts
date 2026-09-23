@@ -146,4 +146,42 @@ describe("proxyOpenAIResponse streaming", () => {
     expect((r.data as Record<string, unknown>).object).toBe("response");
     expect((await listUsageByKey(key.id))[0].promptTokens).toBe(3);
   });
+
+  it("estimates tokens (billingMode=estimated) when the stream ends without usage", async () => {
+    await setupProvider("responses");
+    const { key, user } = await setupUserAndKey();
+    // A stream that is cut short: deltas arrive, but no response.completed.
+    const truncated = [
+      "event: response.created",
+      'data: {"type":"response.created","response":{"id":"resp_1","usage":null}}',
+      "",
+      "event: response.output_text.delta",
+      'data: {"type":"response.output_text.delta","delta":"Hello there"}',
+      "",
+      "",
+    ].join("\n");
+    const fetchMock = vi.fn(async () =>
+      new Response(truncated, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      }),
+    );
+
+    const r = await proxyOpenAIResponse({
+      req: { model: "MiniMax-M3", input: "Hi there", stream: true },
+      apiKey: key,
+      user,
+      deps: { fetchImpl: fetchMock as unknown as typeof fetch },
+    });
+    expect(r.ok).toBe(true);
+    await new Response(r.body!).text();
+
+    const logs = await listUsageByKey(key.id);
+    expect(logs).toHaveLength(1);
+    expect(logs[0].billingMode).toBe("estimated");
+    // "Hello there" = 11 chars → ceil(11/4) = 3
+    expect(logs[0].completionTokens).toBe(3);
+    // "Hi there" = 8 chars → ceil(8/4) = 2
+    expect(logs[0].promptTokens).toBe(2);
+  });
 });

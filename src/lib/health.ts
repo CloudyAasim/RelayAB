@@ -28,6 +28,10 @@ export interface HealthEnv {
   REDIS_PASSWORD?: string;
   NODE_ENV?: string;
   EMULATE_VERCEL_LOCAL?: string;
+  /** Vercel-provided short SHA of the running deployment. */
+  VERCEL_GIT_COMMIT_SHA?: string;
+  /** Fallback build identifier set by the operator when running off Vercel. */
+  RELAY_BUILD_ID?: string;
 }
 
 export interface HealthReport {
@@ -37,6 +41,8 @@ export interface HealthReport {
   required: number;
   configured: number;
   missing?: string[];
+  /** Short SHA (or operator-supplied build id) of the running build, or null. */
+  revision: string | null;
 }
 
 /**
@@ -118,6 +124,14 @@ export function computeHealth(env: HealthEnv): HealthReport {
         ? "unconfigured"
         : "degraded";
 
+  const rawSha = env.VERCEL_GIT_COMMIT_SHA?.trim();
+  // Short SHA only — never expose the full 40-char commit hash on a public
+  // endpoint, and never include it in error paths.
+  const revision =
+    (rawSha && rawSha.length >= 7 ? rawSha.slice(0, 7) : null) ??
+    env.RELAY_BUILD_ID?.trim() ??
+    null;
+
   return {
     ok: missing.length === 0,
     status,
@@ -125,5 +139,6 @@ export function computeHealth(env: HealthEnv): HealthReport {
     required,
     configured,
     missing: missing.length > 0 ? missing : undefined,
+    revision,
   };
 }

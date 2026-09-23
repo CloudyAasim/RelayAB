@@ -14,12 +14,12 @@
  */
 import { decryptSecret } from "../crypto/secrets";
 import { findProvidersForModel, getProviderById } from "../db/providers";
-import { touchApiKeyLastUsed } from "../db/keys";
-import { incrementUserQuotaUsed } from "../db/users";
-import { recordUsage, quotaDelta } from "../db/usage";
+import { recordUsage } from "../db/usage";
 import { checkKeyStatus, reasonToHttp } from "../auth/apikey";
-import { computeCredits } from "../quota/rates";
+import { estimateTokensFromText } from "../quota/calculator";
 import { shouldRejectBeforeRequest } from "../quota/calculator";
+import { settleUsage } from "./billing";
+import { ssePassthrough } from "./stream-tap";
 import type { ApiKey, Provider, User } from "../db/types";
 
 // ---------------------------------------------------------------------------
@@ -30,6 +30,10 @@ export interface AnthropicProxyResult {
   ok: boolean;
   status: number;
   data?: unknown;
+  /** SSE-passthrough body. Set when the proxy is streaming. */
+  body?: ReadableStream<Uint8Array>;
+  /** Content-Type to use together with `body`. */
+  contentType?: string;
   error?: { code: string; message: string };
 }
 
@@ -70,9 +74,11 @@ export async function proxyAnthropicMessage(args: {
   apiKey: ApiKey;
   /** Owner of `apiKey`. Carries the quota pool and the model whitelist. */
   user: User;
+  /** Incoming request signal — streams settle their usage when it aborts. */
+  signal?: AbortSignal;
   deps?: AnthropicProxyDeps;
 }): Promise<AnthropicProxyResult> {
-  const { req, apiKey, user, deps } = args;
+  const { req, apiKey, user, signal, deps } = args;
   const fetchImpl = deps?.fetchImpl ?? fetch;
 
   // Validate inputs.
@@ -115,7 +121,7 @@ export async function proxyAnthropicMessage(args: {
       error: { code: "model_not_mapped", message: `No Anthropic provider configured for model '${req.model}'` },
     };
   }
-  return doProxy({ req, apiKey, user, provider, deps, fetchImpl });
+  return doProxy({ req, apiKey, user, provider, signal, deps, fetchImpl });
 }
 
 // ---------------------------------------------------------------------------
@@ -127,16 +133,31 @@ async function doProxy(args: {
   apiKey: ApiKey;
   user: User;
   provider: Provider;
+  signal?: AbortSignal;
   deps?: AnthropicProxyDeps;
   fetchImpl: typeof fetch;
 }): Promise<AnthropicProxyResult> {
-  const { req, apiKey, user, provider, deps, fetchImpl } = args;
+  const { req, apiKey, user, provider, signal, deps, fetchImpl } = args;
   const upstreamModel = provider.modelMapping[req.model];
   const upstreamUrl = deps?.upstreamUrlFor
     ? deps.upstreamUrlFor(provider)
     : defaultUpstreamUrl(provider);
 
   const upstreamKey = decryptSecret(provider.encryptedApiKey);
+
+  // Same defensive strip as the OpenAI proxy: clients sometimes include
+  // OpenAI-only fields like `stream_options` when reusing a request body.
+  // The Anthropic Messages spec doesn't know about them.
+  const forwardable: Record<string, unknown> = { ...req };
+  delete forwardable.stream_options;
+
+  // Streaming clients ask for SSE; buffered clients get a single JSON body.
+  // Anthropic carries input tokens in `message_start` and output tokens in
+  // `message_delta`, so the tap accumulates both before settling on flush.
+  const wantStream = Boolean(req.stream);
+  const forwardBody = wantStream
+    ? { ...forwardable, model: upstreamModel, stream: true }
+    : { ...forwardable, model: upstreamModel, stream: false };
 
   let response: Response;
   try {
@@ -147,11 +168,33 @@ async function doProxy(args: {
         "x-api-key": upstreamKey,
         "anthropic-version": "2023-06-01",
       },
-      body: JSON.stringify({ ...req, model: upstreamModel, stream: false }),
+      body: JSON.stringify(forwardBody),
     });
   } catch (err) {
     await recordFailure({ apiKey, provider, model: req.model, upstreamModel, error: err });
     return { ok: false, status: 502, error: { code: "upstream_error", message: String(err) } };
+  }
+
+  // Streaming: pipe the upstream SSE through and settle usage on flush.
+  // Guard on content-type: an upstream that ignores `stream: true` and answers
+  // with JSON takes the buffered path instead (the route then synthesizes a
+  // single-frame SSE for the client).
+  if (wantStream && response.ok && response.body && isEventStream(response)) {
+    const inputText = Array.isArray(req.messages)
+      ? req.messages
+          .map((m) => (typeof m.content === "string" ? m.content : ""))
+          .join("\n")
+      : "";
+    return streamAnthropicAnswer({
+      upstream: response,
+      apiKey,
+      provider,
+      user,
+      model: req.model,
+      upstreamModel,
+      inputText,
+      signal,
+    });
   }
 
   if (!response.ok) {
@@ -174,34 +217,15 @@ async function doProxy(args: {
 
   const body = (await response.json()) as AnthropicResponse;
   const usage = body.usage ?? { input_tokens: 0, output_tokens: 0 };
-  // 积分 consumed (integer 0.001-积分 units); small requests are not rounded up.
-  const creditsUsed = computeCredits({
-    model: upstreamModel,
+  // Charge the OWNER's pool, not the key's — see the note in billing.ts.
+  await settleUsage({
+    apiKey,
+    provider,
     promptTokens: usage.input_tokens,
     completionTokens: usage.output_tokens,
-  });
-  const totalTokens = usage.input_tokens + usage.output_tokens;
-  // Charge the OWNER's pool, not the key's — see the note in openai.ts.
-  const delta = quotaDelta({
-    quotaType: user.quotaType,
-    creditsUsed,
-    totalTokens,
-  });
-  if (delta > 0) {
-    await incrementUserQuotaUsed(apiKey.userId, delta);
-    await touchApiKeyLastUsed(apiKey.id);
-  }
-
-  await recordUsage({
-    apiKeyId: apiKey.id,
-    userId: apiKey.userId,
-    providerId: provider.id,
+    user,
     model: req.model,
     upstreamModel,
-    promptTokens: usage.input_tokens,
-    completionTokens: usage.output_tokens,
-    creditsUsed,
-    status: "success",
   });
 
   return { ok: true, status: 200, data: body };
@@ -210,6 +234,126 @@ async function doProxy(args: {
 function defaultUpstreamUrl(provider: Provider): string {
   if (provider.baseUrl) return `${provider.baseUrl.replace(/\/$/, "")}/v1/messages`;
   return "https://api.anthropic.com/v1/messages";
+}
+
+function streamAnthropicAnswer(args: {
+  upstream: Response;
+  apiKey: ApiKey;
+  provider: Provider;
+  user: User;
+  model: string;
+  upstreamModel: string;
+  inputText: string;
+  /** Client request signal; firing it settles the usage row. */
+  signal?: AbortSignal;
+}): AnthropicProxyResult {
+  const { upstream, apiKey, provider, user, model, upstreamModel, inputText, signal } = args;
+  if (!upstream.body) {
+    return {
+      ok: false,
+      status: 502,
+      error: { code: "upstream_error", message: "Upstream returned an empty stream" },
+    };
+  }
+
+  let eventType = "";
+  let dataBuf = "";
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let sawInput = false;
+  let sawOutput = false;
+  let outputText = "";
+
+  const handleEvent = (rawEvent: string, rawData: string): void => {
+    if (rawEvent === "message_start") {
+      try {
+        const parsed = JSON.parse(rawData) as { message?: { usage?: { input_tokens?: number } } };
+        const usage = parsed.message?.usage;
+        if (usage && typeof usage.input_tokens === "number") {
+          inputTokens = Math.max(0, Math.trunc(usage.input_tokens));
+          sawInput = true;
+        }
+      } catch { /* ignore */ }
+    } else if (rawEvent === "message_delta") {
+      try {
+        const parsed = JSON.parse(rawData) as { usage?: { output_tokens?: number } };
+        const usage = parsed.usage;
+        if (usage && typeof usage.output_tokens === "number") {
+          outputTokens = Math.max(0, Math.trunc(usage.output_tokens));
+          sawOutput = true;
+        }
+      } catch { /* ignore */ }
+    } else if (rawEvent === "content_block_delta") {
+      try {
+        const parsed = JSON.parse(rawData) as { delta?: { text?: string } };
+        const text = parsed.delta?.text;
+        if (typeof text === "string") outputText += text;
+      } catch { /* ignore */ }
+    }
+  };
+
+  const consumeLine = (line: string): void => {
+    if (line.startsWith("event:")) {
+      eventType = line.slice(6).trim();
+      return;
+    }
+    if (line.startsWith("data:")) {
+      dataBuf += (dataBuf ? "\n" : "") + line.slice(5).trim();
+      return;
+    }
+    if (line === "") {
+      if (eventType || dataBuf) {
+        handleEvent(eventType, dataBuf);
+        eventType = "";
+        dataBuf = "";
+      }
+    }
+  };
+
+  const body = ssePassthrough(upstream.body, {
+    signal,
+    onLine: consumeLine,
+    // A trailing event whose blank-line separator never arrived still counts.
+    onEnd: () => consumeLine(""),
+    settle: async () => {
+      const billingMode: "usage" | "estimated" =
+        sawInput && sawOutput ? "usage" : "estimated";
+      if (billingMode === "estimated") {
+        console.warn(
+          `[relayab] anthropic stream for model=${model} ended without complete usage; estimating tokens`,
+        );
+      }
+      const promptTokens = sawInput ? inputTokens : estimateTokensFromText(inputText);
+      const completionTokens = sawOutput ? outputTokens : estimateTokensFromText(outputText);
+      await settleUsage({
+        apiKey,
+        provider,
+        user,
+        model,
+        upstreamModel,
+        promptTokens,
+        completionTokens,
+        billingMode,
+      });
+    },
+  });
+
+  return {
+    ok: true,
+    status: 200,
+    body,
+    contentType: upstream.headers.get("content-type") ?? "text/event-stream",
+  };
+}
+
+/**
+ * True when the upstream answered with an SSE body. Providers that ignore
+ * `stream: true` return buffered JSON instead; piping that through the SSE tap
+ * would bill an empty estimate.
+ */
+function isEventStream(response: Response): boolean {
+  const contentType = response.headers.get("content-type") ?? "";
+  return contentType.toLowerCase().includes("text/event-stream");
 }
 
 async function recordFailure(args: {

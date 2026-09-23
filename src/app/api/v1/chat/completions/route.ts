@@ -11,6 +11,7 @@
 import { NextResponse } from "next/server";
 import { authenticateBearer, reasonToHttp } from "@/lib/auth/apikey";
 import { proxyChatCompletion } from "@/lib/proxy/openai";
+import { proxyResultToResponse } from "@/lib/proxy/respond";
 import type { ApiKey } from "@/lib/db/types";
 import { getUserById as lookupUserById } from "@/lib/db/users";
 
@@ -62,10 +63,15 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   // 3. Forward.
+  const requestedStream =
+    typeof body === "object" && body !== null && "stream" in body &&
+    Boolean((body as Record<string, unknown>).stream);
   const result = await proxyChatCompletion({
     req: body as Parameters<typeof proxyChatCompletion>[0]["req"],
     apiKey: auth.key as ApiKey,
     user: owner,
+    // Let a client disconnect settle the usage row instead of dropping it.
+    signal: req.signal,
   });
 
   if (!result.ok) {
@@ -74,5 +80,5 @@ export async function POST(req: Request): Promise<Response> {
       { status: result.status },
     );
   }
-  return NextResponse.json(result.data, { status: result.status });
+  return proxyResultToResponse(result, { streamRequest: requestedStream });
 }

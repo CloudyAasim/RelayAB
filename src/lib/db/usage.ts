@@ -35,6 +35,12 @@ export interface RecordUsageInput {
   creditsUsed: number;
   status: "success" | "error";
   errorMessage?: string | null;
+  /**
+   * How the token counts were obtained. Defaults to "usage" for non-streaming
+   * callers; streaming proxies set "estimated" when the upstream never sent
+   * a usage frame.
+   */
+  billingMode?: "usage" | "estimated";
 }
 
 // ---------------------------------------------------------------------------
@@ -59,6 +65,7 @@ export async function recordUsage(input: RecordUsageInput): Promise<UsageLog> {
     creditsUsed: input.creditsUsed,
     status: input.status,
     errorMessage: input.errorMessage ?? null,
+    billingMode: input.billingMode ?? "usage",
     createdAt: now,
   });
 
@@ -77,6 +84,7 @@ export async function recordUsage(input: RecordUsageInput): Promise<UsageLog> {
     creditsUsed: String(log.creditsUsed),
     status: log.status,
     errorMessage: log.errorMessage ?? "",
+    billingMode: log.billingMode ?? "usage",
     createdAt: log.createdAt,
   });
   tx.lpush(k.usageLogsByKey(log.apiKeyId), log.id);
@@ -118,6 +126,30 @@ export async function listUsageByKey(
   );
   const parsed = await Promise.all(rows.map((raw) => hashToLog(raw)));
   return parsed.filter((log): log is UsageLog => log !== null);
+}
+
+/**
+ * Most recent usage rows across several keys, newest first.
+ *
+ * Each key's log list is already newest-first, so this reads `limit` rows per
+ * key (a bounded fan-out) and merge-sorts them. Used by the admin overview to
+ * show recent activity — including which rows were billed by estimate rather
+ * than by an upstream usage frame.
+ */
+export async function listRecentUsage(
+  apiKeyIds: readonly string[],
+  opts: { limit?: number } = {},
+): Promise<UsageLog[]> {
+  const limit = Math.max(1, Math.min(opts.limit ?? 20, 200));
+  if (apiKeyIds.length === 0) return [];
+
+  const perKey = await mapWithConcurrency(apiKeyIds, 8, (id) =>
+    listUsageByKey(id, { limit }),
+  );
+  return perKey
+    .flat()
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, limit);
 }
 
 /**
@@ -247,6 +279,7 @@ async function hashToLog(raw: Record<string, string> | null): Promise<UsageLog |
       creditsUsed: Number(raw.creditsUsed ?? "0"),
       status: raw.status,
       errorMessage: raw.errorMessage && raw.errorMessage !== "" ? raw.errorMessage : null,
+      billingMode: raw.billingMode === "estimated" ? "estimated" : "usage",
       createdAt: raw.createdAt,
     });
   } catch {

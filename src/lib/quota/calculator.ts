@@ -164,3 +164,14 @@ export function estimateCredits(args: {
     completionTokens: 0,
   });
 }
+
+/**
+ * Approximate token count for a piece of text. Mirrors the heuristic used by
+ * `estimateCredits` (chars ÷ 4, rounded up) so that all token accounting in
+ * the project uses the same coefficient. Used by the streaming proxy as a
+ * fallback when the upstream never sends a usage frame.
+ */
+export function estimateTokensFromText(text: string | null | undefined): number {
+  if (!text) return 0;
+  return Math.ceil(text.length / 4);
+}

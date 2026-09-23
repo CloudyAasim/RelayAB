@@ -11,7 +11,9 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { __resetRedisForTest, __setRedisForTest, getRedis, k } from "@/lib/db/redis";
 import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
 import {
+  MAX_LOGS_PER_KEY,
   aggregateByKey,
+  aggregateByKeyMany,
   aggregateByUser,
   listUsageByKey,
   recordUsage,
@@ -113,5 +115,23 @@ describe("usage running totals", () => {
     // Counter is now authoritative: removing the logs must not change it.
     await redis.del(k.usageLogsByKey("k1"));
     expect((await aggregateByKey("k1")).totalTokens).toBe(15);
+  });
+
+  it("L1: aggregateByKeyMany stays accurate beyond MAX_LOGS_PER_KEY", async () => {
+    // Record 3x the cap. The log list caps at 1000, but the running counter
+    // holds the full amount — and aggregateByKeyMany is what
+    // /api/admin/usage calls for its totals.
+    const total = MAX_LOGS_PER_KEY * 3;
+    for (let i = 0; i < total; i++) {
+      await recordUsage(usage());
+    }
+    // Counter must agree with the actual write count, regardless of log cap.
+    const totals = await aggregateByKeyMany(["k1"]);
+    expect(totals).toHaveLength(1);
+    expect(totals[0].requestCount).toBe(total);
+    expect(totals[0].totalTokens).toBe(30 * total);
+    expect(totals[0].creditsUsed).toBe(5 * total);
+    // Sanity: log list capped at the per-key max.
+    expect(await listUsageByKey("k1", { limit: MAX_LOGS_PER_KEY })).toHaveLength(MAX_LOGS_PER_KEY);
   });
 });

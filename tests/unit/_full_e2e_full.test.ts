@@ -322,3 +322,26 @@ describe("Test 15 · license page (no version display)", () => {
     expect(f).toContain("DEV_DEPS");
   });
 });
+
+  it("health: revision is null when no build env is set", () => {
+    const r = computeHealth({ NODE_ENV: "development", RELAY_AUTH: "x" });
+    expect(r.revision).toBeNull();
+  });
+
+  it("health: revision is the first 7 chars of VERCEL_GIT_COMMIT_SHA", () => {
+    const r = computeHealth({
+      NODE_ENV: "development",
+      RELAY_AUTH: "x",
+      VERCEL_GIT_COMMIT_SHA: "abcdef1234567890fedcba0987654321aabbccdd",
+    });
+    expect(r.revision).toBe("abcdef1");
+  });
+
+  it("health: revision falls back to RELAY_BUILD_ID when VERCEL_GIT_COMMIT_SHA is missing", () => {
+    const r = computeHealth({
+      NODE_ENV: "development",
+      RELAY_AUTH: "x",
+      RELAY_BUILD_ID: "local-build-42",
+    });
+    expect(r.revision).toBe("local-build-42");
+  });

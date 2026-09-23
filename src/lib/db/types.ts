@@ -217,6 +217,12 @@ export const UsageLogSchema = z.object({
   creditsUsed: z.number().int().nonnegative(),
   status: z.enum(["success", "error"]),
   errorMessage: z.string().nullable(),
+  /**
+   * `"usage"` means the upstream reported real token counts; `"estimated"`
+   * means the stream ended without a usage frame and we billed by estimate.
+   * Optional so older records keep parsing.
+   */
+  billingMode: z.enum(["usage", "estimated"]).optional(),
   createdAt: z.string(),
 });
 export type UsageLog = z.infer<typeof UsageLogSchema>;

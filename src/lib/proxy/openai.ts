@@ -19,13 +19,13 @@
  */
 import { decryptSecret } from "../crypto/secrets";
 import { findProvidersForModel, getProviderById } from "../db/providers";
-import { touchApiKeyLastUsed } from "../db/keys";
-import { incrementUserQuotaUsed } from "../db/users";
-import { recordUsage, quotaDelta } from "../db/usage";
+import { recordUsage } from "../db/usage";
 import { checkKeyStatus, reasonToHttp } from "../auth/apikey";
-import { computeCredits } from "../quota/rates";
+import { estimateTokensFromText } from "../quota/calculator";
 import { quotaDeltaFromUsage, shouldRejectBeforeRequest } from "../quota/calculator";
 import { proxyAnthropicMessage } from "./anthropic";
+import { settleUsage } from "./billing";
+import { ssePassthrough } from "./stream-tap";
 import type { ApiKey, Provider, User } from "../db/types";
 
 
@@ -301,9 +301,11 @@ export async function proxyChatCompletion(args: {
   apiKey: ApiKey;
   /** Owner of `apiKey`. Carries the quota pool and the model whitelist. */
   user: User;
+  /** Incoming request signal — streams settle their usage when it aborts. */
+  signal?: AbortSignal;
   deps?: ProxyDeps;
 }): Promise<ProxyResult> {
-  const { req, apiKey, user, deps } = args;
+  const { req, apiKey, user, signal, deps } = args;
   const fetchImpl = deps?.fetchImpl ?? fetch;
 
   if (!req.model) {
@@ -350,7 +352,27 @@ export async function proxyChatCompletion(args: {
   // 4. Decrypt the upstream API key.
   const upstreamKey = decryptSecret(provider.encryptedApiKey);
 
-  // 5. Forward the request.
+  // Strip fields that the OpenAI Chat Completions spec defines but every
+  // non-streaming upstream rejects as 400. `stream_options` is the common
+  // one — OpenAI SDK clients set it by default to ask for a final usage
+  // frame. We drop it before forwarding because we never set `stream: true`
+  // here, and the upstream's validation surfaces it as a bad parameter.
+  const forwardable: Record<string, unknown> = { ...req };
+  delete forwardable.stream_options;
+
+  // 5. Forward the request. Streaming clients get stream=true with the
+  // `include_usage` flag so the upstream emits a final usage frame; buffered
+  // clients get stream=false so the upstream returns a single JSON body.
+  const wantStream = Boolean(req.stream);
+  const forwardBody = wantStream
+    ? {
+        ...forwardable,
+        model: upstreamModel,
+        stream: true,
+        stream_options: { include_usage: true },
+      }
+    : { ...forwardable, model: upstreamModel, stream: false };
+
   let response: Response;
   try {
     response = await fetchImpl(upstreamUrl, {
@@ -359,11 +381,31 @@ export async function proxyChatCompletion(args: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${upstreamKey}`,
       },
-      body: JSON.stringify({ ...req, model: upstreamModel, stream: false }),
+      body: JSON.stringify(forwardBody),
     });
   } catch (err) {
     await recordFailure({ apiKey, provider, model: req.model, upstreamModel, error: err });
     return { ok: false, status: 502, error: { code: "upstream_error", message: String(err) } };
+  }
+
+  // Streaming: pipe the upstream SSE through to the client and bill on flush.
+  // Guard on the content-type so an upstream that ignores `stream: true` and
+  // answers with plain JSON still takes the buffered path (the route turns
+  // that JSON into a single-frame SSE for the client).
+  if (wantStream && response.ok && response.body && isEventStream(response)) {
+    const inputText = Array.isArray(req.messages)
+      ? req.messages.map((m) => m.content ?? "").join("\n")
+      : "";
+    return streamChatAnswer({
+      upstream: response,
+      apiKey,
+      provider,
+      user,
+      model: req.model,
+      upstreamModel,
+      inputText,
+      signal,
+    });
   }
 
   if (!response.ok) {
@@ -395,38 +437,16 @@ export async function proxyChatCompletion(args: {
   const usage = body.usage ?? {};
   const promptTokens = (usage as any).prompt_tokens ?? (usage as any).input_tokens ?? 0;
   const completionTokens = (usage as any).completion_tokens ?? (usage as any).output_tokens ?? 0;
-  const totalTokens = (usage as any).total_tokens ?? (promptTokens + completionTokens);
-  // 积分 consumed, in integer 0.001-积分 units, so even a tiny request
-  // registers a fraction of a 积分 instead of being rounded up to a whole one.
-  const creditsUsed = computeCredits({
-    model: upstreamModel,
-    promptTokens,
-    completionTokens,
-  });
 
-  // 7. Persist usage + charge the owner's pool.
-  // The pool belongs to the USER, not the key: three keys held by the same
-  // account all draw down one balance.
-  const delta = quotaDelta({
-    quotaType: user.quotaType,
-    creditsUsed,
-    totalTokens,
-  });
-  if (delta > 0) {
-    await incrementUserQuotaUsed(apiKey.userId, delta);
-    await touchApiKeyLastUsed(apiKey.id);
-  }
-
-  await recordUsage({
-    apiKeyId: apiKey.id,
-    userId: apiKey.userId,
-    providerId: provider.id,
+  // 7. Persist usage + charge the owner's pool (shared with the streaming path).
+  await settleUsage({
+    apiKey,
+    provider,
+    user,
     model: req.model,
     upstreamModel,
     promptTokens,
     completionTokens,
-    creditsUsed,
-    status: "success",
   });
 
   return { ok: true, status: 200, data: body };
@@ -525,9 +545,11 @@ export async function proxyOpenAIResponse(args: {
   req: ResponseAPIRequest;
   apiKey: ApiKey;
   user: User;
+  /** Incoming request signal — streams settle their usage when it aborts. */
+  signal?: AbortSignal;
   deps?: ProxyDeps;
 }): Promise<ProxyResult> {
-  const { req, apiKey, user, deps } = args;
+  const { req, apiKey, user, signal, deps } = args;
   const fetchImpl = deps?.fetchImpl ?? fetch;
 
   if (!req.model) {
@@ -566,10 +588,10 @@ export async function proxyOpenAIResponse(args: {
   // through a conversion hop against their own endpoint.
   const providerFormat = effectiveUpstreamFormat(provider);
   if (providerFormat === "chat") {
-    return proxyResponsesViaChat({ req, apiKey, user, deps });
+    return proxyResponsesViaChat({ req, apiKey, user, signal, deps });
   }
   if (providerFormat === "anthropic") {
-    return proxyResponsesViaAnthropic({ req, apiKey, user, deps });
+    return proxyResponsesViaAnthropic({ req, apiKey, user, signal, deps });
   }
 
   // 3. Build upstream URL - Responses API uses /responses
@@ -581,27 +603,33 @@ export async function proxyOpenAIResponse(args: {
   // 4. Decrypt upstream key
   const upstreamKey = decryptSecret(provider.encryptedApiKey);
 
+  // Strip OpenAI-only fields the upstream may reject (e.g. stream_options).
+  const forwardable: Record<string, unknown> = { ...req };
+  delete forwardable.stream_options;
+
   // 5. Forward request
+  // Flatten the request's input into text once: it feeds the credit
+  // calculation and the estimation fallback for a stream that never reports
+  // usage.
+  let inputText = "";
+  if (typeof req.input === "string") {
+    inputText = req.input;
+  } else if (Array.isArray(req.input)) {
+    inputText = req.input
+      .filter((i) => i.type === "input_text" && i.content)
+      .map((i) => i.content)
+      .join(" ");
+  }
+
   let response: Response;
   try {
-    // Extract input text for credits calculation
-    let inputText = "";
-    if (typeof req.input === "string") {
-      inputText = req.input;
-    } else if (Array.isArray(req.input)) {
-      inputText = req.input
-        .filter((i) => i.type === "input_text" && i.content)
-        .map((i) => i.content)
-        .join(" ");
-    }
-
     response = await fetchImpl(upstreamUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${upstreamKey}`,
       },
-      body: JSON.stringify({ ...req, model: upstreamModel }),
+      body: JSON.stringify({ ...forwardable, model: upstreamModel }),
     });
   } catch (err) {
     await recordFailureResponses({ apiKey, provider, model: req.model, upstreamModel, error: err });
@@ -630,7 +658,7 @@ export async function proxyOpenAIResponse(args: {
   // 6. Streaming clients (Codex CLI, OpenAI SDK with stream:true) expect an
   //    SSE body. Pipe the upstream bytes straight through instead of trying to
   //    parse them as JSON, and settle usage once the stream has finished.
-  if (req.stream === true) {
+  if (req.stream === true && isEventStream(response)) {
     return streamResponsesAnswer({
       upstream: response,
       apiKey,
@@ -638,6 +666,8 @@ export async function proxyOpenAIResponse(args: {
       user,
       model: req.model,
       upstreamModel,
+      inputText,
+      signal,
     });
   }
 
@@ -649,7 +679,7 @@ export async function proxyOpenAIResponse(args: {
     (usage as any).completion_tokens ?? (usage as any).output_tokens ?? 0;
   const totalTokens = (usage as any).total_tokens ?? (promptTokens + completionTokens);
 
-  await settleResponsesUsage({
+  await settleUsage({
     apiKey,
     provider,
     user,
@@ -657,58 +687,25 @@ export async function proxyOpenAIResponse(args: {
     upstreamModel,
     promptTokens,
     completionTokens,
-    totalTokens,
   });
 
   return { ok: true, status: 200, data: body };
-}
-
-/**
- * Charge the owner's pool and record one usage row for a successful Responses
- * call. Shared by the buffered path and the streaming path.
- */
-async function settleResponsesUsage(args: {
-  apiKey: ApiKey;
-  provider: Provider;
-  user: User;
-  model: string;
-  upstreamModel: string;
-  promptTokens: number;
-  completionTokens: number;
-  totalTokens: number;
-}): Promise<void> {
-  const { apiKey, provider, user, model, upstreamModel } = args;
-  const promptTokens = Math.max(0, Math.trunc(args.promptTokens));
-  const completionTokens = Math.max(0, Math.trunc(args.completionTokens));
-  const totalTokens = Math.max(0, Math.trunc(args.totalTokens));
-
-  // 积分 consumed, in integer 0.001-积分 units, so even a tiny request
-  // registers a fraction of a 积分 instead of being rounded up to a whole one.
-  const creditsUsed = computeCredits({ model: upstreamModel, promptTokens, completionTokens });
-
-  const delta = quotaDelta({ quotaType: user.quotaType, creditsUsed, totalTokens });
-  if (delta > 0) {
-    await incrementUserQuotaUsed(apiKey.userId, delta);
-    await touchApiKeyLastUsed(apiKey.id);
-  }
-
-  await recordUsage({
-    apiKeyId: apiKey.id,
-    userId: apiKey.userId,
-    providerId: provider.id,
-    model,
-    upstreamModel,
-    promptTokens,
-    completionTokens,
-    creditsUsed,
-    status: "success",
-  });
 }
 
 interface StreamUsage {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+}
+
+/**
+ * True when the upstream answered with an SSE body. Some providers ignore
+ * `stream: true` and reply with a buffered JSON completion; those must not be
+ * piped through the SSE tap (they would bill as an empty estimate).
+ */
+function isEventStream(response: Response): boolean {
+  const contentType = response.headers.get("content-type") ?? "";
+  return contentType.toLowerCase().includes("text/event-stream");
 }
 
 /**
@@ -740,15 +737,26 @@ function usageFromSsePayload(payload: unknown): StreamUsage | null {
  * scanning `data:` lines for the usage block, then charge + record once the
  * stream completes.
  */
-function streamResponsesAnswer(args: {
+/**
+ * Pipe an upstream Chat Completions SSE response through to the client
+ * untouched while collecting output text and scanning for a usage frame.
+ * On flush we bill via `usage` if seen, otherwise by `estimateTokensFromText`
+ * of the input messages and the streamed output (per the project's chosen
+ * policy for the "no usage frame" path).
+ */
+function streamChatAnswer(args: {
   upstream: Response;
   apiKey: ApiKey;
   provider: Provider;
   user: User;
   model: string;
   upstreamModel: string;
+  /** Best-effort input text for the estimation fallback. */
+  inputText: string;
+  /** Client request signal; firing it settles the usage row. */
+  signal?: AbortSignal;
 }): ProxyResult {
-  const { upstream, apiKey, provider, user, model, upstreamModel } = args;
+  const { upstream, apiKey, provider, user, model, upstreamModel, inputText, signal } = args;
   if (!upstream.body) {
     return {
       ok: false,
@@ -757,10 +765,99 @@ function streamResponsesAnswer(args: {
     };
   }
 
-  const decoder = new TextDecoder();
-  let pending = "";
   let usage: StreamUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
   let sawUsage = false;
+  let outputText = "";
+
+  const consumeLine = (line: string): void => {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) return;
+    const payload = trimmed.slice(5).trim();
+    if (!payload || payload === "[DONE]") return;
+    try {
+      const parsed = JSON.parse(payload) as Record<string, unknown>;
+      const found = usageFromSsePayload(parsed);
+      if (found) {
+        usage = found;
+        sawUsage = true;
+      }
+      // Best-effort: harvest the delta text so we can estimate tokens if the
+      // upstream never sends a usage frame.
+      const choices = (parsed as { choices?: unknown[] }).choices;
+      if (Array.isArray(choices)) {
+        for (const c of choices) {
+          const delta = (c as { delta?: { content?: unknown } }).delta;
+          if (delta && typeof delta.content === "string") {
+            outputText += delta.content;
+          }
+        }
+      }
+    } catch {
+      // Partial or non-JSON keep-alive frame — nothing to do.
+    }
+  };
+
+  const body = ssePassthrough(upstream.body, {
+    signal,
+    onLine: consumeLine,
+    settle: async () => {
+      const billingMode: "usage" | "estimated" = sawUsage ? "usage" : "estimated";
+      if (!sawUsage) {
+        console.warn(
+          `[relayab] chat stream for model=${model} ended without a usage frame; estimating tokens`,
+        );
+      }
+      const promptTokens = sawUsage
+        ? usage.promptTokens
+        : estimateTokensFromText(inputText);
+      const completionTokens = sawUsage
+        ? usage.completionTokens
+        : estimateTokensFromText(outputText);
+      await settleUsage({
+        apiKey,
+        provider,
+        user,
+        model,
+        upstreamModel,
+        promptTokens,
+        completionTokens,
+        billingMode,
+      });
+    },
+  });
+
+  return {
+    ok: true,
+    status: 200,
+    body,
+    contentType: upstream.headers.get("content-type") ?? "text/event-stream",
+  };
+}
+
+function streamResponsesAnswer(args: {
+  upstream: Response;
+  apiKey: ApiKey;
+  provider: Provider;
+  user: User;
+  model: string;
+  upstreamModel: string;
+  /** Best-effort input text, used to estimate tokens if no usage frame arrives. */
+  inputText: string;
+  /** Client request signal; firing it settles the usage row. */
+  signal?: AbortSignal;
+}): ProxyResult {
+  const { upstream, apiKey, provider, user, model, upstreamModel, inputText, signal } = args;
+  if (!upstream.body) {
+    return {
+      ok: false,
+      status: 502,
+      error: { code: "upstream_error", message: "Upstream returned an empty stream" },
+    };
+  }
+
+  let usage: StreamUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+  let sawUsage = false;
+  let outputText = "";
 
   const consumeLine = (line: string): void => {
     const trimmed = line.trim();
@@ -774,41 +871,39 @@ function streamResponsesAnswer(args: {
         usage = found;
         sawUsage = true;
       }
+      // Harvest streamed output text so the estimate fallback has something
+      // to measure when the upstream omits the usage frame.
+      const record = parsed as { type?: string; delta?: unknown };
+      if (record?.type === "response.output_text.delta" && typeof record.delta === "string") {
+        outputText += record.delta;
+      }
     } catch {
       // Partial or non-JSON keep-alive frame — nothing to do.
     }
   };
 
-  const tap = new TransformStream<Uint8Array, Uint8Array>({
-    transform(chunk, controller) {
-      pending += decoder.decode(chunk, { stream: true });
-      let newline = pending.indexOf("\n");
-      while (newline !== -1) {
-        consumeLine(pending.slice(0, newline));
-        pending = pending.slice(newline + 1);
-        newline = pending.indexOf("\n");
-      }
-      controller.enqueue(chunk);
-    },
-    async flush() {
-      pending += decoder.decode();
-      if (pending) consumeLine(pending);
+  const body = ssePassthrough(upstream.body, {
+    signal,
+    onLine: consumeLine,
+    settle: async () => {
+      // No usage frame means the client disconnected or maxDuration cut the
+      // stream short. Bill by estimate from the text we did see, and mark the
+      // row so the estimate is auditable.
+      const billingMode: "usage" | "estimated" = sawUsage ? "usage" : "estimated";
       if (!sawUsage) {
-        // The upstream never sent a usage frame. That happens when the client
-        // disconnects or the function hits maxDuration mid-stream, and it means
-        // this call cannot be billed accurately — make it visible rather than
-        // silently recording zero.
         console.warn(
-          `[relayab] responses stream for model=${model} ended without a usage frame; recording 0 tokens`,
+          `[relayab] responses stream for model=${model} ended without a usage frame; estimating tokens`,
         );
       }
-      await settleResponsesUsage({
+      await settleUsage({
         apiKey,
         provider,
         user,
         model,
         upstreamModel,
-        ...usage,
+        promptTokens: sawUsage ? usage.promptTokens : estimateTokensFromText(inputText),
+        completionTokens: sawUsage ? usage.completionTokens : estimateTokensFromText(outputText),
+        billingMode,
       });
     },
   });
@@ -816,7 +911,7 @@ function streamResponsesAnswer(args: {
   return {
     ok: true,
     status: 200,
-    body: upstream.body.pipeThrough(tap),
+    body,
     contentType: upstream.headers.get("content-type") ?? "text/event-stream",
   };
 }
@@ -829,13 +924,15 @@ async function proxyResponsesViaChat(args: {
   req: ResponseAPIRequest;
   apiKey: ApiKey;
   user: User;
+  signal?: AbortSignal;
   deps?: ProxyDeps;
 }): Promise<ProxyResult> {
-  const { req, apiKey, user, deps } = args;
+  const { req, apiKey, user, signal, deps } = args;
   const chatResult = await proxyChatCompletion({
     req: responsesToChatRequest(req),
     apiKey,
     user,
+    signal,
     deps,
   });
   if (!chatResult.ok) {
@@ -856,13 +953,15 @@ async function proxyResponsesViaAnthropic(args: {
   req: ResponseAPIRequest;
   apiKey: ApiKey;
   user: User;
+  signal?: AbortSignal;
   deps?: ProxyDeps;
 }): Promise<ProxyResult> {
-  const { req, apiKey, user, deps } = args;
+  const { req, apiKey, user, signal, deps } = args;
   const result = await proxyAnthropicMessage({
     req: responsesToAnthropicRequest(req) as Parameters<typeof proxyAnthropicMessage>[0]["req"],
     apiKey,
     user,
+    signal,
     deps,
   });
   if (!result.ok) {

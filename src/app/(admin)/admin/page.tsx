@@ -3,7 +3,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { listUsers } from "@/lib/db/users";
 import { listAllApiKeys } from "@/lib/db/keys";
 import { listProviders } from "@/lib/db/providers";
-import { aggregateByKeyMany } from "@/lib/db/usage";
+import { aggregateByKeyMany, listRecentUsage } from "@/lib/db/usage";
 import { Card, CardHeader, StatCard } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import {
@@ -52,6 +52,12 @@ export default async function AdminOverviewPage() {
   const recentUsers = [...users]
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, 5);
+
+  // Recent requests, with the billing mode surfaced. `estimated` means the
+  // stream ended before an upstream usage frame arrived, so the tokens were
+  // derived from text length rather than measured.
+  const recentUsage = await listRecentUsage(keys.map((k) => k.id), { limit: 8 });
+  const usernameById = new Map(users.map((u) => [u.id, u.username]));
 
   return (
     <SectionPageLayout>
@@ -156,6 +162,65 @@ export default async function AdminOverviewPage() {
             </div>
           </Card>
         </div>
+
+        {/* Recent requests — the only place the billing mode is visible, so an
+            operator can tell an estimated row (stream ended without an
+            upstream usage frame) from a measured one. */}
+        <Card className="mt-6">
+          <CardHeader
+            title={
+              <span className="flex items-center gap-2">
+                <Activity className="h-4 w-4 text-muted-foreground" />
+                {t("admin.overview.recentUsage")}
+              </span>
+            }
+            description={t("admin.overview.recentUsageDesc")}
+          />
+          {recentUsage.length === 0 ? (
+            <EmptyState title={t("admin.overview.recentUsageEmpty")} />
+          ) : (
+            <Table>
+              <THead>
+                <TR>
+                  <TH>{t("dashboard.table.time")}</TH>
+                  <TH>{t("admin.keys.create.user")}</TH>
+                  <TH>{t("docs.models.title")}</TH>
+                  <TH className="text-right">{t("admin.overview.usageTotalTokens")}</TH>
+                  <TH className="text-right">{t("admin.overview.usageTotalCredits")}</TH>
+                  <TH>{t("admin.overview.billingMode")}</TH>
+                </TR>
+              </THead>
+              <TBody>
+                {recentUsage.map((row) => (
+                  <TR key={row.id}>
+                    <TD className="whitespace-nowrap text-muted-foreground">
+                      {formatDate(row.createdAt)}
+                    </TD>
+                    <TD className="font-mono text-xs">
+                      {usernameById.get(row.userId) ?? row.userId}
+                    </TD>
+                    <TD className="font-mono text-xs">{row.model}</TD>
+                    <TD className="text-right">
+                      {row.status === "success" ? formatNumber(row.totalTokens) : "—"}
+                    </TD>
+                    <TD className="text-right">
+                      {row.status === "success" ? formatNumber(row.creditsUsed / 1000) : "—"}
+                    </TD>
+                    <TD>
+                      {row.status !== "success" ? (
+                        <Badge tone="danger">{t("admin.overview.billingFailed")}</Badge>
+                      ) : row.billingMode === "estimated" ? (
+                        <Badge tone="warning">{t("admin.overview.billingEstimated")}</Badge>
+                      ) : (
+                        <Badge tone="neutral">{t("admin.overview.billingMeasured")}</Badge>
+                      )}
+                    </TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+          )}
+        </Card>
       </SectionPageLayout.Content>
     </SectionPageLayout>
   );
