@@ -30,17 +30,31 @@ export function formatCredits(units: number): string {
 }
 
 /**
- * Format credits for overview/dashboard summary contexts.
- * Uses floor (not rounding) so 4.1 and 4.8 both display as "4".
+ * Format credits with floor (round down) — for remaining/balance display.
+ * 4.1 and 4.8 both display as "4".
  * This avoids visual confusion between decimal points and thousand-separators.
  */
-export function formatCreditsOverview(units: number): string {
+export function formatCreditsFloor(units: number): string {
   const credits = unitsToCredits(units);
   const floored = Math.floor(credits);
   return new Intl.NumberFormat("en-US", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(floored);
+}
+
+/**
+ * Format credits with ceiling (round up) — for consumed/used display.
+ * 4.1 and 4.8 both display as "5".
+ * Shows users what they've potentially spent, not less.
+ */
+export function formatCreditsCeil(units: number): string {
+  const credits = unitsToCredits(units);
+  const ceiled = Math.ceil(credits);
+  return new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(ceiled);
 }
 
 /** Format a number with thousand separators. */

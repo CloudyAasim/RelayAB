@@ -1,7 +1,7 @@
 "use client";
 
 import { useT } from "@/components/i18n/I18nProvider";
-import { formatCredits, formatCreditsOverview, formatNumber } from "@/lib/utils";
+import { formatCredits, formatCreditsFloor, formatCreditsCeil, formatNumber } from "@/lib/utils";
 import { ListChecks, KeyRound, Wallet } from "lucide-react";
 
 interface Props {
@@ -20,8 +20,10 @@ interface Props {
  * holds. That is the model the rest of the app assumes, and showing it here
  * is what stops a user from wondering whether each key has its own budget.
  *
- * Note: Overview contexts use formatCreditsOverview (integer display) to avoid
- * visual confusion between decimal points and thousand-separators.
+ * Note: For credit display in overview contexts:
+ * - Remaining/balance uses floor (show conservative estimate)
+ * - Consumed/used uses ceiling (show worst-case, not less than actual)
+ * This prevents users from overestimating their available balance.
  */
 export function AllocationSummary({
   quotaType,
@@ -33,11 +35,18 @@ export function AllocationSummary({
 }: Props) {
   const t = useT();
 
-  //精细场景用 formatCredits，总览用 formatCreditsOverview
+  // 获取单位：积分/credits 或 tokens
+  const unitLabel = t("admin.keys.create.quotaType." + quotaType);
+
+  // 精细场景用 formatCredits
   const fmt = (n: number) =>
-    quotaType === "tokens" ? `${formatNumber(n)} tokens` : `${formatCredits(n)} 积分`;
-  const fmtOverview = (n: number) =>
-    quotaType === "tokens" ? `${formatNumber(n)} tokens` : `${formatCreditsOverview(n)} 积分`;
+    quotaType === "tokens" ? `${formatNumber(n)} ${unitLabel}` : `${formatCredits(n)} ${unitLabel}`;
+  
+  // 总览场景：剩余用 floor，消耗用 ceiling
+  const fmtOverviewRemaining = (n: number) =>
+    quotaType === "tokens" ? `${formatNumber(n)} ${unitLabel}` : `${formatCreditsFloor(n)} ${unitLabel}`;
+  const fmtOverviewUsed = (n: number) =>
+    quotaType === "tokens" ? `${formatNumber(n)} ${unitLabel}` : `${formatCreditsCeil(n)} ${unitLabel}`;
 
   const remaining = Math.max(0, quotaLimit - quotaUsed);
   const pct = quotaLimit > 0 ? Math.min(100, (quotaUsed / quotaLimit) * 100) : 0;
@@ -65,12 +74,12 @@ export function AllocationSummary({
                 {t("dashboard.pool.title")}
               </div>
               <div className="mt-1 text-2xl font-semibold tracking-tight text-foreground">
-                {neverGranted ? t("dashboard.pool.none") : fmtOverview(remaining)}
+                {neverGranted ? t("dashboard.pool.none") : fmtOverviewRemaining(remaining)}
               </div>
-              {/* 仅显示已用积分，不与总量对比显示，避免小数点/逗号混淆 */}
+              {/* 仅显示已消耗（向上取整），不与总量对比显示，避免小数点/逗号混淆 */}
               {!neverGranted && (
                 <div className="mt-1 text-xs text-muted-foreground">
-                  {t("dashboard.pool.used", { used: fmtOverview(quotaUsed) })}
+                  {t("dashboard.pool.used", { used: fmtOverviewUsed(quotaUsed) })}
                 </div>
               )}
             </div>

@@ -8,7 +8,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
 import { useT } from "@/components/i18n/I18nProvider";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";
-import { formatCredits, formatCreditsOverview, formatNumber } from "@/lib/utils";
+import { formatCredits, formatCreditsFloor, formatCreditsCeil, formatNumber } from "@/lib/utils";
 import { CREDIT_SCALE } from "@/lib/quota/credits";
 import type { PublicUser } from "@/lib/db/types";
 import { Settings2, Coins, ListChecks, KeyRound, Wallet } from "lucide-react";
@@ -18,15 +18,23 @@ import { Settings2, Coins, ListChecks, KeyRound, Wallet } from "lucide-react";
  * Locale-neutral on purpose — the surrounding template supplies the wording.
  */
 function amount(type: PublicUser["quotaType"], n: number): string {
-  return type === "tokens" ? formatNumber(n) : formatCreditsOverview(n);
+  return type === "tokens" ? formatNumber(n) : formatCredits(n);
 }
 
 /**
- * Integer-format version for card/overview displays.
- * Uses floor (not rounding) to avoid decimal/comma confusion.
+ * Floor version for remaining/balance display.
+ * Uses floor — shows conservative estimate to avoid decimal/comma confusion.
  */
-function amountOverview(type: PublicUser["quotaType"], n: number): string {
-  return type === "tokens" ? formatNumber(n) : formatCreditsOverview(n);
+function amountFloor(type: PublicUser["quotaType"], n: number): string {
+  return type === "tokens" ? formatNumber(n) : formatCreditsFloor(n);
+}
+
+/**
+ * Ceiling version for consumed/used display.
+ * Uses ceiling — shows worst-case, not less than actual.
+ */
+function amountCeil(type: PublicUser["quotaType"], n: number): string {
+  return type === "tokens" ? formatNumber(n) : formatCreditsCeil(n);
 }
 
 interface Props {
@@ -74,9 +82,9 @@ export function AllocationEditor({ users, availableModels }: Props) {
                   u.quotaLimit === 0
                     ? "—"
                     : t("admin.users.allocation.poolUsedValue", {
-                        used: amountOverview(u.quotaType, u.quotaUsed),
-                        total: amountOverview(u.quotaType, u.quotaLimit),
-                        remaining: amountOverview(
+                        used: amountCeil(u.quotaType, u.quotaUsed),
+                        total: amountFloor(u.quotaType, u.quotaLimit),
+                        remaining: amountFloor(
                           u.quotaType,
                           Math.max(0, u.quotaLimit - u.quotaUsed),
                         ),
