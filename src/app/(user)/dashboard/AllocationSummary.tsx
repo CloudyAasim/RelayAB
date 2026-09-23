@@ -63,22 +63,22 @@ export function AllocationSummary({
   return (
     <div className="space-y-3">
       {/* Credit pool — the primary number on this page. */}
-      <div className="rounded-lg border border-border bg-card p-5">
+      <div className="rounded-lg border border-border bg-card p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-md bg-primary/10 text-primary">
-              <Wallet className="h-4 w-4" />
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary sm:h-9 sm:w-9">
+              <Wallet className="h-4 w-4 sm:h-5 sm:w-5" />
             </span>
             <div>
-              <div className="text-xs uppercase tracking-wider text-muted-foreground">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground sm:text-xs">
                 {t("dashboard.pool.title")}
               </div>
-              <div className="mt-1 text-2xl font-semibold tracking-tight text-foreground">
+              <div className="mt-0.5 text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
                 {neverGranted ? t("dashboard.pool.none") : fmtOverviewRemaining(remaining)}
               </div>
               {/* 仅显示已消耗（向上取整），不与总量对比显示，避免小数点/逗号混淆 */}
               {!neverGranted && (
-                <div className="mt-1 text-xs text-muted-foreground">
+                <div className="mt-0.5 text-xs text-muted-foreground sm:text-sm">
                   {t("dashboard.pool.used", { used: fmtOverviewUsed(quotaUsed) })}
                 </div>
               )}
@@ -93,14 +93,14 @@ export function AllocationSummary({
 
         {/* Progress meter */}
         {!neverGranted && (
-          <div className="mt-4">
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div className="mt-3 sm:mt-4">
+            <div className="h-1 w-full overflow-hidden rounded-full bg-muted sm:h-1.5">
               <div
                 className={`h-full rounded-full transition-[width] ${barTone}`}
                 style={{ width: `${pct}%` }}
               />
             </div>
-            <div className="mt-1.5 flex justify-between text-[11px] text-muted-foreground">
+            <div className="mt-1 flex justify-between text-[10px] text-muted-foreground sm:mt-1.5 sm:text-[11px]">
               <span>{Math.round(pct)}%</span>
               <span>{t("dashboard.pool.sharedByKeys")}</span>
             </div>
@@ -111,7 +111,7 @@ export function AllocationSummary({
       {/* Policy the pool is subject to. */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field
-          icon={<ListChecks className="h-3.5 w-3.5" />}
+          icon={<ListChecks className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}
           label={t("dashboard.allocation.modelWhitelist")}
           value={
             allowedModels.length > 0
@@ -121,7 +121,7 @@ export function AllocationSummary({
           hint={t("dashboard.allocation.modelWhitelistHint")}
         />
         <Field
-          icon={<KeyRound className="h-3.5 w-3.5" />}
+          icon={<KeyRound className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}
           label={t("dashboard.allocation.activeKeys")}
           value={
             maxActiveKeys > 0
@@ -151,12 +151,12 @@ function Field({
   hint?: string;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-muted/20 p-3">
-      <div className="flex items-center gap-1.5 text-xs uppercase tracking-wider text-muted-foreground">
+    <div className="rounded-lg border border-border bg-muted/20 p-3 sm:p-4">
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground sm:text-xs">
         {icon}
         {label}
       </div>
-      <div className="mt-1 text-sm font-medium text-foreground break-words">{value}</div>
+      <div className="mt-1 text-sm font-medium text-foreground break-words sm:text-base">{value}</div>
       {hint && <div className="mt-0.5 text-xs text-muted-foreground">{hint}</div>}
     </div>
   );

@@ -52,10 +52,10 @@ export function SectionPageLayout({ children, scrollContent = true }: SectionPag
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="shrink-0 pb-4">
+      <div className="shrink-0 pb-3 sm:pb-4">
         {breadcrumb != null && <div className="mb-2">{breadcrumb}</div>}
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-          <h2 className="truncate text-xl font-semibold tracking-tight text-foreground">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-4">
+          <h2 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">
             {title}
           </h2>
           {actions != null && (

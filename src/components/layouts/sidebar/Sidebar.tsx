@@ -15,8 +15,9 @@ import { useT } from "@/components/i18n/I18nProvider";
  *   - On `<lg` viewports: slide-in drawer (controlled by `open`).
  *
  * Width tokens (Tailwind w-*):
- *   - expanded: 16rem (256px)
- *   - collapsed: 3.5rem (56px) — just enough for icons
+ *   - mobile drawer: 72 (288px)
+ *   - expanded: 64 (256px)
+ *   - collapsed: 14 (56px) — just enough for icons
  */
 export function Sidebar({ children }: { children: ReactNode }) {
   const { collapsed, open, setOpen, isMobile } = useSidebar();
@@ -36,7 +37,7 @@ export function Sidebar({ children }: { children: ReactNode }) {
         aria-label="Sidebar navigation"
         data-state={collapsed ? "collapsed" : "expanded"}
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[transform,width] duration-200 ease-in-out",
+          "fixed inset-y-0 left-0 z-50 flex w-[288px] flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[transform,width] duration-200 ease-in-out md:w-64",
           "lg:sticky lg:top-0 lg:h-screen lg:translate-x-0",
           // Mobile drawer behavior
           isMobile && (open ? "translate-x-0 shadow-xl" : "-translate-x-full"),
@@ -54,7 +55,7 @@ export function SidebarHeader({ children, className }: { children: ReactNode; cl
   return (
     <div
       className={cn(
-        "flex h-14 items-center gap-2 border-b border-sidebar-border px-4",
+        "flex h-12 items-center gap-2 border-b border-sidebar-border px-3 md:h-14 md:px-4",
         className,
       )}
     >
@@ -71,7 +72,7 @@ export function SidebarFooter({ children, className }: { children: ReactNode; cl
   return (
     <div
       className={cn(
-        "border-t border-sidebar-border px-3 py-3",
+        "border-t border-sidebar-border px-2 py-2 md:px-3 md:py-3",
         className,
       )}
     >
@@ -88,7 +89,7 @@ export function SidebarRail() {
       type="button"
       aria-label="Toggle sidebar"
       onClick={toggleSidebar}
-      className="absolute inset-y-0 right-0 hidden w-1.5 translate-x-1/2 cursor-w-resize rounded-full bg-transparent transition-colors hover:bg-sidebar-border lg:block"
+      className="absolute inset-y-0 right-0 hidden w-1.5 translate-x-1/2 cursor-w-resize items-center justify-center rounded-full bg-transparent transition-colors hover:bg-sidebar-border lg:flex"
     />
   );
 }
@@ -114,7 +115,7 @@ export function SidebarToggle({ className }: { className?: string }) {
       aria-expanded={!collapsed}
       title={t("nav.toggleSidebar")}
       className={cn(
-        "flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+        "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
         className,
       )}
     >
@@ -185,7 +186,7 @@ export function SidebarMenuButton({
     "group flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
     "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
     isActive && "bg-sidebar-accent text-sidebar-accent-foreground",
-    collapsed && "justify-center",
+    collapsed && "justify-center px-2",
   );
 
   const content = (
@@ -206,7 +207,6 @@ export function SidebarMenuButton({
   if (href) {
     return (
       <Link
-        
         href={href}
         className={baseClass}
         aria-current={isActive ? "page" : undefined}

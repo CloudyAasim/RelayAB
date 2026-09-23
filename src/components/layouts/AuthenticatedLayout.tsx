@@ -288,7 +288,8 @@ function SidebarShell({
           role={role}
           pageTitle={pageTitle}
         />
-        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">{children}</main>
+        {/* Reduced padding on mobile for better space utilization */}
+        <main className="flex-1 px-3 py-4 sm:px-4 sm:py-6 md:px-6">{children}</main>
       </SidebarInset>
     </div>
   );

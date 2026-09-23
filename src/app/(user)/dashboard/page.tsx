@@ -57,8 +57,8 @@ export default async function DashboardPage() {
         <CreateKeyButton allocation={allocation} />
       </SectionPageLayout.Actions>
       <SectionPageLayout.Content>
-        {/* Stats row */}
-        <div className="grid gap-4 sm:grid-cols-3">
+        {/* Stats row - responsive grid: 1 col on mobile, 2 on small tablets, 3 on desktop */}
+        <div className="grid gap-3 grid-cols-1 xs:grid-cols-2 sm:grid-cols-3">
           <StatCard
             label={t("dashboard.stat.activeKeys")}
             value={formatNumber(keys.filter((k) => k.enabled).length)}
@@ -81,7 +81,7 @@ export default async function DashboardPage() {
 
         {/* Allocation banner */}
         {fullUser && (
-          <div className="mt-6">
+          <div className="mt-4 sm:mt-6">
             <AllocationSummary
               quotaType={fullUser.quotaType}
               quotaLimit={fullUser.quotaLimit}
@@ -94,7 +94,7 @@ export default async function DashboardPage() {
         )}
 
         {/* API Keys list */}
-        <div className="mt-6">
+        <div className="mt-4 sm:mt-6">
           <Card>
             <CardHeader
               title={t("dashboard.apiKeys.title")}
@@ -118,52 +118,55 @@ export default async function DashboardPage() {
                 }
               />
             ) : (
-              <Table>
-                <THead>
-                  <TR>
-                    <TH>{t("admin.keys.create.label")}</TH>
-                    <TH>{t("dashboard.table.key")}</TH>
-                    <TH>{t("dashboard.table.modelScope")}</TH>
-                    <TH>{t("dashboard.table.lastUsed")}</TH>
-                    <TH>{t("admin.keys.create.expiresAt")}</TH>
-                    <TH>{t("dashboard.table.status")}</TH>
-                    <TH className="w-32 text-right">
-                      {t("common.actions")}
-                    </TH>
-                  </TR>
-                </THead>
-                <TBody>
-                  {keys.map((k) => (
-                    <TR key={k.id}>
-                      <TD className="font-medium">{k.label}</TD>
-                      <TD>
-                        <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
-                          {k.keyPrefix}
-                        </code>
-                      </TD>
-                      <TD className="text-muted-foreground">
-                        {k.allowedModels.length > 0
-                          ? k.allowedModels.join(", ")
-                          : t("dashboard.table.inheritsAccount")}
-                      </TD>
-                      <TD className="text-muted-foreground">
-                        {formatDate(k.lastUsedAt)}
-                      </TD>
-                      <TD className="text-muted-foreground">
-                        {formatDate(k.expiresAt)}
-                      </TD>
-                      <TD className="text-right">
-                        <UserKeyActions apiKey={k} />
-                      </TD>
+              <div className="overflow-x-auto">
+                <Table>
+                  <THead>
+                    <TR>
+                      <TH className="min-w-[100px]">{t("admin.keys.create.label")}</TH>
+                      <TH className="min-w-[80px]">{t("dashboard.table.key")}</TH>
+                      <TH className="hidden sm:table-cell">{t("dashboard.table.modelScope")}</TH>
+                      <TH className="hidden md:table-cell">{t("dashboard.table.lastUsed")}</TH>
+                      <TH className="hidden lg:table-cell">{t("admin.keys.create.expiresAt")}</TH>
+                      <TH className="w-20 text-center sm:w-auto">{t("dashboard.table.status")}</TH>
+                      <TH className="w-20 text-right sm:w-28">{t("common.actions")}</TH>
                     </TR>
-                  ))}
-                </TBody>
-              </Table>
+                  </THead>
+                  <TBody>
+                    {keys.map((k) => (
+                      <TR key={k.id}>
+                        <TD className="font-medium">{k.label}</TD>
+                        <TD>
+                          <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                            {k.keyPrefix}
+                          </code>
+                        </TD>
+                        <TD className="hidden sm:table-cell text-muted-foreground">
+                          {k.allowedModels.length > 0
+                            ? k.allowedModels.join(", ")
+                            : t("dashboard.table.inheritsAccount")}
+                        </TD>
+                        <TD className="hidden md:table-cell text-muted-foreground">
+                          {formatDate(k.lastUsedAt)}
+                        </TD>
+                        <TD className="hidden lg:table-cell text-muted-foreground">
+                          {formatDate(k.expiresAt)}
+                        </TD>
+                        <TD className="text-center sm:text-left">
+                          <UserKeyActions apiKey={k} />
+                        </TD>
+                        <TD className="text-right">
+                          <StatusDot enabled={k.enabled} />
+                        </TD>
+                      </TR>
+                    ))}
+                  </TBody>
+                </Table>
+              </div>
             )}
           </Card>
         </div>
 
-        <p className="mt-8 text-center text-xs text-muted-foreground">
+        <p className="mt-6 text-center text-xs text-muted-foreground sm:mt-8">
           {t("dashboard.help.contactAdmin")}
         </p>
       </SectionPageLayout.Content>
