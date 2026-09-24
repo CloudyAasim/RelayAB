@@ -1,138 +1,87 @@
 /**
- * tests/unit/quota-rates.test.ts
+ * Pricing rules.
  *
- * Model rates are expressed in 积分 per 1,000,000 tokens; `computeCredits`
+ * A rate belongs to one **model row of one provider** — the client-facing model
+ * id as mapped inside that provider. Two providers serving the same model name
+ * therefore price it independently, and the same provider can price each of its
+ * models differently. Rates are 积分 per 1,000,000 tokens; `computeCredits`
  * returns integer 0.001-积分 units.
  */
 import { describe, it, expect } from "vitest";
-import {
-  MODEL_RATES,
-  DEFAULT_RATE,
-  getModelRate,
-  computeCredits,
-  applyRateOverride,
-} from "@/lib/quota/rates";
+import { FREE_RATE, computeCredits, resolveModelRate } from "@/lib/quota/rates";
 
-describe("model rates", () => {
-  it("getModelRate returns a known model", () => {
-    const rate = getModelRate("gpt-4o-mini");
-    expect(rate.inputPerMillion).toBeGreaterThan(0);
-    expect(rate.outputPerMillion).toBeGreaterThan(0);
+/** A model row's rate fields (what `provider.modelConfigs[id]` holds). */
+const model = (inputCost = 0, outputCost = 0) => ({ inputCost, outputCost });
+
+describe("resolveModelRate", () => {
+  it("is free when the model row has no rate configured", () => {
+    expect(resolveModelRate()).toEqual(FREE_RATE);
+    expect(resolveModelRate(null)).toEqual(FREE_RATE);
+    expect(resolveModelRate(model())).toEqual(FREE_RATE);
   });
 
-  it("falls back to the default rate for unknown models", () => {
-    expect(getModelRate("some-future-model")).toEqual(DEFAULT_RATE);
+  it("reads the rate straight off the model row", () => {
+    expect(resolveModelRate(model(12, 34))).toEqual({
+      inputPerMillion: 12,
+      outputPerMillion: 34,
+    });
   });
 
-  it("covers the most common models", () => {
-    expect(MODEL_RATES["gpt-4o"]).toBeDefined();
-    expect(MODEL_RATES["gpt-4o-mini"]).toBeDefined();
-    expect(MODEL_RATES["claude-3-5-sonnet-20241022"]).toBeDefined();
-    expect(MODEL_RATES["o1"]).toBeDefined();
+  it("keeps input and output independent", () => {
+    expect(resolveModelRate(model(12, 0))).toEqual({
+      inputPerMillion: 12,
+      outputPerMillion: 0,
+    });
   });
 
-  it("stores integer rates (no fractional table entries)", () => {
-    for (const [model, rate] of Object.entries(MODEL_RATES)) {
-      expect(Number.isInteger(rate.inputPerMillion), model).toBe(true);
-      expect(Number.isInteger(rate.outputPerMillion), model).toBe(true);
-    }
+  it("treats missing or nonsense values as 0", () => {
+    expect(resolveModelRate(model(Number.NaN, -1))).toEqual(FREE_RATE);
   });
 });
 
 describe("computeCredits", () => {
-  it("charges gpt-4o-mini input at 15 积分 per 1M tokens", () => {
-    // 1,000,000 input tokens = 15 积分 = 15,000 units
-    const units = computeCredits({
-      model: "gpt-4o-mini",
-      promptTokens: 1_000_000,
-      completionTokens: 0,
-    });
-    expect(units).toBe(15_000);
-  });
-
-  it("charges for mixed input and output", () => {
-    // 1000 * 15 + 1000 * 60 = 75,000 / 1000 = 75 units = 0.075 积分
-    const units = computeCredits({
-      model: "gpt-4o-mini",
-      promptTokens: 1000,
-      completionTokens: 1000,
-    });
-    expect(units).toBe(75);
-  });
-
-  it("keeps sub-积分 precision for tiny requests", () => {
-    // 11 prompt + 7 completion on gpt-4o-mini = 0.585 units → 1 unit = 0.001 积分
-    const tiny = computeCredits({
-      model: "gpt-4o-mini",
-      promptTokens: 11,
-      completionTokens: 7,
-    });
-    expect(tiny).toBe(1);
-
-    // 100 * 15 / 1000 = 1.5, 200 * 60 / 1000 = 12 → 13.5 → 14 units
-    const bigger = computeCredits({
-      model: "gpt-4o-mini",
-      promptTokens: 100,
-      completionTokens: 200,
-    });
-    expect(bigger).toBe(14);
-  });
-
-  it("returns 0 for zero tokens", () => {
+  it("converts tokens × rate into 0.001-积分 units", () => {
+    // 1000 prompt × 15 / 1000 = 15 units = 0.015 积分
     expect(
-      computeCredits({ model: "gpt-4o", promptTokens: 0, completionTokens: 0 }),
+      computeCredits({
+        rate: { inputPerMillion: 15, outputPerMillion: 60 },
+        promptTokens: 1000,
+        completionTokens: 0,
+      }),
+    ).toBe(15);
+  });
+
+  it("rounds to the nearest unit instead of up to a whole 积分", () => {
+    // (10×15 + 20×60) / 1000 = 1.35 → 1 unit; a whole-积分 ledger would charge 1000
+    const units = computeCredits({
+      rate: { inputPerMillion: 15, outputPerMillion: 60 },
+      promptTokens: 10,
+      completionTokens: 20,
+    });
+    expect(units).toBe(1);
+    expect(units).toBeLessThan(1000);
+  });
+
+  it("charges nothing for a free rate", () => {
+    expect(
+      computeCredits({ rate: FREE_RATE, promptTokens: 1_000_000, completionTokens: 1_000_000 }),
     ).toBe(0);
   });
 
-  it("clamps negative token counts to zero", () => {
+  it("prices input and output separately", () => {
+    // 1M input at 12 + 1M output at 34 = 12 + 34 = 46 积分 = 46000 units
     expect(
-      computeCredits({ model: "gpt-4o", promptTokens: -1000, completionTokens: -500 }),
-    ).toBe(0);
+      computeCredits({
+        rate: { inputPerMillion: 12, outputPerMillion: 34 },
+        promptTokens: 1_000_000,
+        completionTokens: 1_000_000,
+      }),
+    ).toBe(46_000);
   });
 
-  it("uses the default rate for unknown models", () => {
-    // 1000 tokens * 500 / 1000 = 500 units
-    expect(
-      computeCredits({ model: "totally-unknown", promptTokens: 1000, completionTokens: 0 }),
-    ).toBe(500);
-  });
-
-  it("always returns a non-negative integer", () => {
-    const units = computeCredits({
-      model: "gpt-4o-mini",
-      promptTokens: 333,
-      completionTokens: 0,
-    });
-    expect(units).toBe(5); // 4.995 → 5
-    expect(Number.isInteger(units)).toBe(true);
-  });
-});
-
-describe("applyRateOverride", () => {
-  it("applies per-million overrides", () => {
-    applyRateOverride('{"custom-model":{"inputPerMillion":100,"outputPerMillion":200}}');
-    expect(getModelRate("custom-model")).toEqual({
-      inputPerMillion: 100,
-      outputPerMillion: 200,
-    });
-  });
-
-  it("accepts per-1k 积分 overrides", () => {
-    applyRateOverride('{"legacy-model":{"inputPer1kCredits":0.1,"outputPer1kCredits":0.2}}');
-    expect(getModelRate("legacy-model")).toEqual({
-      inputPerMillion: 100,
-      outputPerMillion: 200,
-    });
-  });
-
-  it("ignores invalid JSON", () => {
-    const before = getModelRate("gpt-4o");
-    applyRateOverride("not json");
-    expect(getModelRate("gpt-4o")).toEqual(before);
-  });
-
-  it("ignores entries with missing fields", () => {
-    applyRateOverride('{"foo":{"inputPerMillion":100}}');
-    expect(getModelRate("foo")).toBe(DEFAULT_RATE);
+  it("ignores negative or non-finite token counts", () => {
+    const rate = { inputPerMillion: 100, outputPerMillion: 100 };
+    expect(computeCredits({ rate, promptTokens: -5, completionTokens: Number.NaN })).toBe(0);
+    expect(computeCredits({ rate, promptTokens: 10.7, completionTokens: 0 })).toBe(1);
   });
 });

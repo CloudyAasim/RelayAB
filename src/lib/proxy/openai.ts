@@ -23,7 +23,7 @@ import { findOpenAIProvidersForModel } from "../db/providers";
 import { recordUsage } from "../db/usage";
 import { checkKeyStatus, reasonToHttp } from "../auth/apikey";
 import { estimateTokensFromText } from "../quota/calculator";
-import { quotaDeltaFromUsage, shouldRejectBeforeRequest } from "../quota/calculator";
+import { shouldRejectBeforeRequest } from "../quota/calculator";
 import { proxyAnthropicMessage } from "./anthropic";
 import { settleUsage } from "./billing";
 import { ssePassthrough } from "./stream-tap";
@@ -731,12 +731,6 @@ async function recordFailure(args: {
     errorMessage: String(args.error),
   });
 }
-
-// ---------------------------------------------------------------------------
-// Quota delta re-export for testing
-// ---------------------------------------------------------------------------
-
-export { quotaDeltaFromUsage };
 
 // ---------------------------------------------------------------------------
 // OpenAI Responses API

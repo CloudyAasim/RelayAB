@@ -6,12 +6,19 @@ import { Button } from "@/components/ui/Button";
 import { LegacyModal as Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
 import { useT } from "@/components/i18n/I18nProvider";
-import { RefreshCw, Pencil, Trash2, Zap, X } from "lucide-react";
+import { RefreshCw, Pencil, Trash2, Zap } from "lucide-react";
 import {
   ProviderFacesField,
   type ProviderFacesValue,
   type UpstreamFormat,
 } from "./ProviderFacesField";
+import {
+  mergeFetchedModels,
+  rowsFromProvider,
+  rowsToPayload,
+  type ProviderModelRow,
+} from "./model-rows";
+import { ProviderModelsEditor } from "./ProviderModelsEditor";
 
 interface Props {
   providerId: string;
@@ -205,7 +212,9 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
   const [priority, setPriority] = useState(String(provider.priority ?? "1"));
   const [enabled, setEnabled] = useState(provider.enabled);
   const [faces, setFaces] = useState<ProviderFacesValue>(() => facesFromProvider(provider));
-  const [modelMapping, setModelMapping] = useState<Record<string, string>>(provider.modelMapping ?? {});
+  const [modelRows, setModelRows] = useState<ProviderModelRow[]>(() =>
+    rowsFromProvider(provider.modelMapping, provider.modelConfigs),
+  );
 
   // Sync state when provider changes
   useEffect(() => {
@@ -217,7 +226,7 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
       setPriority(String(provider.priority ?? "1"));
       setEnabled(provider.enabled);
       setFaces(facesFromProvider(provider));
-      setModelMapping(provider.modelMapping ?? {});
+      setModelRows(rowsFromProvider(provider.modelMapping, provider.modelConfigs));
       setError("");
     }
   }, [open, provider]);
@@ -242,13 +251,7 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
         return;
       }
       const ids: string[] = data.models ?? [];
-      setModelMapping((prev) => {
-        const merged = { ...prev };
-        for (const id of ids) {
-          if (!(id in merged)) merged[id] = id;
-        }
-        return merged;
-      });
+      setModelRows((prev) => mergeFetchedModels(prev, ids));
     } catch (err) {
       setError(err instanceof Error ? err.message : t("common.networkError"));
     } finally {
@@ -279,7 +282,7 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
           upstreamFormat: faces.upstreamFormat === "anthropic" ? "responses" : faces.upstreamFormat,
           anthropicEnabled: faces.anthropicEnabled,
           anthropicBaseUrl: faces.anthropicBaseUrl || null,
-          modelMapping,
+          ...rowsToPayload(modelRows),
         }),
       });
       const data = await res.json();
@@ -359,11 +362,11 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
           </label>
         </div>
 
-        <div>
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <label className="block text-sm font-medium">
-              {t("admin.providers.table.models")}
-            </label>
+        <ProviderModelsEditor
+          rows={modelRows}
+          onChange={setModelRows}
+          hint={t("admin.providers.syncHint")}
+          actions={
             <Button
               type="button"
               size="sm"
@@ -375,68 +378,8 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
               <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
               {t("admin.providers.fetchModels")}
             </Button>
-          </div>
-          <p className="mb-2 text-xs text-muted-foreground">{t("admin.providers.syncHint")}</p>
-          <div className="max-h-60 overflow-y-auto border rounded-md">
-            <table className="w-full text-sm">
-              <thead className="bg-muted sticky top-0">
-                <tr>
-                  <th className="px-2 py-1 text-left font-medium text-xs">{t("admin.providers.model.clientId")}</th>
-                  <th className="px-2 py-1 text-left font-medium text-xs">{t("admin.providers.model.upstreamId")}</th>
-                  <th className="w-8"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {Object.entries(modelMapping).map(([client, upstream]) => (
-                  <tr key={client}>
-                    <td className="px-1 py-0.5">
-                      <input
-                        type="text"
-                        value={client}
-                        onChange={(e) => {
-                          const oldUpstream = modelMapping[client];
-                          const newMapping = { ...modelMapping };
-                          delete newMapping[client];
-                          newMapping[e.target.value] = oldUpstream;
-                          setModelMapping(newMapping);
-                        }}
-                        className="w-full rounded border bg-transparent px-1 py-0.5 font-mono text-xs"
-                      />
-                    </td>
-                    <td className="px-1 py-0.5">
-                      <input
-                        type="text"
-                        value={upstream}
-                        onChange={(e) => setModelMapping(prev => ({ ...prev, [client]: e.target.value }))}
-                        className="w-full rounded border bg-transparent px-1 py-0.5 font-mono text-xs"
-                      />
-                    </td>
-                    <td className="px-1 py-0.5">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const newMapping = { ...modelMapping };
-                          delete newMapping[client];
-                          setModelMapping(newMapping);
-                        }}
-                        className="text-muted-foreground hover:text-destructive"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <button
-            type="button"
-            onClick={() => setModelMapping(prev => ({ ...prev, [crypto.randomUUID()]: "" }))}
-            className="mt-2 text-sm text-primary hover:underline"
-          >
-            + {t("admin.providers.model.add")}
-          </button>
-        </div>
+          }
+        />
 
         {error && <p className="text-sm text-destructive">{error}</p>}
 

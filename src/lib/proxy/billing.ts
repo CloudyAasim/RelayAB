@@ -17,7 +17,8 @@
 import { touchApiKeyLastUsed } from "../db/keys";
 import { incrementUserQuotaUsed } from "../db/users";
 import { quotaDelta, recordUsage } from "../db/usage";
-import { computeCredits } from "../quota/rates";
+import { getModelConfig } from "../db/providers";
+import { computeCredits, resolveModelRate } from "../quota/rates";
 import type { ApiKey, Provider, User } from "../db/types";
 
 export interface SettleUsageArgs {
@@ -40,8 +41,11 @@ export async function settleUsage(args: SettleUsageArgs): Promise<void> {
 
   // 积分 consumed, in integer 0.001-积分 units, so even a tiny request
   // registers a fraction of a 积分 instead of being rounded up to a whole one.
+  // Priced by the model row of the provider that answered — never by the
+  // upstream model name (two vendors may charge differently for the same model,
+  // and one may serve it for free).
   const creditsUsed = computeCredits({
-    model: args.upstreamModel,
+    rate: resolveModelRate(getModelConfig(args.provider, args.model)),
     promptTokens,
     completionTokens,
   });

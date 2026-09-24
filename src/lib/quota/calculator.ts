@@ -13,8 +13,7 @@
  *
  * This module owns step 2 and the small helpers around step 4.
  */
-import { computeCredits } from "./rates";
-import type { ApiKey, QuotaType, UsageLog, User } from "../db/types";
+import type { ApiKey, UsageLog, User } from "../db/types";
 
 // ---------------------------------------------------------------------------
 // Pre-flight quota check
@@ -62,27 +61,6 @@ export function isOverQuotaAfterRequest(args: {
 // ---------------------------------------------------------------------------
 // Usage → quota delta
 // ---------------------------------------------------------------------------
-
-/**
- * Convert a response's token counts into the quota delta that should
- * be added to `quotaUsed`.
- *
- * For `quotaType=credits`, delta = 积分 consumed (integer 0.001-积分 units).
- * For `quotaType=tokens`, delta = totalTokens.
- */
-export function quotaDeltaFromUsage(args: {
-  quotaType: QuotaType;
-  usage: { promptTokens: number; completionTokens: number };
-  model: string;
-}): number {
-  const total = args.usage.promptTokens + args.usage.completionTokens;
-  if (args.quotaType === "tokens") return total;
-  return computeCredits({
-    model: args.model,
-    promptTokens: args.usage.promptTokens,
-    completionTokens: args.usage.completionTokens,
-  });
-}
 
 // ---------------------------------------------------------------------------
 // Aggregation helpers
@@ -143,31 +121,8 @@ function isoDateInTz(iso: string, tzOffsetMinutes: number): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Estimate the *minimum* 积分 a request will consume before it runs.
- * Used by admin UI hints; approximate on purpose.
- *
- * We approximate by counting characters in messages (OpenAI-style:
- roughly 4 chars per token). Not exact but good enough as a UI hint.
- */
-export function estimateCredits(args: {
-  model: string;
-  messages: Array<{ role: string; content: string }>;
-}): number {
-  const totalChars = args.messages.reduce(
-    (sum, m) => sum + (m.content?.length ?? 0),
-    0,
-  );
-  const estInputTokens = Math.ceil(totalChars / 4);
-  return computeCredits({
-    model: args.model,
-    promptTokens: estInputTokens,
-    completionTokens: 0,
-  });
-}
-
-/**
  * Approximate token count for a piece of text. Mirrors the heuristic used by
- * `estimateCredits` (chars ÷ 4, rounded up) so that all token accounting in
+ * the streaming estimation fallback (chars ÷ 4, rounded up) so that all token accounting in
  * the project uses the same coefficient. Used by the streaming proxy as a
  * fallback when the upstream never sends a usage frame.
  */

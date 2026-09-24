@@ -34,6 +34,15 @@ async function setupAnthropicProvider(): Promise<string> {
     name: "Test Anthropic",
     kind: "anthropic",
     apiKey: "sk-ant-test",
+    // Rates live on each model row — see lib/quota/rates.ts.
+    modelConfigs: {
+      "claude-3-5-sonnet": {
+        clientId: "claude-3-5-sonnet",
+        upstreamId: "claude-3-5-sonnet-20241022",
+        inputCost: 300,
+        outputCost: 1500,
+      },
+    },
     modelMapping: {
       "claude-3-5-sonnet": "claude-3-5-sonnet-20241022",
     },
