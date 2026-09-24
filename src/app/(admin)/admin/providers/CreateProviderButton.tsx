@@ -15,23 +15,23 @@ import { LegacyModal as Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { useT } from "@/components/i18n/I18nProvider";
-import { PROVIDER_TEMPLATES, type ProviderTemplate } from "@/lib/providers/templates";
+import { PROVIDER_TEMPLATES } from "@/lib/providers/templates";
 import { ProviderFacesField, type ProviderFacesValue } from "./ProviderFacesField";
+import {
+  DEFAULT_CONTEXT_LENGTH,
+  DEFAULT_MAX_OUTPUT_TOKENS,
+  mergeFetchedModels,
+  newModelRow,
+  rowsToPayload,
+  type ProviderModelRow,
+} from "./model-rows";
+import { ProviderModelsEditor } from "./ProviderModelsEditor";
 
 interface Props {
   onCreated?: () => void;
 }
 
 type Kind = "openai" | "anthropic" | "custom-openai";
-
-interface ModelConfig {
-  client: string;
-  upstream: string;
-  contextLength: number;
-  maxOutputTokens: number;
-  inputCost: number;
-  outputCost: number;
-}
 
 export function CreateProviderButton({ onCreated }: Props) {
   const t = useT();
@@ -54,7 +54,7 @@ export function CreateProviderButton({ onCreated }: Props) {
     anthropicEnabled: false,
     anthropicBaseUrl: "",
   });
-  const [models, setModels] = useState<ModelConfig[]>([]);
+  const [modelRows, setModelRows] = useState<ProviderModelRow[]>([]);
 
   // Fetch-models state
   const [fetchingModels, setFetchingModels] = useState(false);
@@ -64,6 +64,15 @@ export function CreateProviderButton({ onCreated }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Context/output defaults for rows added by hand follow the selected template.
+  const activeTemplateModelDefaults = (() => {
+    const tpl = PROVIDER_TEMPLATES.find((t) => t.id === templateId);
+    return {
+      contextLength: tpl?.defaultContextLength ?? DEFAULT_CONTEXT_LENGTH,
+      maxOutputTokens: tpl?.defaultMaxOutput ?? DEFAULT_MAX_OUTPUT_TOKENS,
+    };
+  })();
+
   function applyTemplate(id: string) {
     const tpl = PROVIDER_TEMPLATES.find((tpl) => tpl.id === id);
     if (!tpl) return;
@@ -71,18 +80,16 @@ export function CreateProviderButton({ onCreated }: Props) {
     setKind(tpl.kind === "azure" ? "custom-openai" : (tpl.kind as Kind));
     if (tpl.defaultBaseUrl) setBaseUrl(tpl.defaultBaseUrl);
     
-    // Convert template model mapping to full ModelConfig
-    const templateModels: ModelConfig[] = Object.entries(tpl.defaultModelMapping).map(
-      ([client, upstream]) => ({
-        client,
-        upstream,
-        contextLength: tpl.defaultContextLength ?? 128000,
-        maxOutputTokens: tpl.defaultMaxOutput ?? 8192,
-        inputCost: 0,
-        outputCost: 0,
-      })
+    setModelRows(
+      Object.entries(tpl.defaultModelMapping).map(([clientId, upstreamId]) =>
+        newModelRow({
+          clientId,
+          upstreamId,
+          contextLength: tpl.defaultContextLength ?? DEFAULT_CONTEXT_LENGTH,
+          maxOutputTokens: tpl.defaultMaxOutput ?? DEFAULT_MAX_OUTPUT_TOKENS,
+        }),
+      ),
     );
-    setModels(templateModels);
     
     setName(tpl.label);
     if (tpl.defaultHeaders) {
@@ -104,7 +111,7 @@ export function CreateProviderButton({ onCreated }: Props) {
   function reset() {
     setName(""); setBaseUrl(""); setApiKey("");
     setPriority("0"); setEnabled(true); setHeaders("");
-    setModels([]); setError(null); setFetchResult(null);
+    setModelRows([]); setError(null); setFetchResult(null);
     setFaces({
       openaiEnabled: true,
       upstreamFormat: "responses",
@@ -158,22 +165,12 @@ export function CreateProviderButton({ onCreated }: Props) {
         
         // Add new models that aren't already in the list
         const currentTemplate = PROVIDER_TEMPLATES.find(t => t.id === templateId);
-        const defaultCtx = currentTemplate?.defaultContextLength ?? 128000;
-        const defaultOut = currentTemplate?.defaultMaxOutput ?? 8192;
-        setModels((prev) => {
-          const knownClients = new Set(prev.map((m) => m.client));
-          const newModels: ModelConfig[] = ids
-            .filter((id) => !knownClients.has(id))
-            .map((id) => ({
-              client: id,
-              upstream: id,
-              contextLength: defaultCtx,
-              maxOutputTokens: defaultOut,
-              inputCost: 0,
-              outputCost: 0,
-            }));
-          return [...prev, ...newModels];
-        });
+        setModelRows((prev) =>
+          mergeFetchedModels(prev, ids, {
+            contextLength: currentTemplate?.defaultContextLength ?? DEFAULT_CONTEXT_LENGTH,
+            maxOutputTokens: currentTemplate?.defaultMaxOutput ?? DEFAULT_MAX_OUTPUT_TOKENS,
+          }),
+        );
       } else {
         setFetchResult({
           count: 0,
@@ -194,28 +191,6 @@ export function CreateProviderButton({ onCreated }: Props) {
     }
   }
 
-  function addModel() {
-    const tpl = PROVIDER_TEMPLATES.find(t => t.id === templateId);
-    const defaultCtx = tpl?.defaultContextLength ?? 128000;
-    const defaultOut = tpl?.defaultMaxOutput ?? 8192;
-    setModels((prev) => [
-      ...prev,
-      { client: "", upstream: "", contextLength: defaultCtx, maxOutputTokens: defaultOut, inputCost: 0, outputCost: 0 },
-    ]);
-  }
-
-  function removeModel(idx: number) {
-    setModels((prev) => prev.filter((_, i) => i !== idx));
-  }
-
-  function updateModel(idx: number, field: keyof ModelConfig, value: string | number) {
-    setModels((prev) =>
-      prev.map((m, i) =>
-        i === idx ? { ...m, [field]: value } : m
-      )
-    );
-  }
-
   function parseHeaders(): Record<string, string> | undefined {
     const out: Record<string, string> = {};
     for (const line of headers.split("\n")) {
@@ -234,24 +209,7 @@ export function CreateProviderButton({ onCreated }: Props) {
     setError(null);
 
     try {
-      // Build modelMapping and modelConfigs
-      const modelMapping: Record<string, string> = {};
-      const modelConfigs: Record<string, any> = {};
-      
-      for (const m of models) {
-        if (m.client && m.upstream) {
-          modelMapping[m.client] = m.upstream;
-          modelConfigs[m.client] = {
-            upstreamId: m.upstream,
-            clientId: m.client,
-            contextLength: m.contextLength,
-            maxOutputTokens: m.maxOutputTokens,
-            inputCost: m.inputCost,
-            outputCost: m.outputCost,
-            enabled: true,
-          };
-        }
-      }
+      const { modelMapping, modelConfigs } = rowsToPayload(modelRows);
 
       const res = await fetch("/api/admin/providers", {
         method: "POST",
@@ -383,120 +341,37 @@ export function CreateProviderButton({ onCreated }: Props) {
           {/* Protocol faces */}
           <ProviderFacesField value={faces} onChange={setFaces} />
 
-
           {/* Model mapping with config */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-sm font-medium">{t("admin.providers.create.models")}</label>
-              <div className="flex gap-2">
-                <Button type="button" size="sm" variant="ghost" onClick={fetchModels} loading={fetchingModels} disabled={!baseUrl || !apiKey}>
-                  ↻ {t("admin.providers.create.autoFetch")}
-                </Button>
-                <Button type="button" size="sm" variant="ghost" onClick={addModel}>
-                  + {t("admin.providers.create.addRow")}
-                </Button>
-              </div>
-            </div>
-            
-            {fetchResult && (
-              <p className={`mb-2 text-xs ${fetchResult.error ? "text-destructive" : "text-success"}`}>
-                {fetchResult.error
-                  ? `✗ ${fetchResult.error}`
-                  : `✓ ${fetchResult.count} models fetched (${fetchResult.latencyMs}ms)`}
-              </p>
-            )}
-
-            {/* Model list */}
-            <div className="max-h-72 overflow-auto rounded-md border">
-              <table className="w-full text-xs">
-                <thead className="bg-muted/50 sticky top-0">
-                  <tr>
-                    <th className="px-2 py-1.5 text-left font-medium">{t("admin.providers.create.clientModel")}</th>
-                    <th className="px-2 py-1.5 text-left font-medium">上游模型</th>
-                    <th className="px-2 py-1.5 text-left font-medium">上下文</th>
-                    <th className="px-2 py-1.5 text-left font-medium">输出</th>
-                    <th className="px-2 py-1.5 text-left font-medium">输入积分</th>
-                    <th className="px-2 py-1.5 text-left font-medium">输出积分</th>
-                    <th className="w-10"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {models.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="px-3 py-4 text-center text-muted-foreground">
-                        {fetchingModels ? t("admin.providers.create.fetching") : t("admin.providers.create.noMappings")}
-                      </td>
-                    </tr>
-                  ) : (
-                    models.map((m, idx) => (
-                      <tr key={idx}>
-                        <td className="px-1 py-1">
-                          <input
-                            type="text"
-                            value={m.client}
-                            onChange={(e) => updateModel(idx, "client", e.target.value)}
-                            placeholder="gpt-4o"
-                            className="w-full rounded border bg-transparent px-1 py-0.5 font-mono"
-                          />
-                        </td>
-                        <td className="px-1 py-1">
-                          <input
-                            type="text"
-                            value={m.upstream}
-                            onChange={(e) => updateModel(idx, "upstream", e.target.value)}
-                            placeholder="gpt-4o-2024-08-06"
-                            className="w-full rounded border bg-transparent px-1 py-0.5 font-mono"
-                          />
-                        </td>
-                        <td className="px-1 py-1">
-                          <input
-                            type="number"
-                            value={m.contextLength}
-                            onChange={(e) => updateModel(idx, "contextLength", Number(e.target.value))}
-                            className="w-20 rounded border bg-transparent px-1 py-0.5"
-                          />
-                        </td>
-                        <td className="px-1 py-1">
-                          <input
-                            type="number"
-                            value={m.maxOutputTokens}
-                            onChange={(e) => updateModel(idx, "maxOutputTokens", Number(e.target.value))}
-                            className="w-20 rounded border bg-transparent px-1 py-0.5"
-                          />
-                        </td>
-                        <td className="px-1 py-1">
-                          <input
-                            type="number"
-                            value={m.inputCost}
-                            onChange={(e) => updateModel(idx, "inputCost", Number(e.target.value))}
-                            step="0.1"
-                            className="w-16 rounded border bg-transparent px-1 py-0.5"
-                          />
-                        </td>
-                        <td className="px-1 py-1">
-                          <input
-                            type="number"
-                            value={m.outputCost}
-                            onChange={(e) => updateModel(idx, "outputCost", Number(e.target.value))}
-                            step="0.1"
-                            className="w-16 rounded border bg-transparent px-1 py-0.5"
-                          />
-                        </td>
-                        <td className="px-1 py-1">
-                          <button type="button" onClick={() => removeModel(idx)} className="text-muted-foreground hover:text-destructive">
-                            ×
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              积分: 每百万Token消耗的积分数量 (0 = 免费)
-            </p>
-          </div>
+          <ProviderModelsEditor
+            rows={modelRows}
+            onChange={setModelRows}
+            newRowDefaults={activeTemplateModelDefaults}
+            actions={
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={fetchModels}
+                loading={fetchingModels}
+                disabled={!baseUrl || !apiKey}
+              >
+                ↻ {t("admin.providers.create.autoFetch")}
+              </Button>
+            }
+            hint={
+              <>
+                {t("admin.providers.models.costHint")}
+                {fetchingModels && <span className="ml-2">{t("admin.providers.create.fetching")}</span>}
+                {fetchResult && (
+                  <span className={fetchResult.error ? "ml-2 text-destructive" : "ml-2 text-success"}>
+                    {fetchResult.error
+                      ? `✗ ${fetchResult.error}`
+                      : `✓ ${fetchResult.count} models fetched (${fetchResult.latencyMs}ms)`}
+                  </span>
+                )}
+              </>
+            }
+          />
 
           {/* Enabled */}
           <label className="flex items-center gap-2 text-sm">

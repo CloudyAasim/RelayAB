@@ -13,6 +13,21 @@ const PatchSchema = z.object({
   baseUrl: z.string().nullable().optional(),
   apiKey: z.string().optional(),
   modelMapping: z.record(z.string(), z.string()).optional(),
+  modelConfigs: z
+    .record(
+      z.string(),
+      z.object({
+        upstreamId: z.string(),
+        clientId: z.string(),
+        displayName: z.string().optional(),
+        contextLength: z.number().int().positive().optional(),
+        maxOutputTokens: z.number().int().positive().optional(),
+        inputCost: z.number().nonnegative().optional(),
+        outputCost: z.number().nonnegative().optional(),
+        enabled: z.boolean().optional(),
+      }),
+    )
+    .optional(),
   enabled: z.boolean().optional(),
   priority: z.number().int().optional(),
   headers: z.record(z.string(), z.string()).optional(),

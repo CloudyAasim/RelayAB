@@ -9,7 +9,7 @@ import { __resetRedisForTest, __setRedisForTest } from "@/lib/db/redis";
 import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
 import { createApiKey, getApiKeyById } from "@/lib/db/keys";
 import { createUser, getUserById } from "@/lib/db/users";
-import { createProvider } from "@/lib/db/providers";
+import { createProvider, updateProvider } from "@/lib/db/providers";
 import { listUsageByKey, aggregateByKey } from "@/lib/db/usage";
 import { generateApiKey, sha256Hex } from "@/lib/crypto/hashing";
 import { proxyChatCompletion } from "@/lib/proxy/openai";
@@ -39,6 +39,22 @@ async function setupProvider(): Promise<string> {
     name: "Test OpenAI",
     kind: "openai",
     apiKey: "sk-upstream-test",
+    // Rates live on each model row (see lib/quota/rates.ts). These mirror the
+    // gpt-4o-mini public prices so the credit arithmetic below still holds.
+    modelConfigs: {
+      "gpt-4o-mini": {
+        clientId: "gpt-4o-mini",
+        upstreamId: "gpt-4o-mini-2024-07-18",
+        inputCost: 15,
+        outputCost: 60,
+      },
+      "gpt-4o": {
+        clientId: "gpt-4o",
+        upstreamId: "gpt-4o-2024-08-06",
+        inputCost: 250,
+        outputCost: 1000,
+      },
+    },
     modelMapping: {
       "gpt-4o-mini": "gpt-4o-mini-2024-07-18",
       "gpt-4o": "gpt-4o-2024-08-06",
@@ -107,6 +123,119 @@ describe("proxyChatCompletion", () => {
     // Consumption landed on the OWNER's pool, not on the key.
     const owner = await getUserById(key.userId);
     expect(owner?.quotaUsed).toBe(1);
+  });
+
+  it("charges nothing when the provider has no rates configured", async () => {
+    // Pricing is the operator's call: a provider with no rates is free, rather
+    // than falling back to a built-in price table for "unknown" models.
+    await createProvider({
+      name: "Free Provider",
+      kind: "openai",
+      apiKey: "sk-free",
+      modelMapping: { "free-model": "some-unpriced-upstream-model" },
+    });
+    const { key, user } = await setupUserAndKey();
+
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl-free",
+          object: "chat.completion",
+          created: 1695273600,
+          model: "some-unpriced-upstream-model",
+          choices: [
+            { index: 0, message: { role: "assistant", content: "Hi!" }, finish_reason: "stop" },
+          ],
+          usage: { prompt_tokens: 10_000, completion_tokens: 10_000, total_tokens: 20_000 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    const r = await proxyChatCompletion({
+      req: { model: "free-model", messages: [{ role: "user", content: "Hi" }] },
+      apiKey: key,
+      user: user!,
+      deps: { fetchImpl: fetchMock as unknown as typeof fetch },
+    });
+
+    expect(r.ok).toBe(true);
+    const logs = await listUsageByKey(key.id);
+    expect(logs[0].creditsUsed).toBe(0);
+    expect((await getUserById(key.userId))?.quotaUsed).toBe(0);
+  });
+
+  it("prices the same model name per provider", async () => {
+    // The rate is keyed by (provider, model name), so two vendors offering the
+    // same client-facing model charge their own price — and one of them can be
+    // free while the other is not.
+    const paid = await createProvider({
+      name: "Paid",
+      kind: "openai",
+      apiKey: "sk-paid",
+      priority: 0,
+      modelMapping: { "shared-model": "upstream-x" },
+      modelConfigs: {
+        "shared-model": {
+          clientId: "shared-model",
+          upstreamId: "upstream-x",
+          inputCost: 12,
+          outputCost: 34,
+        },
+      },
+    });
+    const free = await createProvider({
+      name: "Free",
+      kind: "openai",
+      apiKey: "sk-free",
+      priority: 9,
+      modelMapping: { "shared-model": "upstream-x" },
+      modelConfigs: {
+        "shared-model": {
+          clientId: "shared-model",
+          upstreamId: "upstream-x",
+          inputCost: 0,
+          outputCost: 0,
+        },
+      },
+    });
+    const { key, user } = await setupUserAndKey();
+
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl-shared",
+          object: "chat.completion",
+          created: 1695273600,
+          model: "upstream-x",
+          choices: [
+            { index: 0, message: { role: "assistant", content: "Hi!" }, finish_reason: "stop" },
+          ],
+          usage: { prompt_tokens: 1000, completion_tokens: 0, total_tokens: 1000 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    const call = () =>
+      proxyChatCompletion({
+        req: { model: "shared-model", messages: [{ role: "user", content: "Hi" }] },
+        apiKey: key,
+        user: user!,
+        deps: { fetchImpl: fetchMock as unknown as typeof fetch },
+      });
+
+    // Priority 0 wins: charged at that provider's 12 积分 / 1M input.
+    expect((await call()).ok).toBe(true);
+    const first = (await listUsageByKey(key.id))[0];
+    expect(first.providerId).toBe(paid.id);
+    expect(first.creditsUsed).toBe(12);
+
+    // Promote the free provider: the same request now costs nothing.
+    await updateProvider(free.id, { priority: -1 });
+    expect((await call()).ok).toBe(true);
+    const logs = await listUsageByKey(key.id);
+    const fromFree = logs.find((row) => row.providerId === free.id);
+    expect(fromFree?.creditsUsed).toBe(0);
   });
 
   it("returns model_not_mapped when no provider supports the model", async () => {

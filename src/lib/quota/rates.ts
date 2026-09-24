@@ -1,19 +1,29 @@
 /**
  * src/lib/quota/rates.ts
  *
- * How many 积分 each model consumes per token.
+ * Where a request's 积分 price comes from.
  *
- * The table is expressed in **积分 per 1,000,000 tokens** so the values are
- * plain integers (no fractional literals). A request's consumption is:
+ * The rate belongs to **one model row of one provider** — the client-facing
+ * model id as it is mapped inside that provider. Prices differ between vendors
+ * serving the same upstream model, and they differ between the models of a
+ * single vendor, so the rate is stored on the model itself and nothing is
+ * inferred from the model name.
  *
- *   units = (promptTokens * inputPerMillion + completionTokens * outputPerMillion) / 1000
- *           rounded to the nearest integer
+ * Rates are 积分 per 1,000,000 tokens, so the numbers stay small integers the
+ * operator can type into the admin panel:
  *
- * where `units` are the stored 0.001-积分 units described in `credits.ts`.
+ *   units (0.001-积分) = round(
+ *     (promptTokens × inputPerMillion + completionTokens × outputPerMillion) / 1000
+ *   )
  *
- * Rates can be overridden at runtime via `applyRateOverride()`.
+ * A rate of 0 means free. There is no second level and no fallback: the value on
+ * the model row is the whole answer, so "why did this cost that?" always has a
+ * single, visible answer in the admin panel.
+ *
+ * There is deliberately no built-in price table and no implicit charge for
+ * "unknown" models either: an unconfigured model costs nothing.
  */
-import { creditsToUnits } from "./credits";
+import type { ModelConfig } from "../db/types";
 
 export interface ModelRate {
   /** 积分 per 1,000,000 prompt (input) tokens. */
@@ -22,69 +32,37 @@ export interface ModelRate {
   outputPerMillion: number;
 }
 
-// ---------------------------------------------------------------------------
-// Built-in rates
-// ---------------------------------------------------------------------------
+/** Charging nothing — the default for a model with no rate configured. */
+export const FREE_RATE: ModelRate = { inputPerMillion: 0, outputPerMillion: 0 };
 
 /**
- * Keys are the model identifiers that appear upstream (i.e. after applying
- * `Provider.modelMapping`). Unknown models fall back to `DEFAULT_RATE`.
+ * Rate of one model row. Missing config or a missing/garbled value means free.
  */
-export const MODEL_RATES: Record<string, ModelRate> = {
-  // OpenAI
-  "gpt-4o": { inputPerMillion: 250, outputPerMillion: 1000 },
-  "gpt-4o-2024-08-06": { inputPerMillion: 250, outputPerMillion: 1000 },
-  "gpt-4o-mini": { inputPerMillion: 15, outputPerMillion: 60 },
-  "gpt-4o-mini-2024-07-18": { inputPerMillion: 15, outputPerMillion: 60 },
-  "gpt-4-turbo": { inputPerMillion: 1000, outputPerMillion: 3000 },
-  "gpt-4": { inputPerMillion: 3000, outputPerMillion: 6000 },
-  "gpt-3.5-turbo": { inputPerMillion: 50, outputPerMillion: 150 },
-  "o1": { inputPerMillion: 1500, outputPerMillion: 6000 },
-  "o1-mini": { inputPerMillion: 300, outputPerMillion: 1200 },
-  "o3-mini": { inputPerMillion: 110, outputPerMillion: 440 },
-
-  // Anthropic
-  "claude-3-5-sonnet-20241022": { inputPerMillion: 300, outputPerMillion: 1500 },
-  "claude-3-5-sonnet-20240620": { inputPerMillion: 300, outputPerMillion: 1500 },
-  "claude-3-5-haiku-20241022": { inputPerMillion: 80, outputPerMillion: 400 },
-  "claude-3-opus-20240229": { inputPerMillion: 1500, outputPerMillion: 7500 },
-  "claude-3-sonnet-20240229": { inputPerMillion: 300, outputPerMillion: 1500 },
-  "claude-3-haiku-20240307": { inputPerMillion: 25, outputPerMillion: 125 },
-};
-
-/** Fallback rate for models that aren't in the table (deliberately generous). */
-export const DEFAULT_RATE: ModelRate = {
-  inputPerMillion: 500,
-  outputPerMillion: 1500,
-};
-
-/** Look up the rate for a model id (post-mapping). */
-export function getModelRate(modelId: string): ModelRate {
-  return MODEL_RATES[modelId] ?? DEFAULT_RATE;
+export function resolveModelRate(
+  modelConfig?: Pick<ModelConfig, "inputCost" | "outputCost"> | null,
+): ModelRate {
+  if (!modelConfig) return FREE_RATE;
+  return {
+    inputPerMillion: nonNegative(modelConfig.inputCost),
+    outputPerMillion: nonNegative(modelConfig.outputCost),
+  };
 }
 
-// ---------------------------------------------------------------------------
-// Consumption computation
-// ---------------------------------------------------------------------------
-
 /**
- * Compute how many 积分 a request consumed, returned as an integer count of
- * 0.001-积分 units (see `credits.ts`).
- *
- * Negative or non-finite token counts are treated as zero.
+ * How many 积分 a request consumed, as an integer count of 0.001-积分 units
+ * (see `credits.ts`). Non-finite or negative token counts count as zero.
  */
 export function computeCredits(args: {
-  model: string;
+  rate: ModelRate;
   promptTokens: number;
   completionTokens: number;
 }): number {
-  const rate = getModelRate(args.model);
   const promptTokens = toTokenCount(args.promptTokens);
   const completionTokens = toTokenCount(args.completionTokens);
+  const input = nonNegative(args.rate.inputPerMillion);
+  const output = nonNegative(args.rate.outputPerMillion);
 
-  const total =
-    (promptTokens * rate.inputPerMillion + completionTokens * rate.outputPerMillion) / 1000;
-
+  const total = (promptTokens * input + completionTokens * output) / 1000;
   if (!Number.isFinite(total)) return 0;
   return Math.max(0, Math.round(total));
 }
@@ -95,53 +73,8 @@ function toTokenCount(value: number): number {
   return Math.max(0, Math.trunc(value));
 }
 
-// ---------------------------------------------------------------------------
-// Overrides
-// ---------------------------------------------------------------------------
-
-/**
- * Apply a JSON override table, e.g.
- *   {"gpt-4o":{"inputPerMillion":260,"outputPerMillion":1100}}
- *
- * Malformed input is ignored so the built-in table always remains usable.
- */
-export function applyRateOverride(json: string | undefined): void {
-  if (!json) return;
-  try {
-    const parsed: unknown = JSON.parse(json);
-    if (typeof parsed !== "object" || parsed === null) return;
-    for (const [model, value] of Object.entries(parsed)) {
-      const rate = parseOverrideEntry(value);
-      if (rate) MODEL_RATES[model] = rate;
-    }
-  } catch {
-    // Ignore malformed input.
-  }
-}
-
-/**
- * Accept either the current shape (`inputPerMillion` / `outputPerMillion`) or
- * a credit-per-1,000-tokens shape (`inputPer1kCredits` / `outputPer1kCredits`),
- * normalising both to the per-million form.
- */
-function parseOverrideEntry(value: unknown): ModelRate | null {
-  if (typeof value !== "object" || value === null) return null;
-  const raw = value as Record<string, unknown>;
-
-  const inputPerMillion = raw.inputPerMillion;
-  const outputPerMillion = raw.outputPerMillion;
-  if (typeof inputPerMillion === "number" && typeof outputPerMillion === "number") {
-    return { inputPerMillion, outputPerMillion };
-  }
-
-  const inputPer1k = raw.inputPer1kCredits;
-  const outputPer1k = raw.outputPer1kCredits;
-  if (typeof inputPer1k === "number" && typeof outputPer1k === "number") {
-    return {
-      inputPerMillion: creditsToUnits(inputPer1k),
-      outputPerMillion: creditsToUnits(outputPer1k),
-    };
-  }
-
-  return null;
+/** Missing / malformed rates are treated as "not charged". */
+function nonNegative(value: number | undefined | null): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return 0;
+  return value;
 }

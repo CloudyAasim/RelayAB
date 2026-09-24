@@ -5,9 +5,7 @@ import { describe, it, expect } from "vitest";
 import {
   shouldRejectBeforeRequest,
   isOverQuotaAfterRequest,
-  quotaDeltaFromUsage,
   aggregateByDay,
-  estimateCredits,
 } from "@/lib/quota/calculator";
 import type { User, UsageLog } from "@/lib/db/types";
 
@@ -73,37 +71,6 @@ describe("isOverQuotaAfterRequest", () => {
   });
 });
 
-describe("quotaDeltaFromUsage", () => {
-  it("returns totalTokens when quotaType=tokens", () => {
-    const d = quotaDeltaFromUsage({
-      quotaType: "tokens",
-      usage: { promptTokens: 100, completionTokens: 50 },
-      model: "gpt-4o-mini",
-    });
-    expect(d).toBe(150);
-  });
-  it("returns the exact 积分 amount when quotaType=credits", () => {
-    const d = quotaDeltaFromUsage({
-      quotaType: "credits",
-      usage: { promptTokens: 1000, completionTokens: 0 },
-      model: "gpt-4o-mini",
-    });
-    // 1000 * 15 / 1000 = 15 units = 0.015 积分 — not rounded up to 1 积分
-    expect(d).toBe(15);
-  });
-
-  it("does not round a sub-积分 request up to a whole 积分", () => {
-    const d = quotaDeltaFromUsage({
-      quotaType: "credits",
-      usage: { promptTokens: 11, completionTokens: 7 },
-      model: "gpt-4o-mini",
-    });
-    // 0.585 units → 1 unit; a whole-积分 ledger would have charged 1000 units
-    expect(d).toBe(1);
-    expect(d).toBeLessThan(1000);
-  });
-});
-
 describe("aggregateByDay", () => {
   function log(p: number, c: number, day: string, credits: number): UsageLog {
     return {
@@ -156,24 +123,5 @@ describe("aggregateByDay", () => {
     };
     const r2 = aggregateByDay([late], 480);
     expect(r2[0].day).toBe("2026-09-22");
-  });
-});
-
-describe("estimateCredits", () => {
-  it("estimates based on character count", () => {
-    const c = estimateCredits({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: "a".repeat(400) }],
-    });
-    // 400 chars / 4 chars/token = 100 tokens → 100 * 15 / 1000 = 1.5 units → 2
-    expect(c).toBe(2);
-  });
-
-  it("returns 0 for empty messages", () => {
-    const c = estimateCredits({
-      model: "gpt-4o-mini",
-      messages: [],
-    });
-    expect(c).toBe(0);
   });
 });
