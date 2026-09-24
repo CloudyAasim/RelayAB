@@ -61,6 +61,13 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   // 4. Forward to proxy
+  // Streaming clients (Codex CLI always sets this) must receive an SSE body.
+  // Providers reached through the chat conversion hop answer with a buffered
+  // `response` object, which `proxyResultToResponse` replays as `response.*`
+  // events so the client's stream parser sees frames instead of bare JSON.
+  const requestedStream =
+    typeof body === "object" && body !== null && "stream" in body &&
+    Boolean((body as Record<string, unknown>).stream);
   const result = await proxyOpenAIResponse({
     req: body as Parameters<typeof proxyOpenAIResponse>[0]["req"],
     apiKey: auth.key as ApiKey,
@@ -69,5 +76,5 @@ export async function POST(req: Request): Promise<Response> {
     signal: req.signal,
   });
 
-  return proxyResultToResponse(result);
+  return proxyResultToResponse(result, { streamRequest: requestedStream });
 }

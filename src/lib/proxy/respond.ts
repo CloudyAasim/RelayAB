@@ -14,6 +14,13 @@
  * data. Without this, streaming SDK clients see an empty response because
  * their SSE parser finds no `data:` frames. Real SSE passthrough replaces this
  * in Batch 3.
+ *
+ * The Responses surface (`/v1/responses`) needs its own synthesis: Codex CLI
+ * always sends `stream: true`, and a `response.*` event sequence looks nothing
+ * like a chat-completion chunk. Providers reached through the chat conversion
+ * hop answer with a buffered `response` object, which this file replays as
+ * `response.output_text.delta` (and `response.function_call_arguments.*`)
+ * events.
  */
 import { NextResponse } from "next/server";
 import type { ProxyResult } from "./openai";
@@ -62,6 +69,13 @@ function synthesizeStreamFromBuffered(data: unknown, contentType?: string): Resp
 
   if (isAnthropicMessageShape(data)) {
     const body = anthropicMessageEvents(data)
+      .map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`)
+      .join("");
+    return sseResponse(body, ct);
+  }
+
+  if (isResponsesShape(data)) {
+    const body = responsesEvents(data)
       .map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`)
       .join("");
     return sseResponse(body, ct);
@@ -204,6 +218,168 @@ function anthropicMessageEvents(buf: AnthropicMessageLike) {
   events.push({
     type: "message_stop",
     data: { type: "message_stop" },
+  });
+  return events;
+}
+
+interface ResponsesOutputItem {
+  id?: string;
+  type?: string;
+  status?: string;
+  role?: string;
+  call_id?: string;
+  name?: string;
+  arguments?: string;
+  content?: Array<{ type?: string; text?: string }>;
+  [k: string]: unknown;
+}
+
+interface ResponsesLike {
+  id: string;
+  object?: string;
+  created_at?: number;
+  model?: string;
+  output?: ResponsesOutputItem[];
+  usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number };
+  [k: string]: unknown;
+}
+
+/**
+ * Recognize a buffered Responses API object.
+ *
+ * Guarded on `object === "response"` (or an `output` array) plus `usage`, so a
+ * Chat Completion — which also has `id`/`model`/`usage` — is never mistaken
+ * for one.
+ */
+function isResponsesShape(data: unknown): data is ResponsesLike {
+  if (!data || typeof data !== "object") return false;
+  const d = data as Record<string, unknown>;
+  if (Array.isArray(d.choices)) return false;
+  const looksLikeResponse = d.object === "response" || Array.isArray(d.output);
+  return looksLikeResponse && typeof d.id === "string";
+}
+
+/**
+ * Expand a buffered Responses object into the SSE event sequence a streaming
+ * Responses client expects.
+ *
+ * The real endpoint emits events incrementally; replaying them from a buffered
+ * body keeps the wire contract intact (clients only read the event stream, not
+ * the wall-clock spacing). Text is delivered as one `output_text.delta` because
+ * the upstream chat hop has already finished by the time we see it.
+ */
+function responsesEvents(buf: ResponsesLike) {
+  const events: Array<{ type: string; data: unknown }> = [];
+  const output = Array.isArray(buf.output) ? buf.output : [];
+  const outputText = output
+    .filter((item) => item.type === "message")
+    .flatMap((item) => (Array.isArray(item.content) ? item.content : []))
+    .filter((part) => part.type === "output_text" && typeof part.text === "string")
+    .map((part) => String(part.text))
+    .join("");
+
+  const base = { ...buf, output: [] as unknown[], output_text: "" };
+  events.push({ type: "response.created", data: { type: "response.created", response: { ...base, status: "in_progress" } } });
+  events.push({ type: "response.in_progress", data: { type: "response.in_progress", response: { ...base, status: "in_progress" } } });
+
+  output.forEach((item, outputIndex) => {
+    const itemId = String(item.id ?? `${buf.id}_item_${outputIndex}`);
+    events.push({
+      type: "response.output_item.added",
+      data: {
+        type: "response.output_item.added",
+        output_index: outputIndex,
+        item: { ...item, id: itemId, status: "in_progress" },
+      },
+    });
+
+    if (item.type === "function_call") {
+      const args = typeof item.arguments === "string" ? item.arguments : "";
+      events.push({
+        type: "response.function_call_arguments.delta",
+        data: {
+          type: "response.function_call_arguments.delta",
+          item_id: itemId,
+          output_index: outputIndex,
+          delta: args,
+        },
+      });
+      events.push({
+        type: "response.function_call_arguments.done",
+        data: {
+          type: "response.function_call_arguments.done",
+          item_id: itemId,
+          output_index: outputIndex,
+          arguments: args,
+        },
+      });
+    }
+
+    if (item.type === "message") {
+      const text = (Array.isArray(item.content) ? item.content : [])
+        .filter((part) => part.type === "output_text" && typeof part.text === "string")
+        .map((part) => String(part.text))
+        .join("");
+      events.push({
+        type: "response.content_part.added",
+        data: {
+          type: "response.content_part.added",
+          item_id: itemId,
+          output_index: outputIndex,
+          content_index: 0,
+          part: { type: "output_text", text: "", annotations: [] },
+        },
+      });
+      if (text) {
+        events.push({
+          type: "response.output_text.delta",
+          data: {
+            type: "response.output_text.delta",
+            item_id: itemId,
+            output_index: outputIndex,
+            content_index: 0,
+            delta: text,
+          },
+        });
+      }
+      events.push({
+        type: "response.output_text.done",
+        data: {
+          type: "response.output_text.done",
+          item_id: itemId,
+          output_index: outputIndex,
+          content_index: 0,
+          text,
+        },
+      });
+      events.push({
+        type: "response.content_part.done",
+        data: {
+          type: "response.content_part.done",
+          item_id: itemId,
+          output_index: outputIndex,
+          content_index: 0,
+          part: { type: "output_text", text, annotations: [] },
+        },
+      });
+    }
+
+    events.push({
+      type: "response.output_item.done",
+      data: {
+        type: "response.output_item.done",
+        output_index: outputIndex,
+        item: { ...item, id: itemId, status: "completed" },
+      },
+    });
+  });
+
+  events.push({
+    type: "response.completed",
+    data: {
+      type: "response.completed",
+      response: { ...buf, status: "completed", output, output_text: outputText },
+    },
   });
   return events;
 }

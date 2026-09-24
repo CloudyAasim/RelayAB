@@ -33,37 +33,253 @@ import type { ApiKey, Provider, User } from "../db/types";
 // Request/Response Format Converters (Responses <-> Chat Completions)
 // ---------------------------------------------------------------------------
 
+type ChatContentBlock = { type: string; [k: string]: unknown };
+type ChatContent = string | ChatContentBlock[];
+
+interface ChatToolCall {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+}
+
+interface ChatMessage {
+  role: string;
+  content?: ChatContent;
+  tool_calls?: ChatToolCall[];
+  tool_call_id?: string;
+  [k: string]: unknown;
+}
+
+/**
+ * Map one Responses content block onto its Chat Completions equivalent.
+ *
+ * The two protocols share the array-of-blocks envelope but not the block
+ * types. Responses uses `input_text` / `output_text` / `input_image`, while
+ * every OpenAI-compatible upstream expects `text` / `image_url`. Forwarding a
+ * Responses block verbatim makes strict upstreams reject the whole request:
+ * Agnes answers HTTP 500 `Invalid user message at index 0`.
+ *
+ * Returns null for blocks that carry nothing to forward.
+ */
+function responsesBlockToChatBlock(block: unknown): ChatContentBlock | null {
+  if (typeof block === "string") {
+    return block ? { type: "text", text: block } : null;
+  }
+  if (!block || typeof block !== "object") return null;
+  const b = block as Record<string, unknown>;
+  const type = typeof b.type === "string" ? b.type : "";
+
+  switch (type) {
+    case "input_text":
+    case "output_text":
+    case "text":
+    case "summary_text": {
+      const text = typeof b.text === "string" ? b.text : "";
+      return text ? { type: "text", text } : null;
+    }
+    case "refusal": {
+      const text =
+        typeof b.refusal === "string"
+          ? b.refusal
+          : typeof b.text === "string"
+            ? b.text
+            : "";
+      return text ? { type: "text", text } : null;
+    }
+    case "input_image":
+    case "image_url": {
+      // Responses: { image_url: "https://…" } or { image_url: { url } }.
+      const raw = b.image_url ?? b.url;
+      const url =
+        typeof raw === "string"
+          ? raw
+          : raw && typeof raw === "object" && typeof (raw as Record<string, unknown>).url === "string"
+            ? String((raw as Record<string, unknown>).url)
+            : "";
+      return url ? { type: "image_url", image_url: { url } } : null;
+    }
+    default: {
+      // Unknown block type: keep it only when it still carries plain text.
+      const text = typeof b.text === "string" ? b.text : "";
+      return text ? { type: "text", text } : null;
+    }
+  }
+}
+
+/**
+ * Convert a Responses `content` value into Chat Completions `content`.
+ *
+ * A single text block collapses to a plain string, the form every upstream
+ * accepts; multi-block content (text + images) stays an array.
+ */
+function responsesContentToChatContent(content: unknown): ChatContent {
+  if (typeof content === "string") return content;
+  if (content === null || content === undefined) return "";
+  if (!Array.isArray(content)) {
+    const single = responsesBlockToChatBlock(content);
+    return single && typeof single.text === "string" ? single.text : "";
+  }
+
+  const blocks: ChatContentBlock[] = [];
+  for (const block of content) {
+    const mapped = responsesBlockToChatBlock(block);
+    if (mapped) blocks.push(mapped);
+  }
+  if (blocks.length === 0) return "";
+  if (blocks.length === 1 && blocks[0].type === "text") {
+    return typeof blocks[0].text === "string" ? blocks[0].text : "";
+  }
+  return blocks;
+}
+
+/**
+ * Convert a Responses `input` value into a Chat Completions `messages` array.
+ *
+ * Handles the item types a Responses client actually sends:
+ *   - plain strings, `{ role, content }` and `{ type: "message", … }`
+ *   - `function_call`        → assistant message carrying `tool_calls`
+ *   - `function_call_output` → `role: "tool"` message
+ *   - `reasoning`            → dropped (server-side state, nothing to replay)
+ */
+function responsesInputToChatMessages(input: unknown): ChatMessage[] {
+  const messages: ChatMessage[] = [];
+
+  const pushMessage = (
+    role: string,
+    content: unknown,
+    extra: Partial<ChatMessage> = {},
+  ): void => {
+    const mapped = responsesContentToChatContent(content);
+    const hasContent = !(typeof mapped === "string" && mapped.length === 0);
+    if (!hasContent && !extra.tool_calls) return;
+    const message: ChatMessage = { role, ...extra };
+    if (hasContent) message.content = mapped;
+    messages.push(message);
+  };
+
+  const visit = (item: unknown): void => {
+    if (typeof item === "string") {
+      pushMessage("user", item);
+      return;
+    }
+    if (Array.isArray(item)) {
+      for (const child of item) visit(child);
+      return;
+    }
+    if (!item || typeof item !== "object") return;
+    const it = item as Record<string, unknown>;
+    const type = typeof it.type === "string" ? it.type : "";
+
+    if (type === "reasoning") return;
+
+    if (type === "function_call") {
+      const callId = String(it.call_id ?? it.id ?? `call_${messages.length}`);
+      const args =
+        typeof it.arguments === "string" ? it.arguments : JSON.stringify(it.arguments ?? {});
+      pushMessage("assistant", "", {
+        tool_calls: [
+          {
+            id: callId,
+            type: "function",
+            function: { name: String(it.name ?? ""), arguments: args },
+          },
+        ],
+      });
+      return;
+    }
+
+    if (type === "function_call_output") {
+      const callId = String(it.call_id ?? it.id ?? "");
+      const output =
+        typeof it.output === "string" ? it.output : JSON.stringify(it.output ?? "");
+      messages.push({ role: "tool", tool_call_id: callId, content: output });
+      return;
+    }
+
+    if (type === "message" || it.role !== undefined) {
+      const rawRole = String(it.role ?? "user").toLowerCase();
+      // `developer` is the Responses spelling of `system`.
+      pushMessage(rawRole === "developer" ? "system" : rawRole, it.content ?? "");
+    }
+  };
+
+  visit(input);
+  return messages;
+}
+
+/**
+ * Convert Responses tool declarations into Chat Completions function tools.
+ *
+ * Responses declares functions flat (`{ type, name, description, parameters }`);
+ * Chat Completions nests them under `function`. Already-nested declarations are
+ * passed through. Hosted tools (web_search, …) have no Chat equivalent and are
+ * dropped rather than forwarded as an invalid tool.
+ */
+function responsesToolsToChatTools(tools: unknown): unknown[] | undefined {
+  if (!Array.isArray(tools) || tools.length === 0) return undefined;
+  const out: unknown[] = [];
+  for (const tool of tools) {
+    if (!tool || typeof tool !== "object") continue;
+    const t = tool as Record<string, unknown>;
+    if (t.type !== "function") continue;
+    if (t.function && typeof t.function === "object") {
+      out.push(t);
+      continue;
+    }
+    const fn: Record<string, unknown> = { name: String(t.name ?? "") };
+    if (typeof t.description === "string") fn.description = t.description;
+    if (t.parameters !== undefined) fn.parameters = t.parameters;
+    if (t.strict !== undefined) fn.strict = t.strict;
+    out.push({ type: "function", function: fn });
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+/** Convert a Responses `tool_choice` into its Chat Completions shape. */
+function responsesToolChoiceToChatToolChoice(choice: unknown): unknown {
+  if (choice === undefined || choice === null) return undefined;
+  if (typeof choice === "string") return choice;
+  if (typeof choice !== "object") return undefined;
+  const c = choice as Record<string, unknown>;
+  if (c.type !== "function") return undefined;
+  if (c.function && typeof c.function === "object") return c;
+  return { type: "function", function: { name: String(c.name ?? "") } };
+}
+
 /**
  * Convert a Responses API request to Chat Completions format.
  */
-// Responses <-> Chat Completions converters
 export function responsesToChatRequest(req: ResponseAPIRequest): ChatCompletionRequest {
-  const messages: Array<{ role: string; content: string | { type: string; [key: string]: unknown }[] }> = [];
-  
-  if (Array.isArray(req.input)) {
-    for (const item of req.input) {
-      if (typeof item === "string") {
-        messages.push({ role: "user", content: item });
-      } else if (item && typeof item === "object") {
-        const inputItem = item as Record<string, unknown>;
-        if (inputItem.type === "message" && inputItem.content) {
-          // Handle message content blocks (multi-modal)
-          messages.push({
-            role: String(inputItem.role ?? "user").toLowerCase(),
-            content: inputItem.content as string | { type: string; [key: string]: unknown }[],
-          });
-        } else if (inputItem.role && inputItem.content) {
-          messages.push({
-            role: String(inputItem.role).toLowerCase(),
-            content: String(inputItem.content),
-          });
-        }
-      }
-    }
-  } else if (typeof req.input === "string") {
-    messages.push({ role: "user", content: req.input });
+  const messages: ChatMessage[] = [];
+
+  // Responses clients (Codex CLI, the OpenAI SDK) carry the system prompt in
+  // `instructions` rather than as a message. Dropping it silently downgrades
+  // agent behaviour, so it becomes the leading system message.
+  if (typeof req.instructions === "string" && req.instructions.trim().length > 0) {
+    messages.push({ role: "system", content: req.instructions });
   }
-  
+  messages.push(...responsesInputToChatMessages(req.input));
+  if (messages.length === 0) messages.push({ role: "user", content: "" });
+
+  const chatReq: ChatCompletionRequest = {
+    model: req.model,
+    messages: messages as unknown as Array<{ role: string; content: string }>,
+    temperature: req.temperature as number | undefined,
+    max_tokens:
+      ((req.max_output_tokens ?? req.max_tokens) as number | undefined) ?? 1024,
+    top_p: req.top_p as number | undefined,
+    stream: false,
+  };
+
+  const tools = responsesToolsToChatTools(req.tools);
+  if (tools) chatReq.tools = tools;
+  const toolChoice = responsesToolChoiceToChatToolChoice(req.tool_choice);
+  if (toolChoice !== undefined) chatReq.tool_choice = toolChoice;
+  if (req.parallel_tool_calls !== undefined) {
+    chatReq.parallel_tool_calls = req.parallel_tool_calls;
+  }
+  if (typeof req.stop === "string" || Array.isArray(req.stop)) chatReq.stop = req.stop;
+
   // Build extra_body for MiniMax-specific parameters
   const extraBody: Record<string, unknown> = {};
   const reqExtraBody = req.extra_body as Record<string, unknown> | undefined;
@@ -72,30 +288,26 @@ export function responsesToChatRequest(req: ResponseAPIRequest): ChatCompletionR
     if (reqExtraBody.reasoning_split !== undefined) extraBody.reasoning_split = reqExtraBody.reasoning_split;
     if (reqExtraBody.service_tier !== undefined) extraBody.service_tier = reqExtraBody.service_tier;
   }
-  
-  const chatReq: ChatCompletionRequest = {
-    model: req.model,
-    messages: messages as Array<{ role: string; content: string }>,
-    temperature: req.temperature as number | undefined,
-    max_tokens: ((req.max_output_tokens ?? (req as Record<string, unknown>).max_tokens) as number | undefined) ?? 1024,
-    top_p: req.top_p as number | undefined,
-    stream: false,
-  };
-  
   if (Object.keys(extraBody).length > 0) {
     chatReq.extra_body = extraBody;
   }
-  
+
   return chatReq;
 }
 
-// Responses <-> Chat Completions converters
+/**
+ * Convert a Chat Completions response into a Responses API object.
+ *
+ * Tool calls become `function_call` output items so the client can run them
+ * and post the results back; without that the agent loop stalls after the
+ * first turn.
+ */
 export function chatToResponsesResponse(
   chatResp: ChatCompletionResponse,
   originalReq: ResponseAPIRequest,
 ): Record<string, unknown> {
   const message = chatResp.choices?.[0]?.message as
-    | { role?: string; content?: unknown }
+    | { role?: string; content?: unknown; tool_calls?: unknown }
     | undefined;
   const text = typeof message?.content === "string" ? message.content : "";
   const id = chatResp.id ?? `resp_${Date.now()}`;
@@ -103,23 +315,43 @@ export function chatToResponsesResponse(
   const inputTokens = usage.prompt_tokens ?? 0;
   const outputTokens = usage.completion_tokens ?? 0;
 
+  // A chat response that asked for tools must come back as Responses
+  // `function_call` items, otherwise the client's agent loop has nothing to
+  // execute and the conversation stalls after the first turn.
+  const output: unknown[] = [];
+  const rawToolCalls = Array.isArray(message?.tool_calls) ? message.tool_calls : [];
+  for (const call of rawToolCalls) {
+    if (!call || typeof call !== "object") continue;
+    const c = call as Record<string, unknown>;
+    const fn = (c.function ?? {}) as Record<string, unknown>;
+    const callId = String(c.id ?? `call_${output.length}`);
+    output.push({
+      id: `fc_${callId}`,
+      type: "function_call",
+      status: "completed",
+      call_id: callId,
+      name: String(fn.name ?? ""),
+      arguments:
+        typeof fn.arguments === "string" ? fn.arguments : JSON.stringify(fn.arguments ?? {}),
+    });
+  }
+  if (text) {
+    output.push({
+      id: `${id}_msg`,
+      type: "message",
+      status: "completed",
+      role: "assistant",
+      content: [{ type: "output_text", text, annotations: [] }],
+    });
+  }
+
   return {
     id,
     object: "response",
     created_at: chatResp.created ?? Math.floor(Date.now() / 1000),
     status: "completed",
     model: chatResp.model ?? originalReq.model,
-    output: text
-      ? [
-          {
-            id: `${id}_msg`,
-            type: "message",
-            status: "completed",
-            role: "assistant",
-            content: [{ type: "output_text", text, annotations: [] }],
-          },
-        ]
-      : [],
+    output,
     output_text: text,
     error: null,
     incomplete_details: null,
@@ -457,7 +689,11 @@ interface ChatCompletionResponse {
   object: string;
   created: number;
   model: string;
-  choices: Array<{ index: number; message: { role: string; content: string }; finish_reason: string }>;
+  choices: Array<{
+    index: number;
+    message: { role: string; content: string; tool_calls?: unknown };
+    finish_reason: string;
+  }>;
   usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
   [k: string]: unknown;
 }
