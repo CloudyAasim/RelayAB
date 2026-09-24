@@ -119,6 +119,39 @@ function messagesRequest(): Request {
 }
 
 describe("providerFaces", () => {
+  beforeEach(() => {
+    __resetRedisForTest();
+    __setRedisForTest(createMemoryRedis());
+  });
+
+  it("reads face flags that Upstash deserialized into numbers", async () => {
+    // `@upstash/redis` parses hash values, so a stored "1" comes back as the
+    // *number* 1. A strict `=== "1"` comparison reads every flag back as false,
+    // which silently switched off every provider in production (v134).
+    const created = await createProvider({
+      name: "Agnes CN",
+      kind: "openai",
+      baseUrl: "https://api.agnes-ai.cn/v1",
+      apiKey: "sk-x",
+      enabled: true,
+      upstreamFormat: "chat",
+      anthropicEnabled: true,
+      anthropicBaseUrl: "https://api.agnes-ai.cn",
+      modelMapping: { "client-m": "up-model" },
+    });
+    const { getRedis, k } = await import("@/lib/db/redis");
+    await (getRedis() as unknown as {
+      hset: (key: string, values: Record<string, unknown>) => Promise<unknown>;
+    }).hset(k.provider(created.id), { openaiEnabled: 1, anthropicEnabled: 1 });
+
+    const reloaded = await getProviderById(created.id);
+    expect(reloaded?.openaiEnabled).toBe(true);
+    expect(reloaded?.anthropicEnabled).toBe(true);
+    const faces = providerFaces(reloaded!);
+    expect(faces.openai).toEqual({ format: "chat" });
+    expect(faces.anthropic).toEqual({ baseUrl: "https://api.agnes-ai.cn" });
+  });
+
   it("hides the models of a provider whose faces are all off", () => {
     const key = { allowedModels: [] } as never;
     const live = row({

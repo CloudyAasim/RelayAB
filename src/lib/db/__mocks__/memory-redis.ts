@@ -91,6 +91,23 @@ export interface Pipeline {
 // Internal store shape
 // ---------------------------------------------------------------------------
 
+/**
+ * Mirror `@upstash/redis`, which deserializes hash values on read: a stored
+ * `"1"` comes back as the number `1`, and a stored JSON blob as an object.
+ *
+ * Reading raw strings used to make the mock *more* forgiving than production,
+ * which hid a real bug: `raw.flag === "1"` compares false once the client hands
+ * back the number `1`, so every provider flag read back as "off".
+ */
+function deserializeHashValue(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return value;
+  }
+}
+
 type Entry =
   | { kind: "string"; value: RedisValue; expireAt?: number }
   | { kind: "hash"; fields: Map<string, RedisValue>; expireAt?: number }
@@ -212,8 +229,8 @@ export function createMemoryRedis(): RedisLike {
       checkExpired(key);
       const entry = store.data.get(key);
       if (!entry || entry.kind !== "hash") return null;
-      const out: Record<string, string> = {};
-      for (const [f, v] of entry.fields) out[f] = String(v);
+      const out: Record<string, unknown> = {};
+      for (const [f, v] of entry.fields) out[f] = deserializeHashValue(v);
       return (out as unknown) as never;
     },
 

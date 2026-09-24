@@ -38,7 +38,8 @@ describe("memory-redis", () => {
   it("hash operations", async () => {
     await r.hset("h", { a: "1", b: "2" });
     expect(await r.hget("h", "a")).toBe("1");
-    expect(await r.hgetall("h")).toEqual({ a: "1", b: "2" });
+    // Like @upstash/redis: hash values come back deserialized, so "1" -> 1.
+    expect(await r.hgetall("h")).toEqual({ a: 1, b: 2 });
     expect(await r.hincrby("h", "a", 5)).toBe(6);
     expect(await r.hdel("h", "b")).toBe(1);
   });

@@ -17,7 +17,7 @@
  *                code that maps to a specific HTTP error.
  */
 import { sha256Hex } from "../crypto/hashing";
-import { getRedis, k } from "../db/redis";
+import { getRedis, k, readStoredFlag } from "../db/redis";
 import { ensureBootstrapped } from "../db/bootstrap";
 import {
   ApiKeySchema,
@@ -308,7 +308,7 @@ function parseUserFromHash(raw: Record<string, string>): User | null {
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
       lastLoginAt: raw.lastLoginAt && raw.lastLoginAt !== "" ? raw.lastLoginAt : null,
-      disabled: raw.disabled === "1",
+      disabled: readStoredFlag(raw.disabled, false),
       quotaType,
       quotaLimit,
       quotaUsed,
