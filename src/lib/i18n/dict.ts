@@ -110,7 +110,7 @@ const zhCN: Dict = {
 
   // ===== User Dashboard =====
   "dashboard.title": "我的面板",
-  "dashboard.welcome": "你好，{username}",
+  "dashboard.welcome": "你好，{name}",
   "dashboard.stat.activeKeys": "已启用密钥",
   "dashboard.stat.tokensUsed": "已用词元",
   "dashboard.stat.creditsUsed": "积分用量",
@@ -321,7 +321,7 @@ const zhCN: Dict = {
   "admin.users.action.failed": "操作失败",
   "admin.users.action.confirmDelete": "确定删除这个用户？此操作不可撤销。",
   "admin.users.action.passwordResetHint": "明文仅显示一次，请立即复制并通过安全渠道转交给用户。",
-  "admin.users.flash.deleted": "已删除 {username}",
+  "admin.users.flash.deleted": "已删除 {name}",
 
 
   // ===== Admin Users: allocation editor =====
@@ -649,7 +649,7 @@ const en: Dict = {
 
   // ===== User Dashboard =====
   "dashboard.title": "My Dashboard",
-  "dashboard.welcome": "Welcome back, {username}",
+  "dashboard.welcome": "Welcome back, {name}",
   "dashboard.stat.activeKeys": "Active Keys",
   "dashboard.stat.tokensUsed": "Tokens Used",
   "dashboard.stat.creditsUsed": "Credits Used",
@@ -860,7 +860,7 @@ const en: Dict = {
   "admin.users.action.failed": "Failed",
   "admin.users.action.confirmDelete": "Delete this user? This cannot be undone.",
   "admin.users.action.passwordResetHint": "The plaintext is shown only once — copy it now and deliver it over a secure channel.",
-  "admin.users.flash.deleted": "Deleted {username}",
+  "admin.users.flash.deleted": "Deleted {name}",
 
 
   // ===== Admin Users: allocation editor =====

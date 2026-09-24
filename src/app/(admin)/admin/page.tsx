@@ -57,7 +57,7 @@ export default async function AdminOverviewPage() {
   // stream ended before an upstream usage frame arrived, so the tokens were
   // derived from text length rather than measured.
   const recentUsage = await listRecentUsage(keys.map((k) => k.id), { limit: 8 });
-  const usernameById = new Map(users.map((u) => [u.id, u.username]));
+  const displayNameById = new Map(users.map((u) => [u.id, u.displayName ?? u.username]));
 
   return (
     <SectionPageLayout>
@@ -197,7 +197,7 @@ export default async function AdminOverviewPage() {
                       {formatDate(row.createdAt)}
                     </TD>
                     <TD className="font-mono text-xs">
-                      {usernameById.get(row.userId) ?? row.userId}
+                      {displayNameById.get(row.userId) ?? row.userId}
                     </TD>
                     <TD className="font-mono text-xs">{row.model}</TD>
                     <TD className="text-right">
