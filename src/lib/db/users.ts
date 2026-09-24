@@ -15,7 +15,7 @@
 import { hashPassword } from "../crypto/password";
 import { generateId } from "../crypto/hashing";
 import { UserSchema, DEFAULT_USER_ALLOCATION, type User } from "./types";
-import { getRedis, hgetallMany, k } from "./redis";
+import { getRedis, hgetallMany, k, readStoredFlag } from "./redis";
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -409,7 +409,7 @@ async function hashToUser(raw: Record<string, string> | null): Promise<User | nu
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
       lastLoginAt: raw.lastLoginAt && raw.lastLoginAt !== "" ? raw.lastLoginAt : null,
-      disabled: raw.disabled === "1",
+      disabled: readStoredFlag(raw.disabled, false),
       quotaType,
       quotaLimit,
       quotaUsed,

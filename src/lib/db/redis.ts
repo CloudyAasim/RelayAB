@@ -126,6 +126,22 @@ export function __setRedisForTest(impl: RedisLike): void {
 // Key helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Interpret a boolean we persist as `"1"` / `"0"`.
+ *
+ * `@upstash/redis` deserializes hash values on read, so a stored `"1"` comes
+ * back as the *number* `1`. Comparing against the string `"1"` therefore reads
+ * every flag as false — which silently disables features (provider protocol
+ * faces, disabled-account checks). Always normalise before comparing.
+ *
+ * @param fallback returned when the field is absent or empty.
+ */
+export function readStoredFlag(value: unknown, fallback: boolean): boolean {
+  if (value === undefined || value === null || value === "") return fallback;
+  const normalized = String(value).toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "on";
+}
+
 export const KEY_PREFIX = "relay:";
 
 export const k = {

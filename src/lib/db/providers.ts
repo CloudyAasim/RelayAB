@@ -14,7 +14,7 @@ import {
   type ModelConfig,
 } from "./types";
 import { revalidateTag, unstable_cache } from "next/cache";
-import { getRedis, hgetallMany, k } from "./redis";
+import { getRedis, hgetallMany, k, readStoredFlag } from "./redis";
 import { encryptSecret } from "../crypto/secrets";
 import { generateId } from "../crypto/hashing";
 
@@ -371,8 +371,8 @@ function legacyFaceFlags(raw: Record<string, string>): {
 } {
   if (raw.openaiEnabled !== undefined || raw.anthropicEnabled !== undefined) {
     return {
-      openaiEnabled: raw.openaiEnabled === undefined ? true : raw.openaiEnabled === "1",
-      anthropicEnabled: raw.anthropicEnabled === "1",
+      openaiEnabled: readStoredFlag(raw.openaiEnabled, true),
+      anthropicEnabled: readStoredFlag(raw.anthropicEnabled, false),
     };
   }
   return defaultFaceFlags(
@@ -380,6 +380,7 @@ function legacyFaceFlags(raw: Record<string, string>): {
     (raw.upstreamFormat as "responses" | "chat" | "anthropic") || "responses",
   );
 }
+
 
 async function hashToProvider(raw: Record<string, string> | null): Promise<Provider | null> {
   if (!raw || Object.keys(raw).length === 0) return null;
