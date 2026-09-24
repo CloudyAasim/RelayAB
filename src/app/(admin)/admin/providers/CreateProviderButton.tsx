@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { useT } from "@/components/i18n/I18nProvider";
 import { PROVIDER_TEMPLATES, type ProviderTemplate } from "@/lib/providers/templates";
-import { UpstreamFormatField } from "./UpstreamFormatField";
+import { ProviderFacesField, type ProviderFacesValue } from "./ProviderFacesField";
 
 interface Props {
   onCreated?: () => void;
@@ -48,7 +48,12 @@ export function CreateProviderButton({ onCreated }: Props) {
   const [priority, setPriority] = useState("0");
   const [enabled, setEnabled] = useState(true);
   const [headers, setHeaders] = useState("");
-  const [upstreamFormat, setUpstreamFormat] = useState<"responses" | "chat" | "anthropic">("responses");
+  const [faces, setFaces] = useState<ProviderFacesValue>({
+    openaiEnabled: true,
+    upstreamFormat: "responses",
+    anthropicEnabled: false,
+    anthropicBaseUrl: "",
+  });
   const [models, setModels] = useState<ModelConfig[]>([]);
 
   // Fetch-models state
@@ -84,8 +89,15 @@ export function CreateProviderButton({ onCreated }: Props) {
       setHeaders(Object.entries(tpl.defaultHeaders).map(([k, v]) => `${k}: ${v}`).join("\n"));
     }
     // Always reset this: otherwise switching from the Anthropic template back
-    // to an OpenAI-compatible one would leave `anthropic` selected.
-    setUpstreamFormat(tpl.defaultUpstreamFormat ?? "responses");
+    // to an OpenAI-compatible one would leave the Anthropic face on. The
+    // template's `anthropic` format means "Anthropic face only".
+    const templateFormat = tpl.defaultUpstreamFormat ?? "responses";
+    setFaces({
+      openaiEnabled: templateFormat !== "anthropic",
+      upstreamFormat: templateFormat === "anthropic" ? "responses" : templateFormat,
+      anthropicEnabled: templateFormat === "anthropic",
+      anthropicBaseUrl: "",
+    });
     setFetchResult(null);
   }
 
@@ -93,7 +105,12 @@ export function CreateProviderButton({ onCreated }: Props) {
     setName(""); setBaseUrl(""); setApiKey("");
     setPriority("0"); setEnabled(true); setHeaders("");
     setModels([]); setError(null); setFetchResult(null);
-    setUpstreamFormat("responses");
+    setFaces({
+      openaiEnabled: true,
+      upstreamFormat: "responses",
+      anthropicEnabled: false,
+      anthropicBaseUrl: "",
+    });
     setTemplateId("openai");
   }
 
@@ -249,7 +266,10 @@ export function CreateProviderButton({ onCreated }: Props) {
           enabled,
           priority: Number(priority) || 0,
           headers: parseHeaders(),
-          upstreamFormat,
+          openaiEnabled: faces.openaiEnabled,
+          upstreamFormat: faces.upstreamFormat === "anthropic" ? "responses" : faces.upstreamFormat,
+          anthropicEnabled: faces.anthropicEnabled,
+          anthropicBaseUrl: faces.anthropicBaseUrl || null,
         }),
       });
       
@@ -360,8 +380,8 @@ export function CreateProviderButton({ onCreated }: Props) {
             <p className="mt-1 text-xs text-muted-foreground">{t("admin.providers.create.headersHint")}</p>
           </div>
 
-          {/* Upstream Format */}
-          <UpstreamFormatField value={upstreamFormat} onChange={setUpstreamFormat} />
+          {/* Protocol faces */}
+          <ProviderFacesField value={faces} onChange={setFaces} />
 
 
           {/* Model mapping with config */}

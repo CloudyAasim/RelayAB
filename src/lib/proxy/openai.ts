@@ -19,6 +19,7 @@
  */
 import { decryptSecret } from "../crypto/secrets";
 import { findProvidersForModel, getProviderById } from "../db/providers";
+import { findOpenAIProvidersForModel } from "../db/providers";
 import { recordUsage } from "../db/usage";
 import { checkKeyStatus, reasonToHttp } from "../auth/apikey";
 import { estimateTokensFromText } from "../quota/calculator";
@@ -26,7 +27,7 @@ import { quotaDeltaFromUsage, shouldRejectBeforeRequest } from "../quota/calcula
 import { proxyAnthropicMessage } from "./anthropic";
 import { settleUsage } from "./billing";
 import { ssePassthrough } from "./stream-tap";
-import type { ApiKey, Provider, User } from "../db/types";
+import { providerFaces, type ApiKey, type Provider, type User } from "../db/types";
 
 
 // ---------------------------------------------------------------------------
@@ -488,31 +489,12 @@ export interface ProxyResult {
   /** Content-Type to use together with `body`. */
   contentType?: string;
   error?: { code: string; message: string };
-  /**
-   * Which upstream URL / body caused an `upstream_error`, e.g.
-   * `<url> -> HTTP 500: {...}`. Stored on the usage row and logged, never
-   * returned to the caller — the client only ever sees `error`.
-   */
-  failureDetail?: string;
 }
 
 export interface ProxyDeps {
   fetchImpl?: typeof fetch;
   /** Override the upstream URL (for tests). */
   upstreamUrlFor?: (provider: Provider) => string;
-  /**
-   * Suppress the usage row a failed upstream attempt would normally write.
-   *
-   * The Responses surface retries a request against other protocols when the
-   * first one is rejected upstream; each speculative attempt defers recording
-   * so the whole request leaves exactly one row (the final outcome).
-   */
-  deferFailureRecording?: boolean;
-}
-
-/** Failure rows are written once per client request, not once per attempt. */
-function shouldRecordAttemptFailure(deps?: ProxyDeps): boolean {
-  return deps?.deferFailureRecording !== true;
 }
 
 // ---------------------------------------------------------------------------
@@ -583,7 +565,7 @@ export async function proxyChatCompletion(args: {
   // Anthropic-format providers cannot accept a Chat Completions body, so they
   // are only eligible for the /anthropic endpoint.
   const providers = (await findProvidersForModel(req.model)).filter(
-    (p) => effectiveUpstreamFormat(p) !== "anthropic",
+    (p) => providerFaces(p).openai !== null,
   );
   if (providers.length === 0) {
     return {
@@ -635,9 +617,7 @@ export async function proxyChatCompletion(args: {
       body: JSON.stringify(forwardBody),
     });
   } catch (err) {
-    if (shouldRecordAttemptFailure(deps)) {
-      await recordFailure({ apiKey, provider, model: req.model, upstreamModel, error: err });
-    }
+    await recordFailure({ apiKey, provider, model: req.model, upstreamModel, error: err });
     return { ok: false, status: 502, error: { code: "upstream_error", message: String(err) } };
   }
 
@@ -667,15 +647,13 @@ export async function proxyChatCompletion(args: {
     const detail = await response.text().catch(() => "");
     const context = `${upstreamUrl} -> HTTP ${response.status}: ${detail.slice(0, 500)}`;
     console.error(`[relayab] chat upstream failure: ${context}`);
-    if (shouldRecordAttemptFailure(deps)) {
-      await recordFailure({
-        apiKey,
-        provider,
-        model: req.model,
-        upstreamModel,
-        error: context,
-      });
-    }
+    await recordFailure({
+      apiKey,
+      provider,
+      model: req.model,
+      upstreamModel,
+      error: context,
+    });
     return {
       ok: false,
       status: 502,
@@ -683,7 +661,6 @@ export async function proxyChatCompletion(args: {
         code: "upstream_error",
         message: `Upstream returned ${response.status}`,
       },
-      failureDetail: context,
     };
   }
 
@@ -725,21 +702,6 @@ interface ChatCompletionResponse {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Resolve the protocol a provider actually speaks.
- *
- * `kind: "anthropic"` implies the Anthropic Messages protocol, but the stored
- * `upstreamFormat` field defaults to `"responses"`. Without this mapping such a
- * provider would be treated as an OpenAI-protocol endpoint, so a Chat request
- * would be POSTed to `<base>/chat/completions` instead of `<base>/v1/messages`.
- */
-function effectiveUpstreamFormat(provider: Provider): "responses" | "chat" | "anthropic" {
-  if (provider.kind === "anthropic" && provider.upstreamFormat === "responses") {
-    return "anthropic";
-  }
-  return provider.upstreamFormat;
-}
 
 function defaultUpstreamUrl(provider: Provider): string {
   const base = provider.baseUrl ?? "https://api.openai.com";
@@ -831,8 +793,13 @@ export async function proxyOpenAIResponse(args: {
     return { ok: false, status: http.status, error: { code: http.code, message: http.message } };
   }
 
-  // 2. Choose which protocol(s) to try, best-fidelity first.
-  const providers = await findProvidersForModel(req.model);
+  // 2. Pick the provider and honour the protocol it was configured with.
+  //
+  // One protocol, no automatic switching: if a vendor was declared as speaking
+  // Chat Completions, the request goes out as Chat Completions and a failure is
+  // reported as a failure. Silently retrying over a different protocol hides
+  // real breakage (and paid for a doomed round trip on every request).
+  const providers = await findOpenAIProvidersForModel(req.model);
   if (providers.length === 0) {
     return {
       ok: false,
@@ -840,83 +807,12 @@ export async function proxyOpenAIResponse(args: {
       error: { code: "model_not_mapped", message: `No provider configured for model '${req.model}'` },
     };
   }
-  const candidates = orderResponsesCandidates(providers);
-  const native = candidates.find((p) => effectiveUpstreamFormat(p) === "responses");
-  const chat = candidates.find((p) => effectiveUpstreamFormat(p) === "chat");
-  const anthropic = candidates.find((p) => effectiveUpstreamFormat(p) === "anthropic");
-
-  // Attempts are keyed by *protocol*, not by provider: two providers speaking
-  // the same format fail identically. A provider whose native `/responses`
-  // endpoint is broken upstream (Agnes answers HTTP 500 to every body) must not
-  // fail the request when the same model is reachable over another protocol.
-  //
-  // Speculative attempts run with `deferFailureRecording`, so the whole request
-  // leaves exactly one usage row — the final outcome.
-  const attemptDeps: ProxyDeps = { ...deps, deferFailureRecording: true };
-  const attempts: Array<() => Promise<ProxyResult>> = [];
-
-  if (native) {
-    attempts.push(() =>
-      proxyResponsesNative({ req, apiKey, user, signal, deps: attemptDeps, provider: native }),
-    );
+  const provider = providers[0];
+  const format = providerFaces(provider).openai?.format;
+  if (format === "chat") {
+    return proxyResponsesViaChat({ req, apiKey, user, signal, deps });
   }
-  if (chat) {
-    attempts.push(() => proxyResponsesViaChat({ req, apiKey, user, signal, deps: attemptDeps }));
-  }
-  if (anthropic) {
-    attempts.push(() =>
-      proxyResponsesViaAnthropic({ req, apiKey, user, signal, deps: attemptDeps }),
-    );
-  }
-  // A `responses`-format provider is still reachable over its Chat Completions
-  // endpoint — `defaultUpstreamUrl()` ignores `upstreamFormat` — which rescues
-  // setups that map a model only to a broken native Responses endpoint.
-  if (native && !chat) {
-    attempts.push(() => proxyResponsesViaChat({ req, apiKey, user, signal, deps: attemptDeps }));
-  }
-
-  let lastError: ProxyResult | null = null;
-  let lastDetail = "";
-  for (const attempt of attempts) {
-    const result = await attempt();
-    if (result.ok) return result;
-    // Only a protocol-level rejection justifies another protocol; auth, quota
-    // and model errors would repeat verbatim on every candidate.
-    if (result.error?.code !== "upstream_error") return result;
-    lastError = result;
-    if (result.failureDetail) lastDetail = result.failureDetail;
-  }
-
-  // Every protocol failed: write the single failure row for this request.
-  const failed = native ?? candidates[0];
-  await recordFailureResponses({
-    apiKey,
-    provider: failed,
-    model: req.model,
-    upstreamModel: failed.modelMapping[req.model],
-    error: lastDetail || lastError?.error?.message || "no upstream protocol succeeded",
-  });
-
-  return (
-    lastError ?? {
-      ok: false,
-      status: 502,
-      error: { code: "upstream_error", message: "No upstream protocol succeeded" },
-    }
-  );
-}
-
-/**
- * Order candidates by protocol fidelity: a native Responses upstream first,
- * then the Chat Completions conversion, then the Anthropic conversion.
- * `Array.prototype.sort` is stable, so provider priority/name order survives.
- */
-function orderResponsesCandidates(providers: Provider[]): Provider[] {
-  const rank = (p: Provider): number => {
-    const format = effectiveUpstreamFormat(p);
-    return format === "responses" ? 0 : format === "chat" ? 1 : 2;
-  };
-  return [...providers].sort((a, b) => rank(a) - rank(b));
+  return proxyResponsesNative({ req, apiKey, user, signal, deps, provider });
 }
 
 /**
@@ -972,14 +868,11 @@ async function proxyResponsesNative(args: {
       body: JSON.stringify({ ...forwardable, model: upstreamModel }),
     });
   } catch (err) {
-    if (shouldRecordAttemptFailure(deps)) {
-      await recordFailureResponses({ apiKey, provider, model: req.model, upstreamModel, error: err });
-    }
+    await recordFailureResponses({ apiKey, provider, model: req.model, upstreamModel, error: err });
     return {
       ok: false,
       status: 502,
       error: { code: "upstream_error", message: String(err) },
-      failureDetail: `${upstreamUrl} -> ${String(err)}`,
     };
   }
 
@@ -987,15 +880,13 @@ async function proxyResponsesNative(args: {
     const text = await response.text();
     const detail = `${upstreamUrl} -> HTTP ${response.status}: ${text.slice(0, 500)}`;
     console.error(`[relayab] responses upstream failure: ${detail}`);
-    if (shouldRecordAttemptFailure(deps)) {
-      await recordFailureResponses({
-        apiKey,
-        provider,
-        model: req.model,
-        upstreamModel,
-        error: detail,
-      });
-    }
+    await recordFailureResponses({
+      apiKey,
+      provider,
+      model: req.model,
+      upstreamModel,
+      error: detail,
+    });
     return {
       ok: false,
       status: 502,
@@ -1003,7 +894,6 @@ async function proxyResponsesNative(args: {
         code: "upstream_error",
         message: `Upstream returned ${response.status}`,
       },
-      failureDetail: detail,
     };
   }
 

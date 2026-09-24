@@ -17,6 +17,9 @@ const PatchSchema = z.object({
   priority: z.number().int().optional(),
   headers: z.record(z.string(), z.string()).optional(),
   upstreamFormat: z.enum(["responses", "chat", "anthropic"]).optional(),
+  openaiEnabled: z.boolean().optional(),
+  anthropicEnabled: z.boolean().optional(),
+  anthropicBaseUrl: z.string().nullable().optional(),
 });
 
 export async function PATCH(

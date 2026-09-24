@@ -5,7 +5,14 @@
  *
  * Uses Redis SCAN for enumeration - compatible with both Upstash Redis and Vercel KV.
  */
-import { ProviderSchema, type Provider, type ProviderKind, type ModelConfig } from "./types";
+import {
+  ProviderSchema,
+  defaultFaceFlags,
+  providerFaces,
+  type Provider,
+  type ProviderKind,
+  type ModelConfig,
+} from "./types";
 import { revalidateTag, unstable_cache } from "next/cache";
 import { getRedis, hgetallMany, k } from "./redis";
 import { encryptSecret } from "../crypto/secrets";
@@ -46,6 +53,12 @@ export interface CreateProviderInput {
   priority?: number;
   headers?: Record<string, string>;
   upstreamFormat?: "responses" | "chat" | "anthropic";
+  /** OpenAI-side face (Responses/Chat). Defaults to on. */
+  openaiEnabled?: boolean;
+  /** Anthropic Messages face, sharing this provider's key and models. */
+  anthropicEnabled?: boolean;
+  /** Base URL for the Anthropic face; empty derives it from `baseUrl`. */
+  anthropicBaseUrl?: string | null;
 }
 
 export interface UpdateProviderInput {
@@ -68,6 +81,9 @@ export interface UpdateProviderInput {
   priority?: number;
   headers?: Record<string, string>;
   upstreamFormat?: "responses" | "chat" | "anthropic";
+  openaiEnabled?: boolean;
+  anthropicEnabled?: boolean;
+  anthropicBaseUrl?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -78,6 +94,9 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
   const id = generateId();
   const now = new Date().toISOString();
   const encryptedApiKey = encryptSecret(input.apiKey);
+  // Absent flags follow the legacy shape: an Anthropic-kind / Anthropic-format
+  // provider is Anthropic-only, anything else is OpenAI-only.
+  const faceDefaults = defaultFaceFlags(input.kind, input.upstreamFormat ?? "responses");
 
   const provider: Provider = ProviderSchema.parse({
     id,
@@ -91,6 +110,9 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
     priority: input.priority ?? 1,
     headers: input.headers ?? {},
     upstreamFormat: input.upstreamFormat ?? "responses",
+    openaiEnabled: input.openaiEnabled ?? faceDefaults.openaiEnabled,
+    anthropicEnabled: input.anthropicEnabled ?? faceDefaults.anthropicEnabled,
+    anthropicBaseUrl: input.anthropicBaseUrl ?? null,
     createdAt: now,
     updatedAt: now,
   });
@@ -110,6 +132,9 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
     priority: String(provider.priority),
     headers: JSON.stringify(provider.headers ?? {}),
     upstreamFormat: provider.upstreamFormat,
+    openaiEnabled: provider.openaiEnabled ? "1" : "0",
+    anthropicEnabled: provider.anthropicEnabled ? "1" : "0",
+    anthropicBaseUrl: provider.anthropicBaseUrl ?? "",
     createdAt: provider.createdAt,
     updatedAt: provider.updatedAt,
   });
@@ -215,6 +240,30 @@ export async function findProvidersForModel(clientModel: string): Promise<Provid
   return all.filter((p) => clientModel in p.modelMapping);
 }
 
+/**
+ * Providers that can serve `clientModel` on the OpenAI-facing endpoints
+ * (`/v1/chat/completions`, `/v1/responses`).
+ *
+ * A provider with `upstreamFormat: "anthropic"` is Anthropic-only, and one with
+ * `openaiEnabled: false` opted out — both are excluded here even though they
+ * still map the model on their Anthropic face.
+ */
+export async function findOpenAIProvidersForModel(clientModel: string): Promise<Provider[]> {
+  const all = await findProvidersForModel(clientModel);
+  return all.filter((p) => providerFaces(p).openai !== null);
+}
+
+/**
+ * Providers that can serve `clientModel` on the Anthropic Messages surface.
+ *
+ * The key, model mapping and model configs come from the same row as the
+ * OpenAI face, so a vendor configured once serves both protocols.
+ */
+export async function findAnthropicProvidersForModel(clientModel: string): Promise<Provider[]> {
+  const all = await findProvidersForModel(clientModel);
+  return all.filter((p) => providerFaces(p).anthropic !== null);
+}
+
 /** Find providers of a given kind. */
 export async function findProvidersByKind(kind: ProviderKind): Promise<Provider[]> {
   const all = await listProviders({ enabledOnly: true });
@@ -248,6 +297,12 @@ export async function updateProvider(
     priority: patch.priority ?? existing.priority,
     headers: patch.headers ?? existing.headers,
     upstreamFormat: patch.upstreamFormat ?? existing.upstreamFormat,
+    openaiEnabled: patch.openaiEnabled ?? existing.openaiEnabled,
+    anthropicEnabled: patch.anthropicEnabled ?? existing.anthropicEnabled,
+    anthropicBaseUrl:
+      patch.anthropicBaseUrl === undefined
+        ? existing.anthropicBaseUrl
+        : patch.anthropicBaseUrl,
     updatedAt: new Date().toISOString(),
   });
 
@@ -263,6 +318,9 @@ export async function updateProvider(
     priority: String(merged.priority),
     headers: JSON.stringify(merged.headers ?? {}),
     upstreamFormat: merged.upstreamFormat,
+    openaiEnabled: merged.openaiEnabled ? "1" : "0",
+    anthropicEnabled: merged.anthropicEnabled ? "1" : "0",
+    anthropicBaseUrl: merged.anthropicBaseUrl ?? "",
     updatedAt: merged.updatedAt,
   });
 
@@ -300,6 +358,29 @@ function safeJsonParse(val: unknown): Record<string, unknown> {
   return {};
 }
 
+/**
+ * Face flags for a Redis row.
+ *
+ * Rows written before the two-face model exist without either flag; falling
+ * back to the schema defaults would turn an Anthropic-only row
+ * (`kind: "anthropic"` / `upstreamFormat: "anthropic"`) into an OpenAI-only one.
+ */
+function legacyFaceFlags(raw: Record<string, string>): {
+  openaiEnabled: boolean;
+  anthropicEnabled: boolean;
+} {
+  if (raw.openaiEnabled !== undefined || raw.anthropicEnabled !== undefined) {
+    return {
+      openaiEnabled: raw.openaiEnabled === undefined ? true : raw.openaiEnabled === "1",
+      anthropicEnabled: raw.anthropicEnabled === "1",
+    };
+  }
+  return defaultFaceFlags(
+    raw.kind as ProviderKind,
+    (raw.upstreamFormat as "responses" | "chat" | "anthropic") || "responses",
+  );
+}
+
 async function hashToProvider(raw: Record<string, string> | null): Promise<Provider | null> {
   if (!raw || Object.keys(raw).length === 0) return null;
   
@@ -325,6 +406,13 @@ async function hashToProvider(raw: Record<string, string> | null): Promise<Provi
       priority: Number(raw.priority ?? "1"),
       headers: safeJsonParse(raw.headers),
       upstreamFormat: (raw.upstreamFormat as "responses" | "chat" | "anthropic") || "responses",
+      // Absent on rows written before protocol faces existed. Derive from the
+      // legacy shape rather than letting the schema default both to
+      // "OpenAI-only", which would strip the Anthropic face off every row the
+      // old admin UI created via the "Anthropic Messages" format.
+      ...legacyFaceFlags(raw),
+      anthropicBaseUrl:
+        raw.anthropicBaseUrl && raw.anthropicBaseUrl !== "" ? raw.anthropicBaseUrl : null,
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
     });

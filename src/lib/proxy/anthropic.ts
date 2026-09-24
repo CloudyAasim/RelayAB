@@ -13,14 +13,14 @@
  *     the requested client model.
  */
 import { decryptSecret } from "../crypto/secrets";
-import { findProvidersForModel, getProviderById } from "../db/providers";
+import { findAnthropicProvidersForModel, getProviderById } from "../db/providers";
 import { recordUsage } from "../db/usage";
 import { checkKeyStatus, reasonToHttp } from "../auth/apikey";
 import { estimateTokensFromText } from "../quota/calculator";
 import { shouldRejectBeforeRequest } from "../quota/calculator";
 import { settleUsage } from "./billing";
 import { ssePassthrough } from "./stream-tap";
-import type { ApiKey, Provider, User } from "../db/types";
+import { providerFaces, type ApiKey, type Provider, type User } from "../db/types";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -35,19 +35,11 @@ export interface AnthropicProxyResult {
   /** Content-Type to use together with `body`. */
   contentType?: string;
   error?: { code: string; message: string };
-  /** Upstream URL + body behind an `upstream_error`; never sent to callers. */
-  failureDetail?: string;
 }
 
 export interface AnthropicProxyDeps {
   fetchImpl?: typeof fetch;
   upstreamUrlFor?: (provider: Provider) => string;
-  /**
-   * Suppress the usage row a failed upstream attempt would normally write.
-   * The Responses surface retries against other protocols and records the
-   * final outcome itself.
-   */
-  deferFailureRecording?: boolean;
 }
 
 interface AnthropicRequest {
@@ -118,15 +110,14 @@ export async function proxyAnthropicMessage(args: {
     return { ok: false, status: http.status, error: { code: http.code, message: http.message } };
   }
 
-  // 2. Pick a provider that can serve this model over the Anthropic protocol.
-  //    Preference: explicit upstreamFormat="anthropic", then kind="anthropic",
-  //    then any Anthropic-compatible kind. Ordering within each group follows
-  //    the provider priority from `listProviders`.
-  const candidates = await findProvidersForModel(req.model);
-  const provider =
-    candidates.find((p) => p.upstreamFormat === "anthropic") ??
-    candidates.find((p) => p.kind === "anthropic") ??
-    candidates.find((p) => p.kind === "custom-openai");
+  // 2. Pick a provider whose Anthropic face is enabled for this model.
+  //
+  //    A vendor that speaks both protocols is one row now: the Anthropic face
+  //    shares the row's API key, model mapping and model configs, and only
+  //    carries its own base URL. Rows written before that model still work —
+  //    they resolve to an Anthropic-only face.
+  const candidates = await findAnthropicProvidersForModel(req.model);
+  const provider = candidates[0];
   if (!provider) {
     return {
       ok: false,
@@ -184,14 +175,11 @@ async function doProxy(args: {
       body: JSON.stringify(forwardBody),
     });
   } catch (err) {
-    if (deps?.deferFailureRecording !== true) {
-      await recordFailure({ apiKey, provider, model: req.model, upstreamModel, error: err });
-    }
+    await recordFailure({ apiKey, provider, model: req.model, upstreamModel, error: err });
     return {
       ok: false,
       status: 502,
       error: { code: "upstream_error", message: String(err) },
-      failureDetail: `${upstreamUrl} -> ${String(err)}`,
     };
   }
 
@@ -225,20 +213,17 @@ async function doProxy(args: {
     const detail = await response.text().catch(() => "");
     const context = `${upstreamUrl} -> HTTP ${response.status}: ${detail.slice(0, 500)}`;
     console.error(`[relayab] anthropic upstream failure: ${context}`);
-    if (deps?.deferFailureRecording !== true) {
-      await recordFailure({
-        apiKey,
-        provider,
-        model: req.model,
-        upstreamModel,
-        error: context,
-      });
-    }
+    await recordFailure({
+      apiKey,
+      provider,
+      model: req.model,
+      upstreamModel,
+      error: context,
+    });
     return {
       ok: false,
       status: 502,
       error: { code: "upstream_error", message: `Upstream ${response.status}` },
-      failureDetail: context,
     };
   }
 
@@ -307,6 +292,8 @@ export function stripUnrequestedThinking<T extends { content?: unknown }>(body: 
 }
 
 function defaultUpstreamUrl(provider: Provider): string {
+  const face = providerFaces(provider).anthropic;
+  if (face?.baseUrl) return `${face.baseUrl.replace(/\/$/, "")}/v1/messages`;
   if (provider.baseUrl) return `${provider.baseUrl.replace(/\/$/, "")}/v1/messages`;
   return "https://api.anthropic.com/v1/messages";
 }

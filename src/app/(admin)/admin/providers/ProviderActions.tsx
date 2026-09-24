@@ -8,9 +8,10 @@ import { Input } from "@/components/ui/Input";
 import { useT } from "@/components/i18n/I18nProvider";
 import { RefreshCw, Pencil, Trash2, Zap, X } from "lucide-react";
 import {
-  UpstreamFormatField,
+  ProviderFacesField,
+  type ProviderFacesValue,
   type UpstreamFormat,
-} from "./UpstreamFormatField";
+} from "./ProviderFacesField";
 
 interface Props {
   providerId: string;
@@ -27,6 +28,26 @@ interface Provider {
   enabled: boolean;
   priority: number;
   upstreamFormat?: UpstreamFormat;
+  openaiEnabled?: boolean;
+  anthropicEnabled?: boolean;
+  anthropicBaseUrl?: string | null;
+}
+
+/**
+ * Edit-form state for the two protocol faces.
+ *
+ * Legacy rows (`upstreamFormat: "anthropic"`, or `kind: "anthropic"`) read back
+ * as "Anthropic only"; saving rewrites them into the two-flag shape.
+ */
+function facesFromProvider(provider: Provider): ProviderFacesValue {
+  const format = provider.upstreamFormat ?? "responses";
+  const anthropicOnly = format === "anthropic";
+  return {
+    openaiEnabled: provider.openaiEnabled ?? !anthropicOnly,
+    upstreamFormat: anthropicOnly ? "responses" : format,
+    anthropicEnabled: provider.anthropicEnabled ?? anthropicOnly,
+    anthropicBaseUrl: provider.anthropicBaseUrl ?? "",
+  };
 }
 
 type TestResult =
@@ -183,9 +204,7 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
   const [apiKey, setApiKey] = useState("");
   const [priority, setPriority] = useState(String(provider.priority ?? "1"));
   const [enabled, setEnabled] = useState(provider.enabled);
-  const [upstreamFormat, setUpstreamFormat] = useState<UpstreamFormat>(
-    provider.upstreamFormat ?? "responses",
-  );
+  const [faces, setFaces] = useState<ProviderFacesValue>(() => facesFromProvider(provider));
   const [modelMapping, setModelMapping] = useState<Record<string, string>>(provider.modelMapping ?? {});
 
   // Sync state when provider changes
@@ -197,7 +216,7 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
       setApiKey("");
       setPriority(String(provider.priority ?? "1"));
       setEnabled(provider.enabled);
-      setUpstreamFormat(provider.upstreamFormat ?? "responses");
+      setFaces(facesFromProvider(provider));
       setModelMapping(provider.modelMapping ?? {});
       setError("");
     }
@@ -256,7 +275,10 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
           apiKey: apiKey || undefined,
           priority: Number(priority),
           enabled,
-          upstreamFormat,
+          openaiEnabled: faces.openaiEnabled,
+          upstreamFormat: faces.upstreamFormat === "anthropic" ? "responses" : faces.upstreamFormat,
+          anthropicEnabled: faces.anthropicEnabled,
+          anthropicBaseUrl: faces.anthropicBaseUrl || null,
           modelMapping,
         }),
       });
@@ -316,7 +338,7 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
           placeholder="••••••••"
         />
 
-        <UpstreamFormatField value={upstreamFormat} onChange={setUpstreamFormat} />
+        <ProviderFacesField value={faces} onChange={setFaces} />
 
         <div className="grid grid-cols-2 gap-4">
           <Input
