@@ -15,7 +15,7 @@
  * `/anthropic/v1/models`; a 404 there shows up in the editor as "no model
  * could be loaded", not as a visible HTTP error.
  */
-import type { ApiKey, Provider } from "@/lib/db/types";
+import { providerFaces, type ApiKey, type Provider } from "@/lib/db/types";
 import { listProviders } from "@/lib/db/providers";
 
 export interface OpenAIModelEntry {
@@ -41,6 +41,10 @@ export interface AnthropicModelEntry {
 export function intersectClientModels(providers: Provider[], key: ApiKey): string[] {
   const ids = new Set<string>();
   for (const provider of providers) {
+    // A provider with both protocol faces switched off serves nothing, so its
+    // models must not be advertised on either list.
+    const faces = providerFaces(provider);
+    if (!faces.openai && !faces.anthropic) continue;
     for (const clientModel of Object.keys(provider.modelMapping)) {
       if (key.allowedModels.length === 0 || key.allowedModels.includes(clientModel)) {
         ids.add(clientModel);

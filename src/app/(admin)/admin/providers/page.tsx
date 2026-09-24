@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { listProviders } from "@/lib/db/providers";
+import { providerFaces } from "@/lib/db/types";
 import { Card } from "@/components/ui/Card";
 import {
   Table,
@@ -69,13 +70,30 @@ export default async function ProvidersPage() {
                     </code>
                   </TD>
                   <TD>
-                    <Badge tone={p.upstreamFormat === "anthropic" ? "orange" : "neutral"}>
-                      {p.upstreamFormat === "anthropic"
-                        ? t("admin.providers.format.anthropic")
-                        : p.upstreamFormat === "chat"
-                          ? t("admin.providers.format.short.chat")
-                          : t("admin.providers.format.short.responses")}
-                    </Badge>
+                    <div className="flex flex-wrap gap-1">
+                      {(() => {
+                        const faces = providerFaces(p);
+                        if (!faces.openai && !faces.anthropic) {
+                          return <Badge tone="neutral">—</Badge>;
+                        }
+                        return (
+                          <>
+                            {faces.openai && (
+                              <Badge tone="neutral">
+                                {faces.openai.format === "chat"
+                                  ? t("admin.providers.format.short.chat")
+                                  : t("admin.providers.format.short.responses")}
+                              </Badge>
+                            )}
+                            {faces.anthropic && (
+                              <Badge tone="orange">
+                                {t("admin.providers.format.short.anthropic")}
+                              </Badge>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
                   </TD>
                   <TD className="text-muted-foreground">
                     <code className="text-xs">{p.baseUrl || "—"}</code>

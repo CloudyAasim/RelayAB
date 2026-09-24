@@ -32,6 +32,17 @@ export type ProviderKind = z.infer<typeof ProviderKindSchema>;
 export const UpstreamFormatSchema = z.enum(["responses", "chat", "anthropic"]);
 export type UpstreamFormat = z.infer<typeof UpstreamFormatSchema>;
 
+/**
+ * Protocols the OpenAI-facing side of a provider can speak.
+ *
+ * `"anthropic"` is deliberately NOT part of this enum: the Anthropic Messages
+ * protocol is a separate *face* of a provider (see `providerFaces`), not a
+ * third choice for the OpenAI side. The legacy value `upstreamFormat:
+ * "anthropic"` is still accepted on read so pre-existing rows keep working.
+ */
+export const OpenAIFaceFormatSchema = z.enum(["responses", "chat"]);
+export type OpenAIFaceFormat = z.infer<typeof OpenAIFaceFormatSchema>;
+
 // ---------------------------------------------------------------------------
 // User
 // ---------------------------------------------------------------------------
@@ -192,12 +203,112 @@ export const ProviderSchema = z.object({
   headers: z.record(z.string(), z.string()).optional().default({}),
   // Upstream format: responses (native), chat, or anthropic
   upstreamFormat: UpstreamFormatSchema.default("responses"),
+  /**
+   * Whether this provider serves the OpenAI-facing endpoints
+   * (`/v1/chat/completions`, `/v1/responses`).
+   */
+  openaiEnabled: z.boolean().default(true),
+  /**
+   * Whether this provider ALSO serves the Anthropic Messages surface
+   * (`/anthropic/v1/messages`, `/v1/messages`).
+   *
+   * The two faces share the API key, model mapping and model configs — those
+   * are identical for a given vendor, so configuring the same vendor twice
+   * (once per protocol) is no longer necessary. Only the protocol and, usually,
+   * the base URL differ.
+   */
+  anthropicEnabled: z.boolean().default(false),
+  /**
+   * Base URL for the Anthropic face. Empty means "derive it from `baseUrl`"
+   * (one trailing `/v1` is stripped). Set it explicitly whenever the vendor's
+   * Anthropic endpoint is a sub-path, e.g. `https://api.deepseek.com/anthropic`.
+   */
+  anthropicBaseUrl: z.string().nullable().default(null),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
 export type Provider = z.infer<typeof ProviderSchema>;
 
 export type PublicProvider = Omit<Provider, "encryptedApiKey">;
+
+/**
+ * The protocol faces one provider exposes.
+ *
+ * A vendor that speaks both OpenAI and Anthropic protocols used to need two
+ * provider rows (with the key, mapping and model configs duplicated). Both
+ * faces now live on one row:
+ *
+ *   { openai: { format: "chat" },  anthropic: { baseUrl: "https://…" } }
+ *   { openai: null,                anthropic: { baseUrl: "https://…" } }  // Anthropic only
+ *   { openai: { format: "responses" }, anthropic: null }                    // OpenAI only
+ */
+export interface ProviderFaces {
+  /** Non-null when the provider serves `/v1/chat/completions` and `/v1/responses`. */
+  openai: { format: OpenAIFaceFormat } | null;
+  /**
+   * Non-null when the provider serves the Anthropic Messages surface.
+   * `baseUrl` may be empty — the URL builder then falls back to the vendor
+   * default (`https://api.anthropic.com`).
+   */
+  anthropic: { baseUrl: string } | null;
+}
+
+/** Drop one trailing `/v1` so an OpenAI base can seed an Anthropic base. */
+function stripTrailingV1(url: string): string {
+  return url.replace(/\/+$/, "").replace(/\/v1$/, "");
+}
+
+export function providerFaces(provider: Provider): ProviderFaces {
+  const anthropicFormat = provider.upstreamFormat === "anthropic";
+  const defaults = defaultFaceFlags(provider.kind, provider.upstreamFormat);
+
+  // `openaiEnabled`/`anthropicEnabled` are always set on rows that went through
+  // the schema (`hashToProvider` derives them for legacy rows). The `undefined`
+  // fallbacks keep hand-built objects honest.
+  const openaiOn = provider.openaiEnabled ?? defaults.openaiEnabled;
+  const anthropicOn = provider.anthropicEnabled ?? defaults.anthropicEnabled;
+
+  // `"anthropic"` is not a valid OpenAI-side format, so such a row can never
+  // serve the OpenAI endpoints even if a flag was left on.
+  const openai =
+    openaiOn && !anthropicFormat
+      ? ({ format: provider.upstreamFormat } as { format: OpenAIFaceFormat })
+      : null;
+
+  const explicitAnthropicBase = provider.anthropicBaseUrl?.trim() ?? "";
+  const derivedAnthropicBase = provider.baseUrl ? stripTrailingV1(provider.baseUrl) : "";
+  const anthropicBaseUrl = explicitAnthropicBase || derivedAnthropicBase;
+  // The face exists whenever it is enabled, even with an empty base URL: the
+  // URL builder is the single place that decides what to fall back to (the
+  // vendor default, `https://api.anthropic.com`). Rows may legitimately leave
+  // the base unset — that is what pre-faces Anthropic providers did.
+  // `upstreamFormat: "anthropic"` is itself a statement of protocol, so it
+  // forces the face on. Without that, a legacy row whose flag got flipped off
+  // would serve neither protocol and silently vanish from every surface.
+  const anthropic = anthropicFormat || anthropicOn ? { baseUrl: anthropicBaseUrl } : null;
+
+  return { openai, anthropic };
+}
+
+/**
+ * Face flags implied by the pre-faces shape of a provider row.
+ *
+ * A row is Anthropic-only when it was created as `kind: "anthropic"` or with
+ * `upstreamFormat: "anthropic"` — the historical way to add an Anthropic
+ * interface for a vendor that already had an OpenAI provider row. Everything
+ * else is OpenAI-only. Used wherever the explicit flags are absent: creating,
+ * updating and reading rows written before these fields existed.
+ */
+export function defaultFaceFlags(
+  kind: ProviderKind,
+  upstreamFormat: UpstreamFormat,
+): { openaiEnabled: boolean; anthropicEnabled: boolean } {
+  const anthropicByDefault = kind === "anthropic" || upstreamFormat === "anthropic";
+  return {
+    openaiEnabled: !anthropicByDefault,
+    anthropicEnabled: anthropicByDefault,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // UsageLog

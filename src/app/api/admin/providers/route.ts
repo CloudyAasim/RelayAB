@@ -30,6 +30,9 @@ const PostSchema = z.object({
   priority: z.number().int().optional(),
   headers: z.record(z.string(), z.string()).optional(),
   upstreamFormat: z.enum(["responses", "chat", "anthropic"]).optional(),
+  openaiEnabled: z.boolean().optional(),
+  anthropicEnabled: z.boolean().optional(),
+  anthropicBaseUrl: z.string().nullable().optional(),
 });
 
 export async function GET(): Promise<Response> {
@@ -94,6 +97,9 @@ export async function POST(req: Request): Promise<Response> {
       priority: parsed.data.priority ?? 1,
       headers: parsed.data.headers,
       upstreamFormat: parsed.data.upstreamFormat ?? "responses",
+      openaiEnabled: parsed.data.openaiEnabled,
+      anthropicEnabled: parsed.data.anthropicEnabled,
+      anthropicBaseUrl: parsed.data.anthropicBaseUrl ?? null,
     });
     return NextResponse.json({
       ok: true,
