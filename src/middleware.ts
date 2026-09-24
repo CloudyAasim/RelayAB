@@ -6,6 +6,9 @@
  * - Normalises double-/v1/ paths produced by OnlyOffice's OpenAI template
  *   when the user configures a base URL that already ends in /v1
  *   (e.g. OnlyOffice calls /v1/v1/models → rewritten to /v1/models).
+ * - Answers CORS preflights and stamps CORS response headers on the public
+ *   OpenAI/Anthropic surface, so browser-hosted clients (the ONLYOFFICE AI
+ *   plugin, the OpenAI SDK in a web app, ...) can read the responses.
  * - Injects `x-vercel-protection-bypass` when the env secret is set,
  *   so server-side SDK calls can transparently bypass Vercel's
  *   Deployment Protection (the bypass header is otherwise needed
@@ -13,6 +16,12 @@
  * - Returns early for static / public assets.
  */
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  applyCorsHeaders,
+  corsHeaders,
+  corsRequestInfo,
+  isCorsPathname,
+} from "@/lib/http/cors";
 
 /**
  * Strip a duplicate /v1/ segment from the start of a URL path.
@@ -36,16 +45,29 @@ export function middleware(request: NextRequest) {
   const url = request.nextUrl;
   const cleanPath = cleanDoubleV1Path(url.pathname);
 
+  // A browser client (OnlyOffice plugin, dashboard, SDK in a web app) always
+  // sends an Origin header; without CORS headers the response is unusable
+  // there even when the request itself succeeds.
+  const cors = isCorsPathname(cleanPath) ? corsRequestInfo(request.headers) : null;
+
+  if (cors && request.method === "OPTIONS") {
+    return new NextResponse(null, { status: 204, headers: corsHeaders(cors) });
+  }
+
   if (cleanPath !== url.pathname) {
     // Rewrite the path so the Next.js router dispatches to the correct handler.
     const rewritten = request.nextUrl.clone();
     rewritten.pathname = cleanPath;
-    return NextResponse.rewrite(rewritten);
+    const response = NextResponse.rewrite(rewritten);
+    if (cors) applyCorsHeaders(response.headers, cors);
+    return response;
   }
 
   const bypass = process.env.VERCEL_PROTECTION_BYPASS;
   if (!bypass) {
-    return NextResponse.next();
+    const response = NextResponse.next();
+    if (cors) applyCorsHeaders(response.headers, cors);
+    return response;
   }
 
   // Forward the bypass header on every request so server-internal
@@ -54,9 +76,11 @@ export function middleware(request: NextRequest) {
   if (!requestHeaders.has("x-vercel-protection-bypass")) {
     requestHeaders.set("x-vercel-protection-bypass", bypass);
   }
-  return NextResponse.next({
+  const response = NextResponse.next({
     request: { headers: requestHeaders },
   });
+  if (cors) applyCorsHeaders(response.headers, cors);
+  return response;
 }
 
 export const config = {
