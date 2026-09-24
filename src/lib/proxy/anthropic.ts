@@ -51,6 +51,11 @@ interface AnthropicRequest {
   top_p?: number;
   stream?: boolean;
   stop_sequence?: string | string[];
+  /**
+   * Extended thinking toggle. Anthropic only returns `thinking` blocks when
+   * the caller asks for them (`{ type: "enabled", budget_tokens: N }`).
+   */
+  thinking?: unknown;
   [k: string]: unknown;
 }
 
@@ -215,7 +220,14 @@ async function doProxy(args: {
     return { ok: false, status: 502, error: { code: "upstream_error", message: `Upstream ${response.status}` } };
   }
 
-  const body = (await response.json()) as AnthropicResponse;
+  const rawBody = (await response.json()) as AnthropicResponse;
+  // Some upstreams (reasoning models behind an Anthropic-compatible face)
+  // always emit a leading `thinking` block. The Anthropic contract says those
+  // blocks are only sent when the caller enabled thinking, and clients that
+  // read `content[0]` — ONLYOFFICE's AI plugin does exactly that — would show
+  // an empty answer instead of the text that follows. Drop what was not asked
+  // for; keep everything when thinking *was* requested.
+  const body = isThinkingRequested(req) ? rawBody : stripUnrequestedThinking(rawBody);
   const usage = body.usage ?? { input_tokens: 0, output_tokens: 0 };
   // Charge the OWNER's pool, not the key's — see the note in billing.ts.
   await settleUsage({
@@ -229,6 +241,47 @@ async function doProxy(args: {
   });
 
   return { ok: true, status: 200, data: body };
+}
+
+/** Block types that carry reasoning rather than the answer. */
+const REASONING_BLOCK_TYPES = new Set(["thinking", "redacted_thinking"]);
+
+/**
+ * Did the caller ask the model to think out loud?
+ *
+ * Per the Anthropic Messages API, reasoning blocks are only returned when the
+ * request enables them with `thinking: { type: "enabled", budget_tokens: N }`.
+ * A `{ type: "disabled" }` (or a missing field) means "do not send them".
+ */
+export function isThinkingRequested(req: { thinking?: unknown }): boolean {
+  const thinking = req?.thinking;
+  if (!thinking || typeof thinking !== "object") return false;
+  return (thinking as { type?: unknown }).type === "enabled";
+}
+
+/**
+ * Remove reasoning blocks the caller never asked for.
+ *
+ * Reasoning models served through an Anthropic-compatible upstream often send
+ * `content: [{type:"thinking"}, {type:"text"}]` unconditionally. Clients that
+ * read `content[0]` — ONLYOFFICE's AI plugin resolves the answer that way —
+ * then render nothing at all, because the first block has no `text` field
+ * while the real answer sits in the second one.
+ *
+ * Returns the input untouched when there is nothing to drop, so the common
+ * (text-only) case keeps the exact upstream payload.
+ */
+export function stripUnrequestedThinking<T extends { content?: unknown }>(body: T): T {
+  if (!Array.isArray(body.content)) return body;
+
+  const kept = body.content.filter((block) => {
+    if (!block || typeof block !== "object") return true;
+    const type = (block as { type?: unknown }).type;
+    return !(typeof type === "string" && REASONING_BLOCK_TYPES.has(type));
+  });
+
+  if (kept.length === body.content.length) return body;
+  return { ...body, content: kept };
 }
 
 function defaultUpstreamUrl(provider: Provider): string {
