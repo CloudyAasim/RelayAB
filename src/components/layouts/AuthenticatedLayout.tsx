@@ -55,7 +55,7 @@ interface NavSection {
   items: NavItem[];
 }
 
-const USER_NAV: NavSection[] = [
+export const USER_NAV: NavSection[] = [
   {
     labelKey: "nav.sidebar.workspace",
     items: [
@@ -66,7 +66,7 @@ const USER_NAV: NavSection[] = [
   },
 ];
 
-const ADMIN_NAV: NavSection[] = [
+export const ADMIN_NAV: NavSection[] = [
   {
     labelKey: "nav.sidebar.admin",
     items: [
@@ -88,6 +88,7 @@ const ADMIN_NAV: NavSection[] = [
     labelKey: "nav.sidebar.personal",
     items: [
       { href: "/dashboard", labelKey: "nav.myDashboard", titleKey: "dashboard.title", icon: Wallet, exact: true },
+      { href: "/dashboard/settings", labelKey: "nav.settings", titleKey: "settings.title", icon: Settings },
     ],
   },
 ];
