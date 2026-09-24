@@ -35,11 +35,19 @@ export interface AnthropicProxyResult {
   /** Content-Type to use together with `body`. */
   contentType?: string;
   error?: { code: string; message: string };
+  /** Upstream URL + body behind an `upstream_error`; never sent to callers. */
+  failureDetail?: string;
 }
 
 export interface AnthropicProxyDeps {
   fetchImpl?: typeof fetch;
   upstreamUrlFor?: (provider: Provider) => string;
+  /**
+   * Suppress the usage row a failed upstream attempt would normally write.
+   * The Responses surface retries against other protocols and records the
+   * final outcome itself.
+   */
+  deferFailureRecording?: boolean;
 }
 
 interface AnthropicRequest {
@@ -176,8 +184,15 @@ async function doProxy(args: {
       body: JSON.stringify(forwardBody),
     });
   } catch (err) {
-    await recordFailure({ apiKey, provider, model: req.model, upstreamModel, error: err });
-    return { ok: false, status: 502, error: { code: "upstream_error", message: String(err) } };
+    if (deps?.deferFailureRecording !== true) {
+      await recordFailure({ apiKey, provider, model: req.model, upstreamModel, error: err });
+    }
+    return {
+      ok: false,
+      status: 502,
+      error: { code: "upstream_error", message: String(err) },
+      failureDetail: `${upstreamUrl} -> ${String(err)}`,
+    };
   }
 
   // Streaming: pipe the upstream SSE through and settle usage on flush.
@@ -210,14 +225,21 @@ async function doProxy(args: {
     const detail = await response.text().catch(() => "");
     const context = `${upstreamUrl} -> HTTP ${response.status}: ${detail.slice(0, 500)}`;
     console.error(`[relayab] anthropic upstream failure: ${context}`);
-    await recordFailure({
-      apiKey,
-      provider,
-      model: req.model,
-      upstreamModel,
-      error: context,
-    });
-    return { ok: false, status: 502, error: { code: "upstream_error", message: `Upstream ${response.status}` } };
+    if (deps?.deferFailureRecording !== true) {
+      await recordFailure({
+        apiKey,
+        provider,
+        model: req.model,
+        upstreamModel,
+        error: context,
+      });
+    }
+    return {
+      ok: false,
+      status: 502,
+      error: { code: "upstream_error", message: `Upstream ${response.status}` },
+      failureDetail: context,
+    };
   }
 
   const rawBody = (await response.json()) as AnthropicResponse;
