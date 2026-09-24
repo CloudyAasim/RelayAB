@@ -15,7 +15,7 @@
 import { hashPassword } from "../crypto/password";
 import { generateId } from "../crypto/hashing";
 import { UserSchema, DEFAULT_USER_ALLOCATION, type User } from "./types";
-import { getRedis, hgetallMany, k, readStoredFlag } from "./redis";
+import { getRedis, hgetallMany, k } from "./redis";
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -55,7 +55,6 @@ export interface CreateUserInput {
 export interface UpdateUserInput {
   displayName?: string;
   role?: "admin" | "user";
-  disabled?: boolean;
   // Admin-controlled policy (see UserSchema).
   quotaType?: "credits" | "tokens";
   quotaLimit?: number;
@@ -89,7 +88,6 @@ export async function createUser(input: CreateUserInput): Promise<User> {
     createdAt: now,
     updatedAt: now,
     lastLoginAt: null,
-    disabled: false,
     quotaType: input.quotaType ?? DEFAULT_USER_ALLOCATION.quotaType,
     quotaLimit: input.quotaLimit ?? DEFAULT_USER_ALLOCATION.quotaLimit,
     quotaUsed: 0,
@@ -132,7 +130,6 @@ export async function createUser(input: CreateUserInput): Promise<User> {
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
       lastLoginAt: user.lastLoginAt ?? "",
-      disabled: user.disabled ? "1" : "0",
       quotaType: user.quotaType,
       quotaLimit: String(user.quotaLimit),
       quotaUsed: String(user.quotaUsed),
@@ -212,7 +209,7 @@ export async function verifyUserCredentials(
   password: string,
 ): Promise<User | null> {
   const user = await getUserByUsername(username);
-  if (!user || user.disabled) return null;
+  if (!user) return null;
   const { verifyPassword } = await import("../crypto/password");
   const ok = await verifyPassword(password, user.passwordHash);
   return ok ? user : null;
@@ -235,7 +232,6 @@ export async function updateUser(
     ...existing,
     displayName: patch.displayName ?? existing.displayName,
     role: patch.role ?? existing.role,
-    disabled: patch.disabled ?? existing.disabled,
     quotaType: patch.quotaType ?? existing.quotaType,
     quotaLimit: patch.quotaLimit ?? existing.quotaLimit,
     quotaUsed: patch.quotaUsed ?? existing.quotaUsed,
@@ -249,7 +245,6 @@ export async function updateUser(
   await getRedis().hset(k.user(userId), {
     displayName: validated.displayName,
     role: validated.role,
-    disabled: validated.disabled ? "1" : "0",
     quotaType: validated.quotaType,
     quotaLimit: String(validated.quotaLimit),
     quotaUsed: String(validated.quotaUsed),
@@ -315,12 +310,6 @@ export async function incrementUserQuotaUsed(
  */
 export function remainingQuota(user: Pick<User, "quotaLimit" | "quotaUsed">): number {
   return Math.max(0, user.quotaLimit - user.quotaUsed);
-}
-
-/** Soft-delete: mark user as disabled (keeps data for audit). */
-export async function disableUser(userId: string): Promise<boolean> {
-  const updated = await updateUser(userId, { disabled: true });
-  return updated !== null;
 }
 
 /** Hard-delete: remove user + all secondary indexes. */
@@ -409,7 +398,6 @@ async function hashToUser(raw: Record<string, string> | null): Promise<User | nu
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
       lastLoginAt: raw.lastLoginAt && raw.lastLoginAt !== "" ? raw.lastLoginAt : null,
-      disabled: readStoredFlag(raw.disabled, false),
       quotaType,
       quotaLimit,
       quotaUsed,

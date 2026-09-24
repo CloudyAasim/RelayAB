@@ -90,7 +90,6 @@ export const UserSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   lastLoginAt: z.string().nullable(),
-  disabled: z.boolean(),
   // ----- Admin-controlled policy (see DEFAULT_USER_ALLOCATION above) -----
   quotaType: QuotaTypeSchema.default(DEFAULT_USER_ALLOCATION.quotaType),
   quotaLimit: z
@@ -349,7 +348,6 @@ export type KeyValidationReason =
   | "key_disabled"
   | "key_force_disabled"
   | "key_expired"
-  | "user_disabled"
   | "quota_exceeded_credits"
   | "quota_exceeded_tokens"
   | "model_not_allowed";

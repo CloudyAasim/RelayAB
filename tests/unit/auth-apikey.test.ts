@@ -52,7 +52,6 @@ function makeUser(overrides: Partial<User> = {}): User {
     createdAt: "2026-09-01T00:00:00Z",
     updatedAt: "2026-09-01T00:00:00Z",
     lastLoginAt: null,
-    disabled: false,
     quotaType: "credits",
     quotaLimit: 1000,
     quotaUsed: 0,
@@ -92,7 +91,6 @@ async function seedUser(user: User): Promise<void> {
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
     lastLoginAt: user.lastLoginAt ?? "",
-    disabled: user.disabled ? "1" : "0",
     quotaType: user.quotaType,
     quotaLimit: String(user.quotaLimit),
     quotaUsed: String(user.quotaUsed),
@@ -260,15 +258,6 @@ describe("checkKeyStatus", () => {
     expect(r.reason).toBe("quota_exceeded_credits");
   });
 
-  it("blocks a disabled owner", () => {
-    const r = checkKeyStatus({
-      key: makeKey(),
-      user: makeUser({ disabled: true }),
-      now: NOW,
-    });
-    expect(r.reason).toBe("user_disabled");
-  });
-
   it("minting extra keys does not mint extra budget", () => {
     // Two different keys, same owner, same exhausted pool → both refused.
     const owner = makeUser({ quotaLimit: 100, quotaUsed: 100 });
@@ -429,12 +418,4 @@ describe("authenticateBearer (end-to-end with in-memory Redis)", () => {
     expect(r.reason).toBe("quota_exceeded_credits");
   });
 
-  it("enforces a disabled owner end-to-end", async () => {
-    const plain = generateApiKey();
-    const key = makeKey({ keyHash: sha256Hex(plain) });
-    await seedKey(key, makeUser({ disabled: true }));
-
-    const r = await authenticateBearer({ authHeader: `Bearer ${plain}` });
-    expect(r.reason).toBe("user_disabled");
-  });
 });

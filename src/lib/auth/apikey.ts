@@ -17,7 +17,7 @@
  *                code that maps to a specific HTTP error.
  */
 import { sha256Hex } from "../crypto/hashing";
-import { getRedis, k, readStoredFlag } from "../db/redis";
+import { getRedis, k } from "../db/redis";
 import { ensureBootstrapped } from "../db/bootstrap";
 import {
   ApiKeySchema,
@@ -179,9 +179,6 @@ export function checkKeyStatus(args: {
   }
 
   if (user) {
-    if (user.disabled) {
-      return { ok: false, reason: "user_disabled", key, user };
-    }
     if (user.quotaUsed >= user.quotaLimit) {
       return {
         ok: false,
@@ -308,7 +305,6 @@ function parseUserFromHash(raw: Record<string, string>): User | null {
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
       lastLoginAt: raw.lastLoginAt && raw.lastLoginAt !== "" ? raw.lastLoginAt : null,
-      disabled: readStoredFlag(raw.disabled, false),
       quotaType,
       quotaLimit,
       quotaUsed,
@@ -343,12 +339,6 @@ export function reasonToHttp(reason: string): { status: number; code: string; me
       };
     case "key_expired":
       return { status: 403, code: "key_expired", message: "This API key has expired" };
-    case "user_disabled":
-      return {
-        status: 403,
-        code: "user_disabled",
-        message: "The account that owns this key has been disabled",
-      };
     case "quota_exceeded_credits":
       return {
         status: 403,

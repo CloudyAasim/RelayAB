@@ -21,11 +21,10 @@ import {
   __setRedisForTest,
 } from "@/lib/db/redis";
 import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
-import { createUser, getUserById, updateUser } from "@/lib/db/users";
+import { createUser, getUserById } from "@/lib/db/users";
 import { createApiKey, getApiKeyById, updateApiKey } from "@/lib/db/keys";
 import { getPublicUrl } from "@/lib/config";
 import { InMemoryCookieStore, getSessionFromStore } from "@/lib/auth/session";
-import { getCurrentUser } from "@/lib/auth/session";
 
 async function loginAs(store: InMemoryCookieStore, userId: string, username: string, role: "admin" | "user"): Promise<void> {
   const s = await getSessionFromStore(store);
@@ -196,22 +195,6 @@ describe("user self-service API key endpoints", () => {
     expect(body.error?.code).toBe("max_keys_reached");
   });
 
-  it("blocks disabled user", async () => {
-    const u = await createUser({ username: "frank", password: "longenoughpw" });
-    const { updateUser } = await import("@/lib/db/users");
-    await updateUser(u.id, { disabled: true });
-
-    const store = new InMemoryCookieStore();
-    await loginAs(store, u.id, "frank", "user");
-    currentStore = store;
-
-    const req = jsonRequest("POST", { label: "nope" });
-    const res = await (await import("@/app/api/user/keys/route")).POST(req);
-    const { status, body } = await asJson(res);
-    expect(status).toBe(403);
-    expect(body.error?.code).toBe("user_disabled");
-  });
-
   it("user cannot update someone else's key", async () => {
     const owner = await createUser({ username: "owner", password: "longenoughpw" });
     const attacker = await createUser({ username: "attacker", password: "longenoughpw" });
@@ -293,41 +276,6 @@ describe("user self-service API key endpoints", () => {
     expect(status).toBe(200);
     expect(body.data.keys).toHaveLength(2);
     expect(body.data.keys.every((k: any) => k.userId === bob.id)).toBe(true);
-  });
-});
-
-describe("disabled accounts", () => {
-  beforeEach(() => {
-    __setRedisForTest(createMemoryRedis());
-  });
-
-  it("loses panel access immediately, without waiting for the cookie to expire", async () => {
-    const u = await createUser({ username: "henry", password: "longenoughpw" });
-    const store = new InMemoryCookieStore();
-    await loginAs(store, u.id, "henry", "user");
-    currentStore = store;
-
-    // The session works while the account is active.
-    expect(await getCurrentUser()).not.toBeNull();
-
-    await updateUser(u.id, { disabled: true });
-
-    // The cookie is untouched and still decrypts, but the account is disabled —
-    // so every page and self-service route must now treat it as signed out.
-    expect(await getCurrentUser()).toBeNull();
-  });
-
-  it("keeps working again after the admin re-enables the account", async () => {
-    const u = await createUser({ username: "iris", password: "longenoughpw" });
-    const store = new InMemoryCookieStore();
-    await loginAs(store, u.id, "iris", "user");
-    currentStore = store;
-
-    await updateUser(u.id, { disabled: true });
-    expect(await getCurrentUser()).toBeNull();
-
-    await updateUser(u.id, { disabled: false });
-    expect(await getCurrentUser()).not.toBeNull();
   });
 });
 
