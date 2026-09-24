@@ -57,7 +57,6 @@ describe("credit pool defaults", () => {
       createdAt: "2025-01-01T00:00:00.000Z",
       updatedAt: "2025-01-01T00:00:00.000Z",
       lastLoginAt: null,
-      disabled: false,
     });
     expect(parsed.quotaType).toBe("credits");
     expect(parsed.quotaLimit).toBe(0);

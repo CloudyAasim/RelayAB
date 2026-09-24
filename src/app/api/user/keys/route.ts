@@ -55,32 +55,18 @@ export async function GET(): Promise<Response> {
 export async function POST(req: Request): Promise<Response> {
   const { user: me, rejection } = await lookupCurrentUser();
   if (!me) {
-    // "Account disabled" is actionable; plain 401 would just look like a
-    // signed-out session.
-    if (rejection === "user_disabled") {
-      return NextResponse.json(
-        { ok: false, error: { code: "user_disabled", message: "Your account is disabled" } },
-        { status: 403 },
-      );
-    }
     return NextResponse.json(
       { ok: false, error: { code: "unauthenticated", message: "Login required" } },
       { status: 401 },
     );
   }
 
-  // Pull the full user record so we can apply allocation + disabled check.
+  // Pull the full user record so we can apply the allocation limits.
   const fullUser = await getUserById(me.id);
   if (!fullUser) {
     return NextResponse.json(
       { ok: false, error: { code: "user_not_found", message: "User no longer exists" } },
       { status: 404 },
-    );
-  }
-  if (fullUser.disabled) {
-    return NextResponse.json(
-      { ok: false, error: { code: "user_disabled", message: "Your account is disabled" } },
-      { status: 403 },
     );
   }
 

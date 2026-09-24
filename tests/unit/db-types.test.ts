@@ -113,7 +113,6 @@ describe("db types - toPublic helpers", () => {
       createdAt: "2026-09-21T08:00:00.000Z",
       updatedAt: "2025-01-01T00:00:00.000Z",
       lastLoginAt: null,
-      disabled: false,
       quotaType: "credits",
       quotaLimit: 1000,
       quotaUsed: 0,

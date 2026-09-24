@@ -25,7 +25,6 @@ import {
   listUsers,
   updateUser,
   resetUserPassword,
-  disableUser,
   deleteUser,
   verifyUserCredentials,
   bootstrapAdminIfNeeded,
@@ -76,7 +75,6 @@ describe("users repository", () => {
     });
     expect(u.id).toBeTruthy();
     expect(u.passwordHash).toMatch(/^\$2/);
-    expect(u.disabled).toBe(false);
 
     const fetched = await getUserById(u.id);
     expect(fetched?.username).toBe("alice");
@@ -122,13 +120,6 @@ describe("users repository", () => {
     await resetUserPassword(u.id, "new");
     expect(await verifyUserCredentials("george", "old")).toBeNull();
     expect(await verifyUserCredentials("george", "new")).not.toBeNull();
-  });
-
-  it("disableUser blocks login", async () => {
-    const u = await createUser({ username: "harry", password: "p" });
-    expect(await verifyUserCredentials("harry", "p")).not.toBeNull();
-    await disableUser(u.id);
-    expect(await verifyUserCredentials("harry", "p")).toBeNull();
   });
 
   it("deleteUser removes the record and the username index", async () => {

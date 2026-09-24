@@ -112,7 +112,7 @@ export interface AuthedUser {
   role: Role;
 }
 
-export type SessionRejection = "user_not_found" | "user_disabled";
+export type SessionRejection = "user_not_found";
 
 export interface CurrentUserLookup {
   user: AuthedUser | null;
@@ -152,7 +152,6 @@ async function lookupCurrentUserUncached(): Promise<CurrentUserLookup> {
   // next request instead of leaving the user a fully working dashboard.
   const user = await getUserById(session.userId);
   if (!user) return { user: null, rejection: "user_not_found" };
-  if (user.disabled) return { user: null, rejection: "user_disabled" };
 
   return {
     user: {

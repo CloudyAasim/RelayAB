@@ -25,7 +25,6 @@ function makeUser(over: Partial<User> = {}): User {
     createdAt: "2026-09-21T00:00:00.000Z",
     updatedAt: "2026-09-21T00:00:00.000Z",
     lastLoginAt: null,
-    disabled: false,
     quotaType: "credits",
     quotaLimit: 100,
     quotaUsed: 0,
