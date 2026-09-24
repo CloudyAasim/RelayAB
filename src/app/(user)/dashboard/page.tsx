@@ -50,7 +50,7 @@ export default async function DashboardPage() {
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>
-        {t("dashboard.welcome", { username: sessionUser.username })}
+        {t("dashboard.welcome", { name: fullUser?.displayName ?? sessionUser.username })}
       </SectionPageLayout.Title>
       <SectionPageLayout.Actions>
         <CreateKeyButton allocation={allocation} />

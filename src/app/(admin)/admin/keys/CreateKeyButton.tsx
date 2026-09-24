@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { useT } from "@/components/i18n/I18nProvider";
 
-interface UserOpt { id: string; username: string; }
+interface UserOpt { id: string; displayName: string; username: string; }
 
 export function CreateKeyButton({ users }: { users: UserOpt[] }) {
   const t = useT();
@@ -82,7 +82,7 @@ export function CreateKeyButton({ users }: { users: UserOpt[] }) {
                 required
               >
                 {users.map((u) => (
-                  <option key={u.id} value={u.id}>{u.username}</option>
+                  <option key={u.id} value={u.id}>{u.displayName ?? u.username}</option>
                 ))}
               </select>
             </div>

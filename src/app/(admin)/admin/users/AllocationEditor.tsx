@@ -229,7 +229,7 @@ function AllocationModal({
       open
       onClose={onClose}
       wide
-      title={`${t("admin.users.allocation.editTitle")} · ${user.username}`}
+      title={`${t("admin.users.allocation.editTitle")} · ${user.displayName ?? user.username}`}
     >
       <form onSubmit={onSubmit} className="space-y-4">
         {/* ---- Credit pool ---- */}

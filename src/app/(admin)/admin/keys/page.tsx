@@ -32,7 +32,7 @@ export default async function KeysPage() {
     listAllApiKeys({}),
   ]);
 
-  const userMap = new Map(users.map((u) => [u.id, u.username]));
+  const displayNameById = new Map(users.map((u) => [u.id, u.displayName ?? u.username]));
   const userById = new Map(users.map((u) => [u.id, u]));
 
   /**
@@ -52,7 +52,7 @@ export default async function KeysPage() {
     <SectionPageLayout>
       <SectionPageLayout.Title>{t("admin.keys.title")}</SectionPageLayout.Title>
       <SectionPageLayout.Actions>
-        <CreateKeyButton users={users.map((u) => ({ id: u.id, username: u.username }))} />
+        <CreateKeyButton users={users.map((u) => ({ id: u.id, displayName: u.displayName ?? u.username, username: u.username }))} />
       </SectionPageLayout.Actions>
       <SectionPageLayout.Content>
         <Card>
@@ -81,7 +81,7 @@ export default async function KeysPage() {
                     <TD className="font-medium">{k.label}</TD>
                     <TD>
                       <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
-                        {userMap.get(k.userId) ?? "—"}
+                        {displayNameById.get(k.userId) ?? "—"}
                       </code>
                     </TD>
                     {/* Quota belongs to the owner, so the useful number here

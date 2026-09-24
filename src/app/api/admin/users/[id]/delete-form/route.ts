@@ -71,6 +71,6 @@ export async function POST(req: Request): Promise<Response> {
   const { t } = await getT();
   return flashRedirect("/admin/users", {
     kind: "ok",
-    message: t("admin.users.flash.deleted", { username: existing.username }),
+    message: t("admin.users.flash.deleted", { name: existing.displayName ?? existing.username }),
   });
 }

@@ -105,7 +105,7 @@ export default async function WelcomePage() {
 
           {user && (
             <p className="mt-3 text-xs text-muted-foreground">
-              {t("welcome.signedInAs", { username: user.username })}
+              {t("welcome.signedInAs", { name: user.displayName ?? user.username })}
             </p>
           )}
         </div>
