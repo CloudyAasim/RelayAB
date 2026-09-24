@@ -73,5 +73,11 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  return proxyResultToResponse(result);
+  // Streaming clients must receive an SSE body. Providers reached through the
+  // chat conversion hop answer with a buffered `response` object, which
+  // `proxyResultToResponse` replays as `response.*` events.
+  const requestedStream =
+    typeof body === "object" && body !== null && "stream" in body &&
+    Boolean((body as Record<string, unknown>).stream);
+  return proxyResultToResponse(result, { streamRequest: requestedStream });
 }

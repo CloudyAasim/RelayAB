@@ -22,6 +22,7 @@ import { createUser } from "@/lib/db/users";
 import { createProvider } from "@/lib/db/providers";
 import { listUsageByKey } from "@/lib/db/usage";
 import { POST as responsesPOST } from "@/app/api/v1/responses/route";
+import { POST as chatResponsesPOST } from "@/app/v1/chat/completions/responses/route";
 
 const CHAT_JSON = {
   id: "chatcmpl-1",
@@ -191,5 +192,18 @@ describe("POST /v1/responses via a chat-only provider", () => {
     expect(body.object).toBe("response");
     expect(body.output_text).toBe("Hello!");
     expect(body.status).toBe("completed");
+  });
+
+  it("streams on the /v1/chat/completions/responses alias too", async () => {
+    await seedChatProvider();
+    stubUpstream();
+
+    const res = await chatResponsesPOST(responsesRequest(CODEX_BODY));
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/event-stream");
+    const text = await res.text();
+    expect(text).toContain("event: response.output_text.delta");
+    expect(text).toContain("Hello!");
   });
 });
