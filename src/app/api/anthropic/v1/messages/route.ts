@@ -1,83 +1,21 @@
 /**
  * app/api/anthropic/v1/messages/route.ts
  *
- * Anthropic Messages API compatible endpoint.
+ * Anthropic Messages API compatible endpoint (provider-prefixed path).
  *
- * Auth: Bearer sk-relay-...
+ * Auth: `x-api-key: sk-relay-...` (Anthropic clients / ONLYOFFICE's Anthropic
+ * template) or `Authorization: Bearer sk-relay-...`.
  * Body: { model, messages, max_tokens, ... }
+ *
+ * The implementation lives in `lib/proxy/anthropic-route.ts` because the same
+ * handler also serves `/v1/messages` (Anthropic's own path convention).
  */
-import { NextResponse } from "next/server";
-import { authenticateBearer, reasonToHttp, resolveAuthHeader } from "@/lib/auth/apikey";
-import { proxyAnthropicMessage } from "@/lib/proxy/anthropic";
-import { proxyResultToResponse } from "@/lib/proxy/respond";
-import type { ApiKey } from "@/lib/db/types";
-import { getUserById as lookupUserById } from "@/lib/db/users";
+import { handleAnthropicMessages } from "@/lib/proxy/anthropic-route";
 
 export const runtime = "nodejs";
 // Long generations must not be cut off at 60s.
 export const maxDuration = 300;
 
 export async function POST(req: Request): Promise<Response> {
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json(
-      { ok: false, error: { code: "bad_json", message: "Invalid JSON body" } },
-      { status: 400 },
-    );
-  }
-
-  const requestedModel =
-    typeof body === "object" && body !== null && "model" in body
-      ? String((body as Record<string, unknown>).model ?? "")
-      : "";
-  // Anthropic SDKs (and OnlyOffice's Anthropic template) send the key in
-  // `x-api-key`; OpenAI-style clients use `Authorization: Bearer`. Both
-  // carriers are normalised by `resolveAuthHeader`, which also honours the
-  // legacy `?api_key=` query-param style.
-  const authHeader = resolveAuthHeader(req);
-  const auth = await authenticateBearer({
-    authHeader,
-    requestedModel,
-  });
-
-  if (!auth.ok || !auth.key) {
-    const http = reasonToHttp(auth.reason);
-    return NextResponse.json(
-      { ok: false, error: { code: http.code, message: http.message } },
-      { status: http.status },
-    );
-  }
-
-  // The owner record carries the quota pool and the model whitelist.
-  const owner = auth.user ?? (await lookupUserById(auth.key.userId));
-  if (!owner) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: { code: "user_not_found", message: "The account owning this key no longer exists" },
-      },
-      { status: 403 },
-    );
-  }
-
-  const requestedStream =
-    typeof body === "object" && body !== null && "stream" in body &&
-    Boolean((body as Record<string, unknown>).stream);
-  const result = await proxyAnthropicMessage({
-    req: body as Parameters<typeof proxyAnthropicMessage>[0]["req"],
-    apiKey: auth.key as ApiKey,
-    user: owner,
-    // Let a client disconnect settle the usage row instead of dropping it.
-    signal: req.signal,
-  });
-
-  if (!result.ok) {
-    return NextResponse.json(
-      { ok: false, error: result.error },
-      { status: result.status },
-    );
-  }
-  return proxyResultToResponse(result, { streamRequest: requestedStream });
+  return handleAnthropicMessages(req);
 }
