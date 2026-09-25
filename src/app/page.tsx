@@ -22,6 +22,14 @@ export const metadata = {
 };
 
 /**
+ * The page personalises itself for a signed-in visitor ("signed in as ..."),
+ * and it reads the locale cookie. Keep it explicitly dynamic so a future
+ * refactor can never let Next.js prerender or cache one user's identity into a
+ * response served to someone else.
+ */
+export const dynamic = "force-dynamic";
+
+/**
  * Public welcome / landing page.
  *
  * Deliberately NOT a redirect. Before this existed, `/` bounced anonymous

@@ -2,15 +2,22 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { LegacyModal as Modal } from "@/components/ui/Modal";
 import { useT } from "@/components/i18n/I18nProvider";
+import { apiErrorMessage } from "@/lib/i18n/api-errors";
 import type { ApiKey } from "@/lib/db/types";
-import { MoreHorizontal, Power, Trash2, Ban } from "lucide-react";
+import { MoreHorizontal, Power, Trash2, Ban, Pencil } from "lucide-react";
 
 export function KeyActions({ apiKey }: { apiKey: ApiKey }) {
   const t = useT();
   const [loading, setLoading] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  // Rename state
+  const [renameModal, setRenameModal] = useState(false);
+  const [renameValue, setRenameValue] = useState(apiKey.label);
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [renameLoading, setRenameLoading] = useState(false);
 
   async function toggle(enabled: boolean) {
     setLoading(true);
@@ -181,6 +188,21 @@ export function KeyActions({ apiKey }: { apiKey: ApiKey }) {
             </Button>
           )}
 
+          <Button
+            variant="outline"
+            className="w-full justify-start"
+            onClick={() => {
+              setRenameValue(apiKey.label);
+              setRenameError(null);
+              setMenuOpen(false);
+              setRenameModal(true);
+            }}
+            disabled={loading}
+          >
+            <Pencil className="mr-2 h-4 w-4" />
+            {t("admin.keys.action.rename")}
+          </Button>
+
           <div className="border-t border-border pt-2">
             <Button
               variant="ghost"
@@ -193,6 +215,68 @@ export function KeyActions({ apiKey }: { apiKey: ApiKey }) {
             >
               <Trash2 className="mr-2 h-4 w-4" />
               {t("common.delete")}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={renameModal}
+        onClose={() => setRenameModal(false)}
+        title={t("admin.keys.rename.title")}
+      >
+        <div className="space-y-3">
+          <Input
+            label={t("admin.keys.rename.title")}
+            value={renameValue}
+            onChange={(e) => {
+              setRenameValue(e.target.value);
+              setRenameError(null);
+            }}
+            error={renameError ?? undefined}
+            maxLength={64}
+          />
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setRenameModal(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button
+              loading={renameLoading}
+              onClick={async () => {
+                const trimmed = renameValue.trim();
+                if (!trimmed) {
+                  setRenameError(t("admin.keys.rename.errorEmpty"));
+                  return;
+                }
+                if (trimmed.length > 64) {
+                  setRenameError(t("admin.keys.rename.errorTooLong"));
+                  return;
+                }
+                setRenameLoading(true);
+                setRenameError(null);
+                try {
+                  const res = await fetch(`/api/admin/keys/${apiKey.id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ label: trimmed }),
+                  });
+                  const json = await res.json();
+                  if (!res.ok || !json.ok) {
+                    setRenameError(
+                      apiErrorMessage(t, json?.error?.code, t("common.failed")),
+                    );
+                    return;
+                  }
+                  setRenameModal(false);
+                  window.location.reload();
+                } catch {
+                  setRenameError(apiErrorMessage(t, undefined, t("common.failed")));
+                } finally {
+                  setRenameLoading(false);
+                }
+              }}
+            >
+              {t("common.save")}
             </Button>
           </div>
         </div>

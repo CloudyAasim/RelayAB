@@ -53,7 +53,30 @@ export async function PATCH(
     );
   }
 
-  const updated = await updateUser(id, parsed.data);
+  // Enforce displayName constraints at route layer before they reach UserSchema.parse() → 500
+  if (parsed.data.displayName !== undefined) {
+    const trimmed = parsed.data.displayName.trim();
+    if (trimmed.length < 1 || trimmed.length > 64) {
+      return NextResponse.json(
+        { ok: false, error: { code: "bad_request", message: "displayName must be 1–64 characters after trimming" } },
+        { status: 400 },
+      );
+    }
+    parsed.data.displayName = trimmed;
+  }
+
+  let updated;
+  try {
+    updated = await updateUser(id, parsed.data);
+  } catch (err) {
+    if (err instanceof Error && err.name === "ZodError") {
+      return NextResponse.json(
+        { ok: false, error: { code: "bad_request", message: "Invalid user data" } },
+        { status: 400 },
+      );
+    }
+    throw err;
+  }
   if (!updated) {
     return NextResponse.json(
       { ok: false, error: { code: "not_found", message: "User not found" } },
