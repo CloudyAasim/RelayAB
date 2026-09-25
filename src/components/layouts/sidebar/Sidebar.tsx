@@ -38,7 +38,7 @@ export function Sidebar({ children }: { children: ReactNode }) {
         aria-label="Sidebar navigation"
         data-state={collapsed ? "collapsed" : "expanded"}
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-[288px] flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-transform duration-200 ease-in-out lg:sticky lg:top-0 lg:h-screen lg:translate-x-0",
+          "fixed inset-y-0 left-0 z-50 flex w-[288px] flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width,transform] duration-200 ease-in-out lg:sticky lg:top-0 lg:h-screen lg:translate-x-0",
           isMobile ? (open ? "translate-x-0 shadow-xl" : "-translate-x-full") : "",
           collapsed && "lg:w-14",
         )}
@@ -96,7 +96,8 @@ export function SidebarToggle({ className }: { className?: string }) {
       aria-expanded={!collapsed}
       title={t("nav.toggleSidebar")}
       className={cn(
-        "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+        "flex shrink-0 items-center justify-center rounded-md text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+        collapsed ? "h-8 w-8" : "h-7 w-7",
         className,
       )}
     >
@@ -163,7 +164,7 @@ export function SidebarMenuButton({
     "group flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
     "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
     isActive && "bg-sidebar-accent text-sidebar-accent-foreground",
-    collapsed && "justify-center px-2",
+    collapsed && "justify-center gap-0 px-2",
   );
 
   const content = (
@@ -172,7 +173,10 @@ export function SidebarMenuButton({
         <span className="flex h-4 w-4 shrink-0 items-center justify-center">{icon}</span>
       )}
       <span className={cn("truncate", collapsed && "hidden")}>{children}</span>
-      {href && <LinkPendingIndicator />}
+      {/* The icon-only rail has no room for a second element; a pending
+          indicator here would push the icon off-centre and overflow the
+          32px button. The active state still updates once navigation lands. */}
+      {href && !collapsed && <LinkPendingIndicator />}
     </>
   );
 
