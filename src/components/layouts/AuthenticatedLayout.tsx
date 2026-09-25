@@ -10,7 +10,7 @@
 import { type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { isNavItemActive } from "@/lib/nav";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/Tooltip";
+import { TooltipProvider } from "@/components/ui/Tooltip";
 import {
   SidebarProvider,
   Sidebar,
@@ -132,11 +132,11 @@ function SidebarShell({ role, username, displayName, children }: AuthenticatedLa
   return (
     <div className="flex min-h-screen w-full flex-1">
       <Sidebar>
-        <SidebarHeader className={cn(collapsed && "justify-center px-3")}>
+        <SidebarHeader className={cn(collapsed && "px-3")}>
           <Link href="/" className="flex min-w-0 items-center gap-2">
             <span
               className={cn(
-                "flex shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground",
+                "flex shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground transition-[height,width] duration-300 ease-sidebar motion-reduce:transition-none",
                 // Icon-only rail: match the 32px footprint of the nav items so
                 // the brand mark and the menu icons share one vertical axis.
                 collapsed ? "h-8 w-8" : "h-7 w-7",
@@ -144,9 +144,16 @@ function SidebarShell({ role, username, displayName, children }: AuthenticatedLa
             >
               <Server className="h-4 w-4" />
             </span>
-            {!collapsed && (
-              <span className="truncate font-semibold tracking-tight">RelayAB</span>
-            )}
+            {/* Kept mounted and clipped instead of unmounting, so the wordmark
+                fades away with the rail rather than blinking out first. */}
+            <span
+              className={cn(
+                "truncate font-semibold tracking-tight transition-[max-width,opacity] duration-300 ease-sidebar motion-reduce:transition-none",
+                collapsed ? "max-w-0 opacity-0" : "max-w-[120px] opacity-100 delay-150",
+              )}
+            >
+              RelayAB
+            </span>
           </Link>
         </SidebarHeader>
 
@@ -174,39 +181,24 @@ function SidebarShell({ role, username, displayName, children }: AuthenticatedLa
         </SidebarContent>
 
         <SidebarFooter>
-          {collapsed ? (
-            /*
-             * Icon-only rail (56px wide, 32px of usable interior). The
-             * status label and the toggle no longer fit side by side, so
-             * stack them: status as a tooltip-only dot on top, toggle below.
-             */
-            <div className="flex flex-col items-center gap-1.5">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span
-                    role="status"
-                    tabIndex={0}
-                    aria-label={t("nav.sidebar.statusOnline")}
-                    className="flex h-8 w-8 items-center justify-center rounded-md text-success focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-                  >
-                    <Activity className="h-3.5 w-3.5" />
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent side="right" sideOffset={8}>
-                  {t("nav.sidebar.statusOnline")}
-                </TooltipContent>
-              </Tooltip>
-              <SidebarToggle />
+          {/*
+           * One row in both states. The status block collapses its own width
+           * and opacity while the rail narrows, so the toggle stays pinned to
+           * the right edge the whole time and simply ends up centred in the
+           * 56px rail — no mid-animation layout switch.
+           */}
+          <div className={cn("flex items-center justify-between", collapsed ? "gap-0" : "gap-2")}>
+            <div
+              className={cn(
+                "flex items-center gap-2 overflow-hidden text-xs text-muted-foreground transition-[max-width,opacity] duration-300 ease-sidebar motion-reduce:transition-none",
+                collapsed ? "max-w-0 opacity-0" : "max-w-[180px] opacity-100 delay-150",
+              )}
+            >
+              <Activity className="h-3.5 w-3.5 shrink-0 text-success" />
+              <span className="truncate">{t("nav.sidebar.statusOnline")}</span>
             </div>
-          ) : (
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Activity className="h-3.5 w-3.5 shrink-0 text-success" />
-                <span className="truncate">{t("nav.sidebar.statusOnline")}</span>
-              </div>
-              <SidebarToggle />
-            </div>
-          )}
+            <SidebarToggle />
+          </div>
         </SidebarFooter>
       </Sidebar>
 

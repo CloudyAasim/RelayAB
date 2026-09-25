@@ -30,33 +30,68 @@ describe("sidebarStateForViewport", () => {
 });
 
 /**
- * Regression guard for the collapsed rail.
+ * Regression guard for the collapsed rail and its expand/collapse motion.
  *
  * The icon-only rail is 56px wide with 32px of usable interior after `px-3`.
- * Before this guard, the footer kept the status label and the toggle in one
- * `justify-between` row, so the toggle overflowed the rail (measured
- * scrollWidth 62 > clientWidth 55), and the brand mark did not line up with
- * the nav icons. These assertions pin the fixed structure down.
+ * Two problems previously showed up here and must not come back:
+ *   1. the footer kept the status label and the toggle in one `justify-between`
+ *      row, so the toggle overflowed the rail (measured scrollWidth 62 >
+ *      clientWidth 55);
+ *   2. the width snapped / labels popped and the footer switched to a column
+ *      mid-animation, which made the collapse feel jumpy.
+ * The rail now eases its width, keeps labels mounted and clips them, and the
+ * footer stays a single row that shrinks its status block.
  */
-describe("sidebar: collapsed rail layout", () => {
+describe("sidebar: collapsed rail layout & motion", () => {
   const layout = read("components/layouts/AuthenticatedLayout.tsx");
   const sidebar = read("components/layouts/sidebar/Sidebar.tsx");
 
-  it("stacks the footer controls vertically when collapsed", () => {
-    expect(layout).toContain('className="flex flex-col items-center gap-1.5"');
+  it("eases the rail width with one shared curve and clips overflow", () => {
+    expect(sidebar).toContain(
+      "transition-[width,transform] duration-300 ease-sidebar",
+    );
+    expect(sidebar).toContain("overflow-hidden");
+    expect(sidebar).toContain("motion-reduce:transition-none");
   });
 
-  it("keeps the expanded footer as a single row", () => {
-    expect(layout).toContain('className="flex items-center justify-between gap-2"');
+  it("keeps nav labels mounted and collapses them via max-width/opacity", () => {
+    expect(sidebar).toContain(
+      'collapsed ? "max-w-0 opacity-0" : "max-w-[180px] opacity-100 delay-150"',
+    );
+    expect(sidebar).not.toContain("collapsed && \"hidden\"");
+  });
+
+  it("nudges the nav icon inward instead of jumping it to the centre", () => {
+    expect(sidebar).toContain('collapsed && "gap-0 pl-[7.5px] pr-[7.5px]"');
+    expect(sidebar).not.toContain('collapsed && "justify-center px-2"');
+  });
+
+  it("fades the brand wordmark instead of unmounting it", () => {
+    expect(layout).toContain(
+      'collapsed ? "max-w-0 opacity-0" : "max-w-[120px] opacity-100 delay-150"',
+    );
+  });
+
+  it("keeps the footer a single shrinking row (no mid-animation column)", () => {
+    expect(layout).toContain("justify-between");
+    expect(layout).toContain(
+      'collapsed ? "max-w-0 opacity-0" : "max-w-[180px] opacity-100 delay-150"',
+    );
+    expect(layout).not.toContain("flex flex-col items-center");
   });
 
   it("aligns the collapsed brand mark with the 32px nav icons", () => {
     expect(layout).toContain('collapsed ? "h-8 w-8" : "h-7 w-7"');
-    expect(layout).toContain('collapsed && "justify-center px-3"');
+    expect(layout).toContain('collapsed && "px-3"');
   });
 
   it("gives the toggle a 32px hit target when collapsed", () => {
     expect(sidebar).toContain('collapsed ? "h-8 w-8" : "h-7 w-7"');
+  });
+
+  it("crossfades the toggle glyph instead of hard-swapping it", () => {
+    expect(sidebar).toContain('collapsed ? "opacity-100" : "opacity-0"');
+    expect(sidebar).toContain('collapsed ? "opacity-0" : "opacity-100"');
   });
 
   it("does not render the pending indicator in the icon-only rail", () => {

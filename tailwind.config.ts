@@ -115,6 +115,16 @@ const config: Config = {
         ],
         mono: ["JetBrains Mono", "ui-monospace", "monospace"],
       },
+      /**
+       * Shared curve for the sidebar expand/collapse motion. A decelerating
+       * ease (fast start, gentle settle) reads as "the rail is opening or
+       * closing" rather than the abrupt feel of `ease-in-out`. Defined here
+       * instead of an arbitrary `ease-[cubic-bezier(...)]` class, which
+       * Tailwind reports as ambiguous.
+       */
+      transitionTimingFunction: {
+        sidebar: "cubic-bezier(0.32, 0.72, 0, 1)",
+      },
       keyframes: {
         "accordion-down": {
           from: { height: "0" },
