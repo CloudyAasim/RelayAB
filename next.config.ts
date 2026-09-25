@@ -49,16 +49,43 @@ const baseConfig: NextConfig = {
       { source: "/anthropic/:path*", destination: "/api/anthropic/:path*" },
     ];
   },
-  // Avoid exposing framework hints to upstream APIs
+  /**
+   * Avoid exposing framework hints to upstream APIs, and add the baseline
+   * security headers applied to every response.
+   *
+   * Deliberately conservative:
+   * - The CSP only pins `frame-ancestors` / `base-uri` / `object-src`. It does
+   *   NOT define `default-src` / `script-src`, so it cannot break Next.js'
+   *   inline bootstrap, while still blocking clickjacking, `<base>` hijacking
+   *   and plugin/PDF embedding.
+   * - HSTS is only emitted in production. Over plain HTTP a browser ignores it
+   *   anyway, and we do not want a local test host pinned in a browser profile.
+   */
   async headers() {
+    const securityHeaders = [
+      { key: "X-Content-Type-Options", value: "nosniff" },
+      { key: "X-Frame-Options", value: "DENY" },
+      {
+        key: "Content-Security-Policy",
+        value: "frame-ancestors 'none'; base-uri 'self'; object-src 'none'",
+      },
+      { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+      { key: "X-DNS-Prefetch-Control", value: "off" },
+      {
+        key: "Permissions-Policy",
+        value: "camera=(), microphone=(), geolocation=(), payment=()",
+      },
+    ];
+    if (process.env.NODE_ENV === "production") {
+      securityHeaders.push({
+        key: "Strict-Transport-Security",
+        value: "max-age=63072000",
+      });
+    }
     return [
       {
         source: "/(.*)",
-        headers: [
-          { key: "X-Content-Type-Options", value: "nosniff" },
-          { key: "X-Frame-Options", value: "DENY" },
-          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-        ],
+        headers: securityHeaders,
       },
     ];
   },

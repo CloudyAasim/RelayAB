@@ -41,6 +41,33 @@ function cleanDoubleV1Path(path: string): string {
   return path;
 }
 
+/**
+ * Cookie-authenticated API surfaces. Responses here are per-session and must
+ * never be stored by a shared/proxy cache, so we force `Cache-Control: no-store`
+ * as defence in depth (the handlers also read cookies, which makes them
+ * dynamic, but an explicit header is cheap and unambiguous).
+ */
+const NO_STORE_API_PREFIXES = ["/api/auth", "/api/admin", "/api/user"] as const;
+
+function isNoStoreApiPath(pathname: string): boolean {
+  return NO_STORE_API_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
+
+/** Apply CORS (public surface) and no-store (session surface) response headers. */
+function stampResponse(
+  response: NextResponse,
+  pathname: string,
+  cors: ReturnType<typeof corsRequestInfo> | null,
+): NextResponse {
+  if (cors) applyCorsHeaders(response.headers, cors);
+  if (isNoStoreApiPath(pathname)) {
+    response.headers.set("Cache-Control", "no-store");
+  }
+  return response;
+}
+
 export function middleware(request: NextRequest) {
   const url = request.nextUrl;
   const cleanPath = cleanDoubleV1Path(url.pathname);
@@ -58,16 +85,12 @@ export function middleware(request: NextRequest) {
     // Rewrite the path so the Next.js router dispatches to the correct handler.
     const rewritten = request.nextUrl.clone();
     rewritten.pathname = cleanPath;
-    const response = NextResponse.rewrite(rewritten);
-    if (cors) applyCorsHeaders(response.headers, cors);
-    return response;
+    return stampResponse(NextResponse.rewrite(rewritten), cleanPath, cors);
   }
 
   const bypass = process.env.VERCEL_PROTECTION_BYPASS;
   if (!bypass) {
-    const response = NextResponse.next();
-    if (cors) applyCorsHeaders(response.headers, cors);
-    return response;
+    return stampResponse(NextResponse.next(), cleanPath, cors);
   }
 
   // Forward the bypass header on every request so server-internal
@@ -76,11 +99,11 @@ export function middleware(request: NextRequest) {
   if (!requestHeaders.has("x-vercel-protection-bypass")) {
     requestHeaders.set("x-vercel-protection-bypass", bypass);
   }
-  const response = NextResponse.next({
-    request: { headers: requestHeaders },
-  });
-  if (cors) applyCorsHeaders(response.headers, cors);
-  return response;
+  return stampResponse(
+    NextResponse.next({ request: { headers: requestHeaders } }),
+    cleanPath,
+    cors,
+  );
 }
 
 export const config = {
