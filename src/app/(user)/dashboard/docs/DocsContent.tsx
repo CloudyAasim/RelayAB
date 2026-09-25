@@ -98,7 +98,9 @@ export function DocsContent({ baseUrl, openaiBase, anthropicBase, responsesBase 
   -H "Content-Type: application/json" \\
   -d '{"model": "YOUR_MODEL_ID","messages": [{"role": "user", "content": "Hello!"}]}'`}
           />
-          <p className="text-xs text-muted-foreground">{t("docs.openai.modelListHint")}</p>
+          <p className="text-xs text-muted-foreground">
+            {t("docs.openai.modelListHint", { baseUrl: openaiBase })}
+          </p>
         </div>
       </Card>
 

@@ -48,7 +48,30 @@ export async function PATCH(
     );
   }
 
-  const updated = await updateApiKey(id, parsed.data);
+  // Enforce label constraints at route layer before they reach ApiKeySchema.parse() → 500
+  if (parsed.data.label !== undefined) {
+    const trimmed = parsed.data.label.trim();
+    if (trimmed.length < 1 || trimmed.length > 64) {
+      return NextResponse.json(
+        { ok: false, error: { code: "bad_request", message: "label must be 1–64 characters after trimming" } },
+        { status: 400 },
+      );
+    }
+    parsed.data.label = trimmed;
+  }
+
+  let updated;
+  try {
+    updated = await updateApiKey(id, parsed.data);
+  } catch (err) {
+    if (err instanceof Error && err.name === "ZodError") {
+      return NextResponse.json(
+        { ok: false, error: { code: "bad_request", message: "Invalid key data" } },
+        { status: 400 },
+      );
+    }
+    throw err;
+  }
   if (!updated) {
     return NextResponse.json(
       { ok: false, error: { code: "not_found", message: "API key not found" } },

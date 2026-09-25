@@ -38,7 +38,7 @@ const zhCN: Dict = {
   "welcome.signIn": "登录",
   "welcome.enterConsole": "进入控制台",
   "welcome.readDocs": "查看接入文档",
-  "welcome.signedInAs": "已登录为 {username}",
+  "welcome.signedInAs": "已登录为 {name}",
   "welcome.endpointLabel": "OpenAI 兼容接口地址",
   "welcome.endpointHint": "把它粘贴到任何 OpenAI 兼容客户端的 Base URL 里，再配上你自己创建的密钥即可。",
   "welcome.how.title": "它是怎么工作的",
@@ -248,7 +248,7 @@ const zhCN: Dict = {
   "docs.openai.baseUrl": "Base URL",
   "docs.openai.header": "认证头",
   "docs.openai.example": "curl 示例",
-  "docs.openai.modelListHint": "想知道你能用哪些模型？GET ${baseUrl}/models，参考你的密钥关联的模型映射。",
+  "docs.openai.modelListHint": "想知道你能用哪些模型？GET {baseUrl}/models，参考你的密钥关联的模型映射。",
   "docs.anthropic.title": "Anthropic Messages",
   "docs.anthropic.desc": "兼容 /anthropic/v1/messages。",
   "docs.anthropic.line1": "Anthropic SDK 默认走 https://api.anthropic.com，需要手动把 baseURL 改成下面的值。",
@@ -321,6 +321,8 @@ const zhCN: Dict = {
   "admin.users.action.failed": "操作失败",
   "admin.users.action.confirmDelete": "确定删除这个用户？此操作不可撤销。",
   "admin.users.action.passwordResetHint": "明文仅显示一次，请立即复制并通过安全渠道转交给用户。",
+  "admin.users.action.editDisplayName": "编辑显示名",
+  "admin.users.editDisplayName.title": "编辑显示名",
   "admin.users.flash.deleted": "已删除 {name}",
 
 
@@ -385,6 +387,10 @@ const zhCN: Dict = {
   "admin.keys.status.forceDisabled": "强制停用",
   "admin.keys.action.confirmDelete": "确定要删除这把密钥吗？此操作不可撤销。",
   "admin.keys.action.failed": "操作失败",
+  "admin.keys.action.rename": "重命名",
+  "admin.keys.rename.title": "重命名密钥",
+  "admin.keys.rename.errorEmpty": "密钥名不能为空。",
+  "admin.keys.rename.errorTooLong": "密钥名不能超过 64 个字符。",
 
   // ===== Admin Providers =====
   "admin.providers.create": "添加上游提供商",
@@ -577,7 +583,7 @@ const en: Dict = {
   "welcome.signIn": "Sign in",
   "welcome.enterConsole": "Open the console",
   "welcome.readDocs": "Read the docs",
-  "welcome.signedInAs": "Signed in as {username}",
+  "welcome.signedInAs": "Signed in as {name}",
   "welcome.endpointLabel": "OpenAI-compatible endpoint",
   "welcome.endpointHint": "Paste this into any OpenAI-compatible client's Base URL, then use a key you created yourself.",
   "welcome.how.title": "How it works",
@@ -787,7 +793,7 @@ const en: Dict = {
   "docs.openai.baseUrl": "Base URL",
   "docs.openai.header": "Auth header",
   "docs.openai.example": "curl example",
-  "docs.openai.modelListHint": "Curious which models your key can reach? GET ${baseUrl}/models — the response is filtered by your key's whitelist.",
+  "docs.openai.modelListHint": "Curious which models your key can reach? GET {baseUrl}/models — the response is filtered by your key's whitelist.",
   "docs.anthropic.title": "Anthropic Messages",
   "docs.anthropic.desc": "Compatible with /anthropic/v1/messages.",
   "docs.anthropic.line1": "The Anthropic SDK defaults to https://api.anthropic.com. Override baseURL to the value below.",
@@ -860,6 +866,8 @@ const en: Dict = {
   "admin.users.action.failed": "Failed",
   "admin.users.action.confirmDelete": "Delete this user? This cannot be undone.",
   "admin.users.action.passwordResetHint": "The plaintext is shown only once — copy it now and deliver it over a secure channel.",
+  "admin.users.action.editDisplayName": "Edit Display Name",
+  "admin.users.editDisplayName.title": "Edit Display Name",
   "admin.users.flash.deleted": "Deleted {name}",
 
 
@@ -924,6 +932,10 @@ const en: Dict = {
   "admin.keys.status.forceDisabled": "Force Disabled",
   "admin.keys.action.confirmDelete": "Delete this key? This action cannot be undone.",
   "admin.keys.action.failed": "Failed",
+  "admin.keys.action.rename": "Rename",
+  "admin.keys.rename.title": "Rename Key",
+  "admin.keys.rename.errorEmpty": "Key name cannot be empty.",
+  "admin.keys.rename.errorTooLong": "Key name must be 64 characters or fewer.",
 
   // ===== Admin Providers =====
   "admin.providers.create": "Add Upstream Provider",
