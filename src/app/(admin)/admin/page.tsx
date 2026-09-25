@@ -16,6 +16,7 @@ import {
   EmptyState,
 } from "@/components/ui/Table";
 import { formatNumber, formatDate } from "@/lib/utils";
+import { formatUserIdentity } from "@/lib/user-identity";
 import { getT } from "@/lib/i18n/server";
 import { SectionPageLayout } from "@/components/layouts";
 import {
@@ -57,7 +58,12 @@ export default async function AdminOverviewPage() {
   // stream ended before an upstream usage frame arrived, so the tokens were
   // derived from text length rather than measured.
   const recentUsage = await listRecentUsage(keys.map((k) => k.id), { limit: 8 });
-  const displayNameById = new Map(users.map((u) => [u.id, u.displayName ?? u.username]));
+  // Recent-usage rows reference an account by id. Show the unique username
+  // first (with the display name as a secondary hint) so an operator can tell
+  // two accounts apart even when they share a display name.
+  const userLabelById = new Map(
+    users.map((u) => [u.id, formatUserIdentity(u.username, u.displayName)]),
+  );
 
   return (
     <SectionPageLayout>
@@ -197,7 +203,7 @@ export default async function AdminOverviewPage() {
                       {formatDate(row.createdAt)}
                     </TD>
                     <TD className="font-mono text-xs">
-                      {displayNameById.get(row.userId) ?? row.userId}
+                      {userLabelById.get(row.userId) ?? row.userId}
                     </TD>
                     <TD className="font-mono text-xs">{row.model}</TD>
                     <TD className="text-right">

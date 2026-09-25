@@ -5,8 +5,9 @@ import { LegacyModal as Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { useT } from "@/components/i18n/I18nProvider";
+import { formatUserIdentity } from "@/lib/user-identity";
 
-interface UserOpt { id: string; displayName: string; username: string; }
+interface UserOpt { id: string; displayName?: string; username: string; }
 
 export function CreateKeyButton({ users }: { users: UserOpt[] }) {
   const t = useT();
@@ -82,7 +83,7 @@ export function CreateKeyButton({ users }: { users: UserOpt[] }) {
                 required
               >
                 {users.map((u) => (
-                  <option key={u.id} value={u.id}>{u.displayName ?? u.username}</option>
+                  <option key={u.id} value={u.id}>{formatUserIdentity(u.username, u.displayName)}</option>
                 ))}
               </select>
             </div>

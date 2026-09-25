@@ -11,6 +11,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { deleteApiKeysByUser } from "@/lib/db/keys";
 import { getUserById } from "@/lib/db/users";
 import { flashRedirect } from "@/lib/http/flash";
+import { formatUserIdentity } from "@/lib/user-identity";
 import { apiErrorText, getT } from "@/lib/i18n/server";
 
 const FormSchema = z.object({
@@ -71,6 +72,6 @@ export async function POST(req: Request): Promise<Response> {
   const { t } = await getT();
   return flashRedirect("/admin/users", {
     kind: "ok",
-    message: t("admin.users.flash.deleted", { name: existing.displayName ?? existing.username }),
+    message: t("admin.users.flash.deleted", { name: formatUserIdentity(existing.username, existing.displayName) }),
   });
 }
