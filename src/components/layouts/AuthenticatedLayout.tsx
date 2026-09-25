@@ -10,7 +10,7 @@
 import { type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { isNavItemActive } from "@/lib/nav";
-import { TooltipProvider } from "@/components/ui/Tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/Tooltip";
 import {
   SidebarProvider,
   Sidebar,
@@ -132,15 +132,17 @@ function SidebarShell({ role, username, displayName, children }: AuthenticatedLa
   return (
     <div className="flex min-h-screen w-full flex-1">
       <Sidebar>
-        <SidebarHeader className={cn(collapsed && "justify-center")}>
+        <SidebarHeader className={cn(collapsed && "justify-center px-3")}>
           <Link href="/" className="flex min-w-0 items-center gap-2">
             <span
               className={cn(
                 "flex shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground",
-                collapsed ? "h-5 w-5" : "h-7 w-7",
+                // Icon-only rail: match the 32px footprint of the nav items so
+                // the brand mark and the menu icons share one vertical axis.
+                collapsed ? "h-8 w-8" : "h-7 w-7",
               )}
             >
-              <Server className={collapsed ? "h-3 w-3" : "h-4 w-4"} />
+              <Server className="h-4 w-4" />
             </span>
             {!collapsed && (
               <span className="truncate font-semibold tracking-tight">RelayAB</span>
@@ -172,13 +174,39 @@ function SidebarShell({ role, username, displayName, children }: AuthenticatedLa
         </SidebarContent>
 
         <SidebarFooter>
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Activity className="h-3.5 w-3.5 shrink-0 text-success" />
-              {!collapsed && <span className="truncate">{t("nav.sidebar.statusOnline")}</span>}
+          {collapsed ? (
+            /*
+             * Icon-only rail (56px wide, 32px of usable interior). The
+             * status label and the toggle no longer fit side by side, so
+             * stack them: status as a tooltip-only dot on top, toggle below.
+             */
+            <div className="flex flex-col items-center gap-1.5">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    role="status"
+                    tabIndex={0}
+                    aria-label={t("nav.sidebar.statusOnline")}
+                    className="flex h-8 w-8 items-center justify-center rounded-md text-success focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+                  >
+                    <Activity className="h-3.5 w-3.5" />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="right" sideOffset={8}>
+                  {t("nav.sidebar.statusOnline")}
+                </TooltipContent>
+              </Tooltip>
+              <SidebarToggle />
             </div>
-            <SidebarToggle />
-          </div>
+          ) : (
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Activity className="h-3.5 w-3.5 shrink-0 text-success" />
+                <span className="truncate">{t("nav.sidebar.statusOnline")}</span>
+              </div>
+              <SidebarToggle />
+            </div>
+          )}
         </SidebarFooter>
       </Sidebar>
 
