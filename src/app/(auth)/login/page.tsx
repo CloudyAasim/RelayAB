@@ -91,7 +91,14 @@ export default function LoginPage() {
           {/* Form card */}
           <Card className="shadow-xl">
             <CardHeader title={t("login.signIn")} description={t("login.signInDesc")} />
-            <form onSubmit={onSubmit} className="space-y-3 sm:space-y-4">
+            {/*
+              `method="post"` is a security requirement, not decoration: the
+              default for a form is GET, so before hydration (or with JS off)
+              the browser would navigate to `/login?username=…&password=…`,
+              spilling the password into history, proxy logs and the Referer
+              header. The React handler still owns the real submit path.
+            */}
+            <form onSubmit={onSubmit} method="post" className="space-y-3 sm:space-y-4">
               <div className="space-y-1">
                 <label htmlFor="username" className="block text-xs font-medium text-foreground sm:text-sm">
                   {t("login.username")}

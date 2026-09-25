@@ -11,6 +11,11 @@ import { z } from "zod";
 import { verifyUserCredentials, touchLastLogin } from "@/lib/db/users";
 import { ensureBootstrapped } from "@/lib/db/bootstrap";
 import { getSession } from "@/lib/auth/session";
+import {
+  checkLoginThrottle,
+  recordLoginFailure,
+  clearLoginFailures,
+} from "@/lib/auth/login-throttle";
 import { toPublicUser } from "@/lib/db/types";
 
 const BodySchema = z.object({
@@ -37,30 +42,54 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
+  // Refuse further attempts once the caller has burned their failure budget.
+  // Checked before bootstrap so a blocked client cannot keep hitting Redis
+  // and bcrypt on every request.
+  const throttle = await checkLoginThrottle(req.headers, parsed.data.username);
+  if (throttle.limited) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: {
+          code: "rate_limited",
+          message: "Too many failed sign-in attempts. Please try again later.",
+        },
+      },
+      { status: 429, headers: { "Retry-After": String(throttle.retryAfterSeconds) } },
+    );
+  }
+
   // A fresh deployment has no admin yet — create it from RELAY_AUTH before
   // the first login attempt so the documented bootstrap flow works.
   try {
     await ensureBootstrapped();
   } catch (err) {
+    // Log the detail server-side; never return internal error text (it can
+    // include database URLs / driver messages) to an unauthenticated caller.
+    console.error("[auth/login] bootstrap failed:", err);
     return NextResponse.json(
       {
         ok: false,
         error: {
           code: "bootstrap_failed",
-          message: err instanceof Error ? err.message : "Bootstrap failed",
+          message: "Server is not ready. Please try again shortly.",
         },
       },
-      { status: 500 },
+      { status: 503 },
     );
   }
 
   const user = await verifyUserCredentials(parsed.data.username, parsed.data.password);
   if (!user) {
+    await recordLoginFailure(req.headers, parsed.data.username);
     return NextResponse.json(
       { ok: false, error: { code: "invalid_credentials", message: "Invalid username or password" } },
       { status: 401 },
     );
   }
+
+  // Successful sign-in clears the failure budget for this IP and username.
+  await clearLoginFailures(req.headers, parsed.data.username);
 
   const session = await getSession();
   session.userId = user.id;
