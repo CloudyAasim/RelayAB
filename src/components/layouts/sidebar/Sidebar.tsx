@@ -38,7 +38,7 @@ export function Sidebar({ children }: { children: ReactNode }) {
         aria-label="Sidebar navigation"
         data-state={collapsed ? "collapsed" : "expanded"}
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-[288px] flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width,transform] duration-200 ease-in-out lg:sticky lg:top-0 lg:h-screen lg:translate-x-0",
+          "fixed inset-y-0 left-0 z-50 flex w-[288px] flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width,transform] duration-300 ease-sidebar motion-reduce:transition-none lg:sticky lg:top-0 lg:h-screen lg:translate-x-0",
           isMobile ? (open ? "translate-x-0 shadow-xl" : "-translate-x-full") : "",
           collapsed && "lg:w-14",
         )}
@@ -51,7 +51,12 @@ export function Sidebar({ children }: { children: ReactNode }) {
 
 export function SidebarHeader({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn("flex h-14 items-center gap-2 border-b border-sidebar-border px-4", className)}>
+    <div
+      className={cn(
+        "flex h-14 items-center gap-2 border-b border-sidebar-border px-4 transition-[padding] duration-300 ease-sidebar motion-reduce:transition-none",
+        className,
+      )}
+    >
       {children}
     </div>
   );
@@ -96,16 +101,29 @@ export function SidebarToggle({ className }: { className?: string }) {
       aria-expanded={!collapsed}
       title={t("nav.toggleSidebar")}
       className={cn(
-        "flex shrink-0 items-center justify-center rounded-md text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+        "flex shrink-0 items-center justify-center rounded-md text-sidebar-foreground/70 transition-[width,height,background-color,color] duration-300 ease-sidebar hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring motion-reduce:transition-none",
         collapsed ? "h-8 w-8" : "h-7 w-7",
         className,
       )}
     >
-      {collapsed ? (
-        <PanelLeftOpen className="h-4 w-4" />
-      ) : (
-        <PanelLeftClose className="h-4 w-4" />
-      )}
+      {/* Both glyphs stay mounted and crossfade so the affordance swaps
+          without a hard cut while the rail is still moving. */}
+      <span className="relative flex h-4 w-4 items-center justify-center">
+        <PanelLeftOpen
+          aria-hidden
+          className={cn(
+            "absolute h-4 w-4 transition-opacity duration-300 motion-reduce:transition-none",
+            collapsed ? "opacity-100" : "opacity-0",
+          )}
+        />
+        <PanelLeftClose
+          aria-hidden
+          className={cn(
+            "absolute h-4 w-4 transition-opacity duration-300 motion-reduce:transition-none",
+            collapsed ? "opacity-0" : "opacity-100",
+          )}
+        />
+      </span>
     </button>
   );
 }
@@ -161,10 +179,14 @@ export function SidebarMenuButton({
 }: SidebarMenuButtonProps) {
   const { collapsed, isMobile, setOpen } = useSidebar();
   const baseClass = cn(
-    "group flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+    "group flex w-full items-center gap-3 rounded-md py-2 pl-3 pr-3 text-sm font-medium",
+    "transition-[padding,background-color,color] duration-300 ease-sidebar hover:duration-150 motion-reduce:transition-none",
     "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
     isActive && "bg-sidebar-accent text-sidebar-accent-foreground",
-    collapsed && "justify-center gap-0 px-2",
+    // Keep the icon next to the rail edge and let the closing rail settle
+    // around it, instead of switching to `justify-center` and making the icon
+    // jump to the middle of the still-wide button at the start of the collapse.
+    collapsed && "gap-0 pl-[7.5px] pr-[7.5px]",
   );
 
   const content = (
@@ -172,7 +194,14 @@ export function SidebarMenuButton({
       {icon && (
         <span className="flex h-4 w-4 shrink-0 items-center justify-center">{icon}</span>
       )}
-      <span className={cn("truncate", collapsed && "hidden")}>{children}</span>
+      <span
+        className={cn(
+          "truncate transition-[max-width,opacity] duration-300 ease-sidebar motion-reduce:transition-none",
+          collapsed ? "max-w-0 opacity-0" : "max-w-[180px] opacity-100 delay-150",
+        )}
+      >
+        {children}
+      </span>
       {/* The icon-only rail has no room for a second element; a pending
           indicator here would push the icon off-centre and overflow the
           32px button. The active state still updates once navigation lands. */}
