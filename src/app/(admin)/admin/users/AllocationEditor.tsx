@@ -10,6 +10,7 @@ import { useT } from "@/components/i18n/I18nProvider";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";
 import { formatCredits, formatCreditsFloor, formatCreditsCeil, formatNumber } from "@/lib/utils";
 import { CREDIT_SCALE } from "@/lib/quota/credits";
+import { formatUserIdentity } from "@/lib/user-identity";
 import type { PublicUser } from "@/lib/db/types";
 import { Settings2, Coins, ListChecks, KeyRound, Wallet } from "lucide-react";
 
@@ -229,7 +230,7 @@ function AllocationModal({
       open
       onClose={onClose}
       wide
-      title={`${t("admin.users.allocation.editTitle")} · ${user.displayName ?? user.username}`}
+      title={`${t("admin.users.allocation.editTitle")} · ${formatUserIdentity(user.username, user.displayName)}`}
     >
       <form onSubmit={onSubmit} className="space-y-4">
         {/* ---- Credit pool ---- */}

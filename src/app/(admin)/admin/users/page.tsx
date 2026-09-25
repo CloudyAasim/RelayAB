@@ -60,7 +60,6 @@ export default async function UsersPage() {
               <THead>
                 <TR>
                   <TH>{t("admin.users.create.username")}</TH>
-                  <TH>{t("admin.users.create.displayName")}</TH>
                   <TH>{t("admin.users.create.role")}</TH>
                   <TH>{t("dashboard.table.time")}</TH>
                   <TH className="w-48 text-right">{t("common.actions")}</TH>
@@ -73,7 +72,6 @@ export default async function UsersPage() {
                       <div className="font-medium">{u.username}</div>
                       <div className="text-xs text-muted-foreground">{u.displayName}</div>
                     </TD>
-                    <TD className="text-muted-foreground">{u.displayName}</TD>
                     <TD>
                       <Badge tone={u.role === "admin" ? "primary" : "neutral"}>
                         {u.role === "admin"
