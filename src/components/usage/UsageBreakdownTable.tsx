@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/Table";
-import { formatCredits, formatNumber } from "@/lib/utils";
-import type { UsageGroupRow } from "@/lib/usage/report";
+import { cn, formatCredits, formatNumber } from "@/lib/utils";
+import type { UsageGroupRow, UsageMetric } from "@/lib/usage/report";
 
 export interface UsageBreakdownRow extends UsageGroupRow {
   /** Display label (key name, model id, username…). */
@@ -22,25 +22,36 @@ interface Props {
     credits: string;
     actions: string;
   };
+  /** Column to bold, matching the chart/ranking metric. */
+  emphasis?: UsageMetric;
   /** When set, renders a trailing drill-down column. */
   detailLabel?: string;
 }
 
-export function UsageBreakdownTable({ rows, emptyLabel, headers, detailLabel }: Props) {
+export function UsageBreakdownTable({
+  rows,
+  emptyLabel,
+  headers,
+  emphasis,
+  detailLabel,
+}: Props) {
   if (rows.length === 0) {
     return (
       <p className="py-8 text-center text-sm text-muted-foreground">{emptyLabel}</p>
     );
   }
 
+  const emph = (metric: UsageMetric) =>
+    emphasis === metric ? "font-semibold text-foreground" : undefined;
+
   return (
     <Table>
       <THead>
         <TR>
           <TH>{headers.item}</TH>
-          <TH className="text-right">{headers.requests}</TH>
-          <TH className="text-right">{headers.tokens}</TH>
-          <TH className="text-right">{headers.credits}</TH>
+          <TH className={cn("text-right", emph("requests"))}>{headers.requests}</TH>
+          <TH className={cn("text-right", emph("tokens"))}>{headers.tokens}</TH>
+          <TH className={cn("text-right", emph("credits"))}>{headers.credits}</TH>
           {detailLabel && <TH className="text-right">{headers.actions}</TH>}
         </TR>
       </THead>
@@ -55,9 +66,15 @@ export function UsageBreakdownTable({ rows, emptyLabel, headers, detailLabel }: 
                 </div>
               )}
             </TD>
-            <TD className="text-right tabular-nums">{formatNumber(row.requests)}</TD>
-            <TD className="text-right tabular-nums">{formatNumber(row.totalTokens)}</TD>
-            <TD className="text-right tabular-nums">{formatCredits(row.creditsUsed)}</TD>
+            <TD className={cn("text-right tabular-nums", emph("requests"))}>
+              {formatNumber(row.requests)}
+            </TD>
+            <TD className={cn("text-right tabular-nums", emph("tokens"))}>
+              {formatNumber(row.totalTokens)}
+            </TD>
+            <TD className={cn("text-right tabular-nums", emph("credits"))}>
+              {formatCredits(row.creditsUsed)}
+            </TD>
             {detailLabel && (
               <TD className="text-right">
                 {row.href ? (
@@ -73,3 +90,4 @@ export function UsageBreakdownTable({ rows, emptyLabel, headers, detailLabel }: 
     </Table>
   );
 }
+

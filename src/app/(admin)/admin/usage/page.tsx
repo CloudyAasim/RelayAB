@@ -9,12 +9,13 @@ import { getT } from "@/lib/i18n/server";
 import { Card, CardHeader, StatCard } from "@/components/ui/Card";
 import { SectionPageLayout } from "@/components/layouts";
 import { UsageRangePicker } from "@/components/usage/UsageRangePicker";
+import { UsageViewTabs } from "@/components/usage/UsageViewTabs";
 import { UsageBarChart } from "@/components/usage/UsageBarChart";
 import {
   UsageBreakdownTable,
   type UsageBreakdownRow,
 } from "@/components/usage/UsageBreakdownTable";
-import { resolveRange } from "@/lib/usage/report";
+import { parseUsageMetric, resolveRange, sortByMetric } from "@/lib/usage/report";
 import { loadUsageReportCached } from "@/lib/usage/load";
 import { MAX_LOGS_PER_KEY } from "@/lib/db/usage";
 import { formatUserIdentity } from "@/lib/user-identity";
@@ -23,6 +24,13 @@ import { Activity, Coins, KeyRound } from "lucide-react";
 
 /** All dates on this screen are bucketed in GMT+8. */
 const TZ_OFFSET_MINUTES = 480;
+const BASE_PATH = "/admin/usage";
+const DIMENSIONS = ["user", "key", "model"] as const;
+type Dimension = (typeof DIMENSIONS)[number];
+
+function parseDimension(value: string | undefined): Dimension {
+  return value === "key" || value === "model" || value === "user" ? value : "user";
+}
 
 interface UsagePageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -37,6 +45,8 @@ export default async function AdminUsagePage({ searchParams }: UsagePageProps) {
   const first = (value: string | string[] | undefined) =>
     typeof value === "string" ? value : undefined;
   const userId = first(sp.userId);
+  const dimension = parseDimension(first(sp.dimension));
+  const metric = parseUsageMetric(first(sp.metric));
 
   const range = resolveRange({
     key: first(sp.range),
@@ -74,24 +84,39 @@ export default async function AdminUsagePage({ searchParams }: UsagePageProps) {
     actions: t("usage.table.actions"),
   };
 
-  const rangeParam = `range=${encodeURIComponent(range.key)}`;
-  const userRows: UsageBreakdownRow[] = report.byUser.map((row) => ({
-    ...row,
-    label: userLabel(row.id),
-    href: `/admin/usage?${rangeParam}&userId=${encodeURIComponent(row.id)}`,
-  }));
-  const keyRows: UsageBreakdownRow[] = report.byKey.map((row) => {
-    const key = keyById.get(row.id);
-    return {
-      ...row,
-      label: key?.label ?? row.id,
-      sublabel: key?.keyPrefix,
-    };
-  });
-  const modelRows: UsageBreakdownRow[] = report.byModel.map((row) => ({
-    ...row,
-    label: row.id,
-  }));
+  const baseParams = {
+    range: first(sp.range),
+    from: first(sp.from),
+    to: first(sp.to),
+    userId,
+    dimension,
+    metric,
+  };
+
+  const rows: UsageBreakdownRow[] = sortByMetric(
+    (() => {
+      if (dimension === "key") {
+        return report.byKey.map((row) => {
+          const key = keyById.get(row.id);
+          return { ...row, label: key?.label ?? row.id, sublabel: key?.keyPrefix };
+        });
+      }
+      if (dimension === "model") {
+        return report.byModel.map((row) => ({ ...row, label: row.id }));
+      }
+      const rangeParam = `range=${encodeURIComponent(range.key)}`;
+      return report.byUser.map((row) => ({
+        ...row,
+        label: userLabel(row.id),
+        href: `${BASE_PATH}?${rangeParam}&dimension=user&metric=${metric}&userId=${encodeURIComponent(
+          row.id,
+        )}`,
+      }));
+    })(),
+    metric,
+  );
+
+  const metricLabel = t(`usage.table.${metric}`);
 
   return (
     <SectionPageLayout>
@@ -103,7 +128,7 @@ export default async function AdminUsagePage({ searchParams }: UsagePageProps) {
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
             <span>{t("usage.filteredBy", { name: userLabel(userId) })}</span>
             <Link
-              href={`/admin/usage?${rangeParam}`}
+              href={`${BASE_PATH}?range=${encodeURIComponent(range.key)}&dimension=${dimension}&metric=${metric}`}
               className="text-primary hover:underline"
             >
               {t("usage.clearFilter")}
@@ -111,13 +136,39 @@ export default async function AdminUsagePage({ searchParams }: UsagePageProps) {
           </div>
         )}
 
-        <Card className="mb-4 sm:mb-6">
+        <Card className="mb-4 space-y-3 sm:mb-6">
           <UsageRangePicker
             active={range.key}
             from={first(sp.from)}
             to={first(sp.to)}
-            keep={{ userId }}
+            keep={{ userId, dimension, metric }}
           />
+          <div className="flex flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-6">
+            <UsageViewTabs
+              basePath={BASE_PATH}
+              params={baseParams}
+              param="dimension"
+              active={dimension}
+              label={t("usage.view.dimension")}
+              options={[
+                { value: "user", label: t("usage.breakdown.byUser") },
+                { value: "key", label: t("usage.breakdown.byKey") },
+                { value: "model", label: t("usage.breakdown.byModel") },
+              ]}
+            />
+            <UsageViewTabs
+              basePath={BASE_PATH}
+              params={baseParams}
+              param="metric"
+              active={metric}
+              label={t("usage.view.metric")}
+              options={[
+                { value: "credits", label: t("usage.table.credits") },
+                { value: "tokens", label: t("usage.table.tokens") },
+                { value: "requests", label: t("usage.table.requests") },
+              ]}
+            />
+          </div>
         </Card>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -155,6 +206,8 @@ export default async function AdminUsagePage({ searchParams }: UsagePageProps) {
           <UsageBarChart
             points={report.series}
             grain={range.grain}
+            metric={metric}
+            metricLabel={metricLabel}
             labels={{
               credits: t("usage.table.credits"),
               tokens: t("usage.table.tokens"),
@@ -170,27 +223,16 @@ export default async function AdminUsagePage({ searchParams }: UsagePageProps) {
           </p>
         )}
 
-        <div className="mt-4 space-y-4 sm:mt-6 sm:space-y-6">
-          <Card>
-            <CardHeader title={t("usage.breakdown.byUser")} />
-            <UsageBreakdownTable
-              rows={userRows}
-              headers={headers}
-              emptyLabel={t("usage.empty")}
-              detailLabel={t("usage.viewUser")}
-            />
-          </Card>
-          <div className="grid gap-4 lg:grid-cols-2">
-            <Card>
-              <CardHeader title={t("usage.breakdown.byKey")} />
-              <UsageBreakdownTable rows={keyRows} headers={headers} emptyLabel={t("usage.empty")} />
-            </Card>
-            <Card>
-              <CardHeader title={t("usage.breakdown.byModel")} />
-              <UsageBreakdownTable rows={modelRows} headers={headers} emptyLabel={t("usage.empty")} />
-            </Card>
-          </div>
-        </div>
+        <Card className="mt-4 sm:mt-6">
+          <CardHeader title={t("usage.breakdown.title")} />
+          <UsageBreakdownTable
+            rows={rows}
+            headers={headers}
+            emphasis={metric}
+            emptyLabel={t("usage.empty")}
+            detailLabel={dimension === "user" ? t("usage.viewUser") : undefined}
+          />
+        </Card>
       </SectionPageLayout.Content>
     </SectionPageLayout>
   );

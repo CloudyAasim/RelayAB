@@ -5,8 +5,11 @@ import {
   enumerateBuckets,
   fillSeries,
   group,
+  metricValue,
+  parseUsageMetric,
   resolveRange,
   series,
+  sortByMetric,
   summarize,
 } from "@/lib/usage/report";
 
@@ -155,6 +158,35 @@ describe("resolveRange", () => {
   it("unknown key with no dates falls back to the default range", () => {
     expect(resolveRange({ key: "nonsense", tzOffsetMinutes: tz, now }).key).toBe("7d");
     expect(resolveRange({ tzOffsetMinutes: tz, now }).key).toBe("7d");
+  });
+});
+
+describe("metrics", () => {
+  it("parses known metrics and falls back otherwise", () => {
+    expect(parseUsageMetric("credits")).toBe("credits");
+    expect(parseUsageMetric("tokens")).toBe("tokens");
+    expect(parseUsageMetric("requests")).toBe("requests");
+    expect(parseUsageMetric("nonsense")).toBe("credits");
+    expect(parseUsageMetric(null)).toBe("credits");
+    expect(parseUsageMetric(undefined, "tokens")).toBe("tokens");
+  });
+
+  it("reads the selected field", () => {
+    const row = { creditsUsed: 9, totalTokens: 100, requests: 3 };
+    expect(metricValue(row, "credits")).toBe(9);
+    expect(metricValue(row, "tokens")).toBe(100);
+    expect(metricValue(row, "requests")).toBe(3);
+  });
+
+  it("ranks rows by the selected metric", () => {
+    const rows = [
+      { id: "a", creditsUsed: 1, totalTokens: 500, requests: 1 },
+      { id: "b", creditsUsed: 9, totalTokens: 100, requests: 2 },
+      { id: "c", creditsUsed: 5, totalTokens: 300, requests: 7 },
+    ];
+    expect(sortByMetric(rows, "credits").map((r) => r.id)).toEqual(["b", "c", "a"]);
+    expect(sortByMetric(rows, "tokens").map((r) => r.id)).toEqual(["a", "c", "b"]);
+    expect(sortByMetric(rows, "requests").map((r) => r.id)).toEqual(["c", "b", "a"]);
   });
 });
 

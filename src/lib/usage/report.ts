@@ -174,6 +174,39 @@ export function group(
 }
 
 // ---------------------------------------------------------------------------
+// Metrics (which number the chart / table is ranked by)
+// ---------------------------------------------------------------------------
+
+export type UsageMetric = "credits" | "tokens" | "requests";
+
+export function parseUsageMetric(
+  value: string | null | undefined,
+  fallback: UsageMetric = "credits",
+): UsageMetric {
+  return value === "credits" || value === "tokens" || value === "requests"
+    ? value
+    : fallback;
+}
+
+export function metricValue(
+  row: { creditsUsed: number; totalTokens: number; requests: number },
+  metric: UsageMetric,
+): number {
+  if (metric === "credits") return row.creditsUsed;
+  if (metric === "tokens") return row.totalTokens;
+  return row.requests;
+}
+
+/** Copy of `rows`, ranked by the selected metric (desc), id as tie-break. */
+export function sortByMetric<
+  T extends { id: string; creditsUsed: number; totalTokens: number; requests: number },
+>(rows: readonly T[], metric: UsageMetric): T[] {
+  return [...rows].sort(
+    (a, b) => metricValue(b, metric) - metricValue(a, metric) || a.id.localeCompare(b.id),
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Date ranges
 // ---------------------------------------------------------------------------
 
