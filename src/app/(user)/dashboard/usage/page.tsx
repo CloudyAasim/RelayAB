@@ -5,24 +5,32 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { getUserById } from "@/lib/db/users";
 import { listApiKeysByUser } from "@/lib/db/keys";
 import { getT } from "@/lib/i18n/server";
-import { Card, CardHeader, StatCard } from "@/components/ui/Card";
+import { Card, CardHeader } from "@/components/ui/Card";
 import { SectionPageLayout } from "@/components/layouts";
-import { UsageRangePicker } from "@/components/usage/UsageRangePicker";
+import { UsageScopePicker } from "@/components/usage/UsageScopePicker";
 import { UsageViewTabs } from "@/components/usage/UsageViewTabs";
+import { UsageAccountSummary } from "@/components/usage/UsageAccountSummary";
 import { UsageBarChart } from "@/components/usage/UsageBarChart";
 import {
   UsageBreakdownTable,
   type UsageBreakdownRow,
 } from "@/components/usage/UsageBreakdownTable";
-import { parseUsageMetric, resolveRange, sortByMetric } from "@/lib/usage/report";
-import { loadUsageReportCached } from "@/lib/usage/load";
+import {
+  parseUsageMetric,
+  resolveRange,
+  sortByMetric,
+  type UsageGroupRow,
+} from "@/lib/usage/report";
+import { loadUsageReportCached, type UsageReport } from "@/lib/usage/load";
 import { MAX_LOGS_PER_KEY } from "@/lib/db/usage";
 import { formatCredits, formatNumber } from "@/lib/utils";
-import { Activity, Coins, KeyRound, Wallet } from "lucide-react";
+import { Coins, KeyRound, Wallet } from "lucide-react";
 
 /** All dates on this screen are bucketed in GMT+8. */
 const TZ_OFFSET_MINUTES = 480;
 const BASE_PATH = "/dashboard/usage";
+
+type Scope = "all" | "key" | "model";
 
 interface UsagePageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -36,14 +44,16 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
   const first = (value: string | string[] | undefined) =>
     typeof value === "string" ? value : undefined;
 
-  const range = resolveRange({
-    key: first(sp.range),
-    from: first(sp.from),
-    to: first(sp.to),
-    tzOffsetMinutes: TZ_OFFSET_MINUTES,
-  });
+  // The page is built around two fixed windows: last 7 days and last 1 day.
+  // Computed per request — a module-level constant would freeze at boot.
+  const range7 = resolveRange({ key: "7d", tzOffsetMinutes: TZ_OFFSET_MINUTES });
+  const range1 = resolveRange({ key: "today", tzOffsetMinutes: TZ_OFFSET_MINUTES });
+
   const metric = parseUsageMetric(first(sp.metric));
-  const dimension = first(sp.dimension) === "model" ? "model" : "key";
+  const group = first(sp.group) === "model" ? "model" : "key";
+  const requestedScope = first(sp.scope);
+  const scope: Scope =
+    requestedScope === "key" || requestedScope === "model" ? requestedScope : "all";
 
   const [{ t }, fullUser, keyPage] = await Promise.all([
     getT(),
@@ -51,11 +61,45 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
     listApiKeysByUser(sessionUser.id, { limit: 200 }),
   ]);
   const keys = keyPage.keys;
-  const report = await loadUsageReportCached({
-    keyIds: keys.map((key) => key.id),
-    tzOffsetMinutes: TZ_OFFSET_MINUTES,
-    range,
-  });
+  const universeIds = keys.map((key) => key.id);
+
+  // Resolve the requested scope against what actually exists.
+  const requestedKeyId = first(sp.keyId);
+  const requestedModel = first(sp.model);
+  const effectiveKeyId =
+    scope === "key"
+      ? keys.find((key) => key.id === requestedKeyId)?.id ?? keys[0]?.id
+      : undefined;
+  const effectiveModel = scope === "model" ? requestedModel : undefined;
+
+  let report7: UsageReport;
+  let report1: UsageReport;
+  let modelOptionRows: UsageGroupRow[];
+
+  if (scope === "key" && effectiveKeyId) {
+    [report7, report1] = await Promise.all([
+      loadUsageReportCached({ keyIds: [effectiveKeyId], tzOffsetMinutes: TZ_OFFSET_MINUTES, range: range7 }),
+      loadUsageReportCached({ keyIds: [effectiveKeyId], tzOffsetMinutes: TZ_OFFSET_MINUTES, range: range1 }),
+    ]);
+    modelOptionRows = report7.byModel;
+  } else if (scope === "model" && effectiveModel) {
+    const universe7 = await loadUsageReportCached({
+      keyIds: universeIds,
+      tzOffsetMinutes: TZ_OFFSET_MINUTES,
+      range: range7,
+    });
+    [report7, report1] = await Promise.all([
+      loadUsageReportCached({ keyIds: universeIds, tzOffsetMinutes: TZ_OFFSET_MINUTES, range: range7, model: effectiveModel }),
+      loadUsageReportCached({ keyIds: universeIds, tzOffsetMinutes: TZ_OFFSET_MINUTES, range: range1, model: effectiveModel }),
+    ]);
+    modelOptionRows = universe7.byModel;
+  } else {
+    [report7, report1] = await Promise.all([
+      loadUsageReportCached({ keyIds: universeIds, tzOffsetMinutes: TZ_OFFSET_MINUTES, range: range7 }),
+      loadUsageReportCached({ keyIds: universeIds, tzOffsetMinutes: TZ_OFFSET_MINUTES, range: range1 }),
+    ]);
+    modelOptionRows = report7.byModel;
+  }
 
   const quotaType = fullUser?.quotaType ?? "credits";
   const quotaLimit = fullUser?.quotaLimit ?? 0;
@@ -69,6 +113,11 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
       ? `${formatNumber(n)} ${unitLabel}`
       : `${formatCredits(n)} ${unitLabel}`;
 
+  const labels = {
+    credits: t("usage.table.credits"),
+    tokens: t("usage.table.tokens"),
+    requests: t("usage.table.requests"),
+  };
   const headers = {
     item: t("usage.table.item"),
     requests: t("usage.table.requests"),
@@ -77,10 +126,10 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
     actions: t("usage.table.actions"),
   };
 
-  const sourceRows = dimension === "model" ? report.byModel : report.byKey;
+  const sourceRows = group === "model" ? report7.byModel : report7.byKey;
   const rows: UsageBreakdownRow[] = sortByMetric(
     sourceRows.map((row) => {
-      if (dimension === "model") return { ...row, label: row.id };
+      if (group === "model") return { ...row, label: row.id };
       const key = keys.find((candidate) => candidate.id === row.id);
       return { ...row, label: key?.label ?? row.id, sublabel: key?.keyPrefix };
     }),
@@ -88,13 +137,12 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
   );
 
   const metricLabel = t(`usage.table.${metric}`);
-  const baseParams = {
-    range: first(sp.range),
-    from: first(sp.from),
-    to: first(sp.to),
-    dimension,
-    metric,
-  };
+  const scopeParams =
+    scope === "key"
+      ? { scope: "key", keyId: effectiveKeyId }
+      : scope === "model"
+        ? { scope: "model", model: effectiveModel }
+        : { scope: "all" };
 
   return (
     <SectionPageLayout>
@@ -102,99 +150,125 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
       <SectionPageLayout.Content>
         <p className="mb-4 text-xs text-muted-foreground">{t("usage.tzNote")}</p>
 
+        <UsageAccountSummary
+          figures={[
+            {
+              label: t("usage.stat.balance"),
+              value: neverGranted ? t("dashboard.pool.none") : fmtQuota(remaining),
+              hint: neverGranted
+                ? undefined
+                : t("usage.stat.balanceHint", { limit: fmtQuota(quotaLimit) }),
+              icon: <Wallet className="h-4 w-4" />,
+              tone: "success",
+            },
+            {
+              label: t("usage.stat.used"),
+              value: neverGranted ? "—" : fmtQuota(quotaUsed),
+              icon: <Coins className="h-4 w-4" />,
+              tone: "orange",
+            },
+            {
+              label: t("usage.stat.activeKeys"),
+              value: formatNumber(keys.filter((key) => key.enabled).length),
+              icon: <KeyRound className="h-4 w-4" />,
+              tone: "neutral",
+            },
+          ]}
+          progress={
+            neverGranted
+              ? undefined
+              : {
+                  percent: quotaLimit > 0 ? (quotaUsed / quotaLimit) * 100 : 0,
+                  caption: t("dashboard.pool.sharedByKeys"),
+                  exhausted: quotaUsed >= quotaLimit,
+                }
+          }
+        />
+
         <Card className="mb-4 space-y-3 sm:mb-6">
-          <UsageRangePicker
-            active={range.key}
-            from={first(sp.from)}
-            to={first(sp.to)}
-            keep={{ dimension, metric }}
+          <UsageScopePicker
+            basePath={BASE_PATH}
+            params={{ metric, group }}
+            scope={scope}
+            keyId={effectiveKeyId}
+            model={effectiveModel}
+            keys={keys.map((key) => ({
+              value: key.id,
+              label: `${key.label} · ${key.keyPrefix}`,
+            }))}
+            models={modelOptionRows.map((row) => ({ value: row.id, label: row.id }))}
+            labels={{
+              scope: t("usage.scope.label"),
+              all: t("usage.scope.all"),
+              key: t("usage.scope.key"),
+              model: t("usage.scope.model"),
+              keyPlaceholder: t("usage.scope.keyPlaceholder"),
+              modelPlaceholder: t("usage.scope.modelPlaceholder"),
+              apply: t("usage.scope.apply"),
+            }}
           />
           <div className="flex flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-6">
             <UsageViewTabs
               basePath={BASE_PATH}
-              params={baseParams}
-              param="dimension"
-              active={dimension}
-              label={t("usage.view.dimension")}
+              params={{ ...scopeParams, group }}
+              param="metric"
+              active={metric}
+              label={t("usage.view.metric")}
+              options={[
+                { value: "credits", label: labels.credits },
+                { value: "tokens", label: labels.tokens },
+                { value: "requests", label: labels.requests },
+              ]}
+            />
+            <UsageViewTabs
+              basePath={BASE_PATH}
+              params={{ ...scopeParams, metric }}
+              param="group"
+              active={group}
+              label={t("usage.group.label")}
               options={[
                 { value: "key", label: t("usage.breakdown.byKey") },
                 { value: "model", label: t("usage.breakdown.byModel") },
               ]}
             />
-            <UsageViewTabs
-              basePath={BASE_PATH}
-              params={baseParams}
-              param="metric"
-              active={metric}
-              label={t("usage.view.metric")}
-              options={[
-                { value: "credits", label: t("usage.table.credits") },
-                { value: "tokens", label: t("usage.table.tokens") },
-                { value: "requests", label: t("usage.table.requests") },
-              ]}
-            />
           </div>
         </Card>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard
-            label={t("usage.stat.requests")}
-            value={formatNumber(report.summary.requests)}
-            icon={<Activity className="h-4 w-4" />}
-            tone="info"
-          />
-          <StatCard
-            label={t("usage.stat.tokens")}
-            value={formatNumber(report.summary.totalTokens)}
-            icon={<Activity className="h-4 w-4" />}
-            tone="primary"
-          />
-          <StatCard
-            label={t("usage.stat.credits")}
-            value={formatCredits(report.summary.creditsUsed)}
-            icon={<Coins className="h-4 w-4" />}
-            tone="orange"
-          />
-          <StatCard
-            label={t("usage.stat.balance")}
-            value={neverGranted ? t("dashboard.pool.none") : fmtQuota(remaining)}
-            icon={<Wallet className="h-4 w-4" />}
-            tone="success"
-            hint={
-              neverGranted
-                ? undefined
-                : t("usage.stat.balanceHint", { limit: fmtQuota(quotaLimit) })
-            }
-          />
+        <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
+          <Card>
+            <CardHeader title={t("usage.chart.last7")} />
+            <UsageBarChart
+              points={report7.series}
+              grain={range7.grain}
+              metric={metric}
+              metricLabel={metricLabel}
+              summary={report7.summary}
+              labels={labels}
+              emptyLabel={t("usage.empty")}
+            />
+          </Card>
+          <Card>
+            <CardHeader title={t("usage.chart.last1")} />
+            <UsageBarChart
+              points={report1.series}
+              grain={range1.grain}
+              metric={metric}
+              metricLabel={metricLabel}
+              summary={report1.summary}
+              labels={labels}
+              emptyLabel={t("usage.empty")}
+            />
+          </Card>
         </div>
 
-        <Card className="mt-4 sm:mt-6">
-          <CardHeader
-            title={t("usage.chart.title")}
-            description={t("usage.chart.description")}
-          />
-          <UsageBarChart
-            points={report.series}
-            grain={range.grain}
-            metric={metric}
-            metricLabel={metricLabel}
-            labels={{
-              credits: t("usage.table.credits"),
-              tokens: t("usage.table.tokens"),
-              requests: t("usage.table.requests"),
-            }}
-            emptyLabel={t("usage.empty")}
-          />
-        </Card>
-
-        {report.truncatedKeys > 0 && (
+        {report7.truncatedKeys > 0 && (
           <p className="mt-3 text-xs text-warning">
             {t("usage.truncated", { max: MAX_LOGS_PER_KEY })}
           </p>
         )}
 
         <Card className="mt-4 sm:mt-6">
-          <CardHeader title={t("usage.breakdown.title")} />
+          <CardHeader title={t("usage.breakdown.title")} description={t("usage.chart.last7")} />
           <UsageBreakdownTable
             rows={rows}
             headers={headers}
@@ -202,21 +276,6 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
             emptyLabel={t("usage.empty")}
           />
         </Card>
-
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:mt-6 sm:grid-cols-2">
-          <StatCard
-            label={t("usage.stat.used")}
-            value={neverGranted ? "—" : fmtQuota(quotaUsed)}
-            icon={<Coins className="h-4 w-4" />}
-            tone="neutral"
-          />
-          <StatCard
-            label={t("usage.stat.activeKeys")}
-            value={formatNumber(keys.filter((key) => key.enabled).length)}
-            icon={<KeyRound className="h-4 w-4" />}
-            tone="neutral"
-          />
-        </div>
       </SectionPageLayout.Content>
     </SectionPageLayout>
   );

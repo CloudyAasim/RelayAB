@@ -57,6 +57,8 @@ export interface LoadUsageReportInput {
   keyIds: readonly string[];
   tzOffsetMinutes: number;
   range: UsageRange;
+  /** Restrict to a single client model (the "指定模型" scope). */
+  model?: string;
   /** Include the per-user breakdown (admin only). */
   includeUsers?: boolean;
 }
@@ -75,11 +77,16 @@ export async function loadUsageReport(
       ? listUsageWithin(keyId, { fromIso: range.fromIso, max: MAX_LOGS_PER_KEY })
       : listUsageByKey(keyId, { limit: MAX_LOGS_PER_KEY }),
   );
-  const logs = perKey.flat();
+  const rawLogs = perKey.flat();
+  const logs = input.model
+    ? rawLogs.filter((log) => log.model === input.model)
+    : rawLogs;
   const truncatedKeys = perKey.filter((rows) => rows.length >= MAX_LOGS_PER_KEY).length;
 
   const summary =
-    range.key === "all" ? await sumAllTime(keyIds) : summarize(logs, range.fromIso, range.toIso);
+    range.key === "all" && !input.model
+      ? await sumAllTime(keyIds)
+      : summarize(logs, range.fromIso, range.toIso);
 
   return {
     range,
@@ -110,6 +117,7 @@ export async function loadUsageReportCached(
     ids.join(","),
     input.tzOffsetMinutes,
     input.range,
+    input.model ?? "",
     input.includeUsers ?? false,
   );
 }
@@ -119,12 +127,14 @@ const cachedReport = unstable_cache(
     keyIdsCsv: string,
     tzOffsetMinutes: number,
     range: UsageRange,
+    model: string,
     includeUsers: boolean,
   ): Promise<UsageReport> =>
     loadUsageReport({
       keyIds: keyIdsCsv ? keyIdsCsv.split(",") : [],
       tzOffsetMinutes,
       range,
+      model: model || undefined,
       includeUsers,
     }),
   ["usage-report"],
@@ -146,3 +156,17 @@ export async function sumAllTime(keyIds: readonly string[]): Promise<UsageSummar
     { ...EMPTY_USAGE_SUMMARY },
   );
 }
+
+/** Cached lifetime totals (same 30s window as the report cache). */
+export async function sumAllTimeCached(
+  keyIds: readonly string[],
+): Promise<UsageSummary> {
+  return cachedSumAllTime([...keyIds].sort().join(","));
+}
+
+const cachedSumAllTime = unstable_cache(
+  async (keyIdsCsv: string): Promise<UsageSummary> =>
+    sumAllTime(keyIdsCsv ? keyIdsCsv.split(",") : []),
+  ["usage-lifetime"],
+  { revalidate: REPORT_REVALIDATE_SECONDS },
+);

@@ -78,6 +78,22 @@ describe("loadUsageReport", () => {
     expect(report.byKey).toEqual([]); // no retained logs to break down
   });
 
+  it("restricts the report to one model when asked", async () => {
+    await recordUsage(usage({ apiKeyId: "k1", model: "a", creditsUsed: 3 }));
+    await recordUsage(usage({ apiKeyId: "k1", model: "b", creditsUsed: 5 }));
+
+    const report = await loadUsageReport({
+      keyIds: ["k1"],
+      tzOffsetMinutes: 480,
+      range: ALL,
+      model: "a",
+    });
+
+    expect(report.summary.requests).toBe(1);
+    expect(report.summary.creditsUsed).toBe(3);
+    expect(report.byModel.map((row) => row.id)).toEqual(["a"]);
+  });
+
   it("includes the per-user breakdown only when asked", async () => {
     await recordUsage(usage({ apiKeyId: "k1", userId: "u1" }));
     await recordUsage(usage({ apiKeyId: "k2", userId: "u2" }));

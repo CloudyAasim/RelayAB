@@ -4,8 +4,9 @@ import {
   type UsageGrain,
   type UsageMetric,
   type UsageSeriesPoint,
+  type UsageSummary,
 } from "@/lib/usage/report";
-import { formatCredits, formatNumber } from "@/lib/utils";
+import { cn, formatCredits, formatNumber } from "@/lib/utils";
 
 function formatMetric(value: number, metric: UsageMetric): string {
   return metric === "credits" ? formatCredits(value) : formatNumber(value);
@@ -17,6 +18,8 @@ interface Props {
   metric: UsageMetric;
   /** Localized name of the selected metric ("积分" / "Tokens" / "请求次数"). */
   metricLabel: string;
+  /** Window totals, shown above the chart with the selected metric emphasized. */
+  summary?: UsageSummary;
   labels: { credits: string; tokens: string; requests: string };
   emptyLabel: string;
 }
@@ -34,6 +37,7 @@ export function UsageBarChart({
   grain,
   metric,
   metricLabel,
+  summary,
   labels,
   emptyLabel,
 }: Props) {
@@ -45,14 +49,25 @@ export function UsageBarChart({
 
   const values = points.map((point) => metricValue(point, metric));
   const max = Math.max(1, ...values);
-  const total = values.reduce((sum, value) => sum + value, 0);
 
   return (
     <div>
-      <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
-        <span>{metricLabel}</span>
-        <span className="tabular-nums">{formatMetric(total, metric)}</span>
-      </div>
+      {summary && (
+        <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <span className={cn(metric === "requests" && "font-semibold text-foreground")}>
+            {labels.requests}{" "}
+            <span className="tabular-nums">{formatNumber(summary.requests)}</span>
+          </span>
+          <span className={cn(metric === "tokens" && "font-semibold text-foreground")}>
+            {labels.tokens}{" "}
+            <span className="tabular-nums">{formatNumber(summary.totalTokens)}</span>
+          </span>
+          <span className={cn(metric === "credits" && "font-semibold text-foreground")}>
+            {labels.credits}{" "}
+            <span className="tabular-nums">{formatCredits(summary.creditsUsed)}</span>
+          </span>
+        </div>
+      )}
 
       <div className="flex gap-2">
         {/* Y axis: max / mid / 0 */}
