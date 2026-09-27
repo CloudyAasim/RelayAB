@@ -78,6 +78,8 @@ export function formatDate(iso: string | null | undefined, timeZone?: string): s
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    // 24-hour clock everywhere (h23 keeps midnight at 00:00 rather than 24:00).
+    hourCycle: "h23",
     ...(timeZone ? { timeZone } : {}),
   });
 }

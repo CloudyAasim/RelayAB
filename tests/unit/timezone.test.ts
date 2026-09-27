@@ -42,9 +42,15 @@ describe("timezone helpers", () => {
 describe("formatDate with a timezone", () => {
   const iso = "2026-09-27T16:30:00.000Z"; // 00:30 next day in Shanghai
 
-  it("renders the timestamp in the requested zone", () => {
+  it("renders the timestamp in the requested zone on a 24-hour clock", () => {
     expect(formatDate(iso, "UTC")).toContain("Sep 27");
     expect(formatDate(iso, "Asia/Shanghai")).toContain("Sep 28");
+
+    // 16:30Z = 16:30 UTC and 00:30 next day in Shanghai, with no AM/PM suffix.
+    expect(formatDate(iso, "UTC")).toContain("16:30");
+    expect(formatDate(iso, "Asia/Shanghai")).toContain("00:30");
+    expect(formatDate(iso, "UTC")).not.toMatch(/\b(AM|PM)\b/);
+    expect(formatDate(iso, "Asia/Shanghai")).not.toMatch(/\b(AM|PM)\b/);
   });
 
   it("still handles missing values", () => {
