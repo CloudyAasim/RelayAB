@@ -379,25 +379,44 @@ Content-Type: application/json
 ### 2.5 用量统计
 
 #### `GET /api/admin/usage`
-查询参数：`?from=2026-09-01&to=2026-09-30&groupBy=user|provider|model|day`
+查询参数：
+- `range=today|7d|30d|90d|all|custom`（默认 `all`）
+- `from` / `to`：`range=custom` 时的本地日期 `YYYY-MM-DD`（含首含尾）
+- `userId`：只看某个账号
+- `tzOffset`：时区偏移分钟数，默认 `480`（GMT+8）
+
+管理员可查看全站用量；`range=all` 的总量来自每个密钥的累计计数器，
+即使单密钥日志被截断（上限 1000 条）也保持准确。
 
 **响应**：
 ```json
 {
   "ok": true,
   "data": {
-    "totals": {
-      "promptTokens": 12345,
-      "completionTokens": 6789,
-      "totalTokens": 19134,
-      "creditsUsed": 234000
-    },
-    "breakdown": [
-      {"key": "user:01J...", "promptTokens": 100, "completionTokens": 50, "totalTokens": 150, "creditsUsed": 5000}
-    ]
+    "range": {"key": "7d", "from": "2026-09-20T16:00:00.000Z", "to": "2026-09-27T16:00:00.000Z", "grain": "day"},
+    "totals": {"requests": 1, "promptTokens": 1000, "completionTokens": 500, "totalTokens": 1500, "creditsUsed": 2000},
+    "breakdown": [{"day": "2026-09-27", "promptTokens": 1000, "completionTokens": 500, "creditsUsed": 2000, "requests": 1}],
+    "summary": {"requests": 1, "promptTokens": 1000, "completionTokens": 500, "totalTokens": 1500, "creditsUsed": 2000},
+    "series": [{"bucket": "2026-09-27", "requests": 1, "promptTokens": 1000, "completionTokens": 500, "totalTokens": 1500, "creditsUsed": 2000}],
+    "byKey": [{"id": "<keyId>", "requests": 1, "totalTokens": 1500, "creditsUsed": 2000}],
+    "byModel": [{"id": "deepseek-flash", "requests": 1, "totalTokens": 1500, "creditsUsed": 2000}],
+    "byUser": [{"id": "<userId>", "requests": 1, "totalTokens": 1500, "creditsUsed": 2000}],
+    "byProvider": [{"id": "<providerId>", "requests": 1, "totalTokens": 1500, "creditsUsed": 2000}],
+    "truncatedKeys": 0
   }
 }
 ```
+
+> `totals` / `breakdown` 是 v1 兼容字段；管理台「用量」页使用 `summary` / `series` / `by*`。
+> `truncatedKeys > 0` 表示有密钥的日志已达到每密钥上限，区间明细可能低估；
+> `series` 的 `bucket` 在 `grain=day` 时为 `YYYY-MM-DD`，`grain=hour` 时为 `YYYY-MM-DDTHH`。
+
+#### `GET /api/user/usage`
+参数同上（`range` / `from` / `to` / `tzOffset`），范围限定为当前登录账号的所有密钥。
+响应字段为 `range` / `summary` / `series` / `byKey` / `byModel` / `byProvider` / `truncatedKeys`
+（不含 `byUser`）。
+
+对应的界面：用户 `/dashboard/usage`，管理员 `/admin/usage`（可按 `userId` 下钻）。
 
 ---
 

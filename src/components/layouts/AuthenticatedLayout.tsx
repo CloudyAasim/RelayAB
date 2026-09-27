@@ -30,6 +30,7 @@ import { useT } from "@/components/i18n/I18nProvider";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import {
+  BarChart3,
   BookOpen,
   KeyRound,
   LayoutDashboard,
@@ -60,6 +61,7 @@ export const USER_NAV: NavSection[] = [
     labelKey: "nav.sidebar.workspace",
     items: [
       { href: "/dashboard", labelKey: "nav.dashboard", titleKey: "dashboard.title", icon: LayoutDashboard, exact: true },
+      { href: "/dashboard/usage", labelKey: "nav.usage", titleKey: "usage.title", icon: BarChart3 },
       { href: "/dashboard/docs", labelKey: "nav.docs", titleKey: "docs.title", icon: BookOpen },
       { href: "/dashboard/settings", labelKey: "nav.settings", titleKey: "settings.title", icon: Settings },
     ],
@@ -73,6 +75,7 @@ export const ADMIN_NAV: NavSection[] = [
       { href: "/admin", labelKey: "nav.overview", titleKey: "admin.overview.title", icon: LayoutDashboard, exact: true },
       { href: "/admin/users", labelKey: "nav.users", titleKey: "admin.users.title", icon: Users },
       { href: "/admin/keys", labelKey: "nav.keys", titleKey: "admin.keys.title", icon: KeyRound },
+      { href: "/admin/usage", labelKey: "nav.usage", titleKey: "usage.title", icon: BarChart3 },
       { href: "/admin/providers", labelKey: "nav.providers", titleKey: "admin.providers.title", icon: Server },
       { href: "/admin/settings", labelKey: "admin.settings.title", icon: Settings },
     ],
@@ -88,6 +91,7 @@ export const ADMIN_NAV: NavSection[] = [
     labelKey: "nav.sidebar.personal",
     items: [
       { href: "/dashboard", labelKey: "nav.myDashboard", titleKey: "dashboard.title", icon: Wallet, exact: true },
+      { href: "/dashboard/usage", labelKey: "nav.usage", titleKey: "usage.title", icon: BarChart3 },
       { href: "/dashboard/settings", labelKey: "nav.settings", titleKey: "settings.title", icon: Settings },
     ],
   },

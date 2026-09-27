@@ -155,7 +155,8 @@
 | `/api/admin/keys/[id]/toggle` | POST | 启用/禁用 |
 | `/api/admin/providers` | GET / POST | Provider 列表 / 创建 |
 | `/api/admin/providers/[id]` | GET / PATCH / DELETE | Provider 管理 |
-| `/api/admin/usage` | GET | 全局用量统计 |
+| `/api/admin/usage` | GET | 全站用量统计（`range` / `userId` / `byUser`·`byKey`·`byModel` 明细） |
+| `/api/user/usage` | GET | 当前账号用量统计（`range` / `byKey`·`byModel` 明细） |
 
 ### 4.3 嵌入式 Mock（仅开发环境）
 
