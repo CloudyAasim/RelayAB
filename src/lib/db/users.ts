@@ -14,7 +14,7 @@
  */
 import { hashPassword } from "../crypto/password";
 import { generateId } from "../crypto/hashing";
-import { UserSchema, DEFAULT_USER_ALLOCATION, type User } from "./types";
+import { UserSchema, DEFAULT_USER_ALLOCATION, DEFAULT_TIMEZONE, type User, type Timezone } from "./types";
 import { getRedis, hgetallMany, k } from "./redis";
 
 // ---------------------------------------------------------------------------
@@ -44,6 +44,8 @@ export interface CreateUserInput {
   password: string; // plaintext; repository will hash
   role?: "admin" | "user";
   displayName?: string;
+  /** Per-user display timezone; defaults to Shanghai. */
+  timezone?: Timezone;
   /** Admin-controlled policy applied at creation. Defaults come from
    *  `DEFAULT_USER_ALLOCATION` if not supplied. */
   quotaType?: "credits" | "tokens";
@@ -54,6 +56,8 @@ export interface CreateUserInput {
 
 export interface UpdateUserInput {
   displayName?: string;
+  /** Per-user display timezone (self-service). */
+  timezone?: Timezone;
   role?: "admin" | "user";
   // Admin-controlled policy (see UserSchema).
   quotaType?: "credits" | "tokens";
@@ -85,6 +89,7 @@ export async function createUser(input: CreateUserInput): Promise<User> {
     passwordHash,
     role: input.role ?? "user",
     displayName: input.displayName ?? input.username,
+    timezone: input.timezone ?? DEFAULT_TIMEZONE,
     createdAt: now,
     updatedAt: now,
     lastLoginAt: null,
@@ -127,6 +132,7 @@ export async function createUser(input: CreateUserInput): Promise<User> {
       passwordHash: user.passwordHash,
       role: user.role,
       displayName: user.displayName,
+      timezone: user.timezone ?? DEFAULT_TIMEZONE,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
       lastLoginAt: user.lastLoginAt ?? "",
@@ -231,6 +237,7 @@ export async function updateUser(
   const merged: User = {
     ...existing,
     displayName: patch.displayName ?? existing.displayName,
+    timezone: patch.timezone ?? existing.timezone,
     role: patch.role ?? existing.role,
     quotaType: patch.quotaType ?? existing.quotaType,
     quotaLimit: patch.quotaLimit ?? existing.quotaLimit,
@@ -244,6 +251,7 @@ export async function updateUser(
 
   await getRedis().hset(k.user(userId), {
     displayName: validated.displayName,
+    timezone: validated.timezone ?? DEFAULT_TIMEZONE,
     role: validated.role,
     quotaType: validated.quotaType,
     quotaLimit: String(validated.quotaLimit),
@@ -395,6 +403,10 @@ async function hashToUser(raw: Record<string, string> | null): Promise<User | nu
       passwordHash: raw.passwordHash,
       role: raw.role,
       displayName: raw.displayName,
+      timezone:
+        raw.timezone === "utc" || raw.timezone === "shanghai"
+          ? raw.timezone
+          : undefined,
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
       lastLoginAt: raw.lastLoginAt && raw.lastLoginAt !== "" ? raw.lastLoginAt : null,

@@ -21,6 +21,7 @@ import {
   sortByMetric,
   type UsageGroupRow,
 } from "@/lib/usage/report";
+import { timezoneLabelKey, timezoneOffsetMinutes } from "@/lib/timezone";
 import {
   loadUsageReportCached,
   sumAllTimeCached,
@@ -31,8 +32,6 @@ import { formatUserIdentity } from "@/lib/user-identity";
 import { formatCredits, formatNumber } from "@/lib/utils";
 import { Coins, KeyRound, Users } from "lucide-react";
 
-/** All dates on this screen are bucketed in GMT+8. */
-const TZ_OFFSET_MINUTES = 480;
 const BASE_PATH = "/admin/usage";
 
 type Scope = "all" | "key" | "model";
@@ -51,13 +50,16 @@ export default async function AdminUsagePage({ searchParams }: UsagePageProps) {
   if (!me) redirect("/login");
   if (me.role !== "admin") redirect("/dashboard");
 
+  // Bucket everything in the admin's own display timezone.
+  const tzOffsetMinutes = timezoneOffsetMinutes(me.timezone);
+
   const sp = await searchParams;
   const first = (value: string | string[] | undefined) =>
     typeof value === "string" ? value : undefined;
 
   const range = resolveRange({
     key: first(sp.range),
-    tzOffsetMinutes: TZ_OFFSET_MINUTES,
+    tzOffsetMinutes: tzOffsetMinutes,
   });
   const metric = parseUsageMetric(first(sp.metric));
   const group = parseGroup(first(sp.group));
@@ -87,7 +89,7 @@ export default async function AdminUsagePage({ searchParams }: UsagePageProps) {
   if (scope === "key" && effectiveKeyId) {
     report = await loadUsageReportCached({
       keyIds: [effectiveKeyId],
-      tzOffsetMinutes: TZ_OFFSET_MINUTES,
+      tzOffsetMinutes: tzOffsetMinutes,
       range,
       includeUsers: true,
     });
@@ -95,13 +97,13 @@ export default async function AdminUsagePage({ searchParams }: UsagePageProps) {
   } else if (scope === "model" && effectiveModel) {
     const universeReport = await loadUsageReportCached({
       keyIds: universeIds,
-      tzOffsetMinutes: TZ_OFFSET_MINUTES,
+      tzOffsetMinutes: tzOffsetMinutes,
       range,
       includeUsers: true,
     });
     report = await loadUsageReportCached({
       keyIds: universeIds,
-      tzOffsetMinutes: TZ_OFFSET_MINUTES,
+      tzOffsetMinutes: tzOffsetMinutes,
       range,
       model: effectiveModel,
       includeUsers: true,
@@ -110,7 +112,7 @@ export default async function AdminUsagePage({ searchParams }: UsagePageProps) {
   } else {
     report = await loadUsageReportCached({
       keyIds: universeIds,
-      tzOffsetMinutes: TZ_OFFSET_MINUTES,
+      tzOffsetMinutes: tzOffsetMinutes,
       range,
       includeUsers: true,
     });
@@ -175,7 +177,9 @@ export default async function AdminUsagePage({ searchParams }: UsagePageProps) {
     <SectionPageLayout>
       <SectionPageLayout.Title>{t("usage.title")}</SectionPageLayout.Title>
       <SectionPageLayout.Content>
-        <p className="mb-4 text-xs text-muted-foreground">{t("usage.tzNote")}</p>
+        <p className="mb-4 text-xs text-muted-foreground">
+          {t("usage.tzNote", { zone: t(timezoneLabelKey(me.timezone)) })}
+        </p>
 
         <UsageAccountSummary
           figures={[

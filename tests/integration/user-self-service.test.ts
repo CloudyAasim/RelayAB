@@ -404,6 +404,37 @@ describe("profile endpoint", () => {
     expect(body.error?.code).toBe("bad_request");
     expect((await getUserById(u.id))?.displayName).toBe("grace");
   });
+
+  it("updates the display timezone and persists it", async () => {
+    const u = await createUser({ username: "heidi", password: "longenoughpw" });
+    expect((await getUserById(u.id))?.timezone).toBe("shanghai"); // default
+
+    const store = new InMemoryCookieStore();
+    await loginAs(store, u.id, "heidi", "user");
+    currentStore = store;
+
+    const { status, body } = await patchProfile({ timezone: "utc" });
+    expect(status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.data.user.timezone).toBe("utc");
+    expect((await getUserById(u.id))?.timezone).toBe("utc");
+    // A timezone-only update must not clobber the display name.
+    expect((await getUserById(u.id))?.displayName).toBe("heidi");
+  });
+
+  it("rejects an unsupported timezone and an empty update", async () => {
+    const u = await createUser({ username: "ivan", password: "longenoughpw" });
+    const store = new InMemoryCookieStore();
+    await loginAs(store, u.id, "ivan", "user");
+    currentStore = store;
+
+    for (const body of [{ timezone: "mars" }, {}]) {
+      const { status, body: res } = await patchProfile(body);
+      expect(status).toBe(400);
+      expect(res.error?.code).toBe("bad_request");
+    }
+    expect((await getUserById(u.id))?.timezone).toBe("shanghai");
+  });
 });
 
 describe("/api/config public endpoint", () => {

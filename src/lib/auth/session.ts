@@ -30,7 +30,8 @@ import { cookies } from "next/headers";
 import { isProduction, getSessionPassword } from "../config";
 import { ensureBootstrapped } from "../db/bootstrap";
 import { getUserById } from "../db/users";
-import type { Role } from "../db/types";
+import type { Role, Timezone } from "../db/types";
+import { DEFAULT_TIMEZONE } from "../db/types";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -109,6 +110,8 @@ export interface AuthedUser {
   id: string;
   username: string;
   displayName?: string;
+  /** Resolved display timezone (never undefined). */
+  timezone: Timezone;
   role: Role;
 }
 
@@ -160,6 +163,7 @@ async function lookupCurrentUserUncached(): Promise<CurrentUserLookup> {
       // account since the cookie was minted.
       username: user.username,
       displayName: user.displayName,
+      timezone: user.timezone ?? DEFAULT_TIMEZONE,
       role: user.role,
     },
   };

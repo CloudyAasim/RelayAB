@@ -21,13 +21,12 @@ import {
   sortByMetric,
   type UsageGroupRow,
 } from "@/lib/usage/report";
+import { timezoneLabelKey, timezoneOffsetMinutes } from "@/lib/timezone";
 import { loadUsageReportCached, type UsageReport } from "@/lib/usage/load";
 import { MAX_LOGS_PER_KEY } from "@/lib/db/usage";
 import { formatCredits, formatNumber } from "@/lib/utils";
 import { Coins, KeyRound, Wallet } from "lucide-react";
 
-/** All dates on this screen are bucketed in GMT+8. */
-const TZ_OFFSET_MINUTES = 480;
 const BASE_PATH = "/dashboard/usage";
 
 type Scope = "all" | "key" | "model";
@@ -40,13 +39,16 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
   const sessionUser = await getCurrentUser();
   if (!sessionUser) redirect("/login");
 
+  // Bucket everything in the signed-in user's own display timezone.
+  const tzOffsetMinutes = timezoneOffsetMinutes(sessionUser.timezone);
+
   const sp = await searchParams;
   const first = (value: string | string[] | undefined) =>
     typeof value === "string" ? value : undefined;
 
   const range = resolveRange({
     key: first(sp.range),
-    tzOffsetMinutes: TZ_OFFSET_MINUTES,
+    tzOffsetMinutes: tzOffsetMinutes,
   });
   const metric = parseUsageMetric(first(sp.metric));
   const group = first(sp.group) === "model" ? "model" : "key";
@@ -76,19 +78,19 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
   if (scope === "key" && effectiveKeyId) {
     report = await loadUsageReportCached({
       keyIds: [effectiveKeyId],
-      tzOffsetMinutes: TZ_OFFSET_MINUTES,
+      tzOffsetMinutes: tzOffsetMinutes,
       range,
     });
     modelOptionRows = report.byModel;
   } else if (scope === "model" && effectiveModel) {
     const universeReport = await loadUsageReportCached({
       keyIds: universeIds,
-      tzOffsetMinutes: TZ_OFFSET_MINUTES,
+      tzOffsetMinutes: tzOffsetMinutes,
       range,
     });
     report = await loadUsageReportCached({
       keyIds: universeIds,
-      tzOffsetMinutes: TZ_OFFSET_MINUTES,
+      tzOffsetMinutes: tzOffsetMinutes,
       range,
       model: effectiveModel,
     });
@@ -96,7 +98,7 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
   } else {
     report = await loadUsageReportCached({
       keyIds: universeIds,
-      tzOffsetMinutes: TZ_OFFSET_MINUTES,
+      tzOffsetMinutes: tzOffsetMinutes,
       range,
     });
     modelOptionRows = report.byModel;
@@ -157,7 +159,9 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
     <SectionPageLayout>
       <SectionPageLayout.Title>{t("usage.title")}</SectionPageLayout.Title>
       <SectionPageLayout.Content>
-        <p className="mb-4 text-xs text-muted-foreground">{t("usage.tzNote")}</p>
+        <p className="mb-4 text-xs text-muted-foreground">
+          {t("usage.tzNote", { zone: t(timezoneLabelKey(sessionUser.timezone)) })}
+        </p>
 
         <UsageAccountSummary
           figures={[

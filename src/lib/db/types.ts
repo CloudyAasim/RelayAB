@@ -26,6 +26,17 @@ export type Role = z.infer<typeof RoleSchema>;
 export const QuotaTypeSchema = z.enum(["credits", "tokens"]);
 export type QuotaType = z.infer<typeof QuotaTypeSchema>;
 
+/**
+ * Per-user display timezone. Both options are fixed-offset (no DST), which is
+ * all this app needs: `utc` = UTC+0, `shanghai` = Asia/Shanghai (UTC+8).
+ *
+ * Optional on the record so accounts created before this setting existed keep
+ * parsing; readers fall back to `DEFAULT_TIMEZONE`.
+ */
+export const TimezoneSchema = z.enum(["utc", "shanghai"]);
+export type Timezone = z.infer<typeof TimezoneSchema>;
+export const DEFAULT_TIMEZONE: Timezone = "shanghai";
+
 export const ProviderKindSchema = z.enum(["openai", "anthropic", "custom-openai", "azure"]);
 export type ProviderKind = z.infer<typeof ProviderKindSchema>;
 
@@ -87,6 +98,8 @@ export const UserSchema = z.object({
   passwordHash: z.string().min(1), // bcrypt hash, e.g. $2a$12$...
   role: RoleSchema,
   displayName: z.string().min(1).max(64),
+  /** Display preference (see TimezoneSchema). Absent = DEFAULT_TIMEZONE. */
+  timezone: TimezoneSchema.optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   lastLoginAt: z.string().nullable(),

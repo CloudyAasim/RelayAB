@@ -5,7 +5,9 @@ import { getT } from "@/lib/i18n/server";
 import { SectionPageLayout } from "@/components/layouts";
 import { ChangePasswordForm } from "./ChangePasswordForm";
 import { DisplayNameForm } from "./DisplayNameForm";
+import { TimezoneForm } from "./TimezoneForm";
 import { cachedGetUserById } from "@/lib/db/data-cache";
+import { DEFAULT_TIMEZONE } from "@/lib/db/types";
 
 export default async function SettingsPage() {
   const user = await getCurrentUser();
@@ -30,6 +32,13 @@ export default async function SettingsPage() {
               initialDisplayName={displayName}
               username={user.username}
             />
+          </Card>
+          <Card>
+            <CardHeader
+              title={t("settings.timezone.title")}
+              description={t("settings.timezone.desc")}
+            />
+            <TimezoneForm initialTimezone={fresh?.timezone ?? DEFAULT_TIMEZONE} />
           </Card>
           <Card>
             <CardHeader

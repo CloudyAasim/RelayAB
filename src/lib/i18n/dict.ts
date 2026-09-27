@@ -191,6 +191,12 @@ const zhCN: Dict = {
   "settings.displayName.errorTooLong": "显示名不能超过 64 个字符。",
   "settings.displayName.errorGeneric": "保存失败，请重试。",
   "settings.displayName.success": "显示名已更新。",
+  "settings.timezone.title": "显示时区",
+  "settings.timezone.desc": "用量统计里的日期按此时区显示。",
+  "settings.timezone.success": "时区已更新。",
+  "settings.timezone.errorGeneric": "保存失败，请重试。",
+  "timezone.utc": "UTC（协调世界时）",
+  "timezone.shanghai": "上海（UTC+8）",
   "settings.password.title": "修改密码",
   "settings.password.desc": "需要先输入当前密码，然后输入两次新密码进行验证。",
   "settings.password.current": "当前密码",
@@ -281,7 +287,7 @@ const zhCN: Dict = {
 
   // ===== Usage =====
   "usage.title": "用量统计",
-  "usage.tzNote": "所有日期按 GMT+8 显示。数据来自每次请求的用量日志，可能有轻微延迟。",
+  "usage.tzNote": "所有日期按 {zone} 显示。数据来自每次请求的用量日志，可能有轻微延迟。",
   "usage.range.label": "时间范围",
   "usage.range.today": "今天",
   "usage.range.7d": "近 7 天",
@@ -771,6 +777,12 @@ const en: Dict = {
   "settings.displayName.errorTooLong": "Display name must be 64 characters or fewer.",
   "settings.displayName.errorGeneric": "Could not save. Please try again.",
   "settings.displayName.success": "Display name updated.",
+  "settings.timezone.title": "Display timezone",
+  "settings.timezone.desc": "Dates in usage statistics are shown in this timezone.",
+  "settings.timezone.success": "Timezone updated.",
+  "settings.timezone.errorGeneric": "Could not save. Please try again.",
+  "timezone.utc": "UTC (Coordinated Universal Time)",
+  "timezone.shanghai": "Shanghai (UTC+8)",
   "settings.password.title": "Change Password",
   "settings.password.desc": "Enter your current password, then type the new password twice to confirm.",
   "settings.password.current": "Current password",
@@ -861,7 +873,7 @@ const en: Dict = {
 
   // ===== Usage =====
   "usage.title": "Usage",
-  "usage.tzNote": "All dates are shown in GMT+8. Figures come from per-request usage logs and may lag slightly.",
+  "usage.tzNote": "All dates are shown in {zone}. Figures come from per-request usage logs and may lag slightly.",
   "usage.range.label": "Range",
   "usage.range.today": "Today",
   "usage.range.7d": "Last 7 days",
