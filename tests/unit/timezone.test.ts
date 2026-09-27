@@ -3,7 +3,9 @@ import {
   TIMEZONE_OPTIONS,
   timezoneLabelKey,
   timezoneOffsetMinutes,
+  timezoneToIana,
 } from "@/lib/timezone";
+import { formatDate } from "@/lib/utils";
 
 describe("timezone helpers", () => {
   it("maps stored values to offsets, defaulting to Shanghai (UTC+8)", () => {
@@ -28,5 +30,25 @@ describe("timezone helpers", () => {
     expect(new Set(TIMEZONE_OPTIONS.map((option) => option.offsetMinutes))).toEqual(
       new Set([480, 0]),
     );
+  });
+
+  it("maps to IANA names for Intl formatting, defaulting to Shanghai", () => {
+    expect(timezoneToIana("utc")).toBe("UTC");
+    expect(timezoneToIana("shanghai")).toBe("Asia/Shanghai");
+    expect(timezoneToIana(undefined)).toBe("Asia/Shanghai");
+  });
+});
+
+describe("formatDate with a timezone", () => {
+  const iso = "2026-09-27T16:30:00.000Z"; // 00:30 next day in Shanghai
+
+  it("renders the timestamp in the requested zone", () => {
+    expect(formatDate(iso, "UTC")).toContain("Sep 27");
+    expect(formatDate(iso, "Asia/Shanghai")).toContain("Sep 28");
+  });
+
+  it("still handles missing values", () => {
+    expect(formatDate(null, "UTC")).toBe("—");
+    expect(formatDate(undefined, "Asia/Shanghai")).toBe("—");
   });
 });

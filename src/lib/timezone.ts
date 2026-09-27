@@ -32,3 +32,10 @@ export function timezoneOffsetMinutes(timezone: Timezone | null | undefined): nu
 export function timezoneLabelKey(timezone: Timezone | null | undefined): string {
   return timezone === "utc" ? "timezone.utc" : "timezone.shanghai";
 }
+
+export type TimezoneIana = "UTC" | "Asia/Shanghai";
+
+/** IANA zone name for `Intl` date formatting; missing/unknown → Shanghai. */
+export function timezoneToIana(timezone: Timezone | null | undefined): TimezoneIana {
+  return timezone === "utc" ? "UTC" : "Asia/Shanghai";
+}

@@ -13,6 +13,8 @@
  *   so server-side SDK calls can transparently bypass Vercel's
  *   Deployment Protection (the bypass header is otherwise needed
  *   by every SDK client).
+ * - Remembers the usage screens' last-used view (range/scope/metric/…)
+ *   in a cookie and replays it when the URL carries no view params.
  * - Returns early for static / public assets.
  */
 import { NextResponse, type NextRequest } from "next/server";
@@ -22,6 +24,7 @@ import {
   corsRequestInfo,
   isCorsPathname,
 } from "@/lib/http/cors";
+import { usageViewCookieName, usageViewFromParams } from "@/lib/usage/view-prefs";
 
 /**
  * Strip a duplicate /v1/ segment from the start of a URL path.
@@ -55,15 +58,24 @@ function isNoStoreApiPath(pathname: string): boolean {
   );
 }
 
-/** Apply CORS (public surface) and no-store (session surface) response headers. */
+/** Apply CORS (public surface), no-store (session surface) and view cookies. */
 function stampResponse(
   response: NextResponse,
   pathname: string,
   cors: ReturnType<typeof corsRequestInfo> | null,
+  viewCookie?: { name: string; value: string } | null,
 ): NextResponse {
   if (cors) applyCorsHeaders(response.headers, cors);
   if (isNoStoreApiPath(pathname)) {
     response.headers.set("Cache-Control", "no-store");
+  }
+  if (viewCookie) {
+    response.cookies.set(viewCookie.name, viewCookie.value, {
+      path: "/",
+      httpOnly: true,
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 365,
+    });
   }
   return response;
 }
@@ -71,6 +83,28 @@ function stampResponse(
 export function middleware(request: NextRequest) {
   const url = request.nextUrl;
   const cleanPath = cleanDoubleV1Path(url.pathname);
+
+  // Usage screens remember the last-used view (range/scope/metric/group/…).
+  // Persist it when the URL carries one; replay it when the URL carries none.
+  let viewCookie: { name: string; value: string } | null = null;
+  const viewCookieName =
+    request.method === "GET" ? usageViewCookieName(cleanPath) : null;
+  if (viewCookieName) {
+    const current = usageViewFromParams(url.searchParams);
+    if (current) {
+      viewCookie = { name: viewCookieName, value: current };
+    } else {
+      const stored = request.cookies.get(viewCookieName)?.value;
+      const replay = stored
+        ? usageViewFromParams(new URLSearchParams(stored))
+        : null;
+      if (replay) {
+        const target = url.clone();
+        target.search = `?${replay}`;
+        return NextResponse.redirect(target);
+      }
+    }
+  }
 
   // A browser client (OnlyOffice plugin, dashboard, SDK in a web app) always
   // sends an Origin header; without CORS headers the response is unusable
@@ -85,12 +119,12 @@ export function middleware(request: NextRequest) {
     // Rewrite the path so the Next.js router dispatches to the correct handler.
     const rewritten = request.nextUrl.clone();
     rewritten.pathname = cleanPath;
-    return stampResponse(NextResponse.rewrite(rewritten), cleanPath, cors);
+    return stampResponse(NextResponse.rewrite(rewritten), cleanPath, cors, viewCookie);
   }
 
   const bypass = process.env.VERCEL_PROTECTION_BYPASS;
   if (!bypass) {
-    return stampResponse(NextResponse.next(), cleanPath, cors);
+    return stampResponse(NextResponse.next(), cleanPath, cors, viewCookie);
   }
 
   // Forward the bypass header on every request so server-internal
@@ -103,6 +137,7 @@ export function middleware(request: NextRequest) {
     NextResponse.next({ request: { headers: requestHeaders } }),
     cleanPath,
     cors,
+    viewCookie,
   );
 }
 

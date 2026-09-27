@@ -16,6 +16,7 @@ import {
   EmptyState,
 } from "@/components/ui/Table";
 import { formatNumber, formatDate } from "@/lib/utils";
+import { timezoneToIana } from "@/lib/timezone";
 import { formatUserIdentity } from "@/lib/user-identity";
 import { getT } from "@/lib/i18n/server";
 import { SectionPageLayout } from "@/components/layouts";
@@ -32,6 +33,8 @@ export default async function AdminOverviewPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   if (user.role !== "admin") redirect("/dashboard");
+
+  const timeZone = timezoneToIana(user.timezone);
 
   const [{ t }, { users }, keys, providers] = await Promise.all([
     getT(),
@@ -135,7 +138,7 @@ export default async function AdminOverviewPage() {
                             : t("admin.users.role.user")}
                         </Badge>
                       </TD>
-                      <TD className="text-muted-foreground">{formatDate(u.createdAt)}</TD>
+                      <TD className="text-muted-foreground">{formatDate(u.createdAt, timeZone)}</TD>
                     </TR>
                   ))}
                 </TBody>
@@ -200,7 +203,7 @@ export default async function AdminOverviewPage() {
                 {recentUsage.map((row) => (
                   <TR key={row.id}>
                     <TD className="whitespace-nowrap text-muted-foreground">
-                      {formatDate(row.createdAt)}
+                      {formatDate(row.createdAt, timeZone)}
                     </TD>
                     <TD className="font-mono text-xs">
                       {userLabelById.get(row.userId) ?? row.userId}

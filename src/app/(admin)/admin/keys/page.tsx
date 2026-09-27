@@ -15,6 +15,7 @@ import {
   EmptyState,
 } from "@/components/ui/Table";
 import { formatNumber, formatDate, formatCredits } from "@/lib/utils";
+import { timezoneToIana } from "@/lib/timezone";
 import { formatUserIdentity } from "@/lib/user-identity";
 import { getT } from "@/lib/i18n/server";
 import { SectionPageLayout } from "@/components/layouts";
@@ -26,6 +27,8 @@ export default async function KeysPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   if (user.role !== "admin") redirect("/dashboard");
+
+  const timeZone = timezoneToIana(user.timezone);
 
   const { t } = await getT();
   const [{ users }, keys] = await Promise.all([
@@ -97,7 +100,7 @@ export default async function KeysPage() {
                         ? k.allowedModels.join(", ")
                         : t("dashboard.table.inheritsAccount")}
                     </TD>
-                    <TD className="text-muted-foreground">{formatDate(k.expiresAt)}</TD>
+                    <TD className="text-muted-foreground">{formatDate(k.expiresAt, timeZone)}</TD>
                     <TD>
                       <Badge tone={k.forceDisabled === true ? "orange" : k.enabled ? "success" : "neutral"}>
                         {k.forceDisabled === true ? t("admin.keys.status.forceDisabled") : k.enabled ? t("dashboard.status.enabled") : t("dashboard.status.disabled")}

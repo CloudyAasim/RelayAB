@@ -12,6 +12,7 @@ import {
   EmptyState,
 } from "@/components/ui/Table";
 import { formatCredits, formatNumber, formatDate } from "@/lib/utils";
+import { timezoneToIana } from "@/lib/timezone";
 import { getT } from "@/lib/i18n/server";
 import { SectionPageLayout } from "@/components/layouts";
 import {
@@ -30,6 +31,8 @@ import {
 export default async function DashboardPage() {
   const sessionUser = await getCurrentUser();
   if (!sessionUser) redirect("/login");
+
+  const timeZone = timezoneToIana(sessionUser.timezone);
 
   const [{ t }, fullUser, keyPage] = await Promise.all([
     getT(),
@@ -145,16 +148,16 @@ export default async function DashboardPage() {
                             : t("dashboard.table.inheritsAccount")}
                         </TD>
                         <TD className="hidden lg:table-cell text-muted-foreground">
-                          {formatDate(k.lastUsedAt)}
+                          {formatDate(k.lastUsedAt, timeZone)}
                         </TD>
                         <TD className="hidden xl:table-cell text-muted-foreground">
-                          {formatDate(k.expiresAt)}
+                          {formatDate(k.expiresAt, timeZone)}
                         </TD>
                         <TD className="text-center">
                           <StatusDot tone={k.enabled ? "success" : "danger"} />
                         </TD>
                         <TD className="text-right">
-                          <UserKeyActions apiKey={k} />
+                          <UserKeyActions apiKey={k} timeZone={timeZone} />
                         </TD>
                       </TR>
                     ))}

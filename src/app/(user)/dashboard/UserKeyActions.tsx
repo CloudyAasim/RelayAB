@@ -16,7 +16,14 @@ import { MoreHorizontal, Edit3, Power, Trash2, Ban } from "lucide-react";
  * Per-row actions for a key the current user OWNS.
  * Includes the status badge because toggle updates it directly.
  */
-export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
+export function UserKeyActions({
+  apiKey,
+  timeZone,
+}: {
+  apiKey: ApiKey;
+  /** IANA zone for displaying timestamps in the owner's chosen timezone. */
+  timeZone?: string;
+}) {
   const t = useT();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -219,7 +226,7 @@ export function UserKeyActions({ apiKey }: { apiKey: ApiKey }) {
             type="datetime-local"
             value={expiresAt}
             onChange={(e) => setExpiresAt(e.target.value)}
-            hint={apiKey.expiresAt ? `${t("common.current")}: ${formatDate(apiKey.expiresAt)}` : undefined}
+            hint={apiKey.expiresAt ? `${t("common.current")}: ${formatDate(apiKey.expiresAt, timeZone)}` : undefined}
           />
           <label className="flex items-center gap-2 text-sm text-foreground">
             <input

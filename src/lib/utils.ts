@@ -62,8 +62,14 @@ export function formatNumber(n: number): string {
   return new Intl.NumberFormat("en-US").format(n);
 }
 
-/** Format an ISO date as a short human string. */
-export function formatDate(iso: string | null | undefined): string {
+/**
+ * Format an ISO date as a short human string.
+ *
+ * Pass `timeZone` (an IANA name such as "UTC" or "Asia/Shanghai") to render the
+ * timestamp in the user's chosen display timezone. Omitted, the runtime's own
+ * zone is used.
+ */
+export function formatDate(iso: string | null | undefined, timeZone?: string): string {
   if (!iso) return "—";
   const d = new Date(iso);
   return d.toLocaleString("en-US", {
@@ -72,5 +78,6 @@ export function formatDate(iso: string | null | undefined): string {
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    ...(timeZone ? { timeZone } : {}),
   });
 }

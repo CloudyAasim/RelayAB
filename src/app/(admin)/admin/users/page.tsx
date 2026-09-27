@@ -16,6 +16,7 @@ import {
   EmptyState,
 } from "@/components/ui/Table";
 import { formatDate } from "@/lib/utils";
+import { timezoneToIana } from "@/lib/timezone";
 import { getT } from "@/lib/i18n/server";
 import { SectionPageLayout } from "@/components/layouts";
 import { CreateUserButton } from "./CreateUserButton";
@@ -27,6 +28,8 @@ export default async function UsersPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   if (user.role !== "admin") redirect("/dashboard");
+
+  const timeZone = timezoneToIana(user.timezone);
 
   const { t } = await getT();
   const [{ users }, providers] = await Promise.all([
@@ -79,7 +82,7 @@ export default async function UsersPage() {
                           : t("admin.users.role.user")}
                       </Badge>
                     </TD>
-                    <TD className="text-muted-foreground">{formatDate(u.createdAt)}</TD>
+                    <TD className="text-muted-foreground">{formatDate(u.createdAt, timeZone)}</TD>
                     <TD className="text-right">
                       <UserActions user={u} />
                     </TD>
