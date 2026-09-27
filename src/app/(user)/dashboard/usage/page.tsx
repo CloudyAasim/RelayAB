@@ -44,11 +44,10 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
   const first = (value: string | string[] | undefined) =>
     typeof value === "string" ? value : undefined;
 
-  // The page is built around two fixed windows: last 7 days and last 1 day.
-  // Computed per request — a module-level constant would freeze at boot.
-  const range7 = resolveRange({ key: "7d", tzOffsetMinutes: TZ_OFFSET_MINUTES });
-  const range1 = resolveRange({ key: "today", tzOffsetMinutes: TZ_OFFSET_MINUTES });
-
+  const range = resolveRange({
+    key: first(sp.range),
+    tzOffsetMinutes: TZ_OFFSET_MINUTES,
+  });
   const metric = parseUsageMetric(first(sp.metric));
   const group = first(sp.group) === "model" ? "model" : "key";
   const requestedScope = first(sp.scope);
@@ -63,7 +62,6 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
   const keys = keyPage.keys;
   const universeIds = keys.map((key) => key.id);
 
-  // Resolve the requested scope against what actually exists.
   const requestedKeyId = first(sp.keyId);
   const requestedModel = first(sp.model);
   const effectiveKeyId =
@@ -72,33 +70,36 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
       : undefined;
   const effectiveModel = scope === "model" ? requestedModel : undefined;
 
-  let report7: UsageReport;
-  let report1: UsageReport;
+  let report: UsageReport;
   let modelOptionRows: UsageGroupRow[];
 
   if (scope === "key" && effectiveKeyId) {
-    [report7, report1] = await Promise.all([
-      loadUsageReportCached({ keyIds: [effectiveKeyId], tzOffsetMinutes: TZ_OFFSET_MINUTES, range: range7 }),
-      loadUsageReportCached({ keyIds: [effectiveKeyId], tzOffsetMinutes: TZ_OFFSET_MINUTES, range: range1 }),
-    ]);
-    modelOptionRows = report7.byModel;
+    report = await loadUsageReportCached({
+      keyIds: [effectiveKeyId],
+      tzOffsetMinutes: TZ_OFFSET_MINUTES,
+      range,
+    });
+    modelOptionRows = report.byModel;
   } else if (scope === "model" && effectiveModel) {
-    const universe7 = await loadUsageReportCached({
+    const universeReport = await loadUsageReportCached({
       keyIds: universeIds,
       tzOffsetMinutes: TZ_OFFSET_MINUTES,
-      range: range7,
+      range,
     });
-    [report7, report1] = await Promise.all([
-      loadUsageReportCached({ keyIds: universeIds, tzOffsetMinutes: TZ_OFFSET_MINUTES, range: range7, model: effectiveModel }),
-      loadUsageReportCached({ keyIds: universeIds, tzOffsetMinutes: TZ_OFFSET_MINUTES, range: range1, model: effectiveModel }),
-    ]);
-    modelOptionRows = universe7.byModel;
+    report = await loadUsageReportCached({
+      keyIds: universeIds,
+      tzOffsetMinutes: TZ_OFFSET_MINUTES,
+      range,
+      model: effectiveModel,
+    });
+    modelOptionRows = universeReport.byModel;
   } else {
-    [report7, report1] = await Promise.all([
-      loadUsageReportCached({ keyIds: universeIds, tzOffsetMinutes: TZ_OFFSET_MINUTES, range: range7 }),
-      loadUsageReportCached({ keyIds: universeIds, tzOffsetMinutes: TZ_OFFSET_MINUTES, range: range1 }),
-    ]);
-    modelOptionRows = report7.byModel;
+    report = await loadUsageReportCached({
+      keyIds: universeIds,
+      tzOffsetMinutes: TZ_OFFSET_MINUTES,
+      range,
+    });
+    modelOptionRows = report.byModel;
   }
 
   const quotaType = fullUser?.quotaType ?? "credits";
@@ -125,8 +126,16 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
     credits: t("usage.table.credits"),
     actions: t("usage.table.actions"),
   };
+  const rangeOptions = [
+    { value: "today", label: t("usage.range.today") },
+    { value: "7d", label: t("usage.range.7d") },
+    { value: "30d", label: t("usage.range.30d") },
+    { value: "all", label: t("usage.range.all") },
+  ];
+  const rangeLabel =
+    rangeOptions.find((option) => option.value === range.key)?.label ?? range.key;
 
-  const sourceRows = group === "model" ? report7.byModel : report7.byKey;
+  const sourceRows = group === "model" ? report.byModel : report.byKey;
   const rows: UsageBreakdownRow[] = sortByMetric(
     sourceRows.map((row) => {
       if (group === "model") return { ...row, label: row.id };
@@ -188,7 +197,7 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
         <Card className="mb-4 space-y-3 sm:mb-6">
           <UsageScopePicker
             basePath={BASE_PATH}
-            params={{ metric, group }}
+            params={{ range: range.key, metric, group }}
             scope={scope}
             keyId={effectiveKeyId}
             model={effectiveModel}
@@ -210,7 +219,15 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
           <div className="flex flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-6">
             <UsageViewTabs
               basePath={BASE_PATH}
-              params={{ ...scopeParams, group }}
+              params={{ ...scopeParams, metric, group }}
+              param="range"
+              active={range.key}
+              label={t("usage.range.label")}
+              options={rangeOptions}
+            />
+            <UsageViewTabs
+              basePath={BASE_PATH}
+              params={{ ...scopeParams, range: range.key, group }}
               param="metric"
               active={metric}
               label={t("usage.view.metric")}
@@ -222,7 +239,7 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
             />
             <UsageViewTabs
               basePath={BASE_PATH}
-              params={{ ...scopeParams, metric }}
+              params={{ ...scopeParams, range: range.key, metric }}
               param="group"
               active={group}
               label={t("usage.group.label")}
@@ -234,41 +251,27 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
           </div>
         </Card>
 
-        <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
-          <Card>
-            <CardHeader title={t("usage.chart.last7")} />
-            <UsageBarChart
-              points={report7.series}
-              grain={range7.grain}
-              metric={metric}
-              metricLabel={metricLabel}
-              summary={report7.summary}
-              labels={labels}
-              emptyLabel={t("usage.empty")}
-            />
-          </Card>
-          <Card>
-            <CardHeader title={t("usage.chart.last1")} />
-            <UsageBarChart
-              points={report1.series}
-              grain={range1.grain}
-              metric={metric}
-              metricLabel={metricLabel}
-              summary={report1.summary}
-              labels={labels}
-              emptyLabel={t("usage.empty")}
-            />
-          </Card>
-        </div>
+        <Card className="mt-4 sm:mt-6">
+          <CardHeader title={t("usage.chart.title")} description={rangeLabel} />
+          <UsageBarChart
+            points={report.series}
+            grain={range.grain}
+            metric={metric}
+            metricLabel={metricLabel}
+            summary={report.summary}
+            labels={labels}
+            emptyLabel={t("usage.empty")}
+          />
+        </Card>
 
-        {report7.truncatedKeys > 0 && (
+        {report.truncatedKeys > 0 && (
           <p className="mt-3 text-xs text-warning">
             {t("usage.truncated", { max: MAX_LOGS_PER_KEY })}
           </p>
         )}
 
         <Card className="mt-4 sm:mt-6">
-          <CardHeader title={t("usage.breakdown.title")} description={t("usage.chart.last7")} />
+          <CardHeader title={t("usage.breakdown.title")} description={rangeLabel} />
           <UsageBreakdownTable
             rows={rows}
             headers={headers}
