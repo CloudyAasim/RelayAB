@@ -125,9 +125,31 @@ check "admin API requires session (403)" "$ANON" '^403$'
 USER_ID=$(curl -s -b "$COOKIE_JAR" "${BASE}/api/admin/users" \
   | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' | head -1)
 
+# Quota lives on the owning ACCOUNT, not on the key. Grant it here or the proxy
+# rejects the completion below with quota_exceeded_credits.
+GRANT=$(curl -s -b "$COOKIE_JAR" -X PATCH "${BASE}/api/admin/users/${USER_ID}" \
+  -H 'Content-Type: application/json' \
+  -d '{"quotaType":"credits","quotaLimit":500000}')
+check "owner account granted quota" "$GRANT" '"quotaLimit":500000'
+
+# Give the bootstrapped provider a non-zero per-model rate so the billed amount
+# is observable (a missing rate means "free" since the per-model billing rewrite).
+# The provider list can lag the login's bootstrap by a beat, so poll briefly.
+PROVIDER_ID=""
+for _ in $(seq 1 20); do
+  PROVIDER_ID=$(curl -s -b "$COOKIE_JAR" "${BASE}/api/admin/providers" \
+    | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const j=JSON.parse(s);console.log((j.data.providers[0]||{}).id||'')}catch{console.log('')}})")
+  [ -n "$PROVIDER_ID" ] && break
+  sleep 0.5
+done
+RATED=$(curl -s -b "$COOKIE_JAR" -X PATCH "${BASE}/api/admin/providers/${PROVIDER_ID}" \
+  -H 'Content-Type: application/json' \
+  -d '{"modelConfigs":{"gpt-4o-mini":{"upstreamId":"gpt-4o-mini-2024-07-18","clientId":"gpt-4o-mini","inputCost":50,"outputCost":50}}}')
+check "provider rate configured" "$RATED" '"ok":true'
+
 KEY_RESP=$(curl -s -b "$COOKIE_JAR" -X POST "${BASE}/api/admin/keys" \
   -H 'Content-Type: application/json' \
-  -d "{\"userId\":\"${USER_ID}\",\"label\":\"smoke\",\"quotaType\":\"credits\",\"quotaLimit\":500000}")
+  -d "{\"userId\":\"${USER_ID}\",\"label\":\"smoke\"}")
 PLAIN_KEY=$(printf '%s' "$KEY_RESP" | sed -n 's/.*"plainKey":"\([^"]*\)".*/\1/p')
 check "customer key issued" "$PLAIN_KEY" '^sk-relay-'
 
@@ -145,7 +167,7 @@ USAGE=$(curl -s -b "$COOKIE_JAR" "${BASE}/api/admin/usage")
 check "usage recorded" "$USAGE" '"requests":1'
 check "usage tracked in 0.001 积分 units" "$USAGE" '"creditsUsed":1'
 
-QUOTA=$(curl -s -b "$COOKIE_JAR" "${BASE}/api/admin/keys?userId=${USER_ID}")
+QUOTA=$(curl -s -b "$COOKIE_JAR" "${BASE}/api/admin/users")
 check "quota consumed in 0.001 积分 units" "$QUOTA" '"quotaUsed":1'
 
 UNKNOWN=$(curl -s -o /dev/null -w '%{http_code}' -X POST "${BASE}/v1/chat/completions" \

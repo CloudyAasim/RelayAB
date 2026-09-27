@@ -2,7 +2,7 @@
  * app/api/admin/keys/route.ts
  *
  * GET  /api/admin/keys?userId=&enabledOnly=
- * POST /api/admin/keys  body: { userId, label, quotaType, quotaLimit, expiresAt?, allowedModels? }
+ * POST /api/admin/keys  body: { userId, label, expiresAt?, allowedModels? }
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
