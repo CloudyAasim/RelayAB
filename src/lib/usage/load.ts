@@ -4,18 +4,30 @@
  * Server-side orchestration for the usage screens/APIs: fetch the retained
  * per-key logs, then hand them to the pure aggregator in ./report.
  *
+ * Two performance properties matter here:
+ *
+ *  1. Bounded reads. For a ranged report we only walk as far back as the
+ *     window's lower bound (`listUsageWithin`), so "today"/"7 days" no longer
+ *     hydrate all 1000 retained rows per key on every render.
+ *  2. A short data cache. `loadUsageReportCached` memoises the report for
+ *     `REPORT_REVALIDATE_SECONDS`, which makes switching back and forth between
+ *     ranges (and refresh) cheap. Usage is append-only and the UI already warns
+ *     that figures can lag, so a 30s cache changes no user-visible semantics
+ *     except freshness.
+ *
  * "All time" totals come from the running per-key counters (accurate even when
  * a key has more than `MAX_LOGS_PER_KEY` retained rows). Range and breakdown
  * figures scan the retained logs, so a very busy key can undercount inside a
  * window; `truncatedKeys` tells the UI when that may be the case.
  */
+import { unstable_cache } from "next/cache";
 import { mapWithConcurrency } from "@/lib/db/concurrency";
 import {
   MAX_LOGS_PER_KEY,
   aggregateByKeyMany,
   listUsageByKey,
+  listUsageWithin,
 } from "@/lib/db/usage";
-import type { ApiKey } from "@/lib/db/types";
 import {
   EMPTY_USAGE_SUMMARY,
   fillSeries,
@@ -42,7 +54,7 @@ export interface UsageReport {
 }
 
 export interface LoadUsageReportInput {
-  keys: readonly ApiKey[];
+  keyIds: readonly string[];
   tzOffsetMinutes: number;
   range: UsageRange;
   /** Include the per-user breakdown (admin only). */
@@ -51,18 +63,23 @@ export interface LoadUsageReportInput {
 
 const SCAN_CONCURRENCY = 8;
 
+/** How long a computed report stays warm in the Next data cache. */
+const REPORT_REVALIDATE_SECONDS = 30;
+
 export async function loadUsageReport(
   input: LoadUsageReportInput,
 ): Promise<UsageReport> {
-  const { keys, tzOffsetMinutes, range } = input;
-  const perKey = await mapWithConcurrency(keys, SCAN_CONCURRENCY, (key) =>
-    listUsageByKey(key.id, { limit: MAX_LOGS_PER_KEY }),
+  const { keyIds, tzOffsetMinutes, range } = input;
+  const perKey = await mapWithConcurrency(keyIds, SCAN_CONCURRENCY, (keyId) =>
+    range.fromIso
+      ? listUsageWithin(keyId, { fromIso: range.fromIso, max: MAX_LOGS_PER_KEY })
+      : listUsageByKey(keyId, { limit: MAX_LOGS_PER_KEY }),
   );
   const logs = perKey.flat();
   const truncatedKeys = perKey.filter((rows) => rows.length >= MAX_LOGS_PER_KEY).length;
 
   const summary =
-    range.key === "all" ? await sumAllTime(keys) : summarize(logs, range.fromIso, range.toIso);
+    range.key === "all" ? await sumAllTime(keyIds) : summarize(logs, range.fromIso, range.toIso);
 
   return {
     range,
@@ -81,10 +98,43 @@ export async function loadUsageReport(
   };
 }
 
+/**
+ * Cached wrapper used by the pages and routes. Ids are sorted so the cache key
+ * is stable regardless of how the caller enumerated the keys.
+ */
+export async function loadUsageReportCached(
+  input: LoadUsageReportInput,
+): Promise<UsageReport> {
+  const ids = [...input.keyIds].sort();
+  return cachedReport(
+    ids.join(","),
+    input.tzOffsetMinutes,
+    input.range,
+    input.includeUsers ?? false,
+  );
+}
+
+const cachedReport = unstable_cache(
+  async (
+    keyIdsCsv: string,
+    tzOffsetMinutes: number,
+    range: UsageRange,
+    includeUsers: boolean,
+  ): Promise<UsageReport> =>
+    loadUsageReport({
+      keyIds: keyIdsCsv ? keyIdsCsv.split(",") : [],
+      tzOffsetMinutes,
+      range,
+      includeUsers,
+    }),
+  ["usage-report"],
+  { revalidate: REPORT_REVALIDATE_SECONDS },
+);
+
 /** Lifetime totals from the running per-key counters. */
-export async function sumAllTime(keys: readonly ApiKey[]): Promise<UsageSummary> {
-  if (keys.length === 0) return { ...EMPTY_USAGE_SUMMARY };
-  const perKey = await aggregateByKeyMany(keys.map((key) => key.id));
+export async function sumAllTime(keyIds: readonly string[]): Promise<UsageSummary> {
+  if (keyIds.length === 0) return { ...EMPTY_USAGE_SUMMARY };
+  const perKey = await aggregateByKeyMany(keyIds);
   return perKey.reduce<UsageSummary>(
     (acc, totals) => ({
       requests: acc.requests + totals.requestCount,

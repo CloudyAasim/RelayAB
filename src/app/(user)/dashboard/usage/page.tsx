@@ -14,7 +14,7 @@ import {
   type UsageBreakdownRow,
 } from "@/components/usage/UsageBreakdownTable";
 import { resolveRange } from "@/lib/usage/report";
-import { loadUsageReport } from "@/lib/usage/load";
+import { loadUsageReportCached } from "@/lib/usage/load";
 import { MAX_LOGS_PER_KEY } from "@/lib/db/usage";
 import { formatCredits, formatNumber } from "@/lib/utils";
 import { Activity, Coins, KeyRound, Wallet } from "lucide-react";
@@ -47,8 +47,8 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
     listApiKeysByUser(sessionUser.id, { limit: 200 }),
   ]);
   const keys = keyPage.keys;
-  const report = await loadUsageReport({
-    keys,
+  const report = await loadUsageReportCached({
+    keyIds: keys.map((key) => key.id),
     tzOffsetMinutes: TZ_OFFSET_MINUTES,
     range,
   });

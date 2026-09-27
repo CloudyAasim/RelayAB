@@ -28,11 +28,11 @@ export function UsageBarChart({ points, grain, labels, emptyLabel }: Props) {
         <span>{labels.credits}</span>
         <span className="tabular-nums">{formatCredits(total)}</span>
       </div>
-      <div className="flex h-40 items-end gap-[2px]">
+      <div className="flex h-40 items-end gap-[2px] border-b border-border">
         {points.map((point) => {
           const height =
             point.creditsUsed > 0
-              ? Math.max(2, Math.round((point.creditsUsed / max) * 100))
+              ? Math.max(3, Math.round((point.creditsUsed / max) * 100))
               : 0;
           const detail = `${bucketLabel(point.bucket, grain)} · ${labels.credits} ${formatCredits(
             point.creditsUsed,
@@ -46,7 +46,7 @@ export function UsageBarChart({ points, grain, labels, emptyLabel }: Props) {
               title={detail}
             >
               <div
-                className="w-full rounded-t-sm bg-primary/60 transition-colors group-hover:bg-primary"
+                className="w-full rounded-t-sm bg-primary transition-[filter] group-hover:brightness-110"
                 style={{ height: `${height}%` }}
               />
             </div>

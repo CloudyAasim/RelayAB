@@ -129,6 +129,57 @@ export async function listUsageByKey(
 }
 
 /**
+ * How many log ids to pull (and hydrate) per round when walking a key's log
+ * list. 200 keeps each pipeline request small while still cutting the number
+ * of REST round-trips tenfold versus one page per log.
+ */
+const USAGE_READ_PAGE = 200;
+
+/**
+ * Logs for a key that fall at or after `fromIso`, read newest-first.
+ *
+ * The per-key log list is append-newest-first, so once a page's oldest row
+ * predates the window we can stop: every later page is older still. That makes
+ * "today" / "last 7 days" cost a couple of reads instead of hydrating all
+ * `MAX_LOGS_PER_KEY` hashes on every page view and range switch.
+ *
+ * With no `fromIso` this is equivalent to `listUsageByKey(..., { limit: max })`.
+ */
+export async function listUsageWithin(
+  apiKeyId: string,
+  opts: { fromIso?: string; max?: number } = {},
+): Promise<UsageLog[]> {
+  const max = Math.max(1, Math.min(opts.max ?? MAX_LOGS_PER_KEY, MAX_LOGS_PER_KEY));
+  if (!opts.fromIso) return listUsageByKey(apiKeyId, { limit: max });
+
+  const redis = getRedis();
+  const out: UsageLog[] = [];
+  let offset = 0;
+  while (offset < max) {
+    const size = Math.min(USAGE_READ_PAGE, max - offset);
+    const ids = await redis.lrange(k.usageLogsByKey(apiKeyId), offset, offset + size - 1);
+    if (ids.length === 0) break;
+
+    const rows = await hgetallMany(
+      redis,
+      ids.map((id) => k.usageLog(apiKeyId, id)),
+    );
+    const parsed = await Promise.all(rows.map((raw) => hashToLog(raw)));
+    const logs = parsed.filter((log): log is UsageLog => log !== null);
+    out.push(...logs);
+
+    // Only trust the boundary check when every row on the page parsed; a
+    // corrupt row could otherwise make us stop before an in-window log.
+    const complete = logs.length === ids.length;
+    const oldest = logs[logs.length - 1];
+    if (complete && oldest && oldest.createdAt < opts.fromIso) break;
+    if (ids.length < size) break;
+    offset += ids.length;
+  }
+  return out;
+}
+
+/**
  * Most recent usage rows across several keys, newest first.
  *
  * Each key's log list is already newest-first, so this reads `limit` rows per

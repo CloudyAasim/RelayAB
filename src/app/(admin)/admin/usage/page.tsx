@@ -15,7 +15,7 @@ import {
   type UsageBreakdownRow,
 } from "@/components/usage/UsageBreakdownTable";
 import { resolveRange } from "@/lib/usage/report";
-import { loadUsageReport } from "@/lib/usage/load";
+import { loadUsageReportCached } from "@/lib/usage/load";
 import { MAX_LOGS_PER_KEY } from "@/lib/db/usage";
 import { formatUserIdentity } from "@/lib/user-identity";
 import { formatCredits, formatNumber } from "@/lib/utils";
@@ -53,8 +53,8 @@ export default async function AdminUsagePage({ searchParams }: UsagePageProps) {
   const users = userPage.users;
   const keys = userId ? allKeys.filter((key) => key.userId === userId) : allKeys;
 
-  const report = await loadUsageReport({
-    keys,
+  const report = await loadUsageReportCached({
+    keyIds: keys.map((key) => key.id),
     tzOffsetMinutes: TZ_OFFSET_MINUTES,
     range,
     includeUsers: true,

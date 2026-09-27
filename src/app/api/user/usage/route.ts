@@ -9,7 +9,7 @@
 import { NextResponse } from "next/server";
 import { listApiKeysByUser } from "@/lib/db/keys";
 import { getCurrentUser } from "@/lib/auth/session";
-import { loadUsageReport } from "@/lib/usage/load";
+import { loadUsageReportCached } from "@/lib/usage/load";
 import { parseTzOffset, rangeToJson, resolveRange } from "@/lib/usage/report";
 
 export async function GET(req: Request): Promise<Response> {
@@ -31,8 +31,8 @@ export async function GET(req: Request): Promise<Response> {
   });
 
   const keyPage = await listApiKeysByUser(me.id, { limit: 200 });
-  const report = await loadUsageReport({
-    keys: keyPage.keys,
+  const report = await loadUsageReportCached({
+    keyIds: keyPage.keys.map((key) => key.id),
     tzOffsetMinutes,
     range,
   });

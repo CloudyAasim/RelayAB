@@ -410,6 +410,10 @@ Content-Type: application/json
 > `totals` / `breakdown` 是 v1 兼容字段；管理台「用量」页使用 `summary` / `series` / `by*`。
 > `truncatedKeys > 0` 表示有密钥的日志已达到每密钥上限，区间明细可能低估；
 > `series` 的 `bucket` 在 `grain=day` 时为 `YYYY-MM-DD`，`grain=hour` 时为 `YYYY-MM-DDTHH`。
+>
+> 性能：区间明细只会从每个密钥的日志里读到区间下界为止（日志按时间倒序），
+> 计算结果在 Next 数据缓存中保留约 30 秒，所以快速切换区间/刷新会命中缓存。
+> 也就是说接口数据最长可能有约 30 秒的延迟。
 
 #### `GET /api/user/usage`
 参数同上（`range` / `from` / `to` / `tzOffset`），范围限定为当前登录账号的所有密钥。
