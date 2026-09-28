@@ -63,23 +63,33 @@ export function formatNumber(n: number): string {
 }
 
 /**
- * Format an ISO date as a short human string.
+ * Format an ISO timestamp as `YYYY-MM-DD, HH:mm` (24-hour, log-friendly and
+ * unambiguous for a Chinese-first UI).
  *
  * Pass `timeZone` (an IANA name such as "UTC" or "Asia/Shanghai") to render the
  * timestamp in the user's chosen display timezone. Omitted, the runtime's own
  * zone is used.
+ *
+ * Built from `formatToParts` rather than a locale string, so the separator and
+ * field order cannot drift with the runtime's locale data.
  */
 export function formatDate(iso: string | null | undefined, timeZone?: string): string {
   if (!iso) return "—";
   const d = new Date(iso);
-  return d.toLocaleString("en-US", {
+  if (Number.isNaN(d.getTime())) return "—";
+
+  const parts = new Intl.DateTimeFormat("en-US", {
     year: "numeric",
-    month: "short",
-    day: "numeric",
+    month: "2-digit",
+    day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-    // 24-hour clock everywhere (h23 keeps midnight at 00:00 rather than 24:00).
+    // 24-hour clock (h23 keeps midnight at 00:00 rather than 24:00).
     hourCycle: "h23",
     ...(timeZone ? { timeZone } : {}),
-  });
+  }).formatToParts(d);
+
+  const get = (type: Intl.DateTimeFormatPartTypes): string =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}, ${get("hour")}:${get("minute")}`;
 }
