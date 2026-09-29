@@ -8,7 +8,7 @@
  */
 import { NextResponse } from "next/server";
 import { authenticateBearer, reasonToHttp, resolveAuthHeader } from "@/lib/auth/apikey";
-import { listClientModelIds, openAIModelList } from "@/lib/proxy/model-catalog";
+import { listClientModelEntries } from "@/lib/proxy/model-catalog";
 
 export const runtime = "nodejs";
 
@@ -24,9 +24,9 @@ export async function GET(req: Request): Promise<Response> {
     );
   }
 
-  const ids = await listClientModelIds(auth.key);
+  const entries = await listClientModelEntries(auth.key);
   return NextResponse.json({
     object: "list",
-    data: openAIModelList(ids, Math.floor(Date.now() / 1000)),
+    data: entries,
   });
 }

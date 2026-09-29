@@ -152,6 +152,7 @@ export async function sumAllTime(keyIds: readonly string[]): Promise<UsageSummar
       completionTokens: acc.completionTokens + totals.completionTokens,
       totalTokens: acc.totalTokens + totals.totalTokens,
       creditsUsed: acc.creditsUsed + totals.creditsUsed,
+      images: acc.images + totals.images,
     }),
     { ...EMPTY_USAGE_SUMMARY },
   );

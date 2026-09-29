@@ -422,6 +422,33 @@ Content-Type: application/json
 
 对应的界面：用户 `/dashboard/usage`，管理员 `/admin/usage`（可按 `userId` 下钻）。
 
+### 2.6 媒体端点（图片 / 视频 / 语音 / 音乐）
+
+面向 OpenAI 形状的媒体接口，由**声明式适配协议**驱动（详见
+[MEDIA_ADAPTER_SPEC.md](./MEDIA_ADAPTER_SPEC.md)）。鉴权与 `/v1/*` 一致（Bearer `sk-relay-…`）。
+
+| 端点 | Body | 说明 |
+| --- | --- | --- |
+| `POST /v1/images/generations` | JSON `{model,prompt,n,size,response_format,seed?}` | 文生图，返回 `{created,data:[{url}|{b64_json}]}` |
+| `POST /v1/images/edits` | multipart `image[,mask],prompt,model[,n,size]` | 图生图；上传的图统一转成 data URL 交给 spec |
+| `POST /v1/videos/generations` | JSON `{model,prompt[,n,size]}` | 异步供应商在引擎内提交+轮询，客户端只收一次响应 |
+| `POST /v1/audio/music` | JSON `{model,prompt[,n]}` | 音乐生成 |
+| `POST /v1/audio/speech` | JSON `{model,input,voice?,speed?}` | TTS，**原样返回音频字节**（≤25MB 输入限制在 transcriptions） |
+| `POST /v1/audio/transcriptions` | multipart `file,model[,language,prompt]` | STT，返回 `{text,id?}` |
+
+管理端点（仅管理员）：
+
+| 端点 | 说明 |
+| --- | --- |
+| `GET/POST /api/admin/media-providers` | 列出 / 新建媒体供应商（含 spec，保存时校验） |
+| `GET/PATCH/DELETE /api/admin/media-providers/[id]` | 查看 / 改（含替换 spec）/ 删除 |
+
+计费：`models[客户端模型名].pricePerItem × successCount`（每件积分，0 = 免费），
+失败或被内容安全拦截不计费；媒体一律扣积分。用量行记录 `images` 与 `capability`。
+
+模型发现：媒体模型只出现在 `GET /v1/models`（带 `relay` 元数据），**不出现在**
+`GET /anthropic/v1/models`。
+
 ---
 
 ## 3. 中间件行为

@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 export const dynamic = "force-dynamic";
 
+import Link from "next/link";
+
 import { getCurrentUser } from "@/lib/auth/session";
 import { getUserById } from "@/lib/db/users";
 import { listApiKeysByUser } from "@/lib/db/keys";
@@ -120,12 +122,14 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
     credits: t("usage.table.credits"),
     tokens: t("usage.table.tokens"),
     requests: t("usage.table.requests"),
+    images: t("usage.table.images"),
   };
   const headers = {
     item: t("usage.table.item"),
     requests: t("usage.table.requests"),
     tokens: t("usage.table.tokens"),
     credits: t("usage.table.credits"),
+    images: t("usage.table.images"),
     actions: t("usage.table.actions"),
   };
   const rangeOptions = [
@@ -252,6 +256,12 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
                 { value: "model", label: t("usage.breakdown.byModel") },
               ]}
             />
+            <Link
+              href={`${BASE_PATH}?reset=1`}
+              className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+            >
+              {t("usage.viewReset")}
+            </Link>
           </div>
         </Card>
 

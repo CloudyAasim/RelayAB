@@ -47,6 +47,7 @@ describe("summarize", () => {
       completionTokens: 6,
       totalTokens: 17,
       creditsUsed: 9,
+      images: 0,
     });
   });
 
@@ -207,6 +208,7 @@ describe("fillSeries", () => {
           completionTokens: 1,
           totalTokens: 4,
           creditsUsed: 2,
+          images: 1,
         },
       ],
       range,

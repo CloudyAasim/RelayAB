@@ -90,6 +90,15 @@ export function middleware(request: NextRequest) {
   const viewCookieName =
     request.method === "GET" ? usageViewCookieName(cleanPath) : null;
   if (viewCookieName) {
+    // `?reset=1` is the escape hatch: forget the saved view and land on the
+    // bare URL, which renders the defaults.
+    if (url.searchParams.has("reset")) {
+      const target = url.clone();
+      target.search = "";
+      const response = NextResponse.redirect(target);
+      response.cookies.delete(viewCookieName);
+      return response;
+    }
     const current = usageViewFromParams(url.searchParams);
     if (current) {
       viewCookie = { name: viewCookieName, value: current };

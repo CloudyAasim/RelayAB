@@ -32,6 +32,7 @@ import Link from "next/link";
 import {
   BarChart3,
   BookOpen,
+  Image as ImageIcon,
   KeyRound,
   LayoutDashboard,
   Server,
@@ -76,6 +77,7 @@ export const ADMIN_NAV: NavSection[] = [
       { href: "/admin/users", labelKey: "nav.users", titleKey: "admin.users.title", icon: Users },
       { href: "/admin/keys", labelKey: "nav.keys", titleKey: "admin.keys.title", icon: KeyRound },
       { href: "/admin/usage", labelKey: "nav.usage", titleKey: "usage.title", icon: BarChart3 },
+      { href: "/admin/media-providers", labelKey: "nav.mediaProviders", titleKey: "admin.mediaProviders.title", icon: ImageIcon },
       { href: "/admin/providers", labelKey: "nav.providers", titleKey: "admin.providers.title", icon: Server },
       { href: "/admin/settings", labelKey: "admin.settings.title", icon: Settings },
     ],

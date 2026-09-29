@@ -221,6 +221,7 @@ describe("i18n: client/server boundary", () => {
     expect(importers).toEqual([
       "src/app/(admin)/admin/docs/page.tsx",
       "src/app/(admin)/admin/keys/page.tsx",
+      "src/app/(admin)/admin/media-providers/page.tsx",
       "src/app/(admin)/admin/page.tsx",
       "src/app/(admin)/admin/providers/page.tsx",
       "src/app/(admin)/admin/settings/page.tsx",

@@ -20,6 +20,7 @@ interface Props {
     requests: string;
     tokens: string;
     credits: string;
+    images: string;
     actions: string;
   };
   /** Column to bold, matching the chart/ranking metric. */
@@ -52,6 +53,7 @@ export function UsageBreakdownTable({
           <TH className={cn("text-right", emph("requests"))}>{headers.requests}</TH>
           <TH className={cn("text-right", emph("tokens"))}>{headers.tokens}</TH>
           <TH className={cn("text-right", emph("credits"))}>{headers.credits}</TH>
+          <TH className="text-right">{headers.images}</TH>
           {detailLabel && <TH className="text-right">{headers.actions}</TH>}
         </TR>
       </THead>
@@ -75,6 +77,7 @@ export function UsageBreakdownTable({
             <TD className={cn("text-right tabular-nums", emph("credits"))}>
               {formatCredits(row.creditsUsed)}
             </TD>
+            <TD className="text-right tabular-nums">{formatNumber(row.images)}</TD>
             {detailLabel && (
               <TD className="text-right">
                 {row.href ? (

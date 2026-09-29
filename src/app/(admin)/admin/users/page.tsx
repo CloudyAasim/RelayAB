@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { getCurrentUser } from "@/lib/auth/session";
 import { listUsers } from "@/lib/db/users";
 import { listProviders } from "@/lib/db/providers";
+import { listMediaProviders } from "@/lib/db/media-providers";
 import { toPublicUser } from "@/lib/db/types";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -32,13 +33,20 @@ export default async function UsersPage() {
   const timeZone = timezoneToIana(user.timezone);
 
   const { t } = await getT();
-  const [{ users }, providers] = await Promise.all([
+  const [{ users }, providers, mediaProviders] = await Promise.all([
     listUsers({ limit: 200 }),
     listProviders({ enabledOnly: true }),
+    listMediaProviders({ enabledOnly: true }),
   ]);
 
+  // Media models are authorized through the same per-account whitelist, so
+  // they have to appear in the picker — otherwise an image model could never
+  // be granted to a user.
   const availableModels = Array.from(
-    new Set(providers.flatMap((p) => Object.keys(p.modelMapping))),
+    new Set([
+      ...providers.flatMap((p) => Object.keys(p.modelMapping)),
+      ...mediaProviders.flatMap((p) => Object.keys(p.models)),
+    ]),
   ).sort();
 
   const publicUsers = users.map(toPublicUser);

@@ -338,6 +338,14 @@ export const UsageLogSchema = z.object({
   totalTokens: z.number().int().nonnegative(),
   /** 积分 consumed by this request, in integer 0.001-积分 units. */
   creditsUsed: z.number().int().nonnegative(),
+  /**
+   * Media items produced (images, videos, …). `0`/absent for chat calls.
+   * Media is billed per item, not per token, so this is what makes
+   * "what did that 4 张 cost me?" answerable.
+   */
+  images: z.number().int().nonnegative().optional(),
+  /** Which media capability produced this row, when applicable. */
+  capability: z.string().optional(),
   status: z.enum(["success", "error"]),
   errorMessage: z.string().nullable(),
   /**

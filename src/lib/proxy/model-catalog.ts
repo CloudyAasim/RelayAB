@@ -17,12 +17,19 @@
  */
 import { providerFaces, type ApiKey, type Provider } from "@/lib/db/types";
 import { listProviders } from "@/lib/db/providers";
+import { listMediaProviders } from "@/lib/db/media-providers";
 
 export interface OpenAIModelEntry {
   id: string;
   object: "model";
   created: number;
   owned_by: string;
+  /**
+   * Non-standard RelayAB block. OpenAI SDKs ignore unknown fields, but it is
+   * what tells a client "this model is for images, it has these sizes, and its
+   * edit mode is 'reference' instead of a masked edit".
+   */
+  relay?: Record<string, unknown>;
 }
 
 export interface AnthropicModelEntry {
@@ -67,6 +74,54 @@ export function openAIModelList(ids: string[], createdAt: number): OpenAIModelEn
     created: createdAt,
     owned_by: "relayab",
   }));
+}
+
+/**
+ * Media models visible to one key, annotated so a client can tell them apart
+ * from chat models without trial and error.
+ *
+ * The capability comes from the provider's spec, and the rest is the spec's
+ * own `metadata` (modes, edit_mode, sizes, max_n) passed through verbatim.
+ */
+export async function listClientMediaModelEntries(
+  key: ApiKey,
+  createdAt: number,
+): Promise<OpenAIModelEntry[]> {
+  const providers = await listMediaProviders({ enabledOnly: true });
+  const out: OpenAIModelEntry[] = [];
+  for (const provider of providers) {
+    const spec = provider.specs[0];
+    for (const [clientModel, model] of Object.entries(provider.models)) {
+      if (!model.enabled) continue;
+      if (key.allowedModels.length > 0 && !key.allowedModels.includes(clientModel)) continue;
+      out.push({
+        id: clientModel,
+        object: "model",
+        created: createdAt,
+        owned_by: "relayab",
+        relay: {
+          kind: "media",
+          provider: provider.name,
+          capability: spec?.capability ?? "image.generate",
+          ...(spec?.metadata ?? {}),
+        },
+      });
+    }
+  }
+  return out;
+}
+
+/** Everything a key may call on the OpenAI surface: chat + media. */
+export async function listClientModelEntries(key: ApiKey): Promise<OpenAIModelEntry[]> {
+  const created = Math.floor(Date.now() / 1000);
+  // Tag chat models too, so `relay.kind` is a reliable discriminator rather
+  // than "has no relay block, therefore chat".
+  const chat = openAIModelList(await listClientModelIds(key), created).map((entry) => ({
+    ...entry,
+    relay: { kind: "chat" },
+  }));
+  const media = await listClientMediaModelEntries(key, created);
+  return [...chat, ...media];
 }
 
 /**

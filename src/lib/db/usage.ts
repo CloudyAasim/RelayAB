@@ -33,6 +33,10 @@ export interface RecordUsageInput {
   completionTokens: number;
   /** 积分 consumed by this request, in integer 0.001-积分 units. */
   creditsUsed: number;
+  /** Media items produced (images/videos/…); 0 for chat calls. */
+  images?: number;
+  /** Media capability that produced this row, when applicable. */
+  capability?: string;
   status: "success" | "error";
   errorMessage?: string | null;
   /**
@@ -63,6 +67,8 @@ export async function recordUsage(input: RecordUsageInput): Promise<UsageLog> {
     completionTokens: input.completionTokens,
     totalTokens,
     creditsUsed: input.creditsUsed,
+    images: input.images ?? 0,
+    capability: input.capability,
     status: input.status,
     errorMessage: input.errorMessage ?? null,
     billingMode: input.billingMode ?? "usage",
@@ -82,6 +88,8 @@ export async function recordUsage(input: RecordUsageInput): Promise<UsageLog> {
     completionTokens: String(log.completionTokens),
     totalTokens: String(log.totalTokens),
     creditsUsed: String(log.creditsUsed),
+    images: String(log.images ?? 0),
+    capability: log.capability ?? "",
     status: log.status,
     errorMessage: log.errorMessage ?? "",
     billingMode: log.billingMode ?? "usage",
@@ -98,6 +106,7 @@ export async function recordUsage(input: RecordUsageInput): Promise<UsageLog> {
     tx.hincrby(totalsKey, "completionTokens", log.completionTokens);
     tx.hincrby(totalsKey, "totalTokens", log.totalTokens);
     tx.hincrby(totalsKey, "creditsUsed", log.creditsUsed);
+    tx.hincrby(totalsKey, "images", log.images ?? 0);
     tx.hincrby(totalsKey, "requests", 1);
   }
   await tx.exec();
@@ -285,9 +294,10 @@ export async function aggregateByUser(
         completionTokens: acc.completionTokens + x.completionTokens,
         totalTokens: acc.totalTokens + x.totalTokens,
         creditsUsed: acc.creditsUsed + x.creditsUsed,
+        images: acc.images + x.images,
         requestCount: acc.requestCount + x.requestCount,
       }),
-      { promptTokens: 0, completionTokens: 0, totalTokens: 0, creditsUsed: 0, requestCount: 0 },
+      { promptTokens: 0, completionTokens: 0, totalTokens: 0, creditsUsed: 0, images: 0, requestCount: 0 },
     );
   }
   const all = await Promise.all(apiKeyIds.map((id) => listUsageByKey(id, { limit: MAX_LOGS_PER_KEY })));
@@ -307,6 +317,8 @@ export interface UsageAggregate {
   totalTokens: number;
   /** Total 积分 consumed, in integer 0.001-积分 units. */
   creditsUsed: number;
+  /** Media items produced; 0 for chat-only traffic. */
+  images: number;
   requestCount: number;
 }
 
@@ -328,6 +340,8 @@ async function hashToLog(raw: Record<string, string> | null): Promise<UsageLog |
       completionTokens: Number(raw.completionTokens ?? "0"),
       totalTokens: Number(raw.totalTokens ?? "0"),
       creditsUsed: Number(raw.creditsUsed ?? "0"),
+      images: raw.images === undefined || raw.images === "" ? 0 : Number(raw.images),
+      capability: raw.capability && raw.capability !== "" ? raw.capability : undefined,
       status: raw.status,
       errorMessage: raw.errorMessage && raw.errorMessage !== "" ? raw.errorMessage : null,
       billingMode: raw.billingMode === "estimated" ? "estimated" : "usage",
@@ -347,6 +361,7 @@ function aggregateLogs(
   let completionTokens = 0;
   let totalTokens = 0;
   let creditsUsed = 0;
+  let images = 0;
   let requestCount = 0;
 
   for (const log of logs) {
@@ -356,10 +371,11 @@ function aggregateLogs(
     completionTokens += log.completionTokens;
     totalTokens += log.totalTokens;
     creditsUsed += log.creditsUsed;
+    images += log.images ?? 0;
     requestCount += 1;
   }
 
-  return { promptTokens, completionTokens, totalTokens, creditsUsed, requestCount };
+  return { promptTokens, completionTokens, totalTokens, creditsUsed, images, requestCount };
 }
 
 /**
@@ -403,6 +419,7 @@ function parseKeyTotals(
     completionTokens: num(raw.completionTokens),
     totalTokens: num(raw.totalTokens),
     creditsUsed: num(raw.creditsUsed),
+    images: num(raw.images),
     requestCount: num(raw.requests),
   };
 }
@@ -417,6 +434,7 @@ async function writeKeyTotals(
     completionTokens: String(totals.completionTokens),
     totalTokens: String(totals.totalTokens),
     creditsUsed: String(totals.creditsUsed),
+    images: String(totals.images),
     requests: String(totals.requestCount),
   });
 }

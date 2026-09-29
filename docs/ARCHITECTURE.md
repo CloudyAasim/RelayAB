@@ -157,6 +157,23 @@
 | `/api/admin/providers/[id]` | GET / PATCH / DELETE | Provider 管理 |
 | `/api/admin/usage` | GET | 全站用量统计（`range` / `userId` / `byUser`·`byKey`·`byModel` 明细） |
 | `/api/user/usage` | GET | 当前账号用量统计（`range` / `byKey`·`byModel` 明细） |
+| `/api/admin/media-providers` | GET / POST | 媒体供应商与声明式适配 spec 的增删改查 |
+| `/v1/images/*`、`/v1/videos/*`、`/v1/audio/*` | POST | 媒体生成（图片/图生图/视频/语音/音乐），由适配协议驱动 |
+
+### 4.4 媒体适配协议
+
+媒体能力不走聊天协议面，而是**声明式 spec + 通用引擎**：
+
+```
+供应商行（Redis relay:media-provider:*）= baseUrl + 密钥 + models + specs[]
+引擎（src/lib/media/engine.ts）解释 spec：构造上游请求 → 解析响应 → 错误映射 → 异步轮询
+```
+
+厂商差异（端点、字段名、鉴权、尺寸表达、同步/异步、错误码）全部落在 spec 里，
+所以**新增或调整供应商是改后台 JSON，而不是改代码**。协议与原语见
+[MEDIA_ADAPTER_SPEC.md](./MEDIA_ADAPTER_SPEC.md)。
+
+与聊天 provider 是两套独立实体：请求形状、参数、计费单位都不同（媒体按「件」计费）。
 
 ### 4.3 嵌入式 Mock（仅开发环境）
 

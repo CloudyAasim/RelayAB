@@ -20,7 +20,7 @@ interface Props {
   metricLabel: string;
   /** Window totals, shown above the chart with the selected metric emphasized. */
   summary?: UsageSummary;
-  labels: { credits: string; tokens: string; requests: string };
+  labels: { credits: string; tokens: string; requests: string; images: string };
   emptyLabel: string;
 }
 
@@ -66,6 +66,11 @@ export function UsageBarChart({
             {labels.credits}{" "}
             <span className="tabular-nums">{formatCredits(summary.creditsUsed)}</span>
           </span>
+          {summary.images > 0 && (
+            <span className="font-semibold text-foreground">
+              {labels.images} <span className="tabular-nums">{formatNumber(summary.images)}</span>
+            </span>
+          )}
         </div>
       )}
 

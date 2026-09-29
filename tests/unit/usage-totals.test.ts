@@ -49,6 +49,7 @@ describe("usage running totals", () => {
       completionTokens: 22,
       totalTokens: 33,
       creditsUsed: 8,
+      images: 0,
       requestCount: 2,
     });
   });

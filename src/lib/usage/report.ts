@@ -29,6 +29,8 @@ export interface UsageSummary {
   completionTokens: number;
   totalTokens: number;
   creditsUsed: number;
+  /** Media items produced (images, videos, …); 0 for chat-only traffic. */
+  images: number;
 }
 
 export interface UsageSeriesPoint {
@@ -39,6 +41,7 @@ export interface UsageSeriesPoint {
   completionTokens: number;
   totalTokens: number;
   creditsUsed: number;
+  images: number;
 }
 
 export interface UsageGroupRow extends UsageSummary {
@@ -51,6 +54,7 @@ export const EMPTY_USAGE_SUMMARY: UsageSummary = {
   completionTokens: 0,
   totalTokens: 0,
   creditsUsed: 0,
+  images: 0,
 };
 
 export function addSummary(target: UsageSummary, log: UsageLog): void {
@@ -60,6 +64,7 @@ export function addSummary(target: UsageSummary, log: UsageLog): void {
   target.completionTokens += log.completionTokens;
   target.totalTokens += log.totalTokens;
   target.creditsUsed += log.creditsUsed;
+  target.images += log.images ?? 0;
 }
 
 export function sumSummaries(summaries: readonly UsageSummary[]): UsageSummary {
@@ -70,6 +75,7 @@ export function sumSummaries(summaries: readonly UsageSummary[]): UsageSummary {
     acc.completionTokens += s.completionTokens;
     acc.totalTokens += s.totalTokens;
     acc.creditsUsed += s.creditsUsed;
+    acc.images += s.images;
   }
   return acc;
 }
@@ -138,12 +144,14 @@ export function series(
         completionTokens: 0,
         totalTokens: 0,
         creditsUsed: 0,
+        images: 0,
       };
     cur.requests += 1;
     cur.promptTokens += log.promptTokens;
     cur.completionTokens += log.completionTokens;
     cur.totalTokens += log.totalTokens;
     cur.creditsUsed += log.creditsUsed;
+    cur.images += log.images ?? 0;
     buckets.set(bucket, cur);
   }
   return [...buckets.values()].sort((a, b) => a.bucket.localeCompare(b.bucket));
@@ -346,6 +354,7 @@ export function fillSeries(
         completionTokens: 0,
         totalTokens: 0,
         creditsUsed: 0,
+        images: 0,
       },
     );
   }
