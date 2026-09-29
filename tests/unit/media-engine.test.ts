@@ -102,7 +102,11 @@ describe("applyMapping", () => {
 
   it("maps response_format onto the vendor vocabulary", () => {
     const mapping = (MINIMAX_IMAGE_SPEC.request as Record<string, unknown>).response_format;
-    expect(applyMapping(mapping, { response_format: "b64_json" })).toBe("base64");
+    // `/v1/images/*` whitelist the body, so the normalised camelCase key is the
+    // only one in scope. Using `$.response_format` here silently fell through to
+    // the default and downgraded every `b64_json` request to `url`.
+    expect(applyMapping(mapping, { responseFormat: "b64_json" })).toBe("base64");
+    expect(applyMapping(mapping, { responseFormat: "url" })).toBe("url");
     expect(applyMapping(mapping, {})).toBe("url");
   });
 

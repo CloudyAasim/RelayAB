@@ -121,6 +121,88 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+/** Key used to mark a value that still needs one follow-up GET. */
+const FETCH_MARKER = "__fetch";
+
+/**
+ * Hard cap on follow-up GETs per media call. A spec is operator-authored data,
+ * but an accidental cycle or a wide array should never turn one request into an
+ * unbounded number of upstream calls.
+ */
+const MAX_FETCH_MARKERS = 8;
+
+const FETCH_TIMEOUT_MS = 30_000;
+
+/** `{{ $.a.b }}` → the value, URL-encoded (for query strings). */
+function interpolateUrl(template: string, scope: unknown): string {
+  return template.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_m, path: string) => {
+    const value = getPath(scope, path.trim());
+    return value === undefined || value === null ? "" : encodeURIComponent(String(value));
+  });
+}
+
+/**
+ * Expand every `$fetch` marker produced while mapping a response, fetching from
+ * the same provider (origin-checked, auth-reused) and picking the final value.
+ */
+async function resolveFetches(
+  value: unknown,
+  fetchJson: ((url: string) => Promise<unknown>) | null,
+  budget = { left: MAX_FETCH_MARKERS },
+): Promise<unknown> {
+  if (!fetchJson || budget.left <= 0) return value;
+  if (Array.isArray(value)) {
+    return Promise.all(value.map((item) => resolveFetches(item, fetchJson, budget)));
+  }
+  const record = asRecord(value);
+  if (!record) return value;
+  if (FETCH_MARKER in record) {
+    const spec = asRecord(record[FETCH_MARKER]) ?? {};
+    budget.left -= 1;
+    const data = await fetchJson(String(spec.url ?? ""));
+    return spec.pick ? getPath(data, String(spec.pick)) : data;
+  }
+  const out: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(record)) {
+    out[key] = await resolveFetches(child, fetchJson, budget);
+  }
+  return out;
+}
+
+/**
+ * Same-origin, authenticated GET used to resolve `$fetch` markers. Reuses the
+ * spec's own transport/auth, so a spec can never be talked into calling a
+ * third-party host.
+ */
+function makeFetcher(
+  spec: MediaSpec,
+  provider: MediaProvider,
+  fetchImpl: typeof fetch,
+  signal?: AbortSignal,
+): (url: string) => Promise<unknown> {
+  return async (path: string) => {
+    const url = buildUrl(spec, provider, path);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    const onAbort = () => controller.abort();
+    signal?.addEventListener("abort", onAbort, { once: true });
+    try {
+      const response = await fetchImpl(url.toString(), {
+        method: "GET",
+        headers: buildHeaders(spec, provider),
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw new Error(`$fetch got HTTP ${response.status} from ${url.pathname}`);
+      }
+      return decodeJson(await response.text());
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    }
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Mapping
 // ---------------------------------------------------------------------------
@@ -228,6 +310,26 @@ export function applyMapping(node: MediaMapping, scope: unknown): unknown {
       if (partRecord) Object.assign(merged, partRecord);
     }
     return merged;
+  }
+
+  /**
+   * Follow-up GET against the same provider, e.g. MiniMax returns a `file_id`
+   * that has to be exchanged for a download URL.
+   *
+   * Evaluation stays synchronous: the node resolves to a marker that
+   * `executeMedia` expands after mapping (one network round-trip at most a few
+   * times per call), which keeps `applyMapping` pure and unit-testable.
+   */
+  if ("$fetch" in record) {
+    const params = asRecord(record.$fetch);
+    const template = params ? String(params.url ?? "") : "";
+    if (!template) return undefined;
+    return {
+      [FETCH_MARKER]: {
+        url: interpolateUrl(template, scope),
+        ...(params?.pick ? { pick: String(params.pick) } : {}),
+      },
+    };
   }
 
   if ("$eq" in record) {
@@ -438,7 +540,12 @@ export async function executeMedia(args: ExecuteMediaArgs): Promise<MediaExecute
     };
   }
 
-  const mappedSubmit = spec.response ? applyMapping(spec.response, rawPayload) : undefined;
+  const mappedSubmit = spec.response
+    ? await resolveFetches(
+        applyMapping(spec.response, rawPayload),
+        makeFetcher(spec, provider, fetchImpl, args.signal),
+      )
+    : undefined;
   const submitRecord = asRecord(mappedSubmit);
 
   // ---- async providers: submit, then poll until the task settles --------
@@ -544,6 +651,7 @@ async function pollUntilDone(args: {
   const deadline = now() + timeoutMs;
   const successValues = async_.poll.successValues ?? ["SUCCESS", "SUCCEEDED", "succeeded", "success"];
   const failureValues = async_.poll.failureValues ?? ["FAILED", "FAILURE", "failed", "cancelled"];
+  const fetcher = makeFetcher(spec, provider, fetchImpl, args.signal);
 
   for (;;) {
     const path = async_.poll.path.replace("{{taskId}}", taskId);
@@ -569,7 +677,9 @@ async function pollUntilDone(args: {
     const ruleError = matchesRule(spec, raw);
     if (ruleError) return { ok: false, error: ruleError };
 
-    const mapped = spec.response ? applyMapping(spec.response, raw) : undefined;
+    const mapped = spec.response
+      ? await resolveFetches(applyMapping(spec.response, raw), fetcher)
+      : undefined;
     const record = asRecord(mapped);
     const status =
       record && typeof record.status === "string" ? record.status : undefined;

@@ -43,6 +43,7 @@ export type MediaAuth =
   | { type: "none" };
 
 export interface MediaTransport {
+  /** `GET` is only useful for a stateless retrieve-style endpoint. */
   method: "POST" | "GET";
   /** Path relative to the provider base URL, e.g. "/v1/image_generation". */
   path: string;
@@ -256,6 +257,11 @@ export function parseMediaSpec(raw: unknown): SpecParse {
   } else {
     if (transport.method !== "POST" && transport.method !== "GET") {
       errors.push("transport.method: must be POST or GET");
+    }
+    if (typeof transport.path === "string" && transport.path.includes("{{")) {
+      errors.push(
+        "transport.path: {{…}} placeholders are only substituted on `async.poll.path`, never on the submit request",
+      );
     }
     if (typeof transport.path !== "string" || !transport.path.startsWith("/")) {
       errors.push('transport.path: must be a string starting with "/"');

@@ -74,6 +74,8 @@
 > 请严格按「两个独立的 JSON 块」输出：第一块是 models（扁平对象，key=客户端模型名），
 > 第二块是 specs（扁平数组，每份 spec 用 capability 字段自描述）。
 > 不要把两者合并，也不要按图片/视频/语音/音乐分组或嵌套。
+> 动笔前先读本文 §6.1（每个端点到底有哪些 `$.键`）和 §7.1（上游结果是什么编码），
+> 交稿前按 §16.1 的五条自查。
 > ```
 >
 > 贴的时候：上面那个框贴 `models`，下面那个框贴 `specs`。
@@ -193,23 +195,33 @@ MediaModelConfig {
 `$` 根作用域是「客户端这次请求」归一化后的结果。`model` 一律是**上游模型名**
 （已按 `models[].upstreamId` 替换），spec 不需要再映射一次。
 
-| 端点 | 固定注入的键 |
-| --- | --- |
-| `/v1/images/generations` | `model` `prompt` `n` `size` `responseFormat` `seed` `style` `watermark` `promptOptimizer` |
-| `/v1/images/edits` | `model` `prompt` `image`（上传图的 data URL）`n` `size` `responseFormat` `seed` |
-| `/v1/videos/generations` | `model` `prompt` `n` `size` `seed` |
-| `/v1/audio/music` | `model` `prompt` `n` |
-| `/v1/audio/speech` | `model` `input`（待合成文本）`voice` `speed` `responseFormat` |
-| `/v1/audio/transcriptions` | `model` `image`（上传音频的 data URL）`language` `prompt` `temperature` `filename` |
+| 端点 | 固定注入的键 | 透传请求体其余字段？ |
+| --- | --- | --- |
+| `/v1/images/generations` | `model` `prompt` `n` `size` `responseFormat` `seed` `style` `watermark` `promptOptimizer` | ❌ 白名单 |
+| `/v1/images/edits` | `model` `prompt` `image`（上传图的 data URL）`n` `size` `responseFormat` `seed` | ❌ 白名单 |
+| `/v1/videos/generations` | `model` `prompt` `n` `size` `seed` + `duration` | ✅ |
+| `/v1/audio/music` | `model` `prompt` `n` | ✅ |
+| `/v1/audio/speech` | `model` `input`（待合成文本）`voice` `speed` `responseFormat` | ✅ |
+| `/v1/audio/transcriptions` | `model` `image`（上传音频的 data URL）`language` `prompt` `temperature` `filename` | ✅ |
 
-除上表外，**客户端请求体里的其余字段会按原名（snake_case）注入到 `$` 根作用域**，
+「✅」的端点还会把**客户端请求体里的其余字段按原名（snake_case）注入到 `$` 根作用域**，
 所以 `$.lyrics`、`$.duration`、`$.response_format` 这类自定义字段可以直接引用。
 
-> 两个容易搞混的点：
-> - `response_format`（snake_case，请求体原样注入）与 `responseFormat`
->   （camelCase，路由归一化后的标准字段）**是两个不同的键**。图 / 音乐 / TTS 用哪个都行，
->   但 **`audio.stt` 目前只透出上表那几项**，`$.response_format` 取不到值，
->   会落到 `$enum.default`（见 §15 限制）。
+> ### ⚠️ 图片端点是**白名单**，没有透传 —— 最容易静默失效的一处
+>
+> `/v1/images/generations` 与 `/v1/images/edits` 只注入上表那几个键，
+> **请求体里多写的字段一律拿不到**。因此在这两个端点上：
+>
+> - `$.response_format`（snake_case）**永远取不到值** → 会静默落到 `$enum.default`，
+>   客户端传 `b64_json` 却收到 url，**不报错、不告警**。必须写 **`$.responseFormat`**（驼峰）。
+> - `$.prompt_optimizer` 同理，要写 **`$.promptOptimizer`**。
+>
+> 其余端点（视频 / 音乐 / TTS / STT）两种键名都拿得到：既有归一化后的驼峰键，
+> 也有请求体原名的 snake_case 键。
+>
+> > **自查一条就够**：写完 `request` 后，对照上表逐个确认引用的键**出现在「固定注入的键」里**，
+> > 否则它只可能命中默认值。
+>
 > - 客户端没传的字段是 `undefined`，会被整体丢弃（上游才用自己的默认值）。
 >   想「有值才发」请用 `$ifPresent`。
 
@@ -225,9 +237,17 @@ MediaModelConfig {
 | `$file` | `{"$file": {"path":…, "filename":…, "contentType":…}}` | 生成**真正的 multipart 文件分片** | `{"$file":{"path":"$.image","filename":"$.filename","contentType":"audio/mpeg"}}` |
 | `$from` + `$to` | `{"$from": "<路径>", "$to": <映射>}` | 数组逐项投影 | `{"$from":"$.data.image_urls","$to":{"kind":"url","value":"$"}}` |
 | `$merge` | `{"$merge": [<映射>, <映射>]}` | 合并多个对象 | |
+| `$fetch` | `{"$fetch": {"path":…, "url":"/v1/files/retrieve?file_id={{ $.file_id }}", "pick":"$.file.download_url"}}` | 拿到 id 后**再发一次同源 GET** 取最终值 | 见 §7.1 |
 | `$eq` | `{"$eq": [<映射>, <映射>]}` | 深度相等（主要用于 `errors.when`） | `{"$eq":["$.base_resp.status_code",1002]}` |
 
 > `$file` 需要 `transport.contentType: "multipart/form-data"`；其余原语与 contentType 无关。
+>
+> `$fetch` 只能是 **GET**（同源、复用该 spec 的鉴权；单次调用最多 8 次、总超时 30s），
+> 适合「上游只给一个 id，还要再换一次下载地址」的场景。
+>
+> **两套占位符不要混用**：`$fetch.url` 用 `{{ $.file_id }}`（会做 URL 编码），
+> `async.poll.path` 用 `{{taskId}}`（原样拼接）。`transport.path`（提交路径）里
+> **不允许**出现占位符，保存时会直接报错。
 
 > ### ⚠️ `$dataUrl` 只在 `request` 里用，**绝不要用在 `response` 里**
 >
@@ -275,6 +295,32 @@ MediaModelConfig {
 **`successCount` 很重要**：被内容安全拦截、没产出的部分**不计费**（见 §10）。上游只返回
 一部分时，请显式写 `"successCount": "$.metadata.success_count"`，否则引擎按 `items`
 长度计费，会把被拦掉的也算进去；固定产出一个文件时写 `{"$const": 1}`。
+
+### 7.1 结果形态与编码：上游给什么，客户端就拿到什么
+
+`items[].value` 是**上游给的原样**，协议不做任何转码。写 spec 前先确认上游给的到底是哪一种：
+
+| 上游返回 | 例子 | 怎么映射 | 客户端能用吗 |
+| --- | --- | --- | --- |
+| 公网 URL | `image_urls: ["https://…"]` | `{"$from":"$.data.image_urls","$to":{"kind":"url","value":"$"}}` | ✅ 直接用 |
+| 纯 base64 | `audio: "QUJDRA=="` | `{"kind":"base64","value":"$.data.audio"}` | ✅ `b64_json` 解码 |
+| **hex 编码** | `audio: "49443304…"`（MiniMax `output_format` **默认就是 hex**） | 协议**没有** hex→base64 | ❌ 只能让上游改吐 URL（`output_format:"url"`），再按 `kind:"url"` 映射 |
+| 资源 id | `file_id: "205258526306433"` | 不是 URL，要用 `$fetch` 换 | ❌ 把 id 当 URL 返回，客户端打不开 |
+
+两条硬规则：
+
+1. **先确认上游返回的到底是不是 base64。** 若是 hex，请让上游改吐 URL 再按 `kind:"url"` 映射
+   —— 编解码不是「映射」，协议不会替你做。
+2. **只有「再调一次接口换结果」能写进 spec**，用 `$fetch`（一次 GET）：
+
+```jsonc
+"items": [ { "kind": "url",
+  "value": { "$fetch": { "path": "$.file_id",
+                         "url":  "/v1/files/retrieve?file_id={{ $.file_id }}",
+                         "pick": "$.file.download_url" } } } ]
+```
+
+> 只支持**一步**兑换（id → url）；「A 换 B 再换 C」需要升级引擎。
 
 `responseMode: "binary" | "stream"` 时，以上全部不适用——引擎把上游响应体原样透传，不做 JSON 解析。
 
@@ -362,6 +408,9 @@ MediaModelConfig {
 >
 > 自查：把你文档里出现的**每一个**终态字符串都列进去；不认识的中间态（如
 > `Processing`）不用列，它们会继续等待。
+>
+> **厂商文档自相矛盾时，大小写都要列进去。** MiniMax 视频 V1 的查询示例写 `Success`，
+> 回调说明又写 `success`——把两种都放进 `successValues`（失败同理），任一种都能收敛。
 
 **约束**：轮询在请求内完成，受 Serverless 函数上限约束（约 300 秒）。更长的任务协议暂不支持，
 需要外部队列（见 §15）。
@@ -447,7 +496,8 @@ MediaModelConfig {
 | 客户端名唯一 | 媒体与聊天的客户端模型名不能同名 |
 | 尺寸映射是表驱动 | 表里没有的尺寸走 `default`（协议不猜） |
 | 无供应商故障转移 | 与聊天一致，取第一个命中的供应商 |
-| TTS 只能回 JSON | 上游若把音频包在 JSON 里（MiniMax `t2a_v2` 就是），只能映射成 `b64_json`，**无法**返回 OpenAI 那种裸音频字节流——协议暂无「解出 base64 再当响应体」的模式 |
+| TTS 只能回 JSON | 上游若把音频包在 JSON 里（MiniMax `t2a_v2` 就是），只能映射成 `b64_json`，**无法**返回 OpenAI 那种裸音频字节流——协议暂无「解出 base64 再当响应体」的模式；且 MiniMax 默认吐的是 **hex**，需先让上游改 `output_format:"url"`（见 §7.1） |
+| 结果兑换只能一步 | 「id → 下载地址」可以用 `$fetch`；「A 换 B 再换 C」不支持 |
 | `audio.stt` 的 `response_format` | 该端点只透出 §6.1 表内字段，spec 里写 `$.response_format` 取不到值，会落到 `$enum.default` |
 
 ---
@@ -468,22 +518,31 @@ MediaModelConfig {
 
 ### 16.1 常见错误（AI 写 spec 最容易踩的坑）
 
-这三条都真实发生过，且**都不会在保存时报错**——只有跑起来才暴露：
+这五条都真实发生过，且**都不会在保存时报错**——只有跑起来才暴露：
 
 1. **`$dataUrl` 用到 `response` 里**（最隐蔽）
    上游返回 base64 音频/图片时，应该写 `"value": "$.data.audio"`。写成
    `{"$dataUrl": "$.data.audio"}` 会得到 `data:image/png;base64,…`，客户端 `base64 -d` 直接失败。
    记法：**`$dataUrl` 往「请求里」用，base64 往「响应里」用。**
 
-2. **异步状态枚举照抄不全**
+2. **异步状态枚举照抄不全 / 大小写只写一种**
    `Success` 写对了，`Fail` 写成 `failed` → 任务失败不会报错，客户端白等到超时。
-   必须逐字复制厂商文档（区分大小写），见 §9。
+   厂商文档自相矛盾（`Success` 与 `success` 并存）时**两种都要列**。见 §9。
 
 3. **`baseUrl` 重复版本段**
    `baseUrl` 带 `/v1` + `path` 带 `/v1/…` = `/v1/v1/…` 全 404。
    自查：`baseUrl + transport.path` == 厂商文档里的完整 URL。
 
-> 交作业前对着这三条过一遍，能挡掉绝大多数「保存成功但一调用就出问题」的情况。
+4. **图片端点引用了 `$.response_format`**（静默降级，不报错）
+   `/v1/images/*` 是白名单，没有请求体透传，`$.response_format` 永远是 `undefined`，
+   `$enum` 悄悄落到 `default`。客户端要 `b64_json` 却拿到 url。写 **`$.responseFormat`**。见 §6.1。
+
+5. **把 hex / 资源 id 当成 base64 或 url 返回**
+   MiniMax `output_format` 默认 `hex`（`data.audio` 是十六进制，不是 base64）；
+   MiniMax 视频 V1 只回 `file_id`（不是下载地址）。前者要上游改吐 url，
+   后者用 `$fetch` 换，见 §7.1。
+
+> 交作业前对着这五条过一遍，能挡掉绝大多数「保存成功但一调用就出问题」的情况。
 
 ---
 
@@ -504,7 +563,7 @@ MediaModelConfig {
       "table": { "1024x1024": "1:1", "1536x1024": "3:2", "1024x1536": "2:3",
                  "1792x1024": "16:9", "1024x1792": "9:16" },
       "default": "1:1" } },
-    "response_format": { "$enum": { "path": "$.response_format",
+    "response_format": { "$enum": { "path": "$.responseFormat",
       "map": { "b64_json": "base64", "url": "url" }, "default": "url" } },
     "subject_reference": { "$ifPresent": { "$.image": [
       { "type": "character", "image_file": { "$dataUrl": "$.image" } } ] } }
@@ -642,12 +701,25 @@ MediaModelConfig {
                        "speed": "$.speed", "vol": 1, "pitch": 0 },
     "audio_setting": { "sample_rate": 44100, "bitrate": 256000,
       "format": { "$enum": { "path": "$.responseFormat",
-        "map": { "mp3": "mp3", "wav": "wav", "pcm": "pcm" }, "default": "mp3" } } }
+        "map": { "mp3": "mp3", "wav": "wav", "pcm": "pcm" }, "default": "mp3" } } },
+    // ↓ 必须显式指定，否则上游默认吐 hex（见下方警告）
+    "output_format": { "$const": "url" }
   },
-  "response": { "items": [ { "kind": "base64", "value": "$.data.audio" } ] },
+  "response": { "items": [ { "kind": "url", "value": "$.data.audio" } ] },
   "metadata": { "modes": ["text-to-speech"] }
 }
 ```
+
+> ### ⚠️ 不写 `output_format` 就会拿到 hex
+>
+> MiniMax `t2a_v2` / `music_generation` 的 `output_format` **默认是 `hex`**：
+> `data.audio` 会是一串 `49443304000000…`。你若按 `kind: "base64"` 映射，客户端
+> `base64 -d` 得到的是乱码，**且一路不报错**。
+>
+> 两个选择：
+> 1. **推荐**：`output_format: {"$const": "url"}`，并按 `kind: "url"` 映射
+>    （`output_format: "url"` 时 URL 落在哪个字段，请照厂商文档核对一次）。
+> 2. 上游若只给 hex：协议**没有** hex→base64，客户端必须自己先 hex 解码。
 
 > 这类上游只能回 JSON，客户端在 `/v1/audio/speech` 拿到的是
 > `{"data":[{"b64_json":"…"}]}` 而非裸音频字节（见 §15 限制）。
@@ -659,6 +731,51 @@ MediaModelConfig {
 ```
 
 （先用外部流程把 `$.image` 传上去，再把固定 URL 填进 `subject_reference`；本协议不内置对象存储。）
+
+### 17.7 V1 视频：轮询只回 `file_id`，用 `$fetch` 换下载地址
+
+MiniMax **V1** 视频（模型 `MiniMax-Hailuo-02` / `T2V-01`）的查询接口只返回 `file_id`，
+不是可访问的地址。`"value": "$.file_id"` 会让客户端拿到 `"205258526306433"` 当 URL —— 打不开。
+
+```jsonc
+{
+  "specVersion": 1, "capability": "video.generate",
+  "transport": { "method": "POST", "path": "/v1/video_generation" },
+  "auth": { "type": "bearer" },
+  "request": {
+    "model": "$.model",
+    "prompt": "$.prompt",
+    "duration": "$.duration",
+    // ⚠️ 合法值只有 720P / 768P / 1080P，映射表里不要写不存在的档位
+    "resolution": { "$enum": { "path": "$.size",
+      "map": { "1280x720": "768P", "1920x1080": "1080P" }, "default": "768P" } }
+  },
+  "response": {
+    "taskId": "$.task_id",
+    "status": "$.status",
+    // ↓ 关键：file_id → 下载地址（一次同源 GET）
+    "items": [ { "kind": "url", "value": { "$fetch": {
+        "path": "$.file_id",
+        "url":  "/v1/files/retrieve?file_id={{ $.file_id }}",
+        "pick": "$.file.download_url" } } } ],
+    "successCount": { "$const": 1 }
+  },
+  "async": {
+    "submitTaskId": "$.task_id",
+    "poll": { "method": "GET", "path": "/v1/query/video_generation?task_id={{taskId}}",
+              "intervalMs": 5000, "timeoutMs": 240000,
+              "statusPath": "$.status",
+              // ↓ V1 文档两种大小写都出现过，两个都列
+              "successValues": ["Success", "success"],
+              "failureValues": ["Fail", "fail", "failed"] }
+  },
+  "limits": { "maxN": 1, "timeoutMs": 240000 },
+  "metadata": { "modes": ["text-to-video"], "async": true }
+}
+```
+
+> `$fetch` 只在映射结果里出现 `file_id` 时才发请求（轮询中 `status` 还是 `processing`、
+> 没有 `file_id` 时不会白白发），单次调用上限 8 次、总超时 30s。
 
 ---
 
@@ -675,6 +792,7 @@ src/app/api/admin/media-providers/…      管理端点
 src/app/(admin)/admin/media-providers/   后台页面（spec 编辑器 + 模板按钮）
 
 tests/unit/media-engine.test.ts            协议校验、原语、引擎（含异步轮询）
+tests/unit/media-fetch.test.ts             `$fetch`（id → URL 兑换）+ 提交路径占位符校验
 tests/integration/media-images.test.ts     图片端点 + 计费 + 目录元数据
 tests/integration/media-audio-video.test.ts 视频/语音端点（异步、二进制、multipart）
 ```

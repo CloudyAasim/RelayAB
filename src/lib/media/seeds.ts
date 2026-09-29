@@ -42,14 +42,16 @@ export const MINIMAX_IMAGE_SPEC: MediaSpec = {
     n: "$.n",
     seed: "$.seed",
     style: "$.style",
-    prompt_optimizer: "$.prompt_optimizer",
+    prompt_optimizer: "$.promptOptimizer",
     aigc_watermark: "$.watermark",
     aspect_ratio: {
       $mapSize: { path: "$.size", table: SIZE_TO_ASPECT, default: "1:1" },
     },
     response_format: {
       $enum: {
-        path: "$.response_format",
+        // `/v1/images/*` whitelist the request body, so only the normalized
+        // camelCase key is in scope — there is no `extra` passthrough here.
+        path: "$.responseFormat",
         map: { b64_json: "base64", url: "url" },
         default: "url",
       },
