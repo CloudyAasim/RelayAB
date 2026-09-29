@@ -219,6 +219,7 @@ describe("i18n: client/server boundary", () => {
       .map((f) => f.rel)
       .sort();
     expect(importers).toEqual([
+      "src/app/(admin)/admin/docs/[section]/page.tsx",
       "src/app/(admin)/admin/docs/page.tsx",
       "src/app/(admin)/admin/keys/page.tsx",
       "src/app/(admin)/admin/media-providers/page.tsx",
@@ -227,6 +228,7 @@ describe("i18n: client/server boundary", () => {
       "src/app/(admin)/admin/settings/page.tsx",
       "src/app/(admin)/admin/usage/page.tsx",
       "src/app/(admin)/admin/users/page.tsx",
+      "src/app/(user)/dashboard/docs/[section]/page.tsx",
       "src/app/(user)/dashboard/docs/page.tsx",
       "src/app/(user)/dashboard/page.tsx",
       "src/app/(user)/dashboard/settings/page.tsx",
@@ -234,10 +236,12 @@ describe("i18n: client/server boundary", () => {
       // Route handlers may import the server-only helper too: they are
       // server-side by construction (they localize flash-banner messages).
       "src/app/api/admin/users/[id]/delete-form/route.ts",
-      "src/app/docs/page.tsx",
       "src/app/layout.tsx",
       "src/app/license/page.tsx",
       "src/app/page.tsx",
+      // Shared server components used by every docs surface.
+      "src/components/docs/IntegrationDocs.tsx",
+      "src/components/docs/PublicDocsFrame.tsx",
     ]);
   });
 });

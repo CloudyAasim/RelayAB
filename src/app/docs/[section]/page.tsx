@@ -1,0 +1,17 @@
+import { notFound } from "next/navigation";
+import { PublicDocsFrame } from "@/components/docs/PublicDocsFrame";
+import { isUserDocId } from "@/lib/docs/sections";
+
+export const metadata = {
+  title: { absolute: "接入文档 - RelayAB" },
+};
+
+export default async function PublicDocsSectionPage({
+  params,
+}: {
+  params: Promise<{ section: string }>;
+}) {
+  const { section } = await params;
+  if (!isUserDocId(section)) notFound();
+  return <PublicDocsFrame basePath="/docs" section={section} />;
+}

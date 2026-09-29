@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { useT } from "@/components/i18n/I18nProvider";
+import type { UserDocId } from "@/lib/docs/sections";
 import {
   Link2,
   Server,
@@ -12,53 +13,69 @@ import {
   Copy,
   Check,
   Sparkles,
+  Image as ImageIcon,
 } from "lucide-react";
 
 interface Props {
+  section: UserDocId;
   baseUrl: string;
   openaiBase: string;
   anthropicBase: string;
   responsesBase: string;
 }
 
-export function DocsContent({ baseUrl, openaiBase, anthropicBase, responsesBase }: Props) {
+/** One page of the integration docs. The shell handles navigation. */
+export function DocsContent({
+  section,
+  baseUrl,
+  openaiBase,
+  anthropicBase,
+  responsesBase,
+}: Props) {
   const t = useT();
 
-  return (
-    <div className="space-y-4 sm:space-y-6">
-      {/* Header card */}
-      <Card className="bg-gradient-to-br from-primary/5 via-background to-info/5 border-primary/20">
-        <div className="flex items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary sm:h-10 sm:w-10">
-            <Sparkles className="h-4 w-4 sm:h-5 sm:w-5" />
+  if (section === "start") {
+    return (
+      <div className="space-y-4 sm:space-y-6">
+        <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-background to-info/5">
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary sm:h-10 sm:w-10">
+              <Sparkles className="h-4 w-4 sm:h-5 sm:w-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground sm:text-base">
+                {t("docs.title")}
+              </h3>
+              <p className="mt-0.5 text-xs text-muted-foreground sm:mt-1 sm:text-sm">
+                {t("docs.intro")}
+              </p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-sm font-semibold text-foreground sm:text-base">{t("docs.title")}</h3>
-            <p className="mt-0.5 text-xs text-muted-foreground sm:mt-1 sm:text-sm">{t("docs.intro")}</p>
-          </div>
-        </div>
-      </Card>
+        </Card>
 
-      {/* Basics */}
-      <Card>
-        <CardHeader
-          title={t("docs.basics.title")}
-          description={t("docs.basics.desc")}
-        />
-        <div className="space-y-2 text-xs text-foreground/90 sm:text-sm sm:space-y-3">
-          <p>{t("docs.basics.line1")}</p>
-          <ol className="list-decimal pl-5 space-y-1 text-muted-foreground">
-            <li>{t("docs.basics.line2")}</li>
-            <li>{t("docs.basics.line3")}</li>
-            <li>{t("docs.basics.line4")}</li>
-          </ol>
-          <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning-foreground dark:text-warning">
-            {t("docs.basics.warning")}
+        <Card>
+          <CardHeader
+            title={t("docs.basics.title")}
+            description={t("docs.basics.desc")}
+          />
+          <div className="space-y-2 text-xs text-foreground/90 sm:space-y-3 sm:text-sm">
+            <p>{t("docs.basics.line1")}</p>
+            <ol className="list-decimal space-y-1 pl-5 text-muted-foreground">
+              <li>{t("docs.basics.line2")}</li>
+              <li>{t("docs.basics.line3")}</li>
+              <li>{t("docs.basics.line4")}</li>
+            </ol>
+            <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning-foreground dark:text-warning">
+              {t("docs.basics.warning")}
+            </div>
           </div>
-        </div>
-      </Card>
+        </Card>
+      </div>
+    );
+  }
 
-      {/* URLs */}
+  if (section === "endpoints") {
+    return (
       <Card>
         <CardHeader
           title={
@@ -75,8 +92,11 @@ export function DocsContent({ baseUrl, openaiBase, anthropicBase, responsesBase 
           <UrlRow label={t("docs.url.anthropicBase")} value={anthropicBase} />
         </div>
       </Card>
+    );
+  }
 
-      {/* OpenAI API */}
+  if (section === "openai") {
+    return (
       <Card>
         <CardHeader
           title={
@@ -87,10 +107,13 @@ export function DocsContent({ baseUrl, openaiBase, anthropicBase, responsesBase 
           }
           description={t("docs.openai.desc")}
         />
-        <div className="space-y-3 text-xs text-foreground/90 sm:text-sm sm:space-y-4">
+        <div className="space-y-3 text-xs text-foreground/90 sm:space-y-4 sm:text-sm">
           <p>{t("docs.openai.line1")}</p>
           <CodeBlock label={t("docs.openai.baseUrl")} value={openaiBase} />
-          <CodeBlock label={t("docs.openai.header")} value="Authorization: Bearer sk-relay-xxxx..." />
+          <CodeBlock
+            label={t("docs.openai.header")}
+            value="Authorization: Bearer sk-relay-xxxx..."
+          />
           <CodeBlock
             label={t("docs.openai.example")}
             value={`curl ${openaiBase}/chat/completions \\
@@ -103,8 +126,11 @@ export function DocsContent({ baseUrl, openaiBase, anthropicBase, responsesBase 
           </p>
         </div>
       </Card>
+    );
+  }
 
-      {/* Anthropic API */}
+  if (section === "anthropic") {
+    return (
       <Card>
         <CardHeader
           title={
@@ -115,13 +141,22 @@ export function DocsContent({ baseUrl, openaiBase, anthropicBase, responsesBase 
           }
           description={t("docs.anthropic.desc")}
         />
-        <div className="space-y-3 text-xs text-foreground/90 sm:text-sm sm:space-y-4">
+        <div className="space-y-3 text-xs text-foreground/90 sm:space-y-4 sm:text-sm">
           <p>{t("docs.anthropic.line1")}</p>
-          <p className="text-xs text-muted-foreground">{t("docs.anthropic.baseUrl.official")}</p>
-          <p className="text-xs text-muted-foreground">{t("docs.anthropic.baseUrl.aiSdk")}</p>
+          <p className="text-xs text-muted-foreground">
+            {t("docs.anthropic.baseUrl.official")}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {t("docs.anthropic.baseUrl.aiSdk")}
+          </p>
           <CodeBlock label={t("docs.anthropic.baseUrl")} value={anthropicBase} />
-          <CodeBlock label={t("docs.anthropic.header")} value="x-api-key: sk-relay-xxxx..." />
-          <p className="text-xs text-amber-600 dark:text-amber-400">{t("docs.anthropic.baseUrl.tip")}</p>
+          <CodeBlock
+            label={t("docs.anthropic.header")}
+            value="x-api-key: sk-relay-xxxx..."
+          />
+          <p className="text-xs text-amber-600 dark:text-amber-400">
+            {t("docs.anthropic.baseUrl.tip")}
+          </p>
           <CodeBlock
             label={t("docs.anthropic.example")}
             value={`curl ${anthropicBase}/v1/messages \\
@@ -140,32 +175,11 @@ console.log(msg.content);`}
           />
         </div>
       </Card>
+    );
+  }
 
-      {/* Models */}
-      <Card>
-        <CardHeader
-          title={
-            <span className="flex items-center gap-2">
-              <Terminal className="h-4 w-4 text-muted-foreground" />
-              {t("docs.models.title")}
-            </span>
-          }
-          description={t("docs.models.desc")}
-        />
-        <div className="space-y-2 text-xs text-foreground/90 sm:text-sm sm:space-y-3">
-          <p>{t("docs.models.line1")}</p>
-          <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
-            <li>{t("docs.models.line2")}</li>
-            <li>{t("docs.models.line3")}</li>
-          </ul>
-          <CodeBlock
-            label={t("docs.cli.example")}
-            value={`curl -H "Authorization: Bearer $RELAYAB_KEY" ${openaiBase}/models`}
-          />
-        </div>
-      </Card>
-
-      {/* Responses API */}
+  if (section === "responses") {
+    return (
       <Card>
         <CardHeader
           title={
@@ -176,10 +190,13 @@ console.log(msg.content);`}
           }
           description={t("docs.responses.desc")}
         />
-        <div className="space-y-3 text-xs text-foreground/90 sm:text-sm sm:space-y-4">
+        <div className="space-y-3 text-xs text-foreground/90 sm:space-y-4 sm:text-sm">
           <p>{t("docs.responses.line1")}</p>
           <CodeBlock label={t("docs.responses.baseUrl")} value={responsesBase} />
-          <CodeBlock label={t("docs.responses.header")} value="Authorization: Bearer sk-relay-xxxx..." />
+          <CodeBlock
+            label={t("docs.responses.header")}
+            value="Authorization: Bearer sk-relay-xxxx..."
+          />
           <CodeBlock
             label={t("docs.responses.example")}
             value={`curl ${responsesBase}/responses \\
@@ -189,8 +206,38 @@ console.log(msg.content);`}
           />
         </div>
       </Card>
+    );
+  }
 
-      {/* Code examples - responsive grid */}
+  if (section === "models") {
+    return (
+      <Card>
+        <CardHeader
+          title={
+            <span className="flex items-center gap-2">
+              <Terminal className="h-4 w-4 text-muted-foreground" />
+              {t("docs.models.title")}
+            </span>
+          }
+          description={t("docs.models.desc")}
+        />
+        <div className="space-y-2 text-xs text-foreground/90 sm:space-y-3 sm:text-sm">
+          <p>{t("docs.models.line1")}</p>
+          <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
+            <li>{t("docs.models.line2")}</li>
+            <li>{t("docs.models.line3")}</li>
+          </ul>
+          <CodeBlock
+            label={t("docs.cli.example")}
+            value={`curl -H "Authorization: Bearer $RELAYAB_KEY" ${openaiBase}/models`}
+          />
+        </div>
+      </Card>
+    );
+  }
+
+  if (section === "sdks") {
+    return (
       <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader title={t("docs.python.title")} description={t("docs.python.desc")} />
@@ -213,8 +260,75 @@ console.log(resp.choices[0].message.content);`}
           />
         </Card>
       </div>
+    );
+  }
 
-      <p className="py-4 text-center text-xs text-muted-foreground">
+  // media
+  return (
+    <div className="space-y-4 sm:space-y-6">
+      <Card>
+        <CardHeader
+          title={
+            <span className="flex items-center gap-2">
+              <ImageIcon className="h-4 w-4 text-muted-foreground" />
+              {t("docs.media.title")}
+            </span>
+          }
+          description={t("docs.media.desc")}
+        />
+        <div className="space-y-3 text-xs text-foreground/90 sm:space-y-4 sm:text-sm">
+          <p>{t("docs.media.line1")}</p>
+          <CodeBlock
+            label={t("docs.media.image")}
+            value={`curl ${openaiBase}/images/generations \\
+  -H "Authorization: Bearer $RELAYAB_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"model": "image-01", "prompt": "a red apple", "n": 1, "size": "1024x1024"}'`}
+          />
+          <CodeBlock
+            label={t("docs.media.edit")}
+            value={`curl ${openaiBase}/images/edits \\
+  -H "Authorization: Bearer $RELAYAB_KEY" \\
+  -F model=image-01 \\
+  -F prompt="same character, new scene" \\
+  -F image=@reference.png`}
+          />
+          <CodeBlock
+            label={t("docs.media.video")}
+            value={`curl ${openaiBase}/videos/generations \\
+  -H "Authorization: Bearer $RELAYAB_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"model": "video-01", "prompt": "a wave"}'`}
+          />
+          <CodeBlock
+            label={t("docs.media.tts")}
+            value={`curl ${openaiBase}/audio/speech \\
+  -H "Authorization: Bearer $RELAYAB_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"model": "tts-1", "input": "Hello!", "voice": "alloy"}' \\
+  --output speech.mp3`}
+          />
+          <CodeBlock
+            label={t("docs.media.stt")}
+            value={`curl ${openaiBase}/audio/transcriptions \\
+  -H "Authorization: Bearer $RELAYAB_KEY" \\
+  -F model=stt-1 \\
+  -F file=@speech.mp3`}
+          />
+          <CodeBlock
+            label={t("docs.media.music")}
+            value={`curl ${openaiBase}/audio/music \\
+  -H "Authorization: Bearer $RELAYAB_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"model": "music-01", "prompt": "lo-fi beat"}'`}
+          />
+          <p className="rounded-md border border-border bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">
+            {t("docs.media.billing")}
+          </p>
+        </div>
+      </Card>
+
+      <p className="py-2 text-center text-xs text-muted-foreground">
         {t("docs.help.contactAdmin")}
       </p>
     </div>
@@ -225,8 +339,12 @@ function UrlRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col gap-2 px-2 py-2.5 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0 flex-1">
-        <div className="text-[10px] uppercase tracking-wider text-muted-foreground sm:text-xs">{label}</div>
-        <div className="mt-0.5 break-all font-mono text-xs text-foreground select-all sm:text-sm">{value}</div>
+        <div className="text-[10px] uppercase tracking-wider text-muted-foreground sm:text-xs">
+          {label}
+        </div>
+        <div className="mt-0.5 select-all break-all font-mono text-xs text-foreground sm:text-sm">
+          {value}
+        </div>
       </div>
       <CopyButton value={value} />
     </div>

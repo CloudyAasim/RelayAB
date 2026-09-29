@@ -425,7 +425,7 @@ Content-Type: application/json
 ### 2.6 媒体端点（图片 / 视频 / 语音 / 音乐）
 
 面向 OpenAI 形状的媒体接口，由**声明式适配协议**驱动（详见
-[MEDIA_ADAPTER_SPEC.md](./MEDIA_ADAPTER_SPEC.md)）。鉴权与 `/v1/*` 一致（Bearer `sk-relay-…`）。
+[模型适配协议/README.md](./模型适配协议/README.md)）。鉴权与 `/v1/*` 一致（Bearer `sk-relay-…`）。
 
 | 端点 | Body | 说明 |
 | --- | --- | --- |

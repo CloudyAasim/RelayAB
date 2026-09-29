@@ -25,6 +25,7 @@ import {
   isCorsPathname,
 } from "@/lib/http/cors";
 import { usageViewCookieName, usageViewFromParams } from "@/lib/usage/view-prefs";
+import { isKnownDocsPath } from "@/lib/docs/sections";
 
 /**
  * Strip a duplicate /v1/ segment from the start of a URL path.
@@ -83,6 +84,16 @@ function stampResponse(
 export function middleware(request: NextRequest) {
   const url = request.nextUrl;
   const cleanPath = cleanDoubleV1Path(url.pathname);
+
+  // Unknown docs slug → back to that surface's index. Done here (not in the
+  // page) because the authenticated docs areas stream: once the response has
+  // started, a redirect or notFound() from the page can no longer set a status.
+  if (!isKnownDocsPath(cleanPath)) {
+    const target = url.clone();
+    target.pathname = cleanPath.replace(/\/[^/]+\/?$/, "/");
+    target.search = "";
+    return NextResponse.redirect(target);
+  }
 
   // Usage screens remember the last-used view (range/scope/metric/group/…).
   // Persist it when the URL carries one; replay it when the URL carries none.

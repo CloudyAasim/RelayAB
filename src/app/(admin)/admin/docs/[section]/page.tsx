@@ -1,27 +1,30 @@
-/**
- * app/(admin)/admin/docs/page.tsx
- *
- * Admin-only operator reference, split into one page per topic.
- *
- * Kept separate from the user-facing /docs page: that one explains how to call
- * the API, this one explains how to *run* it (provider wiring, metering,
- * media providers, troubleshooting). Access is enforced by the /admin segment
- * layout, which redirects non-admins before anything renders.
- */
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getT } from "@/lib/i18n/server";
 import { SectionPageLayout } from "@/components/layouts";
 import { DocsShell } from "@/components/docs/DocsShell";
-import { AdminDocsContent } from "./AdminDocsContent";
-import { ADMIN_DOC_DEFAULT, adminDocSections } from "@/lib/docs/sections";
+import { AdminDocsContent } from "../AdminDocsContent";
+import {
+  ADMIN_DOC_DEFAULT,
+  adminDocSections,
+  isAdminDocId,
+} from "@/lib/docs/sections";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminDocsPage() {
+export default async function AdminDocsSectionPage({
+  params,
+}: {
+  params: Promise<{ section: string }>;
+}) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   if (user.role !== "admin") redirect("/dashboard");
+  const { section } = await params;
+  // This route streams (the /admin segment has a loading boundary), so a thrown
+  // notFound() would render the 404 body with an already-sent 200. Send people
+  // back to the docs index instead — a stale slug is a bookmark, not an error.
+  if (!isAdminDocId(section)) redirect(`/admin/docs/${ADMIN_DOC_DEFAULT}`);
   const { t } = await getT();
 
   return (
@@ -29,7 +32,7 @@ export default async function AdminDocsPage() {
       <SectionPageLayout.Title>{t("admin.docs.title")}</SectionPageLayout.Title>
       <SectionPageLayout.Content>
         <DocsShell basePath="/admin/docs" sections={adminDocSections(t)}>
-          <AdminDocsContent section={ADMIN_DOC_DEFAULT} t={t} />
+          <AdminDocsContent section={section} t={t} />
         </DocsShell>
       </SectionPageLayout.Content>
     </SectionPageLayout>
