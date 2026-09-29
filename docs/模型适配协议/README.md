@@ -37,10 +37,14 @@
 2. 点一个模板按钮：`MiniMax Image` / `OpenAI Audio` / `Async video vendor`，会填好 `models` 与 `specs`。
 3. 改三处：
    - `baseUrl`：厂商接口根地址。**注意不要带 `/v1`**——spec 里的 `transport.path` 已经含 `/v1/…`，
-     两者都带会拼出 `/v1/v1/…`（历史上踩过的坑）。
+     两者都带会拼出 `/v1/v1/…`（历史上踩过的坑）。自查方法：`baseUrl + transport.path`
+     必须**正好等于**厂商文档里那条完整 URL。MiniMax 填 `https://api.minimax.cn`。
    - `models`：客户端模型名 → 上游模型名 + **每件多少整数积分**（`pricePerItem`，`0` = 免费；`100` = 100 积分/张）。
-   - `specs`：按厂商文档改端点、鉴权、字段名、尺寸表达、错误码。
+   - `specs`：按厂商文档改端点、鉴权、字段名、尺寸表达、错误码、**状态枚举**。
 4. 填上游 API Key → **保存**。保存时服务端做结构校验，**保存即生效**。
+
+> 交给 AI 写 spec 时，把本文档整份给它即可；最容易出错的三类问题（`$dataUrl` 用错、
+> 异步状态枚举照抄不全、`baseUrl` 重复版本段）都整理在 **§16.1 常见错误**。
 
 ---
 
@@ -154,16 +158,28 @@ MediaModelConfig {
 
 ### 6.1 归一化输入里有什么
 
-| 键 | 来源 | 说明 |
-| --- | --- | --- |
-| `model` | 路径 | **上游**模型名（已由 `models[].upstreamId` 替换） |
-| `prompt` | images / video / music | 提示词 |
-| `input` | audio.tts | 待合成文本 |
-| `image` | images/edits、audio.stt | 输入文件的 **data URL**（路由层统一转换） |
-| `n` / `size` / `responseFormat` | 各端点 | 张数 / 尺寸 / `url`\|`b64_json` |
-| `seed` / `style` / `watermark` / `promptOptimizer` | 扩展字段 | |
-| `language` / `voice` / `speed` | audio | |
-| 其它请求字段 | 原样 | 例如 `duration`、`response_format`（snake_case 原名） |
+`$` 根作用域是「客户端这次请求」归一化后的结果。`model` 一律是**上游模型名**
+（已按 `models[].upstreamId` 替换），spec 不需要再映射一次。
+
+| 端点 | 固定注入的键 |
+| --- | --- |
+| `/v1/images/generations` | `model` `prompt` `n` `size` `responseFormat` `seed` `style` `watermark` `promptOptimizer` |
+| `/v1/images/edits` | `model` `prompt` `image`（上传图的 data URL）`n` `size` `responseFormat` `seed` |
+| `/v1/videos/generations` | `model` `prompt` `n` `size` `seed` |
+| `/v1/audio/music` | `model` `prompt` `n` |
+| `/v1/audio/speech` | `model` `input`（待合成文本）`voice` `speed` `responseFormat` |
+| `/v1/audio/transcriptions` | `model` `image`（上传音频的 data URL）`language` `prompt` `temperature` `filename` |
+
+除上表外，**客户端请求体里的其余字段会按原名（snake_case）注入到 `$` 根作用域**，
+所以 `$.lyrics`、`$.duration`、`$.response_format` 这类自定义字段可以直接引用。
+
+> 两个容易搞混的点：
+> - `response_format`（snake_case，请求体原样注入）与 `responseFormat`
+>   （camelCase，路由归一化后的标准字段）**是两个不同的键**。图 / 音乐 / TTS 用哪个都行，
+>   但 **`audio.stt` 目前只透出上表那几项**，`$.response_format` 取不到值，
+>   会落到 `$enum.default`（见 §15 限制）。
+> - 客户端没传的字段是 `undefined`，会被整体丢弃（上游才用自己的默认值）。
+>   想「有值才发」请用 `$ifPresent`。
 
 ### 6.2 变换原语
 
@@ -173,13 +189,30 @@ MediaModelConfig {
 | `$ifPresent` | `{"$ifPresent": {"<路径>": <映射>}}` | 路径有值才输出 | `{"$ifPresent": {"$.image": [{"type":"character","image_file":{"$dataUrl":"$.image"}}]}}` |
 | `$enum` | `{"$enum": {"path":…, "map":{…}, "default":…}}` | 词表映射 | `{"$enum":{"path":"$.response_format","map":{"b64_json":"base64","url":"url"},"default":"url"}}` |
 | `$mapSize` | `{"$mapSize": {"path":…, "table":{…}, "default":…}}` | 尺寸/比例换算 | `{"$mapSize":{"path":"$.size","table":{"1024x1024":"1:1","1536x1024":"3:2"},"default":"1:1"}}` |
-| `$dataUrl` | `{"$dataUrl": "<路径>"}` | `data:` / `http(s)://` 原样透传；裸 base64 包成 data URL | |
+| `$dataUrl` | `{"$dataUrl": "<路径>"}` | **仅用于 `request` 里「上游要一张图」的场景**：`data:` / `http(s)://` 原样透传；裸 base64 包成 `data:image/png;base64,…` | |
 | `$file` | `{"$file": {"path":…, "filename":…, "contentType":…}}` | 生成**真正的 multipart 文件分片** | `{"$file":{"path":"$.image","filename":"$.filename","contentType":"audio/mpeg"}}` |
 | `$from` + `$to` | `{"$from": "<路径>", "$to": <映射>}` | 数组逐项投影 | `{"$from":"$.data.image_urls","$to":{"kind":"url","value":"$"}}` |
 | `$merge` | `{"$merge": [<映射>, <映射>]}` | 合并多个对象 | |
 | `$eq` | `{"$eq": [<映射>, <映射>]}` | 深度相等（主要用于 `errors.when`） | `{"$eq":["$.base_resp.status_code",1002]}` |
 
 > `$file` 需要 `transport.contentType: "multipart/form-data"`；其余原语与 contentType 无关。
+
+> ### ⚠️ `$dataUrl` 只在 `request` 里用，**绝不要用在 `response` 里**
+>
+> `$dataUrl` 的作用是「把输入图片整理成 data URL 发给上游」，产物带
+> `data:image/png;base64,` 前缀。而 `response.items[].value`（`kind:"base64"`）
+> 必须是**纯 base64 字符串**——客户端会把它直接写进 `b64_json` 再解码，套一层
+> `data:` 前缀就解不出来。
+>
+> ```jsonc
+> // ✘ 错：上游返回 base64 音频/图片时
+> "items": [ { "kind": "base64", "value": { "$dataUrl": "$.data.audio" } } ]
+> //   → 客户端收到 "data:image/png;base64,QUJDRA=="，解码失败
+>
+> // ✔ 对：普通路径原样透传
+> "items": [ { "kind": "base64", "value": "$.data.audio" } ]
+> //   → 客户端收到 "QUJDRA=="
+> ```
 
 ---
 
@@ -197,7 +230,19 @@ MediaModelConfig {
 | `taskId` | string | 回传给客户端 + 异步轮询起点 |
 | `errorCode` / `errorMessage` | any / string | 出错时把厂商原因带出来 |
 
-**`successCount` 很重要**：被内容安全拦截、没产出的部分**不计费**（见 §10）。
+> ### ⚠️ `value` 只有两种形态，不能带 `data:` 前缀
+>
+> | `kind` | `value` 必须是 | 客户端会怎么做 |
+> | --- | --- | --- |
+> | `"url"` | **完整可访问 URL**（`https://…`） | 直接当图片/音频地址用 |
+> | `"base64"` | **纯 base64 字符串**（`QUJDRA==`） | 写进 `b64_json` 后 `base64 -d` 解码 |
+>
+> 带 `data:` 前缀会让客户端拿到坏掉的 URL / 无法解码的 `b64_json`，所以
+> `value` 里**不要用 `$dataUrl`**——它专门给 `request` 用（见 §6.2）。
+
+**`successCount` 很重要**：被内容安全拦截、没产出的部分**不计费**（见 §10）。上游只返回
+一部分时，请显式写 `"successCount": "$.metadata.success_count"`，否则引擎按 `items`
+长度计费，会把被拦掉的也算进去；固定产出一个文件时写 `{"$const": 1}`。
 
 `responseMode: "binary" | "stream"` 时，以上全部不适用——引擎把上游响应体原样透传，不做 JSON 解析。
 
@@ -267,6 +312,24 @@ MediaModelConfig {
 
 时序：提交 → 取 `taskId` → 每 `intervalMs` 轮询 → `status` 命中 `failureValues` 立即失败，
 命中 `successValues`（或取到产物）则成功；超过 `timeoutMs` 报 `task_timeout`。
+
+> ### ⚠️ `successValues` / `failureValues` 必须**逐字照抄**厂商文档的状态枚举
+>
+> 这两个数组是**精确字符串匹配、区分大小写**的。写错一个字符的后果不是报错，而是
+> **一直轮询到 `timeoutMs` 才返回 504 `task_timeout`**——客户端白等好几分钟，
+> 真实的失败原因也丢了（`task.status` 落在两个数组之外时，引擎拿不到失败态）。
+>
+> 写 spec 时请照抄厂商的枚举值，例如 MiniMax H3 的 `task.status` 是
+> `Preparing` / `Queueing` / `Processing` / `Success` / `Fail`（注意是 **`Fail`**，
+> 不是 `failed`、也不是 `Failed`）：
+>
+> ```jsonc
+> "successValues": ["Success", "succeeded"],
+> "failureValues": ["Fail", "fail", "Cancelled", "cancelled"]
+> ```
+>
+> 自查：把你文档里出现的**每一个**终态字符串都列进去；不认识的中间态（如
+> `Processing`）不用列，它们会继续等待。
 
 **约束**：轮询在请求内完成，受 Serverless 函数上限约束（约 300 秒）。更长的任务协议暂不支持，
 需要外部队列（见 §15）。
@@ -352,6 +415,8 @@ MediaModelConfig {
 | 客户端名唯一 | 媒体与聊天的客户端模型名不能同名 |
 | 尺寸映射是表驱动 | 表里没有的尺寸走 `default`（协议不猜） |
 | 无供应商故障转移 | 与聊天一致，取第一个命中的供应商 |
+| TTS 只能回 JSON | 上游若把音频包在 JSON 里（MiniMax `t2a_v2` 就是），只能映射成 `b64_json`，**无法**返回 OpenAI 那种裸音频字节流——协议暂无「解出 base64 再当响应体」的模式 |
+| `audio.stt` 的 `response_format` | 该端点只透出 §6.1 表内字段，spec 里写 `$.response_format` 取不到值，会落到 `$enum.default` |
 
 ---
 
@@ -365,8 +430,28 @@ MediaModelConfig {
 | `upstream_auth_failed` / 401 | `auth` 类型或头名不对 |
 | HTTP 200 但产物为 0 | `$from` 指错字段（对照 `data.*` 实际结构） |
 | `no_task_id` | `response.taskId` 路径错，或厂商把 id 放在别的字段 |
-| 一直 504 | `poll.successValues` 与实际状态值对不上，永远不收敛 |
+| 一直 504 | `poll.successValues` / `failureValues` 与实际状态值对不上，永远不收敛（见 §9 警告） |
 | 内容被拦但没提示 | `errors` 少了 `1026` 之类的规则，走了默认 502 |
+| 客户端说 base64 解不开 | `response.items[].value` 用了 `$dataUrl`，混进了 `data:` 前缀（见 §7） |
+
+### 16.1 常见错误（AI 写 spec 最容易踩的坑）
+
+这三条都真实发生过，且**都不会在保存时报错**——只有跑起来才暴露：
+
+1. **`$dataUrl` 用到 `response` 里**（最隐蔽）
+   上游返回 base64 音频/图片时，应该写 `"value": "$.data.audio"`。写成
+   `{"$dataUrl": "$.data.audio"}` 会得到 `data:image/png;base64,…`，客户端 `base64 -d` 直接失败。
+   记法：**`$dataUrl` 往「请求里」用，base64 往「响应里」用。**
+
+2. **异步状态枚举照抄不全**
+   `Success` 写对了，`Fail` 写成 `failed` → 任务失败不会报错，客户端白等到超时。
+   必须逐字复制厂商文档（区分大小写），见 §9。
+
+3. **`baseUrl` 重复版本段**
+   `baseUrl` 带 `/v1` + `path` 带 `/v1/…` = `/v1/v1/…` 全 404。
+   自查：`baseUrl + transport.path` == 厂商文档里的完整 URL。
+
+> 交作业前对着这三条过一遍，能挡掉绝大多数「保存成功但一调用就出问题」的情况。
 
 ---
 
@@ -417,7 +502,10 @@ MediaModelConfig {
 
 > 上例 `sizes` 里的 `1024x1536` 是竖图（宽 1024、高 1536）。实际可用的尺寸以 `specs` 里 `metadata.sizes` 为准。
 
-### 17.2 TTS（二进制透传）
+### 17.2 TTS 形态 A：上游直接返回音频字节（`responseMode: "binary"`）
+
+适合 OpenAI 这类 `/audio/speech` 直接吐 mp3/wav 的上游。此时 `response` 映射**不会被执行**，
+引擎把上游响应体原样透传给客户端。
 
 ```jsonc
 {
@@ -431,6 +519,9 @@ MediaModelConfig {
   "metadata": { "modes": ["text-to-speech"] }
 }
 ```
+
+> 若上游把音频包在 JSON 里（MiniMax `t2a_v2`），**不能**用 `binary`——那会把整段 JSON 当音频返回。
+> 那种情况用 **17.5 的写法**（保持 `json`，把 base64 映射到 `items`）。
 
 ### 17.3 STT（multipart 上传）
 
@@ -451,33 +542,85 @@ MediaModelConfig {
 }
 ```
 
-### 17.4 异步视频
+### 17.4 异步视频（状态枚举照抄厂商文档）
 
 ```jsonc
 {
   "specVersion": 1, "capability": "video.generate",
-  "transport": { "method": "POST", "path": "/v1/videos" },
+  "transport": { "method": "POST", "path": "/v2/video_generation" },
   "auth": { "type": "bearer" },
-  "request": { "model": "$.model", "prompt": "$.prompt", "n": "$.n" },
+  "request": {
+    "model": "$.model",
+    "content": [ { "type": "text", "text": "$.prompt" } ],
+    "resolution": { "$enum": { "path": "$.size",
+      "map": { "1280x720": "768P", "1920x1080": "2K" }, "default": "768P" } },
+    "duration": "$.duration"
+  },
   "response": {
     "taskId": "$.task_id",
-    "status": "$.status",
-    "items": { "$from": "$.output.urls", "$to": { "kind": "url", "value": "$" } }
+    "status": "$.task.status",
+    "items": [ { "kind": "url", "value": "$.task.content.url" } ],
+    "successCount": { "$const": 1 }
   },
   "async": {
     "submitTaskId": "$.task_id",
-    "poll": { "method": "GET", "path": "/v1/videos/{{taskId}}",
-              "intervalMs": 3000, "timeoutMs": 240000,
-              "statusPath": "$.status",
-              "successValues": ["SUCCEEDED", "succeeded", "SUCCESS", "success"],
-              "failureValues": ["FAILED", "failed", "CANCELLED"] }
+    "poll": { "method": "GET", "path": "/v2/query/video_generation/{{taskId}}",
+              "intervalMs": 5000, "timeoutMs": 240000,
+              "statusPath": "$.task.status",
+              // ↓ 逐字照抄 MiniMax H3 的终态枚举（区分大小写）
+              "successValues": ["Success", "succeeded"],
+              "failureValues": ["Fail", "fail", "Cancelled", "cancelled"] }
   },
-  "limits": { "timeoutMs": 240000 },
+  "errors": [
+    { "when": { "$eq": ["$.error.type", "insufficient_balance_error"] },
+      "status": 402, "code": "upstream_credit_exhausted" },
+    { "when": { "$eq": ["$.error.type", "rate_limit_error"] },
+      "status": 429, "code": "rate_limited" }
+  ],
+  "limits": { "maxN": 1, "timeoutMs": 240000 },
   "metadata": { "modes": ["text-to-video"], "async": true }
 }
 ```
 
-### 17.5 上传图片到对象存储再传 URL（`$dataUrl` 的另一种用法）
+> 中间态 `Preparing` / `Queueing` / `Processing` **不需要**写进任何数组——它们不是终态，
+> 引擎会继续等。终态一个都不能漏：`Success` 大小写写错、或漏掉 `Fail`，都会退化成
+> 「轮询满 240s 再报 504」，客户端白等。
+
+### 17.5 TTS 形态 B：上游把音频包在 JSON 里（`$dataUrl` 的反面教材）
+
+```jsonc
+// ✘ 错：客户端会拿到 "data:image/png;base64,QUJDRA=="，解码失败
+"response": { "items": [ { "kind": "base64", "value": { "$dataUrl": "$.data.audio" } } ] }
+
+// ✔ 对：普通路径原样透传纯 base64
+"response": { "items": [ { "kind": "base64", "value": "$.data.audio" } ] }
+```
+
+完整一段：
+
+```jsonc
+{
+  "specVersion": 1, "capability": "audio.tts",
+  "transport": { "method": "POST", "path": "/v1/t2a_v2" },
+  "auth": { "type": "bearer" },
+  "request": {
+    "model": "$.model",
+    "text": "$.input",
+    "voice_setting": { "voice_id": { "$ifPresent": { "$.voice": "$.voice" } },
+                       "speed": "$.speed", "vol": 1, "pitch": 0 },
+    "audio_setting": { "sample_rate": 44100, "bitrate": 256000,
+      "format": { "$enum": { "path": "$.responseFormat",
+        "map": { "mp3": "mp3", "wav": "wav", "pcm": "pcm" }, "default": "mp3" } } }
+  },
+  "response": { "items": [ { "kind": "base64", "value": "$.data.audio" } ] },
+  "metadata": { "modes": ["text-to-speech"] }
+}
+```
+
+> 这类上游只能回 JSON，客户端在 `/v1/audio/speech` 拿到的是
+> `{"data":[{"b64_json":"…"}]}` 而非裸音频字节（见 §15 限制）。
+
+### 17.6 上传图片到对象存储再传 URL（`$dataUrl` 的另一种用法）
 
 ```jsonc
 "image_file": { "$enum": { "path": "$.image", "map": {}, "default": "https://my-cdn/ref.png" } }
