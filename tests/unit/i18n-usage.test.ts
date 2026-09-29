@@ -241,6 +241,7 @@ describe("i18n: client/server boundary", () => {
       "src/app/page.tsx",
       // Shared server components used by every docs surface.
       "src/components/docs/IntegrationDocs.tsx",
+      "src/components/docs/ProtocolReference.tsx",
       "src/components/docs/PublicDocsFrame.tsx",
     ]);
   });

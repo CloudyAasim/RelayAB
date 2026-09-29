@@ -2,25 +2,37 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/Button";
+import { useT } from "@/components/i18n/I18nProvider";
+import { Check, Copy } from "lucide-react";
 import type { DocSection } from "@/lib/docs/sections";
 
 /**
  * Chrome shared by every docs surface: a section outline on the left (wrapping
- * into a row on narrow screens) and prev/next at the bottom, so any page can
- * be reached without going back to the index.
+ * into a row on narrow screens), a copy-this-page control, and prev/next, so
+ * any page can be reached — and handed to an AI — without going back to the
+ * index.
  */
 export function DocsShell({
   basePath,
   sections,
+  copyPageLabel,
+  copiedLabel,
+  copyFailedLabel,
   children,
 }: {
   basePath: string;
   sections: DocSection[];
+  copyPageLabel: string;
+  copiedLabel: string;
+  copyFailedLabel: string;
   children: ReactNode;
 }) {
   const pathname = usePathname();
+  const t = useT();
+  const [copied, setCopied] = useState(false);
   const hrefOf = (id: string) => `${basePath}/${id}`;
   const current = Math.max(
     0,
@@ -28,6 +40,19 @@ export function DocsShell({
   );
   const prev = current > 0 ? sections[current - 1] : null;
   const next = current < sections.length - 1 ? sections[current + 1] : null;
+
+  async function copyPage() {
+    const body = document.querySelector("[data-docs-body]") as HTMLElement | null;
+    if (!body) return;
+    try {
+      await navigator.clipboard.writeText(body.innerText.trim());
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // eslint-disable-next-line no-alert
+      alert(copyFailedLabel);
+    }
+  }
 
   return (
     <div className="grid gap-6 lg:grid-cols-[200px_minmax(0,1fr)] lg:gap-8">
@@ -56,7 +81,25 @@ export function DocsShell({
       </nav>
 
       <div className="min-w-0 space-y-5">
-        {children}
+        <div className="flex justify-end">
+          <Button type="button" size="sm" variant="secondary" onClick={copyPage}>
+            {copied ? (
+              <>
+                <Check className="mr-1 h-3.5 w-3.5" />
+                {copiedLabel}
+              </>
+            ) : (
+              <>
+                <Copy className="mr-1 h-3.5 w-3.5" />
+                {copyPageLabel}
+              </>
+            )}
+          </Button>
+        </div>
+
+        <div data-docs-body className="space-y-5">
+          {children}
+        </div>
 
         <nav className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4 text-sm">
           {prev ? (

@@ -16,6 +16,15 @@ import { withEmulate } from "@emulators/adapter-next";
 const baseConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  /**
+   * The admin docs render the media adapter protocol from the repository file
+   * (docs/模型适配协议/README.md) so the panel can never drift from the repo.
+   * Vercel only bundles files it can trace, so include it explicitly —
+   * otherwise the page degrades to "could not read" in production.
+   */
+  outputFileTracingIncludes: {
+    "/**": ["./docs/模型适配协议/README.md"],
+  },
   experimental: {
     serverActions: {
       bodySizeLimit: "2mb",

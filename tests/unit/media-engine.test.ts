@@ -133,10 +133,20 @@ describe("applyMapping", () => {
 });
 
 describe("computeMediaCredits", () => {
-  it("prices per produced item and never goes negative", () => {
-    expect(computeMediaCredits(2000, 3)).toBe(6000);
+  it("treats pricePerItem as whole 积分 and converts to 0.001-unit storage", () => {
+    // 2 积分/张 × 3 张 = 6 积分 = 6000 units.
+    expect(computeMediaCredits(2, 3)).toBe(6000);
+    // The regression this guards: 100 积分 used to be stored as 100 units and
+    // therefore billed (and displayed) as 0.1 积分.
+    expect(computeMediaCredits(100, 1)).toBe(100_000);
+  });
+  it("treats a zero or negative price as free", () => {
     expect(computeMediaCredits(0, 5)).toBe(0);
     expect(computeMediaCredits(-5, 2)).toBe(0);
+  });
+  it("ignores non-finite input", () => {
+    expect(computeMediaCredits(Number.NaN, 2)).toBe(0);
+    expect(computeMediaCredits(2, Number.NaN)).toBe(0);
   });
 });
 

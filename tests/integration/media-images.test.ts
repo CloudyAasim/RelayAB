@@ -55,7 +55,8 @@ describe("media image endpoints", () => {
       baseUrl: "https://api.minimax.cn",
       apiKey: "vendor-key",
       models: {
-        "image-01": { upstreamId: "image-01", pricePerItem: 2000, enabled: true },
+        // 2 = 2 积分 per image (whole credits, as typed in the panel).
+        "image-01": { upstreamId: "image-01", pricePerItem: 2, enabled: true },
       },
       specs: [MINIMAX_IMAGE_SPEC as unknown as Record<string, unknown>],
     });
@@ -93,7 +94,9 @@ describe("media image endpoints", () => {
     expect(body.data[0].url).toBe("https://cdn.example/a.png");
     expect(calls[0].url).toBe("https://api.minimax.cn/v1/image_generation");
 
-    // 2000 units = 2 积分 for the one image that came back.
+    // pricePerItem = 2 积分 → 2 × 1000 = 2000 storage units for the one image.
+    // Guards the 1000× bug: dropping the CREDIT_SCALE conversion would bill 2 units
+    // (0.002 积分) instead of 2000 (2 积分).
     const owner = await getUserById(user.id);
     expect(owner?.quotaUsed).toBe(2000);
 

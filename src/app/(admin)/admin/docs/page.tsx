@@ -28,7 +28,13 @@ export default async function AdminDocsPage() {
     <SectionPageLayout>
       <SectionPageLayout.Title>{t("admin.docs.title")}</SectionPageLayout.Title>
       <SectionPageLayout.Content>
-        <DocsShell basePath="/admin/docs" sections={adminDocSections(t)}>
+        <DocsShell
+          basePath="/admin/docs"
+          sections={adminDocSections(t)}
+          copyPageLabel={t("docs.copyPage")}
+          copiedLabel={t("docs.copy.copied")}
+          copyFailedLabel={t("docs.copy.failed")}
+        >
           <AdminDocsContent section={ADMIN_DOC_DEFAULT} t={t} />
         </DocsShell>
       </SectionPageLayout.Content>

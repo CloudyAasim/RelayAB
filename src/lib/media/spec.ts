@@ -130,7 +130,13 @@ const TRANSFORM_KEYS = [
 export interface MediaModelConfig {
   /** Upstream model name sent to the vendor. */
   upstreamId: string;
-  /** 积分 (in 0.001 units) charged per successfully produced media item. */
+  /**
+   * **Whole 积分 charged per successfully produced media item** (0 = free).
+   *
+   * This is the number the operator types, so 100 means "100 积分 per image".
+   * Storage uses 0.001-积分 units; `computeMediaCredits` performs the ×1000
+   * conversion, so never pre-scale this field.
+   */
   pricePerItem: number;
   enabled: boolean;
 }

@@ -21,7 +21,13 @@ export async function IntegrationDocs({
   const openaiBase = `${base}/v1`;
 
   return (
-    <DocsShell basePath={basePath} sections={userDocSections(t)}>
+    <DocsShell
+      basePath={basePath}
+      sections={userDocSections(t)}
+      copyPageLabel={t("docs.copyPage")}
+      copiedLabel={t("docs.copy.copied")}
+      copyFailedLabel={t("docs.copy.failed")}
+    >
       <DocsContent
         section={section}
         baseUrl={base}

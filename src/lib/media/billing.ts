@@ -13,14 +13,23 @@
 import { touchApiKeyLastUsed } from "@/lib/db/keys";
 import { incrementUserQuotaUsed } from "@/lib/db/users";
 import { recordUsage } from "@/lib/db/usage";
+import { CREDIT_SCALE } from "@/lib/quota/credits";
 import type { ApiKey, User } from "@/lib/db/types";
 import type { MediaCapability } from "./spec";
 
-/** 积分 (0.001 units) for producing `items` media items at `pricePerItem`. */
+/**
+ * Storage units (0.001 积分) to charge for producing `items` media items.
+ *
+ * `pricePerItem` is what the operator types in the panel: **whole 积分 per
+ * item** (100 = 100 积分/张). Everything downstream — the usage row, the
+ * account pool, the API — counts 0.001-积分 units, so the amount is converted
+ * here. Forgetting this multiplication bills 1000× too little: `100` would be
+ * stored as 100 units and read back as 0.1 积分.
+ */
 export function computeMediaCredits(pricePerItem: number, items: number): number {
-  const unit = Math.max(0, Math.trunc(pricePerItem));
-  const count = Math.max(0, Math.trunc(items));
-  return unit * count;
+  const perItem = Number.isFinite(pricePerItem) ? Math.max(0, Math.trunc(pricePerItem)) : 0;
+  const count = Number.isFinite(items) ? Math.max(0, Math.trunc(items)) : 0;
+  return perItem * CREDIT_SCALE * count;
 }
 
 export interface SettleMediaUsageArgs {

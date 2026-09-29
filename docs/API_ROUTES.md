@@ -443,7 +443,7 @@ Content-Type: application/json
 | `GET/POST /api/admin/media-providers` | 列出 / 新建媒体供应商（含 spec，保存时校验） |
 | `GET/PATCH/DELETE /api/admin/media-providers/[id]` | 查看 / 改（含替换 spec）/ 删除 |
 
-计费：`models[客户端模型名].pricePerItem × successCount`（每件积分，0 = 免费），
+计费：`models[客户端模型名].pricePerItem × 成功件数`（`pricePerItem` 是**每件多少整数积分**，内部按 0.001 积分单位存储），
 失败或被内容安全拦截不计费；媒体一律扣积分。用量行记录 `images` 与 `capability`。
 
 模型发现：媒体模型只出现在 `GET /v1/models`（带 `relay` 元数据），**不出现在**

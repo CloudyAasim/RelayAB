@@ -16,8 +16,10 @@ import {
   Wrench,
   BarChart3,
   Image as ImageIcon,
+  FileCode,
 } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui/Card";
+import { ProtocolReference } from "@/components/docs/ProtocolReference";
 import type { AdminDocId, TFn } from "@/lib/docs/sections";
 
 export function AdminDocsContent({ section, t }: { section: AdminDocId; t: TFn }) {
@@ -159,26 +161,41 @@ export function AdminDocsContent({ section, t }: { section: AdminDocId; t: TFn }
 
   if (section === "media") {
     return (
-      <Card>
-        <CardHeader
-          title={
-            <CardTitle icon={<ImageIcon className="h-4 w-4" />}>
-              {t("admin.docs.media.title")}
-            </CardTitle>
-          }
-          description={t("admin.docs.media.desc")}
-        />
-        <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
-          <li>{t("admin.docs.media.rule1")}</li>
-          <li>{t("admin.docs.media.rule2")}</li>
-          <li>{t("admin.docs.media.rule3")}</li>
-        </ul>
-        <p className="mt-3 text-xs text-muted-foreground">
-          <Link href="/admin/media-providers" className="underline underline-offset-2">
-            {t("admin.docs.nav.media")}
-          </Link>
-        </p>
-      </Card>
+      <div className="space-y-4 sm:space-y-5">
+        <Card>
+          <CardHeader
+            title={
+              <CardTitle icon={<ImageIcon className="h-4 w-4" />}>
+                {t("admin.docs.media.title")}
+              </CardTitle>
+            }
+            description={t("admin.docs.media.desc")}
+          />
+          <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
+            <li>{t("admin.docs.media.rule1")}</li>
+            <li>{t("admin.docs.media.rule2")}</li>
+            <li>{t("admin.docs.media.rule3")}</li>
+          </ul>
+          <p className="mt-3 text-xs text-muted-foreground">
+            <Link href="/admin/media-providers" className="underline underline-offset-2">
+              {t("admin.docs.nav.media")}
+            </Link>
+          </p>
+        </Card>
+
+        {/* The full protocol, rendered from the repository file itself. */}
+        <Card>
+          <CardHeader
+            title={
+              <CardTitle icon={<FileCode className="h-4 w-4" />}>
+                {t("admin.docs.protocol.title")}
+              </CardTitle>
+            }
+            description={t("admin.docs.protocol.desc")}
+          />
+          <ProtocolReference />
+        </Card>
+      </div>
     );
   }
 

@@ -16,7 +16,10 @@ export async function PublicDocsFrame({
   const user = await getCurrentUser().catch(() => null);
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    // The root layout already owns `min-h-screen` and appends the site footer
+    // after this subtree. A nested `min-h-screen` here would force a full
+    // viewport of docs *plus* the footer, so short pages always scrolled.
+    <div className="flex flex-1 flex-col bg-background">
       <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b border-border bg-background/80 px-4 backdrop-blur lg:px-6">
         <a href="/" className="flex items-center gap-2 font-semibold tracking-tight">
           <span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">

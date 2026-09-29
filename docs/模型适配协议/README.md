@@ -38,7 +38,7 @@
 3. 改三处：
    - `baseUrl`：厂商接口根地址。**注意不要带 `/v1`**——spec 里的 `transport.path` 已经含 `/v1/…`，
      两者都带会拼出 `/v1/v1/…`（历史上踩过的坑）。
-   - `models`：客户端模型名 → 上游模型名 + **每件积分**（`pricePerItem`，`0` = 免费）。
+   - `models`：客户端模型名 → 上游模型名 + **每件多少整数积分**（`pricePerItem`，`0` = 免费；`100` = 100 积分/张）。
    - `specs`：按厂商文档改端点、鉴权、字段名、尺寸表达、错误码。
 4. 填上游 API Key → **保存**。保存时服务端做结构校验，**保存即生效**。
 
@@ -64,7 +64,8 @@ MediaProvider {
 ```
 MediaModelConfig {
   upstreamId:   string   // 发给厂商的模型名
-  pricePerItem: number   // 每件积分（0.001 积分单位；0 = 免费）
+   pricePerItem: number   // **每件多少整数积分**（100 = 100 积分/张；0 = 免费）
+                         // 内部按 0.001 积分单位存储，由引擎换算，不要自己乘
   enabled:      boolean
 }
 ```
@@ -274,8 +275,9 @@ MediaModelConfig {
 
 ## 10. 计费
 
-- 价格在 `models[客户端模型名].pricePerItem`：**每件积分**（`0.001` 积分单位；`0` = 免费）。
-- 实际扣费 = `pricePerItem × successCount`；**失败 / 被内容安全拦截不计费**。
+- 价格在 `models[客户端模型名].pricePerItem`：**每件多少整数积分**（`100` = 100 积分/张；`0` = 免费）。
+  这是你在面板里直接填的数字；内部账本按 0.001 积分单位存储，换算由引擎完成（**不要自己乘 1000**）。
+- 实际扣费 = `pricePerItem × 成功件数`；**失败 / 被内容安全拦截不计费**。
 - 媒体**一律扣积分**，即使账号额度模式是「词元」（媒体没有自然词元数）。
 - 用量行记录 `images`（件数）与 `capability`；聚合链路（`UsageLog` → `UsageAggregate` →
   用量页/接口）都带上了件数，可在用量页与 `/api/admin/usage` 看到。
