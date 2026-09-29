@@ -2,10 +2,18 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
 import { useT } from "@/components/i18n/I18nProvider";
-import { AlertCircle, CheckCircle2, Trash2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Save } from "lucide-react";
+
+export interface MediaTemplate {
+  id: string;
+  name: string;
+  baseUrl: string;
+  models: unknown;
+  specs: unknown;
+}
 
 export interface MediaProviderRow {
   id: string;
@@ -17,26 +25,21 @@ export interface MediaProviderRow {
   specs: unknown[];
 }
 
-export interface MediaTemplate {
-  id: string;
-  name: string;
-  baseUrl: string;
-  models: unknown;
-  specs: unknown;
-}
-
 interface Props {
+  /** Present → edit mode (PATCH); absent → create mode (POST). */
   provider?: MediaProviderRow;
-  /** Starting points for the "create" form's template buttons. */
+  /** Starting points shown as buttons in create mode. */
   templates?: MediaTemplate[];
   onSaved?: () => void;
 }
 
 /**
- * Editor for a media provider and its declarative specs.
+ * Editor for one media provider and its declarative specs.
  *
+ * Rendered inside a modal by both the create button and the row actions, so a
+ * provider row stays collapsed in the table until you actually want to edit it.
  * This screen is the promise of the protocol made concrete: a vendor is a name,
- * a base URL and some JSON. Nothing here compiles, ships or deploys.
+ * a base URL and some JSON.
  */
 export function MediaProviderForm({ provider, templates, onSaved }: Props) {
   const t = useT();
@@ -78,7 +81,9 @@ export function MediaProviderForm({ provider, templates, onSaved }: Props) {
       if (apiKey || !editing) payload.apiKey = apiKey;
 
       const res = await fetch(
-        editing ? `/api/admin/media-providers/${provider!.id}` : "/api/admin/media-providers",
+        editing
+          ? `/api/admin/media-providers/${provider!.id}`
+          : "/api/admin/media-providers",
         {
           method: editing ? "PATCH" : "POST",
           headers: { "Content-Type": "application/json" },
@@ -91,7 +96,6 @@ export function MediaProviderForm({ provider, templates, onSaved }: Props) {
         return;
       }
       setSaved(true);
-      setApiKey("");
       onSaved?.();
       router.refresh();
     } catch (err) {
@@ -101,24 +105,14 @@ export function MediaProviderForm({ provider, templates, onSaved }: Props) {
     }
   }
 
-  async function remove() {
-    if (!confirm(t("admin.mediaProviders.deleteConfirm"))) return;
-    setBusy(true);
-    const res = await fetch(`/api/admin/media-providers/${provider!.id}`, { method: "DELETE" });
-    setBusy(false);
-    if (res.ok) {
-      onSaved?.();
-      router.refresh();
-    }
-  }
-
   return (
-    <div className="space-y-3">
-      <div className="grid gap-3 sm:grid-cols-2">
+    <div className="space-y-4">
+      <div className="grid gap-4 sm:grid-cols-2">
         <Input
           label={t("admin.mediaProviders.name")}
           value={name}
           onChange={(e) => setName(e.target.value)}
+          required
         />
         <Input
           label={t("admin.mediaProviders.baseUrl")}
@@ -126,30 +120,33 @@ export function MediaProviderForm({ provider, templates, onSaved }: Props) {
           onChange={(e) => setBaseUrl(e.target.value)}
           placeholder="https://api.example.com"
         />
-        <Input
-          label={t("admin.mediaProviders.apiKey")}
-          type="password"
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-          placeholder={editing ? "••••••" : ""}
-        />
+      </div>
+
+      <Input
+        label={`${t("admin.mediaProviders.apiKey")} (${t("admin.providers.edit.leaveBlank")})`}
+        type="password"
+        value={apiKey}
+        onChange={(e) => setApiKey(e.target.value)}
+        placeholder={editing ? "••••••" : ""}
+      />
+
+      <div className="grid gap-4 sm:grid-cols-2">
         <Input
           label={t("admin.mediaProviders.priority")}
           type="number"
           value={priority}
           onChange={(e) => setPriority(e.target.value)}
         />
+        <label className="flex items-center gap-2 self-end pb-2 text-sm text-foreground">
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) => setEnabled(e.target.checked)}
+            className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
+          />
+          {t("dashboard.status.enabled")}
+        </label>
       </div>
-
-      <label className="flex items-center gap-2 text-sm text-foreground">
-        <input
-          type="checkbox"
-          checked={enabled}
-          onChange={(e) => setEnabled(e.target.checked)}
-          className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
-        />
-        {t("dashboard.status.enabled")}
-      </label>
 
       <label className="block space-y-1">
         <span className="text-sm font-medium text-foreground">
@@ -185,7 +182,7 @@ export function MediaProviderForm({ provider, templates, onSaved }: Props) {
         <textarea
           value={specs}
           onChange={(e) => setSpecs(e.target.value)}
-          rows={12}
+          rows={14}
           spellCheck={false}
           className="w-full rounded-md border border-input bg-background p-2 font-mono text-xs"
         />
@@ -207,15 +204,10 @@ export function MediaProviderForm({ provider, templates, onSaved }: Props) {
         </div>
       )}
 
-      <div className="flex justify-end gap-2">
-        {editing && (
-          <Button type="button" variant="ghost" loading={busy} onClick={remove}>
-            <Trash2 className="mr-1.5 h-4 w-4" />
-            {t("admin.mediaProviders.delete")}
-          </Button>
-        )}
+      <div className="flex justify-end gap-2 border-t border-border pt-3">
         <Button type="button" loading={busy} onClick={save}>
-          {t("admin.mediaProviders.save")}
+          <Save className="mr-1.5 h-4 w-4" />
+          {t("common.save")}
         </Button>
       </div>
     </div>
