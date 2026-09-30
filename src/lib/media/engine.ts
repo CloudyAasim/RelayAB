@@ -335,6 +335,23 @@ export function applyMapping(node: MediaMapping, scope: unknown): unknown {
   if ("$const" in record) return record.$const;
 
   if ("$ifPresent" in record) {
+    // Two forms:
+    //   {"$ifPresent": {"$.voice": <mapping>}}            — one branch
+    //   {"$ifPresent": [{"$.url": …}, {"$.b64_json": …}]}  — ordered branches,
+    //   the first whose key resolves wins. Needed when a vendor returns items
+    //   that are *either* shape, e.g. OpenAI's `data[]` entries carry `url` or
+    //   `b64_json` but never both.
+    if (Array.isArray(record.$ifPresent)) {
+      for (const branch of record.$ifPresent) {
+        const candidate = asRecord(branch);
+        if (!candidate) continue;
+        const [[path, mapping]] = Object.entries(candidate);
+        if (getPath(scope, String(path)) === undefined) continue;
+        const evaluated = applyMapping(mapping, scope);
+        if (evaluated !== undefined) return evaluated;
+      }
+      return undefined;
+    }
     const inner = asRecord(record.$ifPresent);
     if (!inner) return undefined;
     const [[path, mapping]] = Object.entries(inner);

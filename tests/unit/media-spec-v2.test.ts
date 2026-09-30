@@ -762,9 +762,96 @@ describe("new primitives", () => {
     expect(applyMapping({ $firstPresent: ["$.a", "$.b"] }, {})).toBeUndefined();
   });
 
+  it("$firstPresent only reaches for scalars, never for object branches", () => {
+    // Documented sharp edge: `{kind, value}` evaluates to `{kind}` (still an
+    // object) when the path is absent, so an object branch always "wins" and the
+    // later candidates are never tried. Use the $ifPresent array form instead.
+    const wrong = applyMapping(
+      { $firstPresent: [{ kind: "url", value: "$.url" }, { kind: "base64", value: "$.b64" }] },
+      { b64: "QQ==" },
+    );
+    expect(wrong).toEqual({ kind: "url" });
+  });
+
   it("$toString coerces a number for vendors that want a string", () => {
     expect(applyMapping({ $toString: "$.n" }, { n: 4 })).toBe("4");
     expect(applyMapping({ $toString: "$.missing" }, {})).toBeUndefined();
+  });
+
+  it("$ifPresent picks the first branch whose key exists", () => {
+    const mapping = {
+      $ifPresent: [
+        { "$.url": { kind: "url", value: "$.url" } },
+        { "$.b64_json": { kind: "base64", value: "$.b64_json" } },
+      ],
+    };
+    expect(applyMapping(mapping, { url: "https://cdn/a.png" })).toEqual({
+      kind: "url",
+      value: "https://cdn/a.png",
+    });
+    expect(applyMapping(mapping, { b64_json: "QUJDRA==" })).toEqual({
+      kind: "base64",
+      value: "QUJDRA==",
+    });
+    // Neither shape present → the item is dropped rather than half-built.
+    expect(applyMapping(mapping, { revised_prompt: "x" })).toBeUndefined();
+  });
+
+  it("handles a mixed array where some items are urls and some are base64", async () => {
+    // OpenAI's real shape: every entry in `data` is either {url} or {b64_json}.
+    const s = spec({
+      specVersion: 2,
+      capability: "image.generate",
+      transport: { method: "POST", path: "/v1/images/generations" },
+      auth: { type: "bearer" },
+      request: { prompt: "$.prompt" },
+      response: {
+        items: {
+          $from: "$.data",
+          $to: {
+            $ifPresent: [
+              { "$.url": { kind: "url", value: "$.url" } },
+              { "$.b64_json": { kind: "base64", value: "$.b64_json" } },
+            ],
+          },
+        },
+      },
+    });
+    const out = await executeMedia({
+      spec: s,
+      provider,
+      input: { model: "gpt-image-1", prompt: "cat" },
+      fetchImpl: (async () =>
+        json({
+          data: [
+            { url: "https://cdn/1.png" },
+            { b64_json: "QUJDRA==" },
+            { url: "https://cdn/2.png" },
+            { revised_prompt: "ignored" },
+          ],
+        })) as unknown as typeof fetch,
+    });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.result.items).toEqual([
+      { kind: "url", value: "https://cdn/1.png" },
+      { kind: "base64", value: "QUJDRA==" },
+      { kind: "url", value: "https://cdn/2.png" },
+    ]);
+  });
+
+  it("rejects an $ifPresent branch that is not a single-key object", () => {
+    const parsed = parseMediaSpec({
+      specVersion: 2,
+      capability: "image.generate",
+      transport: { method: "POST", path: "/x" },
+      auth: { type: "bearer" },
+      request: { a: { $ifPresent: [{ "$.url": "x", "$.b64": "y" }] } },
+      response: { items: [] },
+    });
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.errors.join(" ")).toContain("exactly one path key");
   });
 });
 

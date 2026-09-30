@@ -166,3 +166,140 @@ describe("protocol document", () => {
     }
   });
 });
+
+/**
+ * §0 is the section an AI reads. If it drifts from the code, every spec written
+ * from it is wrong — so the quick reference is checked field-by-field against
+ * the TypeScript types rather than trusted.
+ */
+describe("§0 quick reference is in sync with the code", () => {
+  const markdown = readFileSync(DOC, "utf8");
+  const section0 = markdown.split("## 1. 五分钟看懂")[0];
+
+  /** Field names declared in a `export interface X { … }` block. */
+  function interfaceFields(source: string, name: string): string[] {
+    const start = source.indexOf(`export interface ${name} {`);
+    if (start < 0) return [];
+    const body = source.slice(start);
+    const fields: string[] = [];
+    for (const line of body.split("\n").slice(1)) {
+      if (line.startsWith("}")) break;
+      const match = /^\s{2}(\w+)\??:/.exec(line);
+      if (match) fields.push(match[1]);
+    }
+    return fields;
+  }
+
+  const specSource = readFileSync(join(process.cwd(), "src", "lib", "media", "spec.ts"), "utf8");
+
+  it("is actually present", () => {
+    expect(section0).toContain("## 0. 给 AI 的操作说明");
+    expect(section0.length).toBeGreaterThan(3000);
+  });
+
+  it.each(interfaceFields(specSource, "MediaSpec"))(
+    "§0.3.1 documents the MediaSpec field %s",
+    (field) => {
+      expect(section0, `§0 quick reference is missing MediaSpec.${field}`).toContain(
+        `\`${field}\``,
+      );
+    },
+  );
+
+  it.each(interfaceFields(specSource, "MediaTransport"))(
+    "§0.3.2 documents the MediaTransport field %s",
+    (field) => {
+      expect(section0, `§0 quick reference is missing MediaTransport.${field}`).toContain(
+        `\`${field}\``,
+      );
+    },
+  );
+
+  it.each(interfaceFields(specSource, "MediaErrorRule"))(
+    "§0.3.5 documents the MediaErrorRule field %s",
+    (field) => {
+      expect(section0, `§0 quick reference is missing MediaErrorRule.${field}`).toContain(
+        `\`${field}\``,
+      );
+    },
+  );
+
+  it.each(interfaceFields(specSource, "MediaLimits"))(
+    "§0.3.1 documents the MediaLimits field %s",
+    (field) => {
+      expect(section0, `§0 quick reference is missing MediaLimits.${field}`).toContain(
+        `\`${field}\``,
+      );
+    },
+  );
+
+  it("documents every capability", () => {
+    for (const capability of [
+      "image.generate",
+      "image.edit",
+      "video.generate",
+      "audio.tts",
+      "audio.stt",
+      "music.generate",
+    ]) {
+      expect(section0, `§0.3.1 does not list capability ${capability}`).toContain(capability);
+    }
+  });
+
+  it("documents every response-contract key", () => {
+    for (const key of [
+      "items",
+      "successCount",
+      "taskId",
+      "status",
+      "text",
+      "errorCode",
+      "errorMessage",
+    ]) {
+      expect(section0, `§0.3.4 does not list response.${key}`).toContain(`\`${key}\``);
+    }
+  });
+
+  it("documents every item encoding", () => {
+    for (const encoding of ["plain", "base64", "hex", "dataUrl"]) {
+      expect(section0, `§0.3.4 does not list encoding ${encoding}`).toContain(encoding);
+    }
+  });
+
+  it("documents every async.poll field", () => {
+    for (const key of [
+      "submitTaskId",
+      "method",
+      "path",
+      "intervalMs",
+      "timeoutMs",
+      "statusPath",
+      "statusMap",
+      "successValues",
+      "failureValues",
+      "statusMatch",
+    ]) {
+      expect(section0, `§0.3.6 does not document async.${key}`).toContain(`\`${key}\``);
+    }
+  });
+
+  it("gives the AI the three-step habit that catches real incidents", () => {
+    // Every spec written from a version of this doc that lacked these
+    // instructions had a live bug that validation could not catch.
+    for (const [label, token] of [
+      ["required-fields step", "required:"],
+      ["error-status step", "responses:"],
+      ["state-enum step", "statusMap"],
+      ["untrusted-encoding rule", "encoding"],
+      ["second-call rule", "$fetch"],
+      ["idempotency warning", "不重试"],
+    ] as const) {
+      expect(section0, `§0 is missing the ${label}`).toContain(token);
+    }
+  });
+
+  it("shows the two-JSON-block output format", () => {
+    expect(section0).toContain("【第一块：models");
+    expect(section0).toContain("【第二块：specs");
+  });
+});

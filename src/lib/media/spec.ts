@@ -332,6 +332,22 @@ function validateMapping(
         errors.push(`${path}.${key}: not a transform (found ${key}) in a transform node`);
       }
     }
+    // `$ifPresent` additionally accepts an ordered list of single-key branches
+    // (pick the first whose key resolves), so it is checked separately.
+    if ("$ifPresent" in record && Array.isArray(record.$ifPresent)) {
+      record.$ifPresent.forEach((branch, index) => {
+        const candidate = asRecord(branch);
+        const keys = candidate ? Object.keys(candidate) : [];
+        if (keys.length !== 1) {
+          errors.push(
+            `${path}.$ifPresent[${index}]: each branch must be an object with exactly one path key, e.g. { "$.url": <mapping> }`,
+          );
+          return;
+        }
+        validateMapping(candidate![keys[0]], `${path}.$ifPresent[${index}].${keys[0]}`, errors);
+      });
+      return;
+    }
     for (const [key, value] of Object.entries(record)) {
       if (typeof value === "object") validateMapping(value, `${path}.${key}`, errors);
     }

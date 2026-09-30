@@ -9,6 +9,341 @@
 
 ---
 
+## 0. 给 AI 的操作说明
+
+> **如果你在写 spec：读 §0 就够了，§0.3 是完整契约。** §1–§18 是给人看的详细解释和排查手册，
+> 拿不准时再回来查。**不要跳过 §0.2 的翻译流程**——历史上所有线上事故都出在漏抄厂商文档的
+> 某一项（必填参数、状态码、状态枚举）。
+
+### 0.1 你要产出什么
+
+**两个独立的 JSON 块**，顺序固定，对应后台上下两个输入框：
+
+````text
+【第一块：models —— 扁平对象，key 是客户端模型名】
+{ "minimax-image-01": { "upstreamId": "image-01", "pricePerItem": 100, "enabled": true } }
+
+【第二块：specs —— 一个平铺数组，6 份 spec 就是 6 个元素】
+[ { "capability": "image.generate", … }, { "capability": "video.generate", … } ]
+````
+
+**硬性格式要求**（违反其中任何一条，运营者还得手工改）：
+
+1. **两个块必须分开**，不要合成 `{"models": {…}, "specs": […]}`。
+2. **`specs` 是一个数组**，里面直接放 N 个 spec 对象。
+3. **不要按能力分节/分组/嵌套**。不要写成
+   `{"image": [...], "video": [...]}`，也不要分六段给六个数组——
+   一份 spec 一个数组元素，靠 `capability` 字段自描述。
+4. `models` 是**扁平对象**：`{ "<客户端模型名>": {upstreamId, pricePerItem, enabled} }`。
+5. 每份 spec 的 `specVersion` 固定为 `2`。
+6. 所有 JSON 必须是**严格合法**的（不带注释、不带尾逗号）。
+
+### 0.2 翻译流程：从厂商文档到 spec
+
+**按顺序走完这 8 步。每一步都要真的回到厂商文档里抄，不要凭印象。**
+
+| # | 步骤 | 在厂商文档里找什么 | 写到 spec 的哪里 |
+| --- | --- | --- | --- |
+| 1 | **端点** | HTTP 方法、路径、`contentType` | `transport.method` / `.path` / `.contentType` |
+| 2 | **鉴权** | key 放哪（头？query？自定义头名？） | `auth` |
+| 3 | **必填参数** ⭐ | 请求 schema 的 `required:` 列表 | 逐个确认我们有没有对应入参；**没有的必须用 `$firstPresent` 兜默认值**（§6.3） |
+| 4 | **枚举参数** ⭐ | 每个枚举字段的合法值（`enum:`） | `$mapSize.table` / `$enum.map` / `$const`，**只写合法值，一个都不能编** |
+| 5 | **响应结构** | 产物在哪、件数在哪、错误码和文案在哪 | `response.items` / `.successCount` / `.errorCode` / `.errorMessage` |
+| 6 | **错误响应** ⭐ | `responses:` 里**每一个**状态码 | `errors[]`，用 `httpStatus` 或 `when`（§8.2） |
+| 7 | **异步状态机** ⭐ | 任务状态的全部取值 | `async.poll.statusMap`（**必须写 `""` 兜底**）或 `successValues`/`failureValues` |
+| 8 | **二次请求** | 产物是不是只给 id？要不要再调一次接口换？ | 是则用 `$fetch`（§7.3） |
+
+⭐ = 历史上最容易漏、且**保存时不会报错**的三项。
+
+最后再回头做两件事：
+
+- **`metadata.modes` 只写你真的映射了的**。写了 `image-to-video` 却没映射首帧参数，
+  运营者会在目录里看到「支持图生视频」，实际传图进来被当文生视频跑。
+- **`limits.timeoutMs` 不要超过 300000**（serverless 上限，超过会在保存时直接报错）。
+
+### 0.3 协议速查（完整契约）
+
+#### 0.3.1 spec 顶层字段
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `specVersion` | `2` | ✅ | 固定 2，其它值一律拒绝 |
+| `capability` | 枚举 | ✅ | `image.generate` `image.edit` `video.generate` `audio.tts` `audio.stt` `music.generate` |
+| `displayName` | string | — | 后台显示名 |
+| `models` | string[] | 条件必填 | 本 spec 服务的**客户端模型名**。**同一 capability 出现多份时每份都必须写**（§3.4） |
+| `baseUrl` | http(s) URL | — | 覆盖供应商 `baseUrl`（换区域/域名） |
+| `transport` | object | ✅ | 见 0.3.2 |
+| `auth` | object | ✅ | 见 0.3.2 |
+| `request` | 映射树 | — | 上游请求体 |
+| `response` | 映射树 | 产出媒体时✅ | 见 0.3.4；`image.generate`/`image.edit`/`video.generate`/`audio.tts`/`music.generate` 不映射 `items` 会在保存时报错 |
+| `responseMode` | `json`\|`sse`\|`binary`\|`stream` | — | 默认 `json` |
+| `errors` | array | — | 见 0.3.5 |
+| `async` | object | 异步时✅ | 见 0.3.6 |
+| `limits` | object | — | 见下 |
+| `allowEmpty` | boolean | — | 允许「2xx 但没有产物」（如内容拦截）；否则报 `upstream_contract_mismatch` |
+| `metadata` | object | — | **原样**透出到 `/v1/models` 的 `relay` 字段 |
+
+**任何不在此表里的顶层字段都会在保存时报错**（`xxx: unknown spec field`）——
+所以不要发明字段名，能力不够就说清楚，需要改代码。
+
+`limits` 的两个字段：
+
+| `limits` 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `maxN` | number | 上游接受的最大张数，客户端 `n` 超过就报 `400 n_too_large` |
+| `timeoutMs` | number | 上游超时，**必须 ≤ 300000**（serverless 上限，超过保存时报错） |
+
+#### 0.3.2 transport 与 auth
+
+| `transport` 字段 | 类型 | 必填 | 取值 / 说明 |
+| --- | --- | --- | --- |
+| `method` | 枚举 | ✅ | `POST`（默认）/ `GET` / `PUT` / `PATCH`。`GET` 不带 body |
+| `path` | string | ✅ | 相对 `baseUrl`，以 `/` 开头。**只能用 `{{model}}` 一个占位符**（URL 编码后的上游模型名）；`{{taskId}}` 只能在 `async.poll.path` |
+| `contentType` | 枚举 | — | `application/json`（默认）/ `multipart/form-data` / `application/x-www-form-urlencoded` |
+| `headers` | object | — | `{ "<头名>": <映射> }`。**值是映射**，解析不出值就不发这个头 |
+| `query` | object | — | `{ "<参数名>": <映射> }`，规则同上 |
+
+| `auth` 写法 | 效果 |
+| --- | --- |
+| `{ "type": "bearer" }` | `Authorization: Bearer <key>` |
+| `{ "type": "header", "name": "X-Api-Key", "prefix": "" }` | 自定义头（`prefix` 可选） |
+| `{ "type": "query", "name": "api_key" }` | 拼到 URL query |
+| `{ "type": "none" }` | 不带凭据 |
+
+```jsonc
+"transport": {
+  "method": "POST",
+  "path": "/v1/image_generation",
+  "contentType": "application/json",
+  "headers": { "language": "$.language" },
+  "query":   { "version": "2024-01-01" }
+}
+```
+
+#### 0.3.3 映射原语（全部 12 个，没有别的）
+
+| 原语 | 写法 | 什么时候用 |
+| --- | --- | --- |
+| `$const` | `{"$const": <任意>}` | 固定值、默认值 |
+| `$ifPresent` | 单分支 `{"$ifPresent": {"$.voice": <映射>}}`；多分支 `{"$ifPresent": [{"$.url": …}, {"$.b64_json": …}]}` | 客户端给了才发；多分支时**第一个键存在的生效** |
+| `$enum` | `{"$enum": {"path":…, "map":{…}, "default":…}}` | 换一套词汇（`b64_json` → `base64`） |
+| `$mapSize` | `{"$mapSize": {"path":…, "table":{…}, "default":…}}` | 尺寸换算（`$enum` 的特例） |
+| `$toString` | `{"$toString": "$.n"}` | 厂商要字符串，客户端给了数字 |
+| `$dataUrl` | `{"$dataUrl": "$.image"}` | **只往请求里用**：裸 base64 → `data:image/png;base64,…` |
+| `$file` | `{"$file": {"path":…, "filename":…, "contentType":…}}` | **只往请求里用**：data URL → 真的 multipart 文件（需 multipart） |
+| `$firstPresent` | `{"$firstPresent": [<映射>, …]}` | 取第一个**标量**有值的；厂商必填但客户端可能不传时用它兜默认 |
+| `$from` | `{"$from": "$.data.urls", "$to": {…}}` | **只往响应里用**：数组逐项映射 |
+| `$merge` | `{"$merge": [<映射>, <映射>]}` | 合并多个对象 |
+| `$eq` | `{"$eq": [<映射>, <映射>]}` | 深度相等（`errors.when` 主力） |
+| `$fetch` | `{"$fetch": {"path":…, "url":…, "pick":…}}` | **只往响应里用**：拿到 id 再发一次 GET 换最终值 |
+
+其它规则：
+
+- 映射对象里出现**表以外的 `$xxx` 键**会报错——原语名拼错当场暴露。
+- 取不到的路径得到 `undefined`，**该键会从产物里整体消失**（不是 `null`）。
+  所以 `"x": "$.client_may_omit"` 在客户端没传时等于没发这个字段。
+- 字符串值里 `{{ $.a.b }}` 会被替换成作用域里的值（自动 URL 编码）。
+- **方向别搞反**：`$dataUrl`/`$file` 属于请求，`$from`/`$fetch` 属于响应。
+
+#### 0.3.4 response 契约
+
+`response` 映射出来的对象**只认这些 key**，多余的会被忽略：
+
+| key | 类型 | 作用 |
+| --- | --- | --- |
+| `items` | item 或 item[] | 产物。每项 `{ kind, encoding?, value }` |
+| `successCount` | number | **成功件数，决定计费** |
+| `taskId` | string | 异步任务的 id（`async` 必填） |
+| `status` | string | 异步状态（`async.poll.statusPath` 指向它） |
+| `text` | string | 转写文本（`audio.stt`） |
+| `errorCode` | any | 上游错误码，进错误响应的 message |
+| `errorMessage` | string | 上游错误文案，**优先于我们的 code 返回给客户端** |
+
+**item**：
+
+| 字段 | 值 | 含义 |
+| --- | --- | --- |
+| `kind` | `url` \| `base64` \| `text` | **客户端要什么** |
+| `encoding` | `plain` \| `base64` \| `hex` \| `dataUrl` | 选填。**上游实际给的是什么**，引擎负责归一 |
+| `value` | 映射 | 值的位置 |
+
+组合示例：`{"kind":"base64","encoding":"hex","value":"$.data.audio"}`
+→ 上游给 hex，引擎转成客户端能解码的 base64。
+
+`items` 可以是单个对象（不必包成数组）。
+
+#### 0.3.5 errors
+
+```jsonc
+"errors": [
+  { "httpStatus": 402, "status": 402, "code": "upstream_credit_exhausted" },
+  { "httpStatus": [401, 403], "status": 502, "code": "upstream_auth_failed" },
+  { "when": { "$eq": ["$.base_resp.status_code", 1026] }, "status": 400, "code": "content_filter" }
+]
+```
+
+- `when` 匹配**原始响应体**（未映射）；`httpStatus` 匹配 HTTP 状态码。**任一命中即触发**。
+- **两个都不写会保存报错**（规则永远不会触发）。
+- `status` / `code` 是返回给客户端的；`message` 选填，不写时优先用 `response.errorMessage`。
+- **厂商文档 `responses:` 里列出的每个状态码都要映射**，包括看起来不可能发生的
+  （例：MiniMax 用 **422** 表示内容拦截）。漏一个 = 客户端收到 502。
+- 可用 `code`：`rate_limited` `upstream_credit_exhausted` `content_filter` `bad_request`
+  `upstream_auth_failed` `upstream_task_failed` `upstream_overloaded`
+  `task_timeout` `upstream_contract_mismatch` `upstream_error`。
+
+#### 0.3.6 async
+
+| `async` 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `submitTaskId` | string | ✅ | 从**提交响应**里取 task id 的路径 |
+| `poll` | object | ✅ | 见下 |
+
+| `async.poll` 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `method` | `GET`\|`POST` | — | 默认 `GET` |
+| `path` | string | ✅ | **唯一**能用 `{{taskId}}` 的地方 |
+| `intervalMs` | number | — | 轮询间隔，默认 3000 |
+| `timeoutMs` | number | — | ≤ 300000，默认 240000 |
+| `statusPath` | string | 建议 | 状态从**映射后**结果的哪里读 |
+| `statusMap` | object | 二选一 | `{ "<厂商状态>": "ok" \| "fail" \| "wait" }`，**必写 `""` 兜底** |
+| `successValues` | string[] | 二选一 | 与 `failureValues` 成对使用 |
+| `failureValues` | string[] | 二选一 | 与 `successValues` 成对使用 |
+| `statusMatch` | `exact`\|`caseInsensitive` | — | 默认 `caseInsensitive` |
+
+```jsonc
+"async": {
+  "submitTaskId": "$.task_id",
+  "poll": {
+    "method": "GET",
+    "path": "/v1/query/video?task_id={{taskId}}",
+    "intervalMs": 5000,
+    "timeoutMs": 240000,
+    "statusPath": "$.status",
+    "statusMap": { "Success": "ok", "Fail": "fail", "failed": "fail", "": "wait" }
+  }
+}
+```
+
+- `statusMap` 的值只能是 `"ok"` / `"fail"` / `"wait"`，**`""` 兜底项必写**（不写会保存报错）。
+- 同一状态的不同写法**都要列**：`Success`/`success`、`Fail`/`fail`/`failed`、
+  `cancelled`/`Canceled`——漏一种 = 客户端挂到超时。
+- 也可以用 `successValues` + `failureValues`（两组不能都空，否则保存报错）。
+- 匹配**默认忽略大小写**；需要严格时写 `"statusMatch": "exact"`。
+
+#### 0.3.7 作用域（`$` 根作用域里有什么）
+
+**每个端点都会透传客户端请求体的全部字段**，另外注入这些归一化字段：
+
+| 端点 | 归一化字段 |
+| --- | --- |
+| `/v1/images/generations` | `model` `prompt` `n` `size` `responseFormat` `seed` `style` `watermark` `promptOptimizer` |
+| `/v1/images/edits` | `model` `prompt` `image`（上传图的 data URL）`n` `size` `responseFormat` `seed` |
+| `/v1/videos/generations` | `model` `prompt` `n` `size` `seed` `duration` |
+| `/v1/audio/music` | `model` `prompt` `n` |
+| `/v1/audio/speech` | `model` `input`（待合成文本）`voice` `speed` `responseFormat` |
+| `/v1/audio/transcriptions` | `model` `image`（上传音频的 data URL）`language` `prompt` `temperature` `filename` |
+
+- **每个键同时以蛇形和驼峰两种拼写存在**：`$.response_format` 与 `$.responseFormat` 等价。
+- `$` 永远指**上游模型名**（已按 `upstreamId` 替换），不需要再映射。
+- **翻译流程第 3 步的关键**：如果厂商 `required:` 里有 `duration` 这种
+  我们对外端点**没有**对应入参的字段，就必须
+  `"duration": {"$firstPresent": ["$.duration", {"$const": 6}]}`。
+
+#### 0.3.8 引擎会做 / 不会做的事
+
+**会做**：路径与 `{{}}` 替换（同源校验）、蛇形/驼峰别名、映射求值、multipart/form/json
+三种编码、hex/base64/dataUrl 归一、错误规则匹配、异步提交与轮询、`$fetch` 一次同源 GET、
+binary/stream/sse 回传、空结果检测、按 `successCount` 计费。
+
+**不会做**（别写 spec 假设它会）：
+
+- **不重试、不故障转移、不换供应商**——媒体按件计费，自动重试可能重复扣费。
+- **不做任何编解码，除非你声明了 `encoding`**。
+- **不缓存、不存储产物**、不过期管理——上游给的 URL 有效期由厂商决定（MiniMax 24 小时）。
+- **不做多步兑换**：`$fetch` 只有一步（id → url）。
+- **不跨事件拼接流式音频**：`sse` 只汇总 url 类 items。
+- **不内置对象存储**：上传图要转 URL 得你自己先传好。
+- **不执行任何代码**：没有 `eval`、没有插件。表达不了的厂商要**扩展引擎原语**（改代码）。
+
+### 0.4 硬规则（逐条可判定）
+
+1. `specVersion` 必须是 `2`。
+2. 输出**两个独立 JSON 块**，`specs` 是**一个平铺数组**。
+3. 同一 `capability` 多份 spec 时，**每份都要写 `models`**，且不能有模型被两份同时声明。
+4. 厂商 `required:` 的每个字段都要有归属；我们没有对应入参的，**用 `$firstPresent` 兜默认**。
+5. 所有枚举映射表（`$mapSize` / `$enum`）里**只能出现厂商文档里的合法值**。
+6. `statusMap`（或 `successValues`+`failureValues`）必须能终止轮询，且 `statusMap` **必写 `""` 兜底**；
+   状态的不同大小写/拼写变体要**全部列出**。
+7. 厂商 `responses:` 里的**每个状态码**都要有 `errors` 规则。
+8. 产物只给 id、需要再调接口时，用 `$fetch`；不要把 id 当 URL 返回。
+9. `$dataUrl` / `$file` 只往请求用；`$from` / `$fetch` 只往响应用。
+10. 要 base64 就确认上游编码，并用 `encoding` 声明；**不要假设是 base64**。
+11. `metadata.modes` 只写真的映射了的。
+12. `limits.timeoutMs ≤ 300000`。
+
+### 0.5 不确定时的决策规则
+
+| 情况 | 怎么办 |
+| --- | --- |
+| 文档没写某个枚举的完整取值 | **只映射你确认的值**，其余交给 `default`。别猜。 |
+| 不知道产物是 url 还是 base64 | 写 `kind:"url"` + `encoding:"plain"`，实测一次再改。**别两个都写**——引擎只会取一个。 |
+| 不知道异步状态词表 | 写 `{"": "wait"}` 加你确认的终态；跑一次真实任务看返回再补。**兜底项保证不会挂死**。 |
+| 某个字段不确定要不要传 | 用 `$ifPresent` 包起来，客户端不传就不发。 |
+| 表达式太复杂表达不出来 | 拆成多个 spec / 换厂商。**协议不执行代码**，不要试图绕过。 |
+| 需要厂商不支持的能力 | 如实说做不到。`metadata` 里不要写没实现的 `modes`。 |
+
+### 0.6 交稿前自查（逐条回答「是/否」）
+
+- [ ] 输出是两个独立 JSON 块，`specs` 是一个平铺数组？
+- [ ] 每份 spec 的 `specVersion` 是 `2`？
+- [ ] 同一 capability 的多份 spec 都写了 `models`，且无模型被重复声明？
+- [ ] 厂商 `required:` 逐条对过，没有对应入参的字段用了 `$firstPresent` 兜默认？
+- [ ] 每个枚举映射表里的值都能在厂商文档里找到？
+- [ ] 厂商 `responses:` 里的每个状态码（包括 422/529 这类）都有规则？
+- [ ] 异步 `statusMap` 写了 `""` 兜底，且终态的每种拼写变体都列了？
+- [ ] 产物若是 id，用了 `$fetch` 换成真地址？
+- [ ] 要 base64 的地方声明了正确的 `encoding`（或确认过上游本来就是 base64）？
+- [ ] `$dataUrl` / `$file` 只出现在 `request`，`$from` / `$fetch` 只出现在 `response`？
+- [ ] `metadata.modes` 里每一项都有对应的请求映射？
+- [ ] `limits.timeoutMs ≤ 300000`？
+
+> 完整版（带每条的真实翻车案例）在 §17。
+
+### 0.7 词汇对照：OpenAI 入参 ↔ 常见厂商字段
+
+厂商几乎都不叫 OpenAI 的名字。下面这张表是「客户端发的词」到「厂商文档里的词」的常见对应，
+写 spec 时对着它找，能省掉大量猜字段名的时间：
+
+| 客户端（我们的作用域） | 常见厂商写法 | 备注 |
+| --- | --- | --- |
+| `$.size` = `1024x1024` | `aspect_ratio: "1:1"`（MiniMax） | 用 `$mapSize` |
+| `$.size` = `1024x1024` | `size: "1K"` / `width`+`height`（部分厂商） | 用 `$mapSize` 拆字段 |
+| `$.size` = `1920x1080` | `resolution: "768P"` / `"2K"`（MiniMax 视频） | 用 `$enum` |
+| `$.responseFormat` = `b64_json` | `response_format: "base64"` | 用 `$enum` |
+| `$.responseFormat` = `mp3` | `audio_setting.format: "mp3"` | 用 `$enum` |
+| `$.n` = `2` | `n` / `num_images` / `num` | 直传或 `$toString` |
+| `$.seed` = `42` | `seed` | 直传 |
+| `$.style` = `"vivid"` | `style` / `aigc_style` | 直传 |
+| `$.watermark` = `true` | `aigc_watermark`（MiniMax）/ `watermark` | 直传 |
+| `$.promptOptimizer` = `true` | `prompt_optimizer` | 直传 |
+| `$.input`（TTS 文本） | `text`（MiniMax）/ `input`（OpenAI） | 直传 |
+| `$.voice` | `voice_setting.voice_id` | `$ifPresent` 包起来 |
+| `$.speed` | `voice_setting.speed` | 直传 |
+| `$.image`（data URL） | `image`（URL）/ `subject_reference[].image_file` / `content[].image_url.url` | `$dataUrl` 或直接给 URL |
+| `$.image`（STT 音频） | `file`（multipart 文件） | `$file` |
+| `$.language` | 表单字段 / HTTP 头（MiniMax 是**头**） | `transport.headers` |
+| `$.prompt`（视频） | `prompt`（V1）/ `content: [{type:"text",text:…}]`（V2） | `$merge` 或数组字面量 |
+| `$.duration` | `duration`（视频秒数） / `voice_setting.speed`（TTS 倍率） | 含义不同，别搞混 |
+| `$.lyrics` | `lyrics` | 直传 |
+| 产物 url | `data.image_urls[]` / `task.content.url` / `file.download_url` | `$from` 或 `$fetch` |
+| 产物 base64 | `data.image_base64[]` / `data.audio`（**注意可能是 hex**） | 声明 `encoding` |
+| 错误码 | `base_resp.status_code` / `error.type` / HTTP 状态 | `when` 或 `httpStatus` |
+| 任务状态 | `status` / `task.status` | `statusPath` |
+
+---
+
+
+
 ## 1. 五分钟看懂
 
 一个**媒体供应商** = 一个 `baseUrl` + 一把密钥 + 一组模型（客户端模型名 → 上游模型名 + 单价）
@@ -154,8 +489,9 @@ MediaProvider {
 > 请严格按「两个独立的 JSON 块」输出：第一块是 models（扁平对象，key=客户端模型名），
 > 第二块是 specs（扁平数组，每份 spec 用 capability 字段自描述，specVersion 固定为 2）。
 > 不要合并，也不要按图片/视频/语音/音乐分组或嵌套。
-> 动笔前先读本文 §6.1（每个端点到底有哪些 $.键）、§7.2（结果形态与编码）、
-> §9（异步状态词表），交稿前按 §16.1 的六条自查。
+> 动笔前先读本文 §6.1（每个端点到底有哪些 `$.键`）、**§6.3（厂商必填但客户端可能不传的参数）**、
+> §7.2（结果形态与编码）、§8（**厂商的每个状态码都要映射**）、§9（异步状态词表），
+> 交稿前按 §17 的七条自查。
 > ```
 >
 > 贴的时候：上面那个框贴 `models`，下面那个框贴 `specs`。
@@ -234,12 +570,13 @@ MediaProvider {
 | --- | --- | --- | --- |
 | `$const` | `{"$const": <任意>}` | 固定值 | `{"$const": "jpg"}` |
 | `$ifPresent` | `{"$ifPresent": {"$.voice": <映射>}}` | 客户端给了才发 | 客户端选音色时才带 `voice_setting.voice_id` |
+| `$ifPresent`（多分支） | `{"$ifPresent": [{"$.url": <映射>}, {"$.b64_json": <映射>}]}` | 第一个**键存在**的分支生效 | 同一数组里 url / b64_json 二选一（OpenAI `data[]`） |
 | `$enum` | `{"$enum": {"path":…, "map":{…}, "default":…}}` | 换一套词汇 | `{"$enum":{"path":"$.responseFormat","map":{"b64_json":"base64"},"default":"url"}}` |
 | `$mapSize` | `{"$mapSize": {"path":…, "table":{…}, "default":…}}` | 尺寸换算（`$enum` 的特例） | `1024x1024 → 1:1` |
 | `$toString` | `{"$toString": "$.n"}` | 数字转字符串 | 厂商要 `"4"` 而客户端发了 `4` |
 | `$dataUrl` | `{"$dataUrl": "$.image"}` | **请求方向**：裸 base64 → data URL | 上传图直接给厂商 |
 | `$file` | `{"$file": {"path":…, "filename":…, "contentType":…}}` | **请求方向**：data URL → 真的 multipart 文件 | 需要 `contentType: multipart/form-data` |
-| `$firstPresent` | `{"$firstPresent": ["$.a", "$.b"]}` | 取第一个有值的（不同套餐返回不同字段时） | `["$.data.audio", "$.data.url"]` |
+| `$firstPresent` | `{"$firstPresent": ["$.a", "$.b"]}` | 取第一个**标量**有值的 | 厂商必填但客户端可能不传时兜默认，见 §6.3 |
 | `$from` + `$to` | `{"$from": "$.data.urls", "$to": {…}}` | **响应方向**：数组逐项映射 | 见 §7 |
 | `$merge` | `{"$merge": [<映射>, <映射>]}` | 合并多个对象 | |
 | `$eq` | `{"$eq": [<映射>, <映射>]}` | 深度相等（主要用于 `errors.when`） | `{"$eq":["$.base_resp.status_code",1002]}` |
@@ -249,7 +586,30 @@ MediaProvider {
 
 > **映射对象里出现表以外的 `$xxx` 键会报错**，写错的原语名当场暴露。
 
-### 6.3 `$dataUrl` 的方向
+### 6.3 客户端没给、但厂商必填的参数
+
+这是**最容易被忽略**的一类 bug：客户端只发 `model` + `prompt`（最自然的最小调用），
+但厂商把某个参数标成 required，于是上游 400，而 spec 看起来完全正常。
+
+上游把该参数丢掉时，映射结果里那个键会**直接消失**（不会有 `null`），所以
+`"duration": "$.duration"` 在客户端没传时长时就等于**没发这个字段**。
+
+用 `$firstPresent` 补一个默认值：
+
+```jsonc
+// ✘ 客户端只发 model + prompt → duration 整个字段消失 → MiniMax 400
+"duration": "$.duration"
+
+// ✔ 厂商必填 4–15 秒，客户端不传就默认 6 秒
+"duration": { "$firstPresent": [ "$.duration", { "$const": 6 } ] }
+```
+
+**自查**：翻厂商文档的 `required:` 列表，逐个确认——凡是我们对外端点**没有**
+对应入参的（`duration` 这类），都必须用 `$firstPresent` 兜一个默认值。
+典型例子：MiniMax 视频 V2 的 `required: [model, content, resolution, duration]`，
+其中 `duration` 在 OpenAI 形状的视频接口里没有对应字段。
+
+### 6.4 `$dataUrl` 的方向
 
 > ### ⚠️ `$dataUrl` 往**请求**里用，**响应**里绝不用
 >
@@ -257,7 +617,7 @@ MediaProvider {
 > - 响应：应该写 `"value": "$.data.audio"`。写成 `{"$dataUrl": "$.data.audio"}` 会得到
 >   `data:image/png;base64,…`，客户端 `base64 -d` 直接失败。
 >
-> 响应方向要「还原」时用 `encoding: "dataUrl"`（§7.1）。
+> 响应方向要「还原」时用 `encoding: "dataUrl"`（§7.2）。
 
 ---
 
@@ -392,6 +752,19 @@ upstream returned 2xx but the spec's response mapping produced no items — chec
 - 规则没写 `message` 时，若 `response.errorMessage` 有映射，会用**厂商自己的错误文案**，
   比我们的 code 有用得多。
 - 都不匹配时：HTTP 非 2xx → `502 upstream_error`；HTTP 2xx → 正常成功路径。
+
+> ### ⚠️ 把厂商文档里列出的**每一个**状态码都映射
+>
+> 业务错误不一定用 4xx 里「常规」的那些码。真实例子：MiniMax 视频 V2 用
+> **HTTP 422 + `unprocessable_entity_error` 表示内容被拦截**（不是 400），
+> 漏掉它 → 客户端拿到的是 `502 upstream_error` 而不是 `400 content_filter`。
+>
+> 抄厂商文档的 `responses:` 列表时，**400 / 401 / 402 / 422 / 429 / 529 一个都别漏**，
+> 哪怕看起来「不可能发生」。
+>
+> 常用映射对照：`402` → `upstream_credit_exhausted`、`429` → `rate_limited`、
+> `401` → `upstream_auth_failed`、`400` → `bad_request`、
+> `422` → `content_filter`（内容审核）、`529` → `upstream_overloaded`。
 
 常用 `code`：`rate_limited` `upstream_credit_exhausted` `content_filter` `bad_request`
 `upstream_auth_failed` `upstream_task_failed` `task_timeout` `upstream_contract_mismatch`。
@@ -796,32 +1169,95 @@ upstream task did not finish in time (last status "Rendering" — check async.po
 
 （先用外部流程把 `$.image` 传上去，再把固定 URL 填进 `subject_reference`；本协议不内置对象存储。）
 
+### 16.8 第二家厂商：OpenAI 兼容的图片接口
+
+前面 16.1–16.5 都是 MiniMax。**协议不是 MiniMax 专用的**——同一个模型、同一套原语，
+换一个字段命名完全不同的厂商照样用。OpenAI 的图片接口就是最短的一例：
+
+```jsonc
+{
+  "specVersion": 2,
+  "capability": "image.generate",
+  "displayName": "OpenAI Images (gpt-image-1 / dall-e-3)",
+  "transport": { "method": "POST", "path": "/v1/images/generations", "contentType": "application/json" },
+  "auth": { "type": "bearer" },
+  "request": {
+    "model": "$.model",
+    "prompt": "$.prompt",
+    "n": "$.n",
+    "size": { "$enum": { "path": "$.size",
+      "map": { "1024x1024": "1024x1024", "1536x1024": "1536x1024", "1024x1536": "1024x1536" },
+      "default": "1024x1024" } },
+    "quality": "$.quality",
+    "style": "$.style",
+    "response_format": "$.responseFormat"
+  },
+  "response": {
+    // 同一个 `data` 数组里，url 和 b64_json 是**互斥**的两种形态（取决于上游给了哪个）。
+    // `$ifPresent` 的数组写法：按顺序试，第一个「键存在」的分支生效；都不存在就丢掉这一项。
+    // ⚠️ 不要用 $firstPresent 做这件事——它取的是「第一个能取到值的标量」，
+    //    对 {kind,value} 这种对象无效（对象永远不是 undefined，第一个分支会永远命中）。
+    "items": { "$from": "$.data", "$to": { "$ifPresent": [
+      { "$.url": { "kind": "url", "value": "$.url" } },
+      { "$.b64_json": { "kind": "base64", "value": "$.b64_json" } }
+    ] } },
+    "errorCode": "$.error.code",
+    "errorMessage": "$.error.message"
+  },
+  "errors": [
+    { "httpStatus": 400, "status": 400, "code": "bad_request" },
+    { "httpStatus": 401, "status": 502, "code": "upstream_auth_failed" },
+    { "httpStatus": 429, "status": 429, "code": "rate_limited" },
+    { "when": { "$eq": ["$.error.code", "content_policy_violation"] }, "status": 400, "code": "content_filter" },
+    { "when": { "$eq": ["$.error.code", "moderation_blocked"] }, "status": 400, "code": "content_filter" }
+  ],
+  "limits": { "maxN": 4, "timeoutMs": 180000 },
+  "metadata": { "modes": ["text-to-image", "image-to-image"], "edit_mode": "mask", "sizes": ["1024x1024", "1536x1024", "1024x1536"], "max_n": 4 }
+}
+```
+
+对照 MiniMax 那份，注意几个**完全不同但都能表达**的地方：
+
+| | MiniMax 16.1 | OpenAI 16.8 |
+| --- | --- | --- |
+| 尺寸 | `aspect_ratio` + `$mapSize`（比例） | `size` 原样透传 |
+| 产物 | 两个独立数组 `image_urls` / `image_base64` | 同一个数组里每项二选一 → `$ifPresent` 多分支 |
+| 错误 | HTTP 200 + `base_resp.status_code` | HTTP 4xx + `$.error.code` → `httpStatus` |
+| 编辑 | 主体参考（`edit_mode:"reference"`） | 遮罩编辑（`edit_mode:"mask"`） |
+
 ---
 
-## 17. 交稿前自查（六条）
+## 17. 交稿前自查（七条）
 
-这六条都真实发生过，且**都不会在保存时报错**——只有跑起来才暴露：
+这七条都真实发生过，且**都不会在保存时报错**——只有跑起来才暴露：
 
 1. **`$dataUrl` 用到 `response` 里**（最隐蔽）
-   → `$dataUrl` 往请求里用，base64 往响应里用（§6.3）。
+   → `$dataUrl` 往请求里用，base64 往响应里用（§6.4）。
 
-2. **图片/视频端点引用的键没在上表里**
-   → 现在两个拼写都通，但如果键名本身拼错了，`$enum` 会**静默落到 `default`**。
-   对照 §6.1 的表核一遍。
+2. **客户端没传、但厂商 required 的参数没兜默认值**
+   → 翻厂商 `required:` 列表，凡是对外端点没有对应入参的，用 `$firstPresent` 补默认（§6.3）。
+   典型：MiniMax 视频 V2 的 `duration`。
 
-3. **异步状态漏了终态 / 没写兜底**
-   → 用 `statusMap` 并**必须写 `""` 兜底项**（§9.1）。
+3. **厂商的业务错误状态码没映射**
+   → 内容拦截不一定是 400，MiniMax V2 用 **422**。`400/401/402/422/429/529` 一个都别漏（§8）。
 
-4. **`baseUrl` 重复版本段**
+4. **异步终态漏了一种写法**
+   → 同一厂商文档里成功可能写 `Success` 也可能写 `success`，失败可能写 `Fail` 也可能写
+   `failed`。`statusMap` 两种都列，**并写 `""` 兜底**（§9.1）。漏一个 = 挂到超时。
+
+5. **图片/视频端点引用的键名拼错**
+   → 两种拼写都通，但拼错的名字会让 `$enum` **静默落到 `default`**。对照 §6.1 核一遍。
+
+6. **`baseUrl` 重复版本段**
    → `baseUrl` 带 `/v1` + `path` 带 `/v1/…` = `/v1/v1/…` 全 404（§13）。
 
-5. **同一 capability 多份 spec 却没写 `models`**
+7. **同一 capability 多份 spec 却没写 `models`**
    → 保存会直接报错（§3.4）；别靠「第一份生效」。
 
-6. **把 hex / 资源 id 当成 base64 或 url 返回**
-   → 声明 `encoding`，或用 `$fetch` 换（§7.2、§7.3）。
+> 外加一条常识：**`metadata.modes` 只写你真支持的**。写了 `image-to-video` 却没映射
+> `first_frame_image`，客户端传图过来会被当文生视频跑，目录里却宣传着支持图生视频（§11）。
 
-> 对着这六条过一遍，能挡掉绝大多数「保存成功但一调用就出问题」的情况。
+> 对着这七条过一遍，能挡掉绝大多数「保存成功但一调用就出问题」的情况。
 
 ---
 
