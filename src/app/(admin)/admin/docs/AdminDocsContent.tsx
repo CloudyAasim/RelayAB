@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { ProtocolReference } from "@/components/docs/ProtocolReference";
+import { SpecCheckReference } from "@/components/docs/SpecCheckReference";
 import type { AdminDocId, TFn } from "@/lib/docs/sections";
 
 export function AdminDocsContent({ section, t }: { section: AdminDocId; t: TFn }) {
@@ -194,6 +195,44 @@ export function AdminDocsContent({ section, t }: { section: AdminDocId; t: TFn }
             description={t("admin.docs.protocol.desc")}
           />
           <ProtocolReference />
+        </Card>
+      </div>
+    );
+  }
+
+  if (section === "spec-check") {
+    return (
+      <div className="space-y-4 sm:space-y-5">
+        <Card>
+          <CardHeader
+            title={
+              <CardTitle icon={<FileCode className="h-4 w-4" />}>
+                {t("admin.docs.specCheck.title")}
+              </CardTitle>
+            }
+            description={t("admin.docs.specCheck.desc")}
+          />
+          <pre className="overflow-x-auto rounded-md border border-border bg-foreground/[0.03] px-3 py-2.5 font-mono text-xs leading-relaxed text-foreground">
+            {`pnpm spec-check <file.json>        # {"models":…,"specs":[…]}`}
+          </pre>
+          <p className="mt-3 text-xs text-muted-foreground">{t("admin.docs.specCheck.fixtures")}</p>
+          <p className="mt-2 text-xs text-muted-foreground">
+            <Link href="/admin/docs/media" className="underline underline-offset-2">
+              {t("admin.docs.nav.media")}
+            </Link>
+          </p>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title={
+              <CardTitle icon={<FileCode className="h-4 w-4" />}>
+                {t("admin.docs.specCheck.usage")}
+              </CardTitle>
+            }
+            description={t("admin.docs.specCheck.readonly")}
+          />
+          <SpecCheckReference />
         </Card>
       </div>
     );

@@ -243,6 +243,9 @@ describe("i18n: client/server boundary", () => {
       "src/components/docs/IntegrationDocs.tsx",
       "src/components/docs/ProtocolReference.tsx",
       "src/components/docs/PublicDocsFrame.tsx",
+      // Renders scripts/spec-check.ts on /admin/docs/spec-check; server-only
+      // for the same reason as ProtocolReference: it awaits getT().
+      "src/components/docs/SpecCheckReference.tsx",
     ]);
   });
 });

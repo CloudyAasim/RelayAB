@@ -23,7 +23,8 @@ const baseConfig: NextConfig = {
    * otherwise the page degrades to "could not read" in production.
    */
   outputFileTracingIncludes: {
-    "/**": ["./docs/模型适配协议/README.md"],
+    // Both are rendered into the admin docs from the repository itself.
+    "/**": ["./docs/模型适配协议/README.md", "./scripts/spec-check.ts"],
   },
   experimental: {
     serverActions: {

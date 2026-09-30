@@ -28,7 +28,8 @@ const USER_SECTION_IDS = [
 ] as const;
 export type UserDocId = (typeof USER_SECTION_IDS)[number];
 
-const ADMIN_SECTION_IDS = [
+/** Exported for tests: the exact slugs the admin docs outline accepts. */
+export const ADMIN_SECTION_IDS = [
   "overview",
   "providers",
   "faces",
@@ -36,6 +37,10 @@ const ADMIN_SECTION_IDS = [
   "mapping",
   "quota",
   "media",
+  // The judge's own source, rendered from scripts/spec-check.ts. It lives on its
+  // own page because it is ~1,400 lines — a reference to read or copy, not part
+  // of the protocol prose.
+  "spec-check",
   "usage",
   "trouble",
   "ops",
@@ -75,6 +80,7 @@ export function adminDocSections(t: TFn): DocSection[] {
     { id: "mapping", label: t("admin.docs.nav.mapping") },
     { id: "quota", label: t("admin.docs.nav.quota") },
     { id: "media", label: t("admin.docs.nav.media") },
+    { id: "spec-check", label: t("admin.docs.nav.specCheck") },
     { id: "usage", label: t("admin.docs.nav.usage") },
     { id: "trouble", label: t("admin.docs.nav.trouble") },
     { id: "ops", label: t("admin.docs.nav.ops") },

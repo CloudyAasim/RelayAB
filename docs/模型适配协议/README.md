@@ -477,7 +477,8 @@ pnpm spec-check my-specs.json
 **工作流**：写完 → `pnpm spec-check` → 全绿再交。
 **没跑过判官就不要交付 spec**——§0.8 的自查表是给人看的兜底，判官是机器验证。
 
-> 脚本源码 `scripts/spec-check.ts`；它本身有测试
+> 脚本源码 `scripts/spec-check.ts`（约 1,400 行），在后台 **`/admin/docs/spec-check`**
+> 有整份只读渲染，可直接浏览和复制。判官本身有测试
 > `tests/unit/media-spec-check.test.ts`：必须对全部内置模板报绿，
 > 且必须能抓到上面那几类已知事故——所以判官不会自己退化成橡皮图章。
 
