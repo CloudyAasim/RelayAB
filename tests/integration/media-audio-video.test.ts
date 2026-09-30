@@ -19,6 +19,7 @@ import type { MediaSpec } from "@/lib/media/spec";
 const VIDEO_SPEC = {
   specVersion: 1,
   capability: "video.generate",
+  models: ["video-01"],
   transport: { method: "POST", path: "/v1/videos" },
   auth: { type: "bearer" },
   request: { model: "$.model", prompt: "$.prompt" },
@@ -44,6 +45,7 @@ const VIDEO_SPEC = {
 const TTS_SPEC = {
   specVersion: 1,
   capability: "audio.tts",
+  models: ["tts-1"],
   transport: { method: "POST", path: "/v1/tts" },
   auth: { type: "bearer" },
   responseMode: "binary",
@@ -53,6 +55,7 @@ const TTS_SPEC = {
 const STT_SPEC = {
   specVersion: 1,
   capability: "audio.stt",
+  models: ["stt-1"],
   transport: {
     method: "POST",
     path: "/v1/stt",

@@ -353,6 +353,59 @@ export type SpecParse =
   | { ok: true; spec: MediaSpec; warnings: string[] }
   | { ok: false; errors: string[]; warnings: string[] };
 
+/** Every `$.…` path string anywhere in a spec tree. */
+function collectPaths(value: unknown, out: string[] = [], depth = 0): string[] {
+  if (depth > 14 || value === null || typeof value !== "object") return out;
+  if (Array.isArray(value)) {
+    for (const entry of value) collectPaths(entry, out, depth + 1);
+    return out;
+  }
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof entry === "string" && entry.startsWith("$.")) out.push(entry);
+    else collectPaths(entry, out, depth + 1);
+  }
+  return out;
+}
+
+/**
+ * The "`$file` outside multipart" error, or null when the request is fine.
+ *
+ * `$file` resolves to a File, and only a multipart form field has anywhere to put
+ * one; in a JSON or urlencoded body the mapping serializes the File *object* into
+ * the payload, so the upstream receives a stringified blob and nothing downstream
+ * notices. An absent contentType means JSON (the engine's `?? "application/json"`),
+ * so "unset" has to be judged too rather than skipped.
+ *
+ * Deliberately a standalone function: inlined into `parseMediaSpec`'s very long
+ * condition chain, the minifier emitted a named function expression whose name
+ * collided with a sibling binding and the whole server chunk failed to parse.
+ */
+function fileOutsideMultipartError(contentType: unknown, request: unknown): string | null {
+  const body = typeof contentType === "string" ? contentType : "application/json";
+  if (!(STRUCTURED_CONTENT_TYPES as readonly string[]).includes(body)) return null;
+  if (body === "multipart/form-data") return null;
+  if (!containsFileNode(request)) return null;
+  const shown = contentType === undefined ? "(unset, defaults to application/json)" : `"${contentType}"`;
+  return (
+    `transport.contentType ${shown}: ` +
+    "$file produces a file, which only multipart can carry " +
+    "(it would be serialized into the body as an object). " +
+    'Use "multipart/form-data", or drop the $file node'
+  );
+}
+
+/** True if any node in the mapping tree is a `$file` transform. */
+function containsFileNode(value: unknown, depth = 0): boolean {
+  if (depth > 12 || value === null || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.some((entry) => containsFileNode(entry, depth + 1));
+  const record = value as Record<string, unknown>;
+  if (typeof record.$file === "object" && record.$file !== null) return true;
+  if (Array.isArray(record.$firstPresent)) {
+    return record.$firstPresent.some((entry) => containsFileNode(entry, depth + 1));
+  }
+  return Object.values(record).some((entry) => containsFileNode(entry, depth + 1));
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -625,6 +678,21 @@ export function parseMediaSpec(raw: unknown): SpecParse {
         );
       }
     }
+    // The mirror image of the raw-media-type rule above.
+    const fileError = fileOutsideMultipartError(transport.contentType, root.request);
+    if (fileError) errors.push(fileError);
+  }
+
+  // Wildcard paths are the quietest failure in the protocol: `$.data[*].url`
+  // parses and resolves to `undefined`, so the symptom surfaces far away as
+  // "upstream returned no items" and reads like a vendor schema change. `getPath`
+  // only understands numeric indices.
+  for (const path of new Set(collectPaths(root))) {
+    if (!path.includes("[*]")) continue;
+    errors.push(
+      `path ${path}: 通配符 [*] 取不到值（路径只认数字下标，如 ${path.replaceAll("[*]", "[0]")}）。` +
+        "要「数组里每个元素的某个字段」请用 items 的 $from/$to，让数组本身成为 scope",
+    );
   }
 
   const auth = asRecord(root.auth);
@@ -881,6 +949,23 @@ export function validateMediaSpecs(specs: unknown): {
     const bucket = byCapability.get(entry.capability) ?? [];
     bucket.push(entry);
     byCapability.set(entry.capability, bucket);
+  }
+
+  // Scoping is per *provider*, not per capability. With two unscoped specs the
+  // model catalog cannot tell them apart: `specServingModel` falls back to "the
+  // first unscoped spec", so a model served by the second one is advertised with
+  // the first one's capability, modes and async flag. The request path still works
+  // (it is capability-first), so nothing errors — the catalog is simply wrong,
+  // which is the failure mode this project treats as worst. Observed in practice
+  // while configuring MiniMax: four capabilities, one spec each, none scoped.
+  const unscopedAll = parsed.filter((entry) => !entry.models);
+  if (unscopedAll.length > 1) {
+    errors.push(
+      `specs[${unscopedAll.map((e) => e.index).join("],[")}]: ` +
+        `${unscopedAll.length} specs do not list \`models\`. Every model would eagerly match all of them, ` +
+        `so the model catalog labels it with whichever comes first — give every spec a \`models\` array ` +
+        `(one spec per provider may stay unscoped)`,
+    );
   }
 
   for (const [capability, bucket] of byCapability) {

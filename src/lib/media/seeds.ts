@@ -237,6 +237,7 @@ export const MINIMAX_TTS_SPEC: MediaSpec = {
   specVersion: 1,
   capability: "audio.tts",
   displayName: "MiniMax T2A v2 (speech-2.8-hd)",
+  models: ["speech-2.8-hd"],
   transport: { method: "POST", path: "/v1/t2a_v2", contentType: "application/json" },
   auth: { type: "bearer" },
   request: {
@@ -290,6 +291,7 @@ export const MINIMAX_STT_SPEC: MediaSpec = {
   specVersion: 1,
   capability: "audio.stt",
   displayName: "MiniMax ASR (asr-1.0)",
+  models: ["asr-1.0"],
   transport: {
     method: "POST",
     path: "/v1/speech_to_text",
@@ -328,6 +330,7 @@ export const OPENAI_TTS_SPEC: MediaSpec = {
   specVersion: 1,
   capability: "audio.tts",
   displayName: "OpenAI-compatible TTS",
+  models: ["gpt-4o-mini-tts"],
   transport: { method: "POST", path: "/audio/speech" },
   auth: { type: "bearer" },
   responseMode: "binary",
@@ -350,6 +353,7 @@ export const OPENAI_STT_SPEC: MediaSpec = {
   specVersion: 1,
   capability: "audio.stt",
   displayName: "OpenAI-compatible transcription",
+  models: ["whisper-1"],
   transport: { method: "POST", path: "/audio/transcriptions", contentType: "multipart/form-data" },
   auth: { type: "bearer" },
   request: {

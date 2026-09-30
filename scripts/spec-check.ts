@@ -1069,6 +1069,16 @@ function staticChecks(spec: MediaSpec, raw: Record<string, unknown>, index: numb
         ),
       );
     }
+    const phantom = advertised.filter((key) => !mappable.includes(key));
+    if (phantom.length > 0) {
+      out.push(
+        line(
+          "warn",
+          `${prefix} metadata.sizes 宣传了 ${phantom.length} 个请求里没有映射的尺寸（${phantom.slice(0, 5).join(", ")}）` +
+            "——客户端选它们时会静默回落到 $mapSize 的 default，图的比例和它要的不是一个（§11）",
+        ),
+      );
+    }
   }
 
   // The catalogue limit and the enforced limit are two different numbers if

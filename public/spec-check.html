@@ -622,6 +622,34 @@
   var MEDIA_TYPE = /^[\w.+-]+\/[\w.+-]+$/;
 
   /** 未知字段一律报错——只在顶层拒绝过一次，其余层的拼错都静默通过了。 */
+  // Mirrors containsFileNode() in src/lib/media/spec.ts: `$file` may hide under
+  // $firstPresent branches, so a shallow scan would miss it.
+  // Every path-looking string anywhere in the spec. Wildcards are the trap: they
+  // parse fine and resolve to `undefined`, so the symptom shows up much later as
+  // "upstream returned nothing" rather than as a path error.
+  function collectPaths(value, out, depth) {
+    if ((depth || 0) > 14 || value === null || typeof value !== "object") return out;
+    if (Array.isArray(value)) {
+      value.forEach(function (v) { collectPaths(v, out, (depth || 0) + 1); });
+      return out;
+    }
+    Object.keys(value).forEach(function (k) {
+      var v = value[k];
+      if (typeof v === "string" && v.slice(0, 2) === "$.") out.push(v);
+      else collectPaths(v, out, (depth || 0) + 1);
+    });
+    return out;
+  }
+
+  function hasFileNode(value, depth) {
+    if ((depth || 0) > 12 || value === null || typeof value !== "object") return false;
+    if (Array.isArray(value)) return value.some(function (e) { return hasFileNode(e, (depth || 0) + 1); });
+    if (isRecord(value.$file)) return true;
+    if (Array.isArray(value.$firstPresent))
+      return value.$firstPresent.some(function (e) { return hasFileNode(e, (depth || 0) + 1); });
+    return Object.keys(value).some(function (k) { return hasFileNode(value[k], (depth || 0) + 1); });
+  }
+
   function rejectUnknown(record, allowed, path, errors) {
     Object.keys(record).forEach(function (k) {
       if (!allowed[k]) errors.push(path + "." + k + ": unknown field (typo?)");
@@ -727,7 +755,29 @@
         errors.push("transport.contentType: must be a media type such as " + CONTENT_TYPES.join(", "));
       if (t.method === "GET" && t.contentType === "multipart/form-data")
         errors.push("transport.contentType: a GET request cannot carry a body");
+      // A non-structural media type means "the body *is* the file".
+      if (typeof t.contentType === "string" && MEDIA_TYPE.test(t.contentType) && CONTENT_TYPES.indexOf(t.contentType) < 0) {
+        var reqKeys = isRecord(raw.request) ? Object.keys(raw.request) : [];
+        if (reqKeys.length !== 1 || reqKeys[0] !== "$file")
+          errors.push('transport.contentType "' + t.contentType + '": a raw media type sends the file bytes as the whole body, so `request` must be a single `$file` node');
+      }
+      // The mirror image: `$file` resolves to a File, and only a multipart form
+      // field has anywhere to put one.
+      // An absent contentType means JSON (engine: `?? "application/json"`), so
+      // "unset" has to be judged too rather than skipped.
+      var bodyCt = t.contentType === undefined ? "application/json" : t.contentType;
+      if (CONTENT_TYPES.indexOf(bodyCt) >= 0 && bodyCt !== "multipart/form-data" && hasFileNode(raw.request)) {
+        errors.push('transport.contentType ' + (t.contentType === undefined ? "(unset, defaults to application/json)" : '"' + t.contentType + '"') +
+          ': `$file` produces a file, which only multipart can carry (it would be serialized into the body as an object). Use "multipart/form-data", or drop the $file node');
+      }
     }
+    var wildcards = [];
+    collectPaths(raw, []).forEach(function (pth) { if (pth.indexOf("[*]") >= 0 && wildcards.indexOf(pth) < 0) wildcards.push(pth); });
+    wildcards.forEach(function (pth) {
+      errors.push("path " + pth + ": 通配符 [*] 取不到值（路径只认数字下标，如 " + pth.split("[*]").join("[0]") +
+        "）。要『数组里每个元素的某个字段』请用 items 的 $from/$to，让数组本身成为 scope；判官输出里的 a.[*].b 是显示记法，不是可照抄的语法");
+    });
+
     if (!isRecord(raw.auth)) errors.push("auth: required object");
     else {
       rejectUnknown(raw.auth, AUTH_KEYS, "auth", errors);
@@ -829,6 +879,16 @@
       r.warnings.forEach(function (w) { warnings.push("specs[" + i + "]: " + w); });
       parsed.push({ index: i, spec: raw });
     });
+    // Scoping is per provider, not per capability — mirrors validateMediaSpecs.
+    // Two unscoped specs make the catalog label every model with the first one.
+    var unscopedAll = parsed.filter(function (p) { return !Array.isArray(p.spec.models) || !p.spec.models.length; });
+    if (unscopedAll.length > 1) {
+      errors.push("specs[" + unscopedAll.map(function (p) { return p.index; }).join("],[") + "]: " +
+        unscopedAll.length + " specs do not list `models`. Every model would eagerly match all of them, so the " +
+        "model catalog labels it with whichever comes first — give every spec a `models` array " +
+        "(one spec per provider may stay unscoped)");
+    }
+
     var byCap = {};
     parsed.forEach(function (p) {
       var c = p.spec.capability;
@@ -1235,6 +1295,14 @@
       var missing = mappable.filter(function (k) { return advertised.indexOf(k) < 0; });
       if (missing.length)
         out.push(["info", prefix + " 尺寸映射表里这 " + missing.length + " 个 size 没写进 metadata.sizes（客户端发现不了）：" + missing.slice(0, 5).join(", ")]);
+      // The other direction is worse than the info above: a size the catalog
+      // advertises but the request cannot map does not fail — `$mapSize` quietly
+      // falls back to its `default`, so the client gets a different aspect ratio
+      // than it asked for and nothing anywhere reports it.
+      var phantom = advertised.filter(function (k) { return mappable.indexOf(k) < 0; });
+      if (phantom.length)
+        out.push(["warn", prefix + " metadata.sizes 宣传了 " + phantom.length + " 个请求里没有映射的尺寸（" + phantom.slice(0, 5).join(", ") +
+          "）——客户端选它们时会静默回落到 $mapSize 的 default，图的比例和它要的不是一个（§11）"]);
     }
     if (typeof meta.max_n === "number" && spec.limits && typeof spec.limits.maxN === "number" && meta.max_n !== spec.limits.maxN)
       out.push(["warn", prefix + " metadata.max_n=" + meta.max_n + " 与 limits.maxN=" + spec.limits.maxN + " 不一致（目录会宣传一个实际会 400 的上限）"]);

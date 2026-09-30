@@ -858,6 +858,98 @@ describe("new primitives", () => {
 // ---------------------------------------------------------------------------
 
 describe("validation surface", () => {
+  it("refuses two unscoped specs of *different* capabilities", () => {
+    // Scoping is per provider, not per capability. With two unscoped specs the
+    // model catalog cannot choose: `specServingModel` falls back to the first
+    // unscoped spec, so `asr-1.0` gets advertised as `audio.tts` — with the wrong
+    // modes and no async flag. Calls still work (resolution is capability-first),
+    // so nothing errors and the catalog is simply wrong. Observed while
+    // configuring MiniMax: four capabilities, four specs, none of them scoped.
+    const image = {
+      specVersion: 1 as const,
+      capability: "image.generate" as const,
+      transport: { method: "POST", path: "/v1/image_generation" },
+      auth: { type: "bearer" as const },
+      request: { model: "$.model", prompt: "$.prompt" },
+      response: { items: [{ kind: "url" as const, value: "$.url" }] },
+    };
+    const tts = { ...image, capability: "audio.tts" as const };
+
+    // One unscoped spec per provider is fine — it is the documented wildcard.
+    expect(validateMediaSpecs([image]).errors).toHaveLength(0);
+    // Scoping both is fine.
+    expect(
+      validateMediaSpecs([
+        { ...image, models: ["image-01"] },
+        { ...tts, models: ["speech-2.8-hd"] },
+      ]).errors,
+    ).toHaveLength(0);
+    // Two unscoped specs are not, whatever their capabilities.
+    expect(validateMediaSpecs([image, tts]).errors.join(" ")).toContain("do not list `models`");
+  });
+
+  it("refuses `$file` outside multipart, counting an unset contentType as JSON", () => {
+    // `$file` resolves to a File. Only a multipart form field has anywhere to put
+    // one; anywhere else the mapping serializes the File *object* into the body and
+    // the upstream receives a stringified blob. The engine defaults an absent
+    // contentType to application/json, so "unset" has to be judged too.
+    const withFile = {
+      specVersion: 1 as const,
+      capability: "audio.stt" as const,
+      transport: { method: "POST", path: "/v1/stt" },
+      auth: { type: "bearer" as const },
+      request: { model: "$.model", file: { $file: { path: "$.image" } } },
+      response: { text: "$.text" },
+    };
+    const withCt = (contentType: string) => ({
+      ...withFile,
+      transport: { ...withFile.transport, contentType },
+    });
+
+    expect(parseMediaSpec(withFile).ok).toBe(false);
+    expect(parseMediaSpec(withCt("application/json")).ok).toBe(false);
+    expect(parseMediaSpec(withCt("application/x-www-form-urlencoded")).ok).toBe(false);
+    // The two shapes that can actually carry it.
+    expect(parseMediaSpec(withCt("multipart/form-data")).ok).toBe(true);
+    expect(
+      parseMediaSpec({
+        ...withFile,
+        request: { $file: { path: "$.image" } },
+        transport: { ...withFile.transport, contentType: "audio/mpeg" },
+      }).ok,
+    ).toBe(true);
+  });
+
+  it("rejects wildcard paths — they resolve to undefined, not to a match", () => {
+    // The quietest failure in the protocol: `getPath` understands numeric indices
+    // only, so `$.data[*].url` parses fine and yields `undefined`. The symptom
+    // arrives much later as `upstream_contract_mismatch` and reads like a vendor
+    // schema change. Worth catching at save time.
+    const withText = (path: string) => ({
+      specVersion: 1 as const,
+      capability: "audio.stt" as const,
+      transport: { method: "POST", path: "/v1/stt" },
+      auth: { type: "bearer" as const },
+      request: { model: "$.model" },
+      response: { text: path },
+    });
+
+    expect(parseMediaSpec(withText("$.text")).ok).toBe(true);
+    // Fixed indices, however deep, are fine.
+    expect(parseMediaSpec(withText("$.utter[0].words[1].word")).ok).toBe(true);
+
+    for (const path of ["$.data[*].url", "$.utter[*].words[*].word"]) {
+      const parsed = parseMediaSpec(withText(path));
+      expect(parsed.ok, path).toBe(false);
+      if (parsed.ok) continue;
+      // The suggested fix must itself be a valid path.
+      const suggestion = /如 (\$\.[^）]+)/.exec(parsed.errors.join(" "))?.[1];
+      expect(suggestion, path).toBeDefined();
+      expect(suggestion, path).not.toContain("[*]");
+      expect(parseMediaSpec(withText(suggestion!)).ok, suggestion).toBe(true);
+    }
+  });
+
   it("accepts exactly version 1 and rejects anything else", () => {
     // There is no version history: 1 is the first and only version, so the only
     // message is a plain "must be 1".

@@ -114,7 +114,7 @@
 | --- | --- | --- |
 | 1 | `undefined` | 返回 `undefined`（键被丢弃） |
 | 2 | `null` | 返回 `null`（键保留为 null） |
-| 3 | 字符串 | `"$"` → 整个 scope；`"$.a.b"` → 路径取值（取不到 → `undefined`）；含 `{{ }}` → 模板替换；否则字面量 |
+| 3 | 字符串 | `"$"` → 整个 scope；`"$.a.b"` → 路径取值（取不到 → `undefined`）；含 `{{ }}` → 模板替换；否则字面量。**下标只认数字**，见下方「路径的下标与通配」 |
 | 4 | 数字 / 布尔 | 原样返回（**`false` 和 `0` 不会被丢弃**） |
 | 5 | 数组 | 逐项求值 |
 | 6 | `{"$const": v}` | 返回 `v` |
@@ -130,6 +130,25 @@
 | 16 | `{"$firstPresent": [...]}` | 第一个求值结果**非 `undefined` 且非 `null`** 的 |
 | 17 | `{"$toString": m}` | 转字符串；`undefined`/`null` → `undefined` |
 | 18 | 普通对象 | 逐键求值，**`undefined` 的键直接不写进结果** |
+
+> #### ⚠️ 路径的下标与通配：**只认数字，不认 `[*]`**
+>
+> | 路径 | 结果 |
+> | --- | --- |
+> | `$.data` | ✅ 整个数组 |
+> | `$.data[0]` / `$.data[0].url` | ✅ 固定下标 |
+> | `$.data[*]` / `$.data[*].url` | ❌ **`undefined`** |
+> | `$.utter[0].words[0].word` | ✅ 逐层固定下标 |
+> | `$.utter[*].words[*].word` | ❌ **`undefined`**（无法「投影数组里每个元素的某个字段」） |
+>
+> 通配符写错**不报错**，只是取不到值，于是那一路产物整体消失、最后报
+> `upstream_contract_mismatch`——排查时很容易以为是厂商返回结构变了。
+>
+> - 想要「数组里每个元素的某个字段」→ 用第 12 条 `{"$from": "$.utter", "$to": {"$toString": "$.transcript"}}`
+>   之类，**让数组本身成为 scope**，逐项求值；元素内部要用 `$ifPresent` 挑分支。
+> - **判官输出里的 `data.[*].url` 是它的显示记法，意思是「数组 data 的每个元素的 url」，
+>   不是可以照抄的路径语法。** 照抄成 `$.data[*].url` 一定取不到值。
+> - 上游返回的数组**通常不用逐个下标**：`$from` 直接吃整个数组即可。
 
 #### 0.3.2 两个容易踩的原语差异
 
@@ -294,7 +313,7 @@
 | `$mapSize` | `{"$mapSize": {"path":…, "table":{…}, "default":…}}` | 尺寸换算（`$enum` 的特例） |
 | `$toString` | `{"$toString": "$.n"}` | 厂商要字符串，客户端给了数字 |
 | `$dataUrl` | `{"$dataUrl": "$.image"}` | **只往请求里用**：裸 base64 → `data:image/png;base64,…` |
-| `$file` | `{"$file": {"path":…, "filename":…, "contentType":…}}` | **只往请求里用**：data URL → 真的 multipart 文件（需 multipart） |
+| `$file` | `{"$file": {"path":…, "filename":…, "contentType":…}}` | **只往请求里用**：data URL → 真的 multipart 文件。**必须 multipart，否则保存报错**——见 §6.2 |
 | `$firstPresent` | `{"$firstPresent": [<映射>, …]}` | 取第一个有值的；**厂商必填但客户端可能不传时用它兜默认**；`errorCode`/`errorMessage` 也会用到它（见 §7.2） |
 | `$from` | `{"$from": "$.data.urls", "$to": {…}}` | **只往响应里用**：数组逐项映射 |
 | `$merge` | `{"$merge": [<映射>, <映射>]}` | 合并多个对象 |
@@ -572,8 +591,8 @@ pnpm spec-check my-specs.json
 | --- | --- | --- |
 | 格式 | 输出块结构、`specVersion`、未知字段、必填缺失 | — |
 | 路由分流 | 同 capability 多份是否歧义、模型是否全覆盖 | — |
-| 请求 | 每个 spec **实际发出的 body / header**、兜默认值是否为空串、布尔是否写成字符串、枚举表是否出现 | 枚举值**厂商是否真的认** |
-| 响应 | 映射能否产出产物、`encoding` 是否生效、空结果是否被拦、`itemsB64` 是否被读 | 响应路径是否和厂商 schema 一致——**除非贴了 `fixtures`** |
+| 请求 | 每个 spec **实际发出的 body / header**、兜默认值是否为空串、布尔是否写成字符串、枚举表是否出现、`$file` 是否放进了非 multipart 的 body | 枚举值**厂商是否真的认**；**该字段端点是否真的会传**（白名单端点会静默丢弃拼错的键） |
+| 响应 | 映射能否产出产物、`encoding` 是否生效、空结果是否被拦、`itemsB64` 是否被读、`metadata.sizes` 是否宣传了没有映射的尺寸 | 响应路径是否和厂商 schema 一致、`successCount` 指向的路径是否真的存在——**除非贴了 `fixtures`** |
 | 错误 | 每条 `httpStatus` / `when` 规则是否真的能触发、映射对不对 | 厂商的错误码**是否抄全** |
 | 异步 | 终态收敛、失败态立刻失败、未知状态不假装成功、poll 路径形状可疑 | poll 路径**逐字符**是否与文档一致 |
 
@@ -603,6 +622,9 @@ pnpm spec-check my-specs.json
 - [ ] 输出是两个独立 JSON 块，`specs` 是一个平铺数组？
 - [ ] 每份 spec 的 `specVersion` 是 `1`？
 - [ ] 同一 capability 的多份 spec 都写了 `models`，且无模型被重复声明？
+- [ ] **整个供应商里最多一份 spec 不写 `models`**（目录只能取第一份，两份未限定就会把模型标错能力，§3.4）？
+- [ ] 用了 `$file` 就一定写了 `transport.contentType: "multipart/form-data"`（不写等于 JSON，保存报错，§6.2）？
+- [ ] `metadata.sizes` 里每个尺寸在请求里都有映射？（没有的话客户端选了会静默回落到默认比例）？
 - [ ] 厂商 `required:` 逐条对过，没有对应入参的字段用了 `$firstPresent` 兜默认？**（贴原文）**
 - [ ] 每个枚举映射表里的值都能在厂商文档里找到？**（贴出该字段的 `enum:` 列表）**
 - [ ] 厂商 `responses:` 里的每个状态码（包括 422/529 这类）都有规则？**（贴原文）**
@@ -756,14 +778,28 @@ MediaProvider {
 选路规则：先找 `models` 里含该模型的 spec；找不到再找**没写 `models`** 的 spec
 （视作「这个能力我全都接」）；都没有才算不支持。
 
+> **所以一个供应商里最多只能有一份不写 `models` 的 spec**——不管能力是否相同。
+> 两份未限定时，每个模型都会同时命中它们，目录只能取第一份，于是
+> `asr-1.0` 会被标成 `audio.tts`（能力、modes、async 全错），而**调用本身照常成功**，
+> 不报任何错。
+
 > ### ⚠️ 歧义会被拒绝，不会静默取第一份
 >
-> 同一个 capability 出现多份、而其中有**没写 `models`** 的，保存直接报错：
+> 出现**多份没写 `models`** 的 spec，保存直接报错——先看同能力的：
 >
 > ```
 > specs[0],[1]: 2 specs serve "video.generate" but 2 of them do not list `models`,
 > so only the first would ever run — add a `models` array to each
 > ```
+>
+> **能力不同也一样报错**，因为问题出在目录而不是选路：
+>
+> ```
+> specs[0],[1]: 2 specs do not list `models`. Every model would eagerly match all
+> of them, so the model catalog labels it with whichever comes first
+> ```
+>
+> 一份未限定 + 若干份已限定是**允许**的（未限定那份当作兜底）。
 >
 > 同一个模型被两份 spec 声明，也会报错（`"h3" is already served by specs[0]`）。
 >
@@ -891,6 +927,22 @@ MediaProvider {
 | `$fetch` | `{"$fetch": {"path":…, "url":…, "pick":…}}` | **响应方向**：拿到 id 再发一次 GET 换最终值 | 见 §7.3 |
 
 只有 `$file` 依赖 `contentType: multipart/form-data`，其余原语与 contentType 无关。
+
+> **`$file` 放在非 multipart 的 body 里，保存直接报错。** `$file` 求值出的是一个
+> `File` 对象，multipart 的表单字段才有地方放它；放进 JSON 或
+> `x-www-form-urlencoded` 会被**序列化成对象字符串**塞进 body，上游收到的是一坨
+> 垃圾，而且**全程不报错**。
+>
+> ```
+> transport.contentType (unset, defaults to application/json): `$file` produces a
+> file, which only multipart can carry (it would be serialized into the body as
+> an object). Use "multipart/form-data", or drop the $file node
+> ```
+>
+> 注意括号里那句：**`contentType` 不写等于 `application/json`**，所以「忘了写
+> contentType 但用了 `$file`」同样会被拒。反过来，裸媒体类型
+> （`audio/mpeg` 这种）表示「body 就是文件本身」，此时 `request` 必须是**单个
+> `$file`**，这条同样在保存时报错。
 
 > ### 裸字节请求体：body 就是那个文件
 >
@@ -1358,6 +1410,35 @@ upstream task did not finish in time (last status "Rendering" — check async.po
 | 扩展新原语要改代码 | 协议刻意不执行代码，代价就是这里 |
 | **两步鉴权 / 请求签名不支持** | `auth` 只有 bearer / header / query / none。需要「先换 token 再调用」或 HMAC/JWT 签名的厂商（阿里云、百度、Kling 等）只能靠外部代理转一次 |
 | 二进制产物会转成 base64 | 图片类端点收到裸字节响应时转成 `b64_json` 交给客户端（保持 OpenAI 形状）；`audio/speech` 仍回裸字节 |
+
+### 15.1 已核实的形状缺口（读厂商文档得出，非推测）
+
+下表每一行都对应**厂商官方文档里明确写出的形状**。协议刻意不执行代码，所以这些是
+真限制——**碰到时正确的做法是换个模型/端点，或在外面加一层代理**，而不是硬凑。
+
+| 缺口 | 厂商实例（文档原文形状） | 性质 |
+| --- | --- | --- |
+| **把 N 个标量组装成一个数组** | Vidu `start-end2video`：`images: [首帧, 尾帧]`，**顺序有语义**（客户端给的是 `first_frame` / `last_frame` 两个独立字段）；Runway `seedance2_5` 的 `promptImage: [{uri,position:"first"},{uri,position:"last"}]`；Replicate `webhook_events_filter: ["start","completed"]` | 映射树的叶子只能产出一个标量。`$firstPresent` 是反方向（多输入选一个），造不出数组 |
+| **请求字段本身是数组/对象，且每个元素要单独变换** | Gemini：`contents[].parts[]` 是**异构**数组（`{text}` 或 `{inline_data:{mime_type,data}}`），文本与参考图可混在一次请求里，每张图各自 base64、**各自的 mime_type 还可能不同** | `$dataUrl` 是整字段级；映射树是「厂商字段名 → 客户端路径」的标量表 |
+| **按元素投影嵌套数组** | Deepgram：`utterances[].words[].word`（还有 `channels[].alternatives[].paragraphs[].sentences[]` 四层） | 路径只认数字下标（见 §6.1），无法「投影每个元素的某个字段」 |
+| **入站回调 / webhook** | Vidu `callback_url` + **HMAC-SHA256** 签名（签名串要拼 method/URI/原始 query/access_key/Date/headers，且要求**未解码的原始 query**）；Replicate `webhook`（不跟跳转、需幂等）；Deepgram `callback`（较易：`dg-token` 头或 URL 内嵌 Basic Auth） | 只有出站 `async.poll`，没有公网入站端点。Vidu 那档还需要 HMAC 计算原语 |
+| **多步有状态流程** | Vidu 图片上传三步：创建链接 → PUT 上传并**从响应头取 `etag`** → 用 etag 收尾；Gemini Files API：先传拿 `uri` 再在主请求里引用 | `$fetch` 只做「拿到 id 再换一次 URL」，且中间步骤的响应头没法传给下一步 |
+| **值条件** | Vidu `audio_type` 文档明写 *"required when audio is true"*；Runway `promptImage` 文档明写 *"首尾帧与参考图两种模式不能混用"*；Gemini `media_resolution` 可 per-part 覆盖全局 | 只有「字段是否存在」（`$ifPresent`）和「查表」（`$enum`/`$mapSize`），没有按值分支 |
+| **按模型整段切换字段集** | Runway 同一端点 16 个模型分支，字段名都不一样（`ratio` vs `resolution`，`h3_max` 还多出 `promptExpansionMode`） | `byModel` 只挂在 `$enum` / `$mapSize` 上，只能换**映射值**，换不了**字段集** |
+| **产物类型随模型变** | Replicate `output` 文档明写 *"The input schema depends on what model you are running"*，且 `output` 可能是 string / object / array | `items[].kind` 是声明时写死的 |
+| **带单位后缀的数值格式化** | Replicate `Cancel-After: "1h30m45s"` | 无格式化原语；少量固定取值可用 `$enum` 查表硬编码 |
+
+> **反过来，这些是「协议够用、spec 写对就行」的**（别误判成缺口）：
+>
+> - **Replicate 的自由 `input` 对象**——`$.some.object` 取值**原样保留**对象/数组结构（已实测），
+>   所以客户端的整棵子树可以直接透传。
+> - **Deepgram 全部请求参数**——都在 query 上，`transport.query` + `$const` + `$enum`
+>   （含 `diarize_model` 的 `byModel`）完全覆盖。
+> - **Vidu / Runway 的响应侧**——`state`/`status` 走 `statusMap`，`creations[].url` / `output[]`
+>   走 `items`，`err_code` 走 `errors.when`。
+> - **Vidu 的 `duration` / `resolution` 按模型取值域不同**——这正是 `$enum.byModel` 的设计目标。
+> - **数组元素里的判别式**（Runway `{uri, position}`）——元素内用 `$ifPresent` 包住
+>   可选键就能表达「有则写、无则省略」。
 
 ---
 

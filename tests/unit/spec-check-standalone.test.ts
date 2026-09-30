@@ -355,7 +355,11 @@ const CORPUS: {
     spec: {
       specVersion: 1,
       capability: "audio.stt",
-      transport: { method: "POST", path: "/v1/speech_to_text" },
+      models: ["asr-1.0"],
+      // contentType is not decoration: a `$file` request needs multipart, because
+      // the engine defaults an absent contentType to JSON and a File serialized
+      // into a JSON body is a stringified blob, not an upload.
+      transport: { method: "POST", path: "/v1/speech_to_text", contentType: "multipart/form-data" },
       auth: { type: "bearer" },
       request: { model: "$.model", file: { $file: { path: "$.image", filename: "$.filename" } } },
       response: { text: "$.text" },
@@ -471,6 +475,61 @@ describe("standalone judge: static checks", () => {
       ],
     });
     expect(result.failed).toBe(0);
+  });
+
+  it("warns about advertised sizes the request cannot map", () => {
+    // The reverse of the existing info check, and the dangerous direction: a size
+    // the catalog advertises but `$mapSize` cannot map does not fail — it falls
+    // back to the table's `default`, so the client gets a different aspect ratio
+    // than it asked for and nothing reports it.
+    const result = judge.run({
+      specs: [
+        {
+          ...base,
+          request: {
+            model: "$.model",
+            prompt: "$.prompt",
+            size: { $mapSize: { path: "$.size", table: { "1024x1024": "1:1" }, default: "1:1" } },
+          },
+          metadata: { sizes: ["1024x1024", "1792x1024", "512x512"] },
+        },
+      ],
+    });
+    const line = result.lines.map((l) => l.text).join("\n");
+    expect(line).toContain("1792x1024");
+    expect(line).toContain("metadata.sizes 宣传了");
+    // A warn, not a bad: an operator may map sizes somewhere this heuristic cannot see.
+    expect(result.lines.some((l) => l.kind === "bad")).toBe(false);
+  });
+
+  it("rejects `$file` in a body that is not multipart", () => {
+    const result = judge.run({
+      specs: [
+        {
+          ...base,
+          capability: "audio.stt",
+          transport: { method: "POST", path: "/v1/stt" },
+          request: { model: "$.model", file: { $file: { path: "$.image" } } },
+          response: { text: "$.text" },
+        },
+      ],
+    });
+    expect(result.ok).toBe(false);
+    expect(result.lines.map((l) => l.text).join("\n")).toContain("only multipart can carry");
+  });
+
+  it("rejects two unscoped specs of different capabilities", () => {
+    // Catalog mislabelling: with two unscoped specs `specServingModel` falls back
+    // to the first, so a model served by the second is advertised with the first
+    // one's capability. No call ever errors, so only a save-time rule catches it.
+    const result = judge.run({
+      specs: [
+        base,
+        { ...base, capability: "video.generate", transport: { method: "POST", path: "/v1/videos" } },
+      ],
+    });
+    expect(result.ok).toBe(false);
+    expect(result.lines.map((l) => l.text).join("\n")).toContain("do not list `models`");
   });
 
   it("probes a `when` rule even when the spec maps no errorCode", () => {
