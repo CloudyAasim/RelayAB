@@ -38,7 +38,7 @@ So the project has to be set aside for a long, long time. This is not to say it 
 > keys securely and under control, with fine-grained permission and usage
 > management. One-click deploy to Vercel.
 >
-> 中文版本：[README.md](README.md) · [English](README.en.md)
+> **Language / 语言: English (this page) · [中文](README.md)** — the switch lives only here; pages never send you into the other language on their own
 
 > ⚠️ **This project is paused and is no longer maintained** (see the notice at the
 > top). You may still fork and deploy it yourself, but there will be no further

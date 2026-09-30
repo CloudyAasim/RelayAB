@@ -1,5 +1,9 @@
 # RelayAB Documentation
 
+> **Language / 语言: English (this page) · [中文](zh/README.md)** — the switch
+> lives only at the top level of each language track; individual pages link
+> within their own language and will not send you into the other one.
+
 Technical documentation for RelayAB, a self-hosted AI API gateway.
 
 > **Language note.** Everything in this directory is in English, with one
@@ -38,8 +42,8 @@ Technical documentation for RelayAB, a self-hosted AI API gateway.
 - **Section numbers are stable.** Code comments cite them, e.g.
   `src/lib/db/users.ts` refers to `docs/data-model.md` §1 and
   `src/lib/crypto/password.ts` refers to `docs/deployment.md` §3. Renumbering a
-  section breaks those references. Two pre-existing gaps are left alone on
-  purpose: `data-model.md` has no §7 and `deployment.md` has no §4.
+  section breaks those references. One pre-existing gap is left alone on
+  purpose: `data-model.md` has no §7 (it jumps from 6 to 8).
 - **Code is never translated.** Identifiers, file paths, environment variables,
   route paths, JSON keys, and command flags are byte-identical to the source.
 - **Terminology is pinned.** `provider` always means an upstream provider row,
@@ -49,5 +53,6 @@ Technical documentation for RelayAB, a self-hosted AI API gateway.
 
 ## Related
 
-- [README.md](../README.md) — Chinese
-- [README.en.md](../README.en.md) — English
+- [zh/README.md](zh/README.md) — the Chinese documentation index
+- [README.md](../README.md) — the Chinese README (original)
+- [README.en.md](../README.en.md) — the English README

@@ -44,7 +44,7 @@ So the project has to be set aside for a long, long time. This is not to say it 
 > 安全、可控地分享给少数人，并实现精细的权限和用量管理。
 > 一键部署到 Vercel。
 >
-> English version: [README.en.md](README.en.md) · [中文](README.md)
+> **语言 / Language：中文（本页）· [English](README.en.md)**　——切换只在此处，正文内部不会自动跳语言
 
 ## 一键部署到 Vercel
 
@@ -88,7 +88,7 @@ Deploy Button 走的是 "新建项目" 路径；现有项目**不会自动获得
 - **(干净)** Vercel Dashboard → Settings → General → **Delete Project** → 再点 Deploy Button 走新建流程
 - **(实用)** 现有项目 → **Settings → Environment Variables** → 手动加 3 个 key（Upstash 两个先填任意占位字符串也行，缺 URL 校验就在 URL 那栏填 `https://placeholder.upstash.io`）→ 装 Upstash Marketplace → Redeploy
 
-更多细节（部署保护绕过、自托管密钥轮换、备份策略）见 [docs/deployment.md](docs/deployment.md)。
+更多细节（部署保护绕过、自托管密钥轮换、备份策略）见 [docs/zh/deployment.md](docs/zh/deployment.md)。
 
 ## 功能
 
@@ -227,7 +227,7 @@ MiniMaxAnthropic   kind=anthropic  baseUrl=https://api.minimax.cn/anthropic 上�
 支持指定模型（例如 Claude Code 的 `ANTHROPIC_MODEL`），改客户端配置即可。
 
 完整规则（含 `upstreamFormat` 与协议转换、Anthropic Provider 的分步配置）见
-[docs/architecture.md §7](docs/architecture.md#7-upstream-providers-and-model-mapping)。
+[docs/zh/architecture.md §7](docs/zh/architecture.md#7-上游-provider-与模型映射)。
 
 ## 测试
 
@@ -276,16 +276,16 @@ pnpm list-usage [--user <name>] [--days N]     # 用量摘要
 
 ## 文档
 
-入口：[docs/README.md](docs/README.md)（文档索引）。
+入口：[docs/zh/README.md](docs/zh/README.md)（中文文档索引）。
 
 | 文档 | 说明 |
 |---|---|
-| [docs/architecture.md](docs/architecture.md) | 完整架构 + 数据模型 + 业务决策 |
-| [docs/data-model.md](docs/data-model.md) | Redis 键命名 + 字段定义 |
-| [docs/api-routes.md](docs/api-routes.md) | API 路由完整规范 |
-| [docs/testing.md](docs/testing.md) | 测试金字塔 + 工具 |
-| [docs/admin.md](docs/admin.md) | 管理员操作指南（用户/Key/Provider 管理） |
-| [docs/deployment.md](docs/deployment.md) | 部署到 Vercel + 部署保护绕过 + 冒烟测试清单 |
+| [docs/zh/architecture.md](docs/zh/architecture.md) | 完整架构 + 数据模型 + 业务决策 |
+| [docs/zh/data-model.md](docs/zh/data-model.md) | Redis 键命名 + 字段定义 |
+| [docs/zh/api-routes.md](docs/zh/api-routes.md) | API 路由完整规范 |
+| [docs/zh/testing.md](docs/zh/testing.md) | 测试金字塔 + 工具 |
+| [docs/zh/admin.md](docs/zh/admin.md) | 管理员操作指南（用户/Key/Provider 管理） |
+| [docs/zh/deployment.md](docs/zh/deployment.md) | 部署到 Vercel + 部署保护绕过 + 冒烟测试清单 |
 
 > **注意**：媒体供应商协议（图片 / 视频 / 语音 / 音乐供应商的声明式 JSON spec 格式，
 > 及其离线校验器「判官」）**仅有中文版**：
@@ -301,7 +301,7 @@ pnpm list-usage [--user <name>] [--days N]     # 用量摘要
 
 ## 完整部署到 Vercel
 
-详见 [docs/deployment.md](docs/deployment.md)。最关键的环境变量：
+详见 [docs/zh/deployment.md](docs/zh/deployment.md)。最关键的环境变量：
 
 | 名称 | 来源 |
 |---|---|

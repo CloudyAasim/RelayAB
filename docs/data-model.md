@@ -124,14 +124,19 @@
 
 ```ts
 // Order is priority; user is the owning account of the key and is required.
-function checkKeyStatus({ key, user, requestedModel }): ValidationResult {
-  // 1. The credential itself
+function checkKeyStatus({ key, user, requestedModel }): KeyValidationResult {
+  // 1. Admin override first — a force-disabled key must never serve traffic,
+  //    even when `enabled` is still true.
+  if (key.forceDisabled) return { ok: false, reason: "key_force_disabled" };
+
+  // 2. The credential itself
   if (!key.enabled) return { ok: false, reason: "key_disabled" };
   if (key.expiresAt && Date.parse(key.expiresAt) <= Date.now())
     return { ok: false, reason: "key_expired" };
 
-  // 2. Account state and credits pool — note this reads user, not key
-  if (user.disabled) return { ok: false, reason: "user_disabled" };
+  // 3. Account credit/token pool — note this reads user, not key.
+  //    There is no account-level disable: a user cannot be turned off, so there
+  //    is no `user_disabled` reason. Setting quotaLimit to 0 is what stops calls.
   if (user.quotaUsed >= user.quotaLimit) {
     return {
       ok: false,
@@ -141,7 +146,7 @@ function checkKeyStatus({ key, user, requestedModel }): ValidationResult {
     };
   }
 
-  // 3. Model permission = account whitelist ∩ key whitelist (an empty list imposes no extra restriction at that layer)
+  // 4. Model permission = account whitelist ∩ key whitelist (an empty list imposes no extra restriction at that layer)
   const ownerAllows = user.allowedModels.length === 0
     || user.allowedModels.includes(requestedModel);
   const keyAllows = key.allowedModels.length === 0
