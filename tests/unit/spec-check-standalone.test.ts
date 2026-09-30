@@ -410,6 +410,42 @@ describe("standalone judge: static checks", () => {
     expect(result.failed).toBe(0);
   });
 
+  it("flags an audio.tts spec that can only yield a URL (the endpoint answers with bytes)", () => {
+    // Production evidence: a URL-mapped t2a_v2 spec answered 502 no_audio *and* was
+    // billed, because the refusal happened after the charge had settled. The judge
+    // must catch the unusable spec offline, before it ever reaches a deployment.
+    const result = judge.run({
+      specs: [
+        {
+          ...base,
+          capability: "audio.tts",
+          transport: { method: "POST", path: "/v1/t2a_v2" },
+          response: {
+            items: [{ kind: "url", value: "$.data.audio" }],
+            successCount: { $const: 1 },
+          },
+        },
+      ],
+    });
+    expect(result.ok).toBe(false);
+    expect(result.lines.map((l) => l.text).join("\n")).toContain("audio.tts 必须能给出音频字节");
+  });
+
+  it("accepts the same TTS spec once the audio is mapped to base64", () => {
+    const result = judge.run({
+      specs: [
+        {
+          ...base,
+          capability: "audio.tts",
+          transport: { method: "POST", path: "/v1/t2a_v2" },
+          request: { model: "$.model", text: "$.input", output_format: { $const: "hex" } },
+          response: { items: [{ kind: "base64", encoding: "hex", value: "$.data.audio" }] },
+        },
+      ],
+    });
+    expect(result.failed).toBe(0);
+  });
+
   it("rejects two unscoped specs of the same capability", () => {
     const result = judge.run({
       specs: [

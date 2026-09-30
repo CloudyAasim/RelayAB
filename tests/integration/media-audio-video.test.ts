@@ -10,9 +10,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { __resetRedisForTest, __setRedisForTest } from "@/lib/db/redis";
 import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
-import { createUser } from "@/lib/db/users";
+import { createUser, getUserById } from "@/lib/db/users";
 import { createApiKey } from "@/lib/db/keys";
 import { createMediaProvider } from "@/lib/db/media-providers";
+import { listUsageByKey } from "@/lib/db/usage";
 import type { MediaSpec } from "@/lib/media/spec";
 
 const VIDEO_SPEC = {
@@ -92,8 +93,10 @@ describe("media video / audio endpoints", () => {
       quotaType: "credits",
       quotaLimit: 1_000_000,
     });
-    const { plainKey } = await createApiKey({ userId: user.id, label: "media" });
+    const { key: apiKey, plainKey } = await createApiKey({ userId: user.id, label: "media" });
     (globalThis as unknown as Record<string, unknown>).__mediaKey = plainKey;
+    (globalThis as unknown as Record<string, unknown>).__mediaKeyId = apiKey.id;
+    (globalThis as unknown as Record<string, unknown>).__mediaUserId = user.id;
 
     await createMediaProvider({
       name: "Mock Media",
@@ -239,7 +242,7 @@ describe("media video / audio endpoints", () => {
       name: "Url TTS",
       baseUrl: "https://api.example.test",
       apiKey: "vendor-key",
-      models: { "tts-url": { upstreamId: "tts-url", pricePerItem: 1, enabled: true } },
+      models: { "tts-url": { upstreamId: "tts-url", pricePerItem: 777, enabled: true } },
       specs: [
         {
           specVersion: 1,
@@ -261,9 +264,26 @@ describe("media video / audio endpoints", () => {
         body: JSON.stringify({ model: "tts-url", input: "hello" }),
       }),
     );
-    expect(res.status).toBe(502);
-    const body = await res.json();
+    const { status, body } = await asJson(res);
+    expect(status).toBe(502);
     expect(body.error.code).toBe("no_audio");
+
+    // The real point, asserted before the message so a regression fails *here*: a
+    // client must not be charged for a call it cannot receive. Production evidence
+    // for this regression — five charges for one successful synthesis, because the
+    // route's `no_audio` check ran *after* the handler had already settled. The
+    // contract now lives in the handler, before settling, so the price never moves.
+    const owner = await getUserById(
+      (globalThis as unknown as Record<string, string>).__mediaUserId,
+    );
+    expect(owner?.quotaUsed).toBe(0);
+    expect(
+      await listUsageByKey(
+        (globalThis as unknown as Record<string, string>).__mediaKeyId,
+      ),
+    ).toHaveLength(0);
+
+    // And the refusal explains what the spec must do instead.
     expect(body.error.message).toContain("base64");
   });
 

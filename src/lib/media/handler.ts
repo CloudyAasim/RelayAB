@@ -131,6 +131,22 @@ export async function executeMediaRequest(args: {
   });
   if (!execution.ok) return { ok: false, error: execution.error };
 
+  // Refuse (and do not charge) a result this capability's endpoint cannot deliver.
+  // Only `audio.tts` has such a contract today: it answers with bytes, so a spec
+  // that maps the audio to a URL is unusable no matter how well it mapped.
+  if (spec.capability === "audio.tts" && !audioDelivery(execution.result, input.responseFormat)) {
+    return {
+      ok: false,
+      error: {
+        status: 502,
+        code: "no_audio",
+        message:
+          "upstream returned no usable audio — /v1/audio/speech answers with bytes, so map the " +
+          'audio to a base64 item (e.g. {"kind":"base64","encoding":"hex",…}) or a byte stream',
+      },
+    };
+  }
+
   const credits = computeMediaCredits(
     resolved.pricePerItem,
     execution.result.successCount,
@@ -185,6 +201,63 @@ export async function resultItems(result: MediaResult): Promise<MediaItem[]> {
 async function drain(stream: ReadableStream<Uint8Array> | undefined): Promise<ArrayBuffer | undefined> {
   if (!stream) return undefined;
   return new Response(stream).arrayBuffer();
+}
+
+/** Content type for a JSON-shaped vendor's audio, from the requested format. */
+export function audioMimeType(format: string | undefined): string {
+  const table: Record<string, string> = {
+    mp3: "audio/mpeg",
+    mpeg: "audio/mpeg",
+    wav: "audio/wav",
+    flac: "audio/flac",
+    ogg: "audio/ogg",
+    opus: "audio/ogg",
+    aac: "audio/aac",
+    pcm: "application/octet-stream",
+  };
+  return (format && table[format]) || "audio/mpeg";
+}
+
+export type AudioDelivery =
+  | { kind: "bytes"; bytes: Uint8Array; contentType: string }
+  | { kind: "stream"; stream: ReadableStream<Uint8Array>; contentType: string };
+
+/**
+ * The bytes `/v1/audio/speech` can hand back for a result, or null if it cannot.
+ *
+ * Two vendor shapes converge here: those that stream/buffer audio (binary,
+ * stream), and those that answer JSON (MiniMax's `t2a_v2` gives hex or a URL) —
+ * the latter must map its audio to a `base64` item.
+ *
+ * This lives in the handler rather than the route because billing happens here,
+ * and a result the endpoint cannot deliver must not be charged. Production
+ * evidence: five charges for one successful synthesis, because the route's
+ * `no_audio` check ran *after* the charge had been settled.
+ */
+export function audioDelivery(
+  result: MediaResult,
+  requestedFormat?: string,
+): AudioDelivery | null {
+  if (result.binary) {
+    const contentType = result.binary.contentType ?? audioMimeType(requestedFormat);
+    if (result.binary.stream) {
+      return { kind: "stream", stream: result.binary.stream, contentType };
+    }
+    if (result.binary.body.byteLength > 0) {
+      return { kind: "bytes", bytes: new Uint8Array(result.binary.body), contentType };
+    }
+    return null;
+  }
+  const encoded = result.items.find((item) => item.kind === "base64");
+  if (!encoded) return null;
+  try {
+    const binaryString = atob(encoded.value);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+    return { kind: "bytes", bytes, contentType: audioMimeType(requestedFormat) };
+  } catch {
+    return null;
+  }
 }
 
 /** OpenAI Images response from normalized media items. */

@@ -738,7 +738,7 @@ MediaProvider {
 | `image.generate` | `/v1/images/generations` | `data[].url` / `data[].b64_json` |
 | `image.edit` | `/v1/images/edits` | 同上 |
 | `video.generate` | `/v1/videos/generations` | 同上 + `id` |
-| `audio.tts` | `/v1/audio/speech` | 音频（JSON 或裸字节，见 §7.3） |
+| `audio.tts` | `/v1/audio/speech` | **音频字节**（该端点承诺的就是字节，所以 spec 必须能给出字节，见 §7.4） |
 | `audio.stt` | `/v1/audio/transcriptions` | `text` |
 | `music.generate` | `/v1/audio/music` | 同视频 |
 
@@ -1034,8 +1034,11 @@ MediaProvider {
 | 资源 id | `file_id: "205258526306433"` | 不是 URL，要用 `$fetch` 换 | ❌ 见 §7.3 |
 
 > **`encoding` 声明的是上游给的是什么，`kind` 是客户端要什么。** 引擎负责在中间转换，
-> 所以 `output_format` 是 hex 还是 url 都能正常出图/出音频——**但更推荐让上游吐 url**
+> 所以 `output_format` 是 hex 还是 url 都能正常出图/出音频——图/视频**更推荐让上游吐 url**
 > （`"output_format": {"$const": "url"}`），省掉一次编码转换，链接还能直接用。
+>
+> **`audio.tts` 是例外，而且方向相反。** `/v1/audio/speech` 的响应体就是音频字节，
+> 映射成 url 的 spec 会被一律拒绝（见 §7.4），所以 TTS 要 hex/base64 或裸字节流。
 
 **URL 有有效期**：MiniMax TTS / 音乐的 `url` 有效期 **24 小时**。转发给终端用户前请确认
 这一点，必要时用 `$fetch` 换成自己的对象存储。
@@ -1070,6 +1073,23 @@ MediaProvider {
 | `stream` | 任意流 | 不缓冲，直接透传 |
 
 > `sse` 适合「流式吐状态/结果」的接口。**跨事件拼接流式音频字节不在支持范围内**（§15）。
+
+> ### ⚠️ `audio.tts` 必须能给出**字节**
+>
+> `/v1/audio/speech` 的响应体就是音频字节（OpenAI 的形状），所以 `audio.tts` 的 spec
+> **不能只映射出 URL**——引擎在**扣费之前**就会拒绝它：
+>
+> ```json
+> 502 no_audio
+> upstream returned no usable audio — map the audio to a base64 item … or a byte stream
+> ```
+>
+> 两条可用写法：`responseMode` 写 `binary` / `stream`（上游直接吐字节）；或者把音频映射成
+> `base64` item——`{"kind":"base64","encoding":"hex","value":"$.data.audio"}`（MiniMax
+> `t2a_v2` 默认就是 hex）。**只有 URL 的厂商服务不了这个端点。**
+>
+> 拒绝发生在结算之前，客户端不会为拿不到的音频付钱——此前这里是先结算、后拒绝，
+> 于是同一份 spec 的 5 次失败调用被全额扣费，而客户端一次音频都没拿到。
 
 ### 7.5 空结果会被拦下
 
@@ -1150,7 +1170,17 @@ upstream returned 2xx but the spec's response mapping produced no items — chec
 > `422` → `content_filter`（内容审核）、`529` → `upstream_overloaded`。
 
 常用 `code`：`rate_limited` `upstream_credit_exhausted` `content_filter` `bad_request`
-`upstream_auth_failed` `upstream_task_failed` `task_timeout` `upstream_contract_mismatch`。
+`upstream_auth_failed` `upstream_forbidden` `upstream_not_found` `upstream_task_failed`
+`task_timeout` `upstream_contract_mismatch` `upstream_error` `upstream_overloaded` `no_audio`。
+
+> ### ⚠️ 厂商码表之外的状态码，要有 `httpStatus` 兜底
+>
+> 就算把厂商文档的错误码抄全了，也要留一手。MiniMax 音乐接口对非历史付费用户返回的错误
+> **不在它的码表里**——只写 `base_resp` 的 `when` 规则时会退化成 `502 upstream_error`，
+> 客户端看不出到底是权限问题还是上游故障。
+>
+> `when`（厂商业务码）比 `httpStatus` 更具体，判定在前；两者可以共存：业务码管语义，
+> `httpStatus` 管兜底。
 
 ---
 

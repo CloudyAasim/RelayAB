@@ -15,6 +15,7 @@
  * would fail with `no_audio` after the engine had already succeeded.
  */
 import {
+  audioDelivery,
   authorizeMediaRequest,
   executeMediaRequest,
   mediaErrorResponse,
@@ -69,56 +70,24 @@ export async function POST(req: Request): Promise<Response> {
   });
   if (!outcome.ok) return mediaErrorResponse(outcome.error);
 
-  const binary = outcome.value.result.binary;
-  if (binary) {
-    return new Response(binary.stream ?? binary.body, {
-      status: 200,
-      headers: { "content-type": binary.contentType ?? "audio/mpeg" },
+  const delivery = audioDelivery(outcome.value.result, input.responseFormat);
+  if (!delivery) {
+    // The handler already refuses (and does not charge) such a result, so this is
+    // only reachable if the contract check and this read ever disagree.
+    return mediaErrorResponse({
+      status: 502,
+      code: "no_audio",
+      message: "upstream returned no audio",
     });
   }
-
-  // No byte stream: a JSON-shaped vendor. If the spec mapped the audio to a
-  // base64 item (MiniMax hex, or any vendor's base64), hand those bytes back —
-  // that is the shape this endpoint promises.
-  const encoded = outcome.value.result.items.find((item) => item.kind === "base64");
-  if (encoded) {
-    try {
-      const binaryString = atob(encoded.value);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
-      return new Response(bytes, {
-        status: 200,
-        headers: { "content-type": audioMimeType(input.responseFormat) },
-      });
-    } catch {
-      return mediaErrorResponse({
-        status: 502,
-        code: "no_audio",
-        message: "upstream returned audio that is not decodable base64",
-      });
-    }
+  if (delivery.kind === "stream") {
+    return new Response(delivery.stream, {
+      status: 200,
+      headers: { "content-type": delivery.contentType },
+    });
   }
-
-  return mediaErrorResponse({
-    status: 502,
-    code: "no_audio",
-    message:
-      "upstream returned no audio — a JSON vendor must map its audio to a base64 item " +
-      '(e.g. {"kind":"base64","encoding":"hex","value":"$.data.audio"})',
+  return new Response(delivery.bytes as unknown as BodyInit, {
+    status: 200,
+    headers: { "content-type": delivery.contentType },
   });
-}
-
-/** Content type for a JSON-shaped vendor's audio, from the requested format. */
-function audioMimeType(format: string | undefined): string {
-  const table: Record<string, string> = {
-    mp3: "audio/mpeg",
-    mpeg: "audio/mpeg",
-    wav: "audio/wav",
-    flac: "audio/flac",
-    ogg: "audio/ogg",
-    opus: "audio/ogg",
-    aac: "audio/aac",
-    pcm: "application/octet-stream",
-  };
-  return (format && table[format]) || "audio/mpeg";
 }

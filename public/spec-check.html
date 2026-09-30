@@ -1277,6 +1277,19 @@
           generic.map(function (r) { return r.path; }).join(", ") + "）—— MiniMax 的 t2a_v2 / music_generation 默认是 hex"]);
     }
 
+    // /v1/audio/speech answers with bytes, so an audio.tts spec must be able to
+    // produce them: a byte responseMode, or a base64 item. A URL artifact is not
+    // merely a hint to double-check — the relay refuses it (502 no_audio).
+    if (spec.capability === "audio.tts") {
+      var ttsMode = spec.responseMode || "json";
+      var byteMode = ttsMode === "binary" || ttsMode === "stream";
+      var hasBase64Item = readPaths(spec.response).some(function (r) { return r.kind === "base64"; });
+      if (!byteMode && !hasBase64Item)
+        out.push(["bad", prefix + " audio.tts 必须能给出音频字节：responseMode 设为 binary/stream，或把音频映射成 base64 item" +
+          "（如 {kind:\"base64\",encoding:\"hex\",value:\"$.data.audio\"}）。只映射成 url 时 /v1/audio/speech 一律拒绝——" +
+          "计费发生在拒绝之前的线上事故已修，但 spec 本身仍然不可用（§7.4）"]);
+    }
+
     var byModelUsed = false;
     walkPairs(spec.request, function (node) { if (isRecord(node) && node.byModel !== undefined) byModelUsed = true; });
     if (byModelUsed) out.push(["info", prefix + " 使用了 byModel：同一份 spec 内按上游模型覆盖枚举/尺寸表（模型档位能力不同时不必拆 spec）"]);
@@ -1511,7 +1524,13 @@
     rawSpecs.forEach(function (raw, i) {
       var r = validateSpec(raw);
       if (!r.ok) return;
-      staticChecks(r.spec, i).forEach(function (c) { add(c[0], c[1]); });
+      staticChecks(r.spec, i).forEach(function (c) {
+        add(c[0], c[1]);
+        // A `bad` from the static half is a failure like any probe failure: without
+        // this the report could print "✗ …" and still conclude 全部通过, which is
+        // the worst possible output for a judge people trust blindly.
+        if (c[0] === "bad") bump(false);
+      });
       parsed.push({ spec: r.spec, index: i });
     });
 
