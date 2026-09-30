@@ -461,6 +461,7 @@ pnpm spec-check my-specs.json
 | `async.poll.path` 在提交路径后又接了字面量段 | 官方 `/v2/query/video_generation/{task_id}` 被写成 `/v2/video_generation/query?task_id=` → 全 404 |
 | 布尔字段用了字符串常量 | `{"$const":"false"}` 在 multipart 里发出去是字符串 `"false"` |
 | 用空值兜必填字段 | `{"$const":""}` 撞厂商 `minLength: 1` → 400 |
+| 语音/音乐产物声明成 url 却没要 url | 请求里没有 `response_format`/`output_format`，而 MiniMax `t2a_v2`/`music_generation` **默认返回 hex** → 客户端拿到一串 hex 当 URL |
 
 **PART 2 探针**：脚本会**读你 spec 自己的 `response` 映射，反推出一份刚好能喂饱它的上游响应**，
 然后把 spec 真的执行一遍，逐条验证：
@@ -479,6 +480,54 @@ pnpm spec-check my-specs.json
 > 脚本源码 `scripts/spec-check.ts`；它本身有测试
 > `tests/unit/media-spec-check.test.ts`：必须对全部内置模板报绿，
 > 且必须能抓到上面那几类已知事故——所以判官不会自己退化成橡皮图章。
+
+#### 喂一份真实上游响应给它（唯一能抓「字段不存在」的办法）
+
+判官默认**自己合成**上游响应，所以「spec 说读 `data.url`」和「厂商真的返回 `data.url`」
+它分不出来。加一个 `fixtures` 块就能把这个缺口补上——把厂商文档里的 curl 响应
+（或一次真实调用的返回）贴进去：
+
+```jsonc
+{
+  "models": { … }, "specs": [ … ],
+  "fixtures": {
+    "zhipu-glm-image": {                       // key：displayName / 模型名 / capability / "*"
+      "submit": { "id": "task-1", "task_status": "PROCESSING" },
+      "poll":   { "task_status": "SUCCESS", "image_result": [ { "url": "https://…" } ] }
+    }
+  }
+}
+```
+
+- 异步 spec 用 `submit` / `poll` 两段（任务 id 只在提交响应里，产物只在轮询响应里）。
+- 判官会**逐条对账**，并直接告诉你「你读的这个字段上游没有，同层有这些：…」：
+
+  ```
+  ✗ 真实上游响应对账  data.url：上游没有这个字段（同层的字段有：…, image_result）
+  ```
+
+- `items` 与 `itemsB64` 视为**同一产物的两种形态**：只贴了 url 形态的响应时，
+  另一路算「该形态未出现（属正常）」而不是失败。
+- 贴进来的响应还会**真的喂进引擎**跑一遍，验证它能产出产物。
+
+> 一次真实调用、或一次 `curl` 文档示例，就是最贵的测试数据。**贴进去。**
+
+#### 判官覆盖什么、不覆盖什么（重要）
+
+判官**合成**上游响应——也就是说，它验证的是「spec 内部自洽 + 引擎语义正确」，
+**不是**「厂商文档写对了」。这个边界必须说清楚：
+
+| | 判官能抓 | 判官抓不到（必须人/AI 对着厂商文档核） |
+| --- | --- | --- |
+| 格式 | 输出块结构、`specVersion`、未知字段、必填缺失 | — |
+| 路由分流 | 同 capability 多份是否歧义、模型是否全覆盖 | — |
+| 请求 | 每个 spec **实际发出的 body / header**、兜默认值是否为空串、布尔是否写成字符串、枚举表是否出现 | 枚举值**厂商是否真的认** |
+| 响应 | 映射能否产出产物、`encoding` 是否生效、空结果是否被拦、`itemsB64` 是否被读 | 响应路径是否和厂商 schema 一致——**除非贴了 `fixtures`** |
+| 错误 | 每条 `httpStatus` / `when` 规则是否真的能触发、映射对不对 | 厂商的错误码**是否抄全** |
+| 异步 | 终态收敛、失败态立刻失败、未知状态不假装成功、poll 路径形状可疑 | poll 路径**逐字符**是否与文档一致 |
+
+所以 PART 1 还会打印一行 **`response 读取路径: …`**——
+把它和厂商响应 schema 逐字对一遍，是判官**替代不了**的那一步。
 
 ### 0.8 交稿前自查（逐条回答「是/否」）
 
@@ -1435,7 +1484,7 @@ upstream task did not finish in time (last status "Rendering" — check async.po
 
 ---
 
-## 17. 交稿前自查（十条，每条都有真实翻车案例）
+## 17. 交稿前自查（十二条，每条都有真实翻车案例）
 
 这七条都真实发生过，且**都不会在保存时报错**——只有跑起来才暴露：
 
@@ -1471,7 +1520,15 @@ upstream task did not finish in time (last status "Rendering" — check async.po
 9. **`baseUrl` 重复版本段**
    → `baseUrl` 带 `/v1` + `path` 带 `/v1/…` = `/v1/v1/…` 全 404（§13）。
 
-10. **同一 capability 多份 spec 却没写 `models`**
+10. **变换原语方向搞反**
+    → `$dataUrl` / `$file` 只能往**请求**里用（响应里应该写 `value: "$.data.audio"`）；
+    `$from` / `$fetch` 只能往**响应**里用。判官的 `PART 1` 会直接报出来。
+
+11. **目录和实际能力对不上**
+    → `metadata.modes` 写了没映射的模式、`metadata.max_n` 与 `limits.maxN` 不一致、
+    `metadata.sizes` 少了映射表里支持的尺寸——客户端只看得见目录。
+
+12. **同一 capability 多份 spec 却没写 `models`**
     → 保存会直接报错（§3.4）；别靠「第一份生效」。
 
 > 外加一条常识：**`metadata.modes` 只写你真支持的**。写了 `image-to-video` 却没映射
@@ -1479,7 +1536,7 @@ upstream task did not finish in time (last status "Rendering" — check async.po
 
 > ### 这份清单存在的原因
 >
-> 十条里**没有一条能在保存时拦住你**——这正是它们危险的地方。每一类都真实发生过，
+> 十二条里**没有一条能在保存时拦住你**——这正是它们危险的地方。每一类都真实发生过，
 > 而且都是「自查表全绿、上线才发现」。
 >
 > 所以 §0.8 要求第 4/6/7/8 项**必须附上厂商文档原文**：写不出原文就说明没查，

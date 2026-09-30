@@ -150,7 +150,14 @@ function addRead(reads: PathRead[], read: PathRead): void {
   reads.push(read);
 }
 
-export function readPaths(node: unknown, scope = "", field?: string, kind?: string, encoding?: string, reads: PathRead[] = []): PathRead[] {
+export function readPaths(
+  node: unknown,
+  scope = "",
+  field?: string,
+  kind?: string,
+  encoding?: string,
+  reads: PathRead[] = [],
+): PathRead[] {
   if (node === null || node === undefined) return reads;
 
   if (typeof node === "string") {
@@ -258,8 +265,13 @@ export function readPaths(node: unknown, scope = "", field?: string, kind?: stri
   }
 
   // A plain object: contract keys are well known, everything else is literal.
+  // A literal item (`{"kind": "url", "value": "$.a"}`) carries its own `kind`
+  // /`encoding` for the child, which is what makes the heuristics able to see
+  // "this item claims to be a url".
+  const ownKind = typeof node.kind === "string" ? node.kind : kind;
+  const ownEncoding = typeof node.encoding === "string" ? node.encoding : encoding;
   for (const [key, value] of Object.entries(node)) {
-    readPaths(value, scope, key, kind, encoding, reads);
+    readPaths(value, scope, key, ownKind, ownEncoding, reads);
   }
   return reads;
 }
@@ -362,6 +374,235 @@ export function synthesizePayload(spec: MediaSpec): Record<string, unknown> {
 }
 
 // ---------------------------------------------------------------------------
+// Real vendor responses
+//
+// Everything above is circular: the payload is built from the spec's own claims,
+// so a spec that points at a field the vendor never returns looks perfect. The
+// fix is to let the caller supply what the vendor *actually* returns — a curl
+// response pasted out of the docs, or a capture from a real call:
+//
+//   { "specs": [ … ], "fixtures": { "image.generate": { "data": { "image_urls": [ … ] } } } }
+//
+// Lookup order: `displayName` → client model name → `capability` → `"*"`.
+// ---------------------------------------------------------------------------
+
+export type Fixtures = Record<string, unknown>;
+
+/** A fixture may be one body, or one body per async phase. */
+interface PhasedFixture {
+  submit?: unknown;
+  poll?: unknown;
+  /** True when the fixture declares the two phases separately. */
+  phased: boolean;
+}
+
+function isPhased(value: unknown): value is PhasedFixture {
+  return isRecord(value) && ("submit" in value || "poll" in value);
+}
+
+export function fixtureFor(
+  spec: MediaSpec,
+  fixtures: Fixtures | null,
+): { key: string; body: PhasedFixture } | null {
+  if (!fixtures) return null;
+  const candidates = [
+    spec.displayName,
+    ...(spec.models ?? []),
+    spec.capability,
+    "*",
+  ].filter((key): key is string => typeof key === "string" && key.length > 0);
+  for (const key of candidates) {
+    if (!Object.prototype.hasOwnProperty.call(fixtures, key)) continue;
+    const value = fixtures[key];
+    // An async spec gets a fresh `id` on submit and the artefact on poll, so a
+    // single captured body can never satisfy both phases.
+    if (isPhased(value)) return { key, body: value };
+    if (spec.async) return { key, body: { submit: value, poll: value, phased: false } };
+    return { key, body: { submit: value, poll: value, phased: false } };
+  }
+  return null;
+}
+
+/** Response keys that describe alternative shapes of one product. */
+const ALTERNATIVE_ROOTS = new Set(["items", "itemsB64"]);
+
+export interface PathMismatch {
+  path: string;
+  problem: string;
+}
+
+/** Resolve a path the way `getPath` would, but report *why* it came up short. */
+function inspectPath(root: unknown, path: string): PathMismatch | null {
+  const parts = segments(path);
+  let cursor: unknown = root;
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (part.startsWith("[")) {
+      if (!Array.isArray(cursor)) {
+        return { path, problem: `期望数组，实际是 ${describe(cursor)}` };
+      }
+      const index = part.slice(1, -1) === "*" ? 0 : Number(part.slice(1, -1));
+      if (cursor[index] === undefined) return { path, problem: "数组越界（上游返回了空数组）" };
+      cursor = cursor[index];
+      continue;
+    }
+    if (!isRecord(cursor)) {
+      return { path, problem: `期望对象，实际是 ${describe(cursor)}` };
+    }
+    if (!(part in cursor)) {
+      return {
+        path,
+        problem: `上游没有这个字段（同层的字段有：${Object.keys(cursor).slice(0, 6).join(", ") || "无"}）`,
+      };
+    }
+    cursor = (cursor as Record<string, unknown>)[part];
+  }
+  if (cursor === undefined || cursor === null) return { path, problem: "字段存在但值为空" };
+  if (typeof cursor === "string" && cursor.length === 0) return { path, problem: "字段是空字符串" };
+  return null;
+}
+
+function describe(value: unknown): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "数组";
+  if (typeof value === "object") return "对象";
+  return `${typeof value}(${JSON.stringify(value)?.slice(0, 20) ?? ""})`;
+}
+
+/**
+ * Compare a spec's declared response reads against real vendor responses.
+ *
+ * This is the only check in the file that can catch "the field I read does not
+ * exist" — the Zhipu image spec read `data.url` while the vendor returns
+ * `image_result[].url`, and every synthesized probe passed anyway.
+ *
+ * With two phases, a read is satisfied by whichever phase has it (the task id
+ * only ever appears in the submit response, the artefact only in the poll one).
+ */
+export function diffAgainstFixture(
+  spec: MediaSpec,
+  body: PhasedFixture,
+): { mismatches: PathMismatch[]; notes: PathMismatch[]; matched: number } {
+  const reads = readPaths(spec.response);
+  const owners = rootOwners(spec, reads);
+  const seenBranches = new Set<number>();
+  const problems: (PathMismatch & { root?: string })[] = [];
+  let matched = 0;
+  const phases: [string, unknown][] = [];
+  if (body.submit !== undefined) phases.push(["submit", body.submit]);
+  if (body.poll !== undefined) phases.push(["poll", body.poll]);
+  if (phases.length === 0) phases.push(["响应", body.submit]);
+
+  const failed = new Set<string>();
+  for (const read of reads) {
+    // A `$ifPresent` branch that is not taken is a legitimate miss, so only the
+    // first branch is required to resolve.
+    if (read.branch !== undefined) {
+      if (seenBranches.has(read.branch)) continue;
+      seenBranches.add(read.branch);
+    }
+    if (read.field === "errorCode" || read.field === "errorMessage") continue;
+
+    const owner = owners.get(read.path);
+    const phaseProblems = phases
+      .map(([, value]) => inspectPath(value, read.path))
+      .filter((problem): problem is PathMismatch => problem !== null);
+    if (phaseProblems.length === phases.length && phases.length > 0) {
+      const fieldHint = read.field ? `（映射到 ${read.field}）` : "";
+      // Name the sibling fields from every phase: "which field *do* you mean?"
+      // is the question the operator actually has, and with two phases the
+      // answer may be in the one that was not quoted.
+      const siblings = new Set<string>();
+      for (const [, value] of phases) collectSiblings(value, read.path, siblings);
+      const hint = siblings.size > 0 ? `；上游同层字段：${[...siblings].slice(0, 8).join(", ")}` : "";
+      failed.add(read.path);
+      problems.push({ path: read.path, problem: `${fieldHint}${phaseProblems[0].problem}${hint}`, root: owner });
+    } else {
+      matched += 1;
+    }
+  }
+
+  // `items` and `itemsB64` are alternative shapes of the *same* product, so a
+  // response captured in url format legitimately has no base64 array. Treat
+  // them as one group: if any member resolved, the group's other members are
+  // notes rather than failures. A group where nothing resolved is a genuine
+  // problem — which is how the Zhipu `data.url` case gets caught.
+  const groupOf = (root: string | undefined): string | undefined =>
+    root !== undefined && ALTERNATIVE_ROOTS.has(root) ? "items" : root;
+  const satisfiedGroups = new Set(
+    reads
+      .filter((r) => !failed.has(r.path))
+      .map((r) => groupOf(owners.get(r.path)))
+      .filter((group): group is string => !!group),
+  );
+  const mismatches: PathMismatch[] = [];
+  const notes: PathMismatch[] = [];
+  for (const problem of problems) {
+    const group = groupOf(problem.root);
+    if (group !== undefined && satisfiedGroups.has(group)) {
+      notes.push({ path: problem.path, problem: "该形态未出现（属正常）" });
+    } else {
+      mismatches.push({ path: problem.path, problem: problem.problem });
+    }
+  }
+  return { mismatches, notes, matched };
+}
+
+/**
+ * Field names present alongside `path`, for the "did you mean…?" hint.
+ *
+ * Falls back to the payload's root keys when the path cannot be walked at all,
+ * which is exactly the case the hint exists for: the path is wrong *because*
+ * the field is missing, so the parent lookup fails too.
+ */
+function collectSiblings(root: unknown, path: string, out: Set<string>): void {
+  const parts = segments(path);
+  if (parts.length < 2) return;
+  let cursor: unknown = root;
+  let reached = true;
+  for (const part of parts.slice(0, -1)) {
+    if (part.startsWith("[")) {
+      if (!Array.isArray(cursor)) {
+        reached = false;
+        break;
+      }
+      const index = part.slice(1, -1) === "*" ? 0 : Number(part.slice(1, -1));
+      cursor = cursor[index];
+      continue;
+    }
+    if (!isRecord(cursor)) {
+      reached = false;
+      break;
+    }
+    cursor = (cursor as Record<string, unknown>)[part];
+  }
+  if (reached && isRecord(cursor)) {
+    for (const key of Object.keys(cursor)) out.add(key);
+    return;
+  }
+  if (isRecord(root)) for (const key of Object.keys(root)) out.add(key);
+}
+
+/**
+ * Map every response read to the top-level response key that produced it.
+ *
+ * Threading the key through `readPaths` is fragile (`$from` and the transform
+ * branches all re-enter the walker), so ownership is derived after the fact:
+ * a path belongs to key K when re-reading `response[K]` produces it.
+ */
+function rootOwners(spec: MediaSpec, reads: PathRead[]): Map<string, string> {
+  const owners = new Map<string, string>();
+  const response = isRecord(spec.response) ? spec.response : {};
+  for (const [key, value] of Object.entries(response)) {
+    if (value === undefined || value === null) continue;
+    for (const read of readPaths(value)) {
+      if (!owners.has(read.path)) owners.set(read.path, key);
+    }
+  }
+  return owners;
+}
+
+// ---------------------------------------------------------------------------
 // Representative client inputs
 // ---------------------------------------------------------------------------
 
@@ -427,11 +668,12 @@ async function runSpec(
   return { ok: false, detail: out.error.message, items: 0, status: out.error.status, code: out.error.code };
 }
 
-function probesFor(spec: MediaSpec, label: string): Probe[] {
+function probesFor(spec: MediaSpec, label: string, fixtures: Fixtures | null): Probe[] {
   const probes: Probe[] = [];
   const jsonMode = (spec.responseMode ?? "json") === "json";
   const sampleInput = SAMPLE_INPUT[spec.capability] ?? { prompt: "probe" };
   const payload = synthesizePayload(spec);
+  const fixture = fixtureFor(spec, fixtures);
 
   const respond = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -442,7 +684,7 @@ function probesFor(spec: MediaSpec, label: string): Probe[] {
    * the third case a `$fetch` probe silently picks nothing and reports a
    * contract mismatch that has nothing to do with the spec.
    */
-  const makeUpstream = (body: () => unknown, status = 200) => (url: string) => {
+  const makeUpstream = (body: () => unknown, status = 200, phased?: PhasedFixture) => (url: string) => {
     const submitPath = spec.transport.path.split("?")[0].replace(/\{\{.*?\}\}/g, "");
     const pollPath = spec.async
       ? (spec.async.poll.path.split("?")[0].split("{{taskId}}")[0] ?? "")
@@ -450,6 +692,10 @@ function probesFor(spec: MediaSpec, label: string): Probe[] {
     const isKnownPath = url.includes(submitPath) || (pollPath !== "" && url.includes(pollPath));
     if (!isKnownPath) {
       return respond({ file: { download_url: "https://cdn.example.test/probe.mp4" } }, status);
+    }
+    if (phased) {
+      const phase = url.includes(submitPath) && !url.includes(pollPath) ? "submit" : "poll";
+      return respond(phased[phase] ?? body(), status);
     }
     return respond(body(), status);
   };
@@ -460,6 +706,39 @@ function probesFor(spec: MediaSpec, label: string): Probe[] {
       docRef: "§7",
       run: async () => {
         const out = await runSpec(spec, sampleInput, makeUpstream(() => payload));
+        return {
+          ok: out.ok && (out.items > 0 || typeof out.text === "string"),
+          detail: out.ok ? out.detail : `${out.status} ${out.code} — ${out.detail}`,
+        };
+      },
+    });
+  }
+
+  // The one probe that can be wrong in a way synthesis cannot reach: a real
+  // vendor response checked against the spec's declared paths.
+  if (jsonMode && spec.response && fixture) {
+    probes.push({
+      name: `真实上游响应对账（fixtures["${fixture.key}"]）`,
+      docRef: "§0.7",
+      run: async () => {
+        const { mismatches, notes, matched } = diffAgainstFixture(spec, fixture.body);
+        const suffix = notes.length > 0 ? `（${notes.length} 个备用形态未出现，属正常）` : "";
+        if (mismatches.length > 0) {
+          const detail = mismatches
+            .map((m) => `${m.path}：${m.problem}`)
+            .join("；")
+            .slice(0, 300);
+          return { ok: false, detail: `${matched} 个路径对得上，但 ${detail}${suffix}` };
+        }
+        return { ok: true, detail: `${matched} 个读取路径全部命中${suffix}` };
+      },
+    });
+
+    probes.push({
+      name: "真实响应喂进引擎能产出产物",
+      docRef: "§0.7",
+      run: async () => {
+        const out = await runSpec(spec, sampleInput, makeUpstream(() => payload, 200, fixture.body));
         return {
           ok: out.ok && (out.items > 0 || typeof out.text === "string"),
           detail: out.ok ? out.detail : `${out.status} ${out.code} — ${out.detail}`,
@@ -664,6 +943,47 @@ function walkNodes(node: unknown, visit: (node: unknown, key?: string) => void, 
   }
 }
 
+/**
+ * Transforms that only make sense in one direction. Each of these has shipped:
+ * `$dataUrl` in a response handed the client a `data:` URL it could not decode,
+ * and a `$from` in a request silently built an array nobody sent upstream.
+ */
+const REQUEST_ONLY_TRANSFORMS = ["$dataUrl", "$file"];
+const RESPONSE_ONLY_TRANSFORMS = ["$from", "$to", "$fetch"];
+
+function transformKeysIn(node: unknown): Set<string> {
+  const found = new Set<string>();
+  walkNodes(node, (child) => {
+    if (!isRecord(child)) return;
+    for (const key of Object.keys(child)) {
+      if (key.startsWith("$")) found.add(key);
+    }
+  });
+  return found;
+}
+
+/** Keys of every `$enum`/`$mapSize` table whose path is the client `size`. */
+function sizeTableKeys(node: unknown, scope = ""): string[] {
+  const keys: string[] = [];
+  if (Array.isArray(node)) {
+    node.forEach((entry) => keys.push(...sizeTableKeys(entry, scope)));
+    return keys;
+  }
+  if (!isRecord(node)) return keys;
+  for (const [key, value] of Object.entries(node)) {
+    if ((key === "$enum" || key === "$mapSize") && isRecord(value)) {
+      const path = typeof value.path === "string" ? value.path : "$.size";
+      if (path === "$.size" || path === "$.responseSize") {
+        keys.push(...Object.keys(isRecord(value.map) ? value.map : isRecord(value.table) ? value.table : {}));
+      }
+      keys.push(...sizeTableKeys(value.default, scope));
+      continue;
+    }
+    keys.push(...sizeTableKeys(value, scope));
+  }
+  return keys;
+}
+
 function staticChecks(spec: MediaSpec, raw: Record<string, unknown>, index: number): string[] {
   const out: string[] = [];
   const prefix = `specs[${index}]`;
@@ -671,6 +991,90 @@ function staticChecks(spec: MediaSpec, raw: Record<string, unknown>, index: numb
     ? ((spec.metadata as Record<string, unknown>).modes as string[])
     : [];
   const requestReads = readPaths(spec.request).map((r) => r.path.toLowerCase());
+
+  // Direction mistakes, straight from the incident log.
+  const inResponse = transformKeysIn(spec.response);
+  for (const transform of REQUEST_ONLY_TRANSFORMS) {
+    if (inResponse.has(transform)) {
+      out.push(
+        line(
+          "fail",
+          `${prefix} response 里用了 ${transform}`,
+          "它只在请求方向有意义；响应里应该写 `value: \"$.data.audio\"` 这种直接取值（§6.4）",
+        ),
+      );
+    }
+  }
+  const inRequest = transformKeysIn(spec.request);
+  for (const transform of RESPONSE_ONLY_TRANSFORMS) {
+    if (inRequest.has(transform)) {
+      out.push(
+        line("fail", `${prefix} request 里用了 ${transform}`, "它只在响应方向有意义（§6.4）"),
+      );
+    }
+  }
+
+  // `encoding` only means something for a value the client has to decode.
+  walkNodes(spec.response, (node) => {
+    if (!isRecord(node)) return;
+    if (typeof node.encoding === "string" && node.kind === "url") {
+      out.push(
+        line("warn", `${prefix} item 的 kind 是 url 却声明了 encoding`, "url 不需要解码，声明是无效的（§7.2）"),
+      );
+    }
+    if (typeof node.encoding === "string" && !["plain", "base64", "hex", "dataUrl"].includes(node.encoding)) {
+      out.push(
+        line("fail", `${prefix} item 的 encoding "${node.encoding}" 非法`, "只能是 plain / base64 / hex / dataUrl"),
+      );
+    }
+  });
+
+  // Two arrays pointing at the same upstream field produce every item twice.
+  const itemsFrom = readPaths(isRecord(spec.response) ? spec.response.items : undefined)
+    .filter((r) => r.path.endsWith("[*]"))
+    .map((r) => r.path);
+  const itemsB64From = readPaths(isRecord(spec.response) ? spec.response.itemsB64 : undefined)
+    .filter((r) => r.path.endsWith("[*]"))
+    .map((r) => r.path);
+  for (const path of itemsFrom) {
+    if (itemsB64From.includes(path)) {
+      out.push(
+        line("warn", `${prefix} items 和 itemsB64 指向同一个上游数组 ${path}`, "每个产物会被收两次（计费翻倍）"),
+      );
+    }
+  }
+
+  // The catalogue advertises sizes; a client that reads them and sends one the
+  // spec cannot map silently gets the default.
+  const advertised = Array.isArray((spec.metadata as Record<string, unknown> | undefined)?.sizes)
+    ? ((spec.metadata as Record<string, unknown>).sizes as unknown[]).map(String)
+    : null;
+  if (advertised) {
+    const mappable = [...new Set(sizeTableKeys(spec.request))];
+    const missing = mappable.filter((key) => !advertised.includes(key));
+    if (missing.length > 0) {
+      out.push(
+        line(
+          "info",
+          `${prefix} 尺寸映射表里有 ${missing.length} 个 size 没写进 metadata.sizes`,
+          `${missing.slice(0, 5).join(", ")} —— 客户端读了目录也发现不了它们`,
+        ),
+      );
+    }
+  }
+
+  // The catalogue limit and the enforced limit are two different numbers if
+  // they disagree, and the client only sees the first one.
+  const metaMaxN = (spec.metadata as Record<string, unknown> | undefined)?.max_n;
+  if (
+    typeof metaMaxN === "number" &&
+    typeof spec.limits?.maxN === "number" &&
+    metaMaxN !== spec.limits.maxN
+  ) {
+    out.push(
+      line("warn", `${prefix} metadata.max_n=${metaMaxN} 与 limits.maxN=${spec.limits.maxN} 不一致`, "目录会宣传一个实际会 400 的上限"),
+    );
+  }
 
   // A mode we advertise but never map is a promise the spec cannot keep.
   const modeHints: Record<string, string[]> = {
@@ -731,6 +1135,43 @@ function staticChecks(spec: MediaSpec, raw: Record<string, unknown>, index: numb
           "warn",
           `${prefix} async.poll.path 在提交路径后面又接了字面量段`,
           `${spec.transport.path} → ${spec.async.poll.path} —— 查询接口通常不在创建路径之下，逐字符对照厂商文档（§9）`,
+        ),
+      );
+    }
+  }
+
+  // A url item on an audio capability, from a generically-named payload field,
+  // with nothing in the request that asks the upstream for a URL and no
+  // `encoding` declared. That is the shape of "the client gets a hex blob
+  // dressed as a URL": MiniMax `t2a_v2` / `music_generation` both default to
+  // `hex`, and `data.audio` carries it either way.
+  //
+  // Deliberately narrow — an `audio.tts` item whose path ends in `url` is fine,
+  // and video/image capabilities are out of scope because their artefact fields
+  // are conventionally URL-named to begin with.
+  if (spec.capability === "audio.tts" || spec.capability === "music.generate") {
+    const urlItems = readPaths(spec.response).filter(
+      (r) => r.kind === "url" && r.field !== "errorCode" && r.field !== "errorMessage",
+    );
+    const requestKeys = new Set<string>();
+    walkNodes(spec.request, (node, key) => {
+      if (key) requestKeys.add(key);
+    });
+    // `format` is excluded on purpose: `audio_setting.format` picks the codec,
+    // not between url and base64.
+    const hasFormatSwitch = [...requestKeys].some((key) =>
+      /^(response_format|output_format|result_type|return_type)$/.test(key),
+    );
+    const declaresEncoding = readPaths(spec.response).some((r) => r.encoding !== undefined);
+    const genericLeaf = urlItems.filter((r) => !/url/i.test(r.path.split(".").pop() ?? ""));
+    if (genericLeaf.length > 0 && !hasFormatSwitch && !declaresEncoding) {
+      out.push(
+        line(
+          "warn",
+          `${prefix} ${spec.capability} 的产物声明为 url，但请求里没有任何参数要求上游返回 url`,
+          `取自 ${genericLeaf.map((r) => r.path).join(", ")} —— 确认上游默认返回 URL；` +
+            "MiniMax 的 t2a_v2 / music_generation 默认是 hex，要么加 output_format:\"url\"，" +
+            "要么改成 kind:\"base64\" + encoding（§7.2）",
         ),
       );
     }
@@ -804,6 +1245,7 @@ export async function checkSpecDocument(input: unknown): Promise<CheckResult> {
         ? [input]
         : [];
   const models = isRecord(record?.models) ? (record!.models as Record<string, unknown>) : null;
+  const fixtures = isRecord(record?.fixtures) ? (record!.fixtures as Fixtures) : null;
 
   lines.push(bold("PART 1  静态检查"));
   if (rawSpecs.length === 0) {
@@ -859,6 +1301,24 @@ export async function checkSpecDocument(input: unknown): Promise<CheckResult> {
   } else {
     lines.push(line("warn", "没有 models 块", "运营者还需要一份 models 才能建供应商"));
   }
+  if (fixtures) {
+    const used = new Set<string>();
+    for (const raw of rawSpecs) {
+      if (!isRecord(raw)) continue;
+      const parsed = parseMediaSpec(raw);
+      if (!parsed.ok) continue;
+      const hit = fixtureFor(parsed.spec, fixtures);
+      if (hit) used.add(hit.key);
+    }
+    const unused = Object.keys(fixtures).filter((key) => !used.has(key));
+    if (unused.length > 0) {
+      lines.push(
+        line("warn", `${unused.length} 个 fixture 没有被任何 spec 命中`, `${unused.join(", ")} —— key 需与 displayName / 模型名 / capability 之一一致`),
+      );
+    } else {
+      lines.push(line("pass", `${Object.keys(fixtures).length} 个真实上游响应已挂到对应 spec`));
+    }
+  }
 
   const parsedSpecs: { spec: MediaSpec; raw: Record<string, unknown>; index: number }[] = [];
   rawSpecs.forEach((raw, index) => {
@@ -886,6 +1346,13 @@ export async function checkSpecDocument(input: unknown): Promise<CheckResult> {
       const value = applyMapping(mapping, input);
       lines.push(dim(`    header ${name}: ${value === undefined ? "(不发)" : JSON.stringify(value)}`));
     }
+    // The paths the response mapping reads, so they can be diffed character by
+    // character against the vendor's response schema. The judge cannot verify
+    // these against the vendor — only a reader with the docs can.
+    const reads = readPaths(spec.response);
+    if (reads.length > 0) {
+      lines.push(dim(`    response 读取路径: ${reads.map((r) => r.path).join(", ")}`));
+    }
   }
 
   lines.push("");
@@ -893,7 +1360,7 @@ export async function checkSpecDocument(input: unknown): Promise<CheckResult> {
   for (const { spec, index } of parsedSpecs) {
     lines.push("");
     lines.push(bold(`  specs[${index}] ${spec.capability} — ${spec.displayName ?? ""}`));
-    for (const probe of probesFor(spec, String(index))) {
+    for (const probe of probesFor(spec, String(index), fixtures)) {
       let result: { ok: boolean; detail: string };
       try {
         result = await probe.run();
