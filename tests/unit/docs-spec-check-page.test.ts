@@ -9,7 +9,7 @@
  * pinned here.
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ADMIN_SECTION_IDS, isAdminDocId, isKnownDocsPath } from "@/lib/docs/sections";
 
@@ -75,5 +75,26 @@ describe("admin docs: judge page", () => {
   it("exposes the judge as a standalone command", () => {
     const pkg = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8"));
     expect(pkg.scripts["spec-check"]).toContain("scripts/spec-check.ts");
+  });
+
+  it("links the offline single-file judge", () => {
+    // The standalone judge is the one an operator hands to an AI that has never
+    // seen the repository, so it must be reachable as a static asset and linked
+    // from the docs page.
+    const standalone = join(process.cwd(), "public", "spec-check.html");
+    expect(existsSync(standalone)).toBe(true);
+
+    const component = readFileSync(
+      join(process.cwd(), "src", "components", "docs", "SpecCheckReference.tsx"),
+      "utf8",
+    );
+    expect(component).toContain("/spec-check.html");
+    expect(component).toContain("download");
+
+    const page = readFileSync(
+      join(process.cwd(), "src", "app", "(admin)", "admin", "docs", "AdminDocsContent.tsx"),
+      "utf8",
+    );
+    expect(page).toContain("/spec-check.html");
   });
 });

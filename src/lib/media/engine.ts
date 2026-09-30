@@ -970,7 +970,10 @@ function classifyStatus(
         return canonical;
       }
     }
-    return null;
+    // `""` is the documented catch-all. Without this line an unseen vendor state
+    // resolves to `null`, which the poll loop treats exactly like "keep
+    // waiting" — so the entry the validator *requires* would be decorative.
+    return map[""] ?? null;
   }
   if ((poll.failureValues ?? []).some(hit)) return "fail";
   if ((poll.successValues ?? []).some(hit)) return "ok";

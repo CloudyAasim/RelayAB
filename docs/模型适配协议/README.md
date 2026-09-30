@@ -446,10 +446,19 @@ binary/stream/sse 回传、空结果检测、按 `successCount` 计费。
 文档会被漏读，JSON 会被误读。**唯一能证明一份 spec 正确的方式是把它跑起来。**
 本项目开源了引擎，所以判官也开源了：
 
+**判官是一个单文件 HTML**（`public/spec-check.html`，约 79 KB）：
+**零依赖、不联网、不需要本仓库**，双击就能开，也可以直接丢给一个没有仓库的 AI。
+后台路径 `/spec-check.html`（本页「判官脚本」一节有链接与下载）。
+
+在仓库里则用命令行版本（跑真引擎，CI 用）：
+
 ```bash
 # 把两个块放进一个文件：{ "models": {…}, "specs": [ … ] }
 pnpm spec-check my-specs.json
 ```
+
+两个版本跑同一套检查，并由 `tests/unit/spec-check-standalone.test.ts` 用同一批用例
+交叉验证结论必须一致 —— 所以「判官说绿灯」是可信任的。
 
 它做两件事，都不需要厂商账号、不联网。
 

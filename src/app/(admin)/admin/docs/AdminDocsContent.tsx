@@ -217,6 +217,11 @@ export function AdminDocsContent({ section, t }: { section: AdminDocId; t: TFn }
           </pre>
           <p className="mt-3 text-xs text-muted-foreground">{t("admin.docs.specCheck.fixtures")}</p>
           <p className="mt-2 text-xs text-muted-foreground">
+            <a href="/spec-check.html" target="_blank" rel="noreferrer" className="underline underline-offset-2">
+              {t("admin.docs.specCheck.openStandalone")}
+            </a>
+          </p>
+          <p className="mt-2 text-xs text-muted-foreground">
             <Link href="/admin/docs/media" className="underline underline-offset-2">
               {t("admin.docs.nav.media")}
             </Link>
