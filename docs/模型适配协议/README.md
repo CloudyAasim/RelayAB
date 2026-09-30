@@ -11,7 +11,7 @@
 
 ## 0. 给 AI 的操作说明
 
-> **如果你在写 spec：读 §0 就够了，§0.3 是完整契约。** §1–§18 是给人看的详细解释和排查手册，
+> **如果你在写 spec：读 §0 就够了——§0.3 是引擎的精确语义，§0.4 是完整契约表。** §1–§18 是给人看的详细解释和排查手册，
 > 拿不准时再回来查。**不要跳过 §0.2 的翻译流程**——历史上所有线上事故都出在漏抄厂商文档的
 > 某一项（必填参数、状态码、状态枚举）。
 
@@ -61,9 +61,158 @@
   运营者会在目录里看到「支持图生视频」，实际传图进来被当文生视频跑。
 - **`limits.timeoutMs` 不要超过 300000**（serverless 上限，超过会在保存时直接报错）。
 
-### 0.3 协议速查（完整契约）
+### 0.3 引擎怎么跑的（精确语义）
 
-#### 0.3.1 spec 顶层字段
+本节是**引擎行为的规范说明**，不是概述。判官脚本（§0.7）按这段实现，两者必须一致——
+`tests/unit/media-protocol-doc.test.ts` 会做逐项比对。
+
+#### 0.3.0 一次调用的完整顺序
+
+```
+1. 校验 n ≤ limits.maxN                       否则 400 n_too_large
+2. 构造作用域 buildMediaScope(input)           见 0.3.9
+3. 求值 request  → 上游 body                   见 0.3.10
+4. 拼 URL：origin = spec.baseUrl ?? provider.baseUrl
+           path  = base.pathname(去掉尾斜杠) + transport.path（内含 {{model}} 替换）
+           再叠加 transport.query 里能求值的项、auth.type=query 的 key
+           断言 url.origin === origin          否则 500 bad_spec
+5. 组 header：Content-Type（multipart 除外）→ transport.headers（能求值的）→ auth 覆盖
+6. 编码 body：multipart → FormData；x-www-form-urlencoded → URLSearchParams；否则 JSON
+7. GET 不带 body
+8. responseMode = binary|stream 时：非 2xx → 502 upstream_error；否则原样回传字节，结束
+9. 读 body 为文本，JSON.parse（失败则 null）
+10. 错误判定（顺序固定）：
+      a. errors[].httpStatus 命中上游 HTTP 状态
+      b. errors[].when  对**原始响应体**求值为 true
+      c. 以上都没命中且 !response.ok → 502 upstream_error
+11. async：取 response.taskId；没有 → 502 no_task_id；进入轮询
+12. 求值 response → resolveFetches 展开 $fetch
+13. 收集 items（做 encoding 归一）→ 若 0 产物且无 text 且未 allowEmpty → 502 upstream_contract_mismatch
+14. 结算：credits = pricePerItem × successCount
+```
+
+#### 0.3.1 映射求值 `applyMapping(node, scope)`
+
+按下列顺序判断，**先匹配先生效**：
+
+| 顺序 | 条件 | 行为 |
+| --- | --- | --- |
+| 1 | `undefined` | 返回 `undefined`（键被丢弃） |
+| 2 | `null` | 返回 `null`（键保留为 null） |
+| 3 | 字符串 | `"$"` → 整个 scope；`"$.a.b"` → 路径取值（取不到 → `undefined`）；含 `{{ }}` → 模板替换；否则字面量 |
+| 4 | 数字 / 布尔 | 原样返回（**`false` 和 `0` 不会被丢弃**） |
+| 5 | 数组 | 逐项求值 |
+| 6 | `{"$const": v}` | 返回 `v` |
+| 7 | `{"$ifPresent": …}` | 单分支：`{"$.k": m}`，`$.k` 为 `undefined` 就返回 `undefined`；多分支：按顺序取第一个 `$.k` 存在的分支，都不存在返回 `undefined` |
+| 8 | `{"$enum": …}` | 读 `path`；取不到 → `default`；`map` 命中 → 映射值；否则 `default` ?? 原始值 |
+| 9 | `{"$mapSize": …}` | 同 `$enum`，但没命中时返回 `default` ?? 原始值 |
+| 10 | `{"$dataUrl": p}` | 已是 `data:` 或 `http(s)://` → 原样；否则包成 `data:image/png;base64,<值>` |
+| 11 | `{"$file": …}` | data URL → `{__file, filename, contentType, base64}`；取不到 → `undefined` |
+| 12 | `{"$from": p, "$to": m}` | `p` 必须是**数组**，否则 `undefined`；每项以该项为新 scope 求值 `m`（缺省 `"$"`） |
+| 13 | `{"$merge": [...]}` | 逐个求值后浅合并 |
+| 14 | `{"$fetch": …}` | 返回 marker（不发网络请求），由第 12 步之后展开 |
+| 15 | `{"$eq": [a, b]}` | 深度相等 |
+| 16 | `{"$firstPresent": [...]}` | 第一个求值结果**非 `undefined` 且非 `null`** 的 |
+| 17 | `{"$toString": m}` | 转字符串；`undefined`/`null` → `undefined` |
+| 18 | 普通对象 | 逐键求值，**`undefined` 的键直接不写进结果** |
+
+#### 0.3.2 两个容易踩的原语差异
+
+- **`$firstPresent` 只对标量可靠。** 候选是对象时（如 `{kind, value}`），
+  即使内部路径全取不到，结果也是 `{}` 之外的非 `undefined` 对象，
+  于是**第一个分支永远命中**。要按条件选分支请用 `$ifPresent` 多分支。
+- **`$ifPresent` 的存在性判断只看那个键**（`getPath !== undefined`），
+  不看分支求值结果。
+
+#### 0.3.3 键被丢弃的规则
+
+| 情况 | 结果 |
+| --- | --- |
+| 路径取不到（客户端没传） | 键**不存在**于结果中 |
+| `$ifPresent` 未命中 | 键不存在 |
+| `$ifPresent` 多分支都不命中 | 键不存在 |
+| 字面量 `false` / `0` / `""` | 键**存在**（不会被丢） |
+
+`$` 文件里出现 `{{ $.x }}`：值做 **URL 编码**；`async.poll.path` 里的 `{{taskId}}`：
+**原样拼接**（引擎自己 encodeURIComponent）。两套占位符不可混用。
+
+#### 0.3.4 上游响应怎么变成 items
+
+- `response.items` 是数组 → 逐项；是单个对象 → 当一项。
+- 每项 `{kind, encoding?, value}`：`value` 必须是**非空字符串**，否则该项被丢弃。
+- `kind` 非法值 → 视为 `"url"`。
+- `encoding` 归一（`kind` 为 `base64` 时生效）：
+  `hex` → hex 解码后重新 base64；`dataUrl` → 剥掉 `data:…;base64,` 前缀；其余原样。
+- `response.itemsB64`（旧写法）仍受支持，强制 `kind:"base64"`，排在 `items` 之后。
+- `response.text` 是字符串时也算“有产物”（语音转写没有 items）。
+
+#### 0.3.5 编码归一的确切行为
+
+`hex` → base64：去空白、剥 `0x`、奇数长度前补 `0`、**不是合法 hex 就原样透传**（不报错）。
+所以 `"zz"` 会原样返回，`"abc"`（奇数长度）会按 `0abc` 处理。
+
+#### 0.3.6 异步轮询的判定
+
+1. `path` 里 `{{taskId}}` 替换成 URL 编码后的 task id
+2. 请求 → 读 body → JSON
+3. 同样先判 `httpStatus` 再判 `when` 错误规则
+4. `status = response` 映射结果的 `status` 字段（由 `statusPath` 指定）
+5. 状态归类：
+   - 有 `statusMap` → 在 `statusMap` 里查（**默认忽略大小写**）；查不到 → 继续等
+   - 否则 `failureValues` 命中 → 失败；`successValues` 命中 → 成功；都没命中 → 继续等
+6. **没有 `status` 字段**时：已取到产物就当成功；否则若 `!response.ok` → 502
+7. 每轮之间 `await sleep(intervalMs)`；超过 `timeoutMs` → `504 task_timeout`，
+   **错误信息里带上最后一次看到的 status**（这是排查的关键线索）
+
+> 所以「未知状态」的行为取决于 `statusMap` 有没有 `""`：
+> **有** → 继续等到超时并报出状态名；**无** → 保存时就被拒绝。
+
+#### 0.3.7 `$fetch` 的展开时机与限制
+
+- 在 `response` 映射求值后、`collectItems` 之前展开，可嵌套。
+- 上限：单次调用**最多 8 个**，总超时 **30s**，只发 **GET**，同源、复用该 spec 的鉴权。
+- 只有映射结果里真的出现了那个路径才会发请求（轮询中还没有 `file_id` 时不会白发）。
+
+#### 0.3.8 空结果的两种情况
+
+| 情况 | 结果 |
+| --- | --- |
+| 上游 2xx，映射出 0 产物且无 `text`，未设 `allowEmpty` | `502 upstream_contract_mismatch` |
+| `allowEmpty: true` | 成功，`successCount` 按 `countOf` 退化为 1 |
+
+`successCount` 优先级：映射出的 `successCount`（>0 时）→ items 数量 → 1。
+
+#### 0.3.9 作用域构造 `buildMediaScope`
+
+```
+1. 合并 { ...extra(透传的原始请求体), ...归一化字段 }   归一化字段在上
+2. 丢弃所有 undefined 的键
+3. 为每个键补上另一种拼写（snake ↔ camel），但不覆盖已存在的真实键
+```
+
+第 3 条保证：真实键永远优先于别名，所以客户端透传的 `response_format`
+不会盖掉路由归一化出的 `responseFormat`。
+
+#### 0.3.10 URL 与 header 的优先级
+
+- `path` = `baseUrl` 的 pathname（去尾斜杠）+ `transport.path`，所以
+  **baseUrl 带路径前缀时会被保留**——`baseUrl: "https://x/v1"` + `path: "/v1/y"` = `/v1/v1/y`。
+- `transport.headers` 逐项求值，取不到就不发；`auth` 最后写入，**会覆盖同名 header**。
+- `Content-Type` 在 `auth` 之前设置，所以鉴权头不会被误设成 JSON。
+
+#### 0.3.11 引擎明确不做的事
+
+- **不重试、不换供应商、不降级**（媒体按件计费，重试可能重复扣费）
+- **不做任何编解码**，除非 item 声明了 `encoding`
+- **不缓存、不存储、不管理产物过期**（上游 URL 有效期由厂商定，MiniMax 是 24 小时）
+- **不做多步兑换**（`$fetch` 只有一步）
+- **不跨事件拼接流式音频**（`sse` 只汇总 url 类 items）
+- **不内置对象存储**、**不执行任何代码**（没有 eval、没有插件）
+- **不校验枚举值的合法性**——`$enum` 里写了厂商不认的值，只有真实调用才会暴露（这就是判官存在的理由）
+
+### 0.4 协议速查（完整契约）
+
+#### 0.4.1 spec 顶层字段
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
@@ -93,7 +242,7 @@
 | `maxN` | number | 上游接受的最大张数，客户端 `n` 超过就报 `400 n_too_large` |
 | `timeoutMs` | number | 上游超时，**必须 ≤ 300000**（serverless 上限，超过保存时报错） |
 
-#### 0.3.2 transport 与 auth
+#### 0.4.2 transport 与 auth
 
 | `transport` 字段 | 类型 | 必填 | 取值 / 说明 |
 | --- | --- | --- | --- |
@@ -120,7 +269,7 @@
 }
 ```
 
-#### 0.3.3 映射原语（全部 12 个，没有别的）
+#### 0.4.3 映射原语（全部 12 个，没有别的）
 
 | 原语 | 写法 | 什么时候用 |
 | --- | --- | --- |
@@ -145,7 +294,7 @@
 - 字符串值里 `{{ $.a.b }}` 会被替换成作用域里的值（自动 URL 编码）。
 - **方向别搞反**：`$dataUrl`/`$file` 属于请求，`$from`/`$fetch` 属于响应。
 
-#### 0.3.4 response 契约
+#### 0.4.4 response 契约
 
 `response` 映射出来的对象**只认这些 key**，多余的会被忽略：
 
@@ -172,7 +321,7 @@
 
 `items` 可以是单个对象（不必包成数组）。
 
-#### 0.3.5 errors
+#### 0.4.5 errors
 
 ```jsonc
 "errors": [
@@ -191,7 +340,7 @@
   `upstream_auth_failed` `upstream_task_failed` `upstream_overloaded`
   `task_timeout` `upstream_contract_mismatch` `upstream_error`。
 
-#### 0.3.6 async
+#### 0.4.6 async
 
 | `async` 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
@@ -230,7 +379,7 @@
 - 也可以用 `successValues` + `failureValues`（两组不能都空，否则保存报错）。
 - 匹配**默认忽略大小写**；需要严格时写 `"statusMatch": "exact"`。
 
-#### 0.3.7 作用域（`$` 根作用域里有什么）
+#### 0.4.7 作用域（`$` 根作用域里有什么）
 
 **每个端点都会透传客户端请求体的全部字段**，另外注入这些归一化字段：
 
@@ -249,7 +398,7 @@
   我们对外端点**没有**对应入参的字段，就必须
   `"duration": {"$firstPresent": ["$.duration", {"$const": 6}]}`。
 
-#### 0.3.8 引擎会做 / 不会做的事
+#### 0.4.8 引擎会做 / 不会做的事
 
 **会做**：路径与 `{{}}` 替换（同源校验）、蛇形/驼峰别名、映射求值、multipart/form/json
 三种编码、hex/base64/dataUrl 归一、错误规则匹配、异步提交与轮询、`$fetch` 一次同源 GET、
@@ -265,7 +414,7 @@ binary/stream/sse 回传、空结果检测、按 `successCount` 计费。
 - **不内置对象存储**：上传图要转 URL 得你自己先传好。
 - **不执行任何代码**：没有 `eval`、没有插件。表达不了的厂商要**扩展引擎原语**（改代码）。
 
-### 0.4 硬规则（逐条可判定）
+### 0.5 硬规则（逐条可判定）
 
 1. `specVersion` 必须是 `2`。
 2. 输出**两个独立 JSON 块**，`specs` 是**一个平铺数组**。
@@ -281,7 +430,7 @@ binary/stream/sse 回传、空结果检测、按 `successCount` 计费。
 11. `metadata.modes` 只写真的映射了的。
 12. `limits.timeoutMs ≤ 300000`。
 
-### 0.5 不确定时的决策规则
+### 0.6 不确定时的决策规则
 
 | 情况 | 怎么办 |
 | --- | --- |
@@ -292,24 +441,83 @@ binary/stream/sse 回传、空结果检测、按 `successCount` 计费。
 | 表达式太复杂表达不出来 | 拆成多个 spec / 换厂商。**协议不执行代码**，不要试图绕过。 |
 | 需要厂商不支持的能力 | 如实说做不到。`metadata` 里不要写没实现的 `modes`。 |
 
-### 0.6 交稿前自查（逐条回答「是/否」）
+### 0.7 先跑判官脚本，别只读文档
+
+文档会被漏读，JSON 会被误读。**唯一能证明一份 spec 正确的方式是把它跑起来。**
+本项目开源了引擎，所以判官也开源了：
+
+```bash
+# 把两个块放进一个文件：{ "models": {…}, "specs": [ … ] }
+pnpm spec-check my-specs.json
+```
+
+它做两件事，都不需要厂商账号、不联网。
+
+**PART 1 静态**：结构与跨 spec 校验、**逐字打印实际会发出的上游请求**（含 header 的取舍），
+外加若干启发式检查，其中三条对应真实事故：
+
+| 启发式 | 拦住的真实事故 |
+| --- | --- |
+| `async.poll.path` 在提交路径后又接了字面量段 | 官方 `/v2/query/video_generation/{task_id}` 被写成 `/v2/video_generation/query?task_id=` → 全 404 |
+| 布尔字段用了字符串常量 | `{"$const":"false"}` 在 multipart 里发出去是字符串 `"false"` |
+| 用空值兜必填字段 | `{"$const":""}` 撞厂商 `minLength: 1` → 400 |
+
+**PART 2 探针**：脚本会**读你 spec 自己的 `response` 映射，反推出一份刚好能喂饱它的上游响应**，
+然后把 spec 真的执行一遍，逐条验证：
+
+- happy path 能产出产物
+- 每条 `httpStatus` 规则映射到正确的状态和 code
+- 每条 `when` 规则能真的触发（`$eq` 右值的字面量会被喂进去）
+- 异步终态能收敛、失败态立即失败、**未知状态不会假装成功**
+- `encoding: "hex"` 真的产出了可解码的 base64
+- 映射为空时报 `upstream_contract_mismatch`，而不是静默成功并计费 0
+- `n > maxN` 被拒
+
+**工作流**：写完 → `pnpm spec-check` → 全绿再交。
+**没跑过判官就不要交付 spec**——§0.8 的自查表是给人看的兜底，判官是机器验证。
+
+> 脚本源码 `scripts/spec-check.ts`；它本身有测试
+> `tests/unit/media-spec-check.test.ts`：必须对全部内置模板报绿，
+> 且必须能抓到上面那几类已知事故——所以判官不会自己退化成橡皮图章。
+
+### 0.8 交稿前自查（逐条回答「是/否」）
+
+> ### ⚠️ 勾选不是自证——三个 ⭐ 项必须**附上原文**
+>
+> 下面第 4、7、8 条是最容易翻车的（漏抄 `required:`、漏抄 `responses:`、漏抄状态枚举），
+> 而且**保存时不会报错**，只有真实调用才暴露。所以勾「是」之前，先把**你抄到的原文**写进回复：
+>
+> ```text
+> required: model, content, resolution, duration
+> responses: 400 401 402 422 429 500
+> 状态枚举: queued / running / succeeded / failed / cancelled
+> ```
+>
+> 写不出原文 = 没查到 = 不能勾「是」。**只写「已核对」而没有原文的，一律视为未核对。**
+>
+> 这一条不是形式主义：实测中出现过「自查表全绿，但 V2 轮询路径写成
+> `/v2/video_generation/query`（官方是 `/v2/query/video_generation/{task_id}`）」
+> 和「自查表全绿，但把 `lyrics` 默认成空串（官方 `minLength: 1`）」——
+> 两处都能靠「把文档里那一行抄出来」当场发现。
 
 - [ ] 输出是两个独立 JSON 块，`specs` 是一个平铺数组？
 - [ ] 每份 spec 的 `specVersion` 是 `2`？
 - [ ] 同一 capability 的多份 spec 都写了 `models`，且无模型被重复声明？
-- [ ] 厂商 `required:` 逐条对过，没有对应入参的字段用了 `$firstPresent` 兜默认？
-- [ ] 每个枚举映射表里的值都能在厂商文档里找到？
-- [ ] 厂商 `responses:` 里的每个状态码（包括 422/529 这类）都有规则？
-- [ ] 异步 `statusMap` 写了 `""` 兜底，且终态的每种拼写变体都列了？
+- [ ] 厂商 `required:` 逐条对过，没有对应入参的字段用了 `$firstPresent` 兜默认？**（贴原文）**
+- [ ] 每个枚举映射表里的值都能在厂商文档里找到？**（贴出该字段的 `enum:` 列表）**
+- [ ] 厂商 `responses:` 里的每个状态码（包括 422/529 这类）都有规则？**（贴原文）**
+- [ ] 异步 `statusMap` 写了 `""` 兜底，且终态的每种拼写变体都列了？**（贴出状态字段的取值列表）**
+- [ ] `{{taskId}}` 的轮询路径**逐字符对照过**厂商文档的 URL？（路径拼接错一个段就全 404）
 - [ ] 产物若是 id，用了 `$fetch` 换成真地址？
 - [ ] 要 base64 的地方声明了正确的 `encoding`（或确认过上游本来就是 base64）？
 - [ ] `$dataUrl` / `$file` 只出现在 `request`，`$from` / `$fetch` 只出现在 `response`？
-- [ ] `metadata.modes` 里每一项都有对应的请求映射？
+- [ ] multipart 里的**字符串 vs 布尔**都对得上厂商文档？（`"false"` ≠ `false`）
+- [ ] `metadata.modes` 里每一项都有对应的请求映射，且用词与其它能力一致？
 - [ ] `limits.timeoutMs ≤ 300000`？
 
 > 完整版（带每条的真实翻车案例）在 §17。
 
-### 0.7 词汇对照：OpenAI 入参 ↔ 常见厂商字段
+### 0.9 词汇对照：OpenAI 入参 ↔ 常见厂商字段
 
 厂商几乎都不叫 OpenAI 的名字。下面这张表是「客户端发的词」到「厂商文档里的词」的常见对应，
 写 spec 时对着它找，能省掉大量猜字段名的时间：
@@ -491,7 +699,7 @@ MediaProvider {
 > 不要合并，也不要按图片/视频/语音/音乐分组或嵌套。
 > 动笔前先读本文 §6.1（每个端点到底有哪些 `$.键`）、**§6.3（厂商必填但客户端可能不传的参数）**、
 > §7.2（结果形态与编码）、§8（**厂商的每个状态码都要映射**）、§9（异步状态词表），
-> 交稿前按 §17 的七条自查。
+> 交稿前跑 `pnpm spec-check` 并按 §17 的十条自查。
 > ```
 >
 > 贴的时候：上面那个框贴 `models`，下面那个框贴 `specs`。
@@ -1227,7 +1435,7 @@ upstream task did not finish in time (last status "Rendering" — check async.po
 
 ---
 
-## 17. 交稿前自查（七条）
+## 17. 交稿前自查（十条，每条都有真实翻车案例）
 
 这七条都真实发生过，且**都不会在保存时报错**——只有跑起来才暴露：
 
@@ -1245,19 +1453,37 @@ upstream task did not finish in time (last status "Rendering" — check async.po
    → 同一厂商文档里成功可能写 `Success` 也可能写 `success`，失败可能写 `Fail` 也可能写
    `failed`。`statusMap` 两种都列，**并写 `""` 兜底**（§9.1）。漏一个 = 挂到超时。
 
-5. **图片/视频端点引用的键名拼错**
+5. **轮询路径拼错**
+   → 官方是 `GET /v2/query/video_generation/{task_id}`，写成 `/v2/video_generation/query?task_id=`
+   就全 404（段序和「路径参数 vs query」都要**逐字符对照**，§9）。
+
+6. **multipart 里把字符串当布尔**
+   → 厂商要 `stream: false`（布尔），`{"$const":"false"}` 在 multipart 里发出去是**字符串** `"false"`。
+   布尔字段要么用 `$const: false`，要么干脆不写（用厂商默认值）。
+
+7. **用空串「兜必填」**
+   → 厂商 `lyrics` 是 `minLength: 1` 时，`{"$firstPresent":["$.lyrics",{"$const":""}]}` 会发空串
+   直接 400。**省略字段通常优于发空值**——先确认厂商对「缺失」和「空串」的态度。
+
+8. **图片/视频端点引用的键名拼错**
    → 两种拼写都通，但拼错的名字会让 `$enum` **静默落到 `default`**。对照 §6.1 核一遍。
 
-6. **`baseUrl` 重复版本段**
+9. **`baseUrl` 重复版本段**
    → `baseUrl` 带 `/v1` + `path` 带 `/v1/…` = `/v1/v1/…` 全 404（§13）。
 
-7. **同一 capability 多份 spec 却没写 `models`**
-   → 保存会直接报错（§3.4）；别靠「第一份生效」。
+10. **同一 capability 多份 spec 却没写 `models`**
+    → 保存会直接报错（§3.4）；别靠「第一份生效」。
 
 > 外加一条常识：**`metadata.modes` 只写你真支持的**。写了 `image-to-video` 却没映射
 > `first_frame_image`，客户端传图过来会被当文生视频跑，目录里却宣传着支持图生视频（§11）。
 
-> 对着这七条过一遍，能挡掉绝大多数「保存成功但一调用就出问题」的情况。
+> ### 这份清单存在的原因
+>
+> 十条里**没有一条能在保存时拦住你**——这正是它们危险的地方。每一类都真实发生过，
+> 而且都是「自查表全绿、上线才发现」。
+>
+> 所以 §0.8 要求第 4/6/7/8 项**必须附上厂商文档原文**：写不出原文就说明没查，
+> 而不是「已核对」。
 
 ---
 
@@ -1273,7 +1499,12 @@ src/app/api/v1/{images,videos,audio}/…   六个对外端点
 src/app/api/admin/media-providers/…      管理端点
 src/app/(admin)/admin/media-providers/   后台页面（spec 编辑器 + 模板按钮）
 
-tests/unit/media-spec-v2.test.ts         v2 的六个能力点 + 校验面
+scripts/spec-check.ts                    判官：静态检查 + 用合成上游跑引擎探针
+                                        （pnpm spec-check <file.json>，不联网、不需密钥）
+
+tests/unit/media-spec-check.test.ts      判官自身：内置模板必须全绿 + 必须能抓到已知事故
+tests/unit/media-protocol-doc.test.ts    本文的示例可解析 + §0.3 速查表逐字段与 TS 接口同步
+tests/unit/media-spec-v2.test.ts         v2 的六个能力点 + 校验面 + $ifPresent 多分支
 tests/unit/media-engine.test.ts          原语、引擎（含异步轮询）
 tests/unit/media-fetch.test.ts           $fetch（id → URL 兑换）
 tests/integration/media-images.test.ts   图片端点 + 计费 + 目录元数据

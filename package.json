@@ -67,6 +67,7 @@
     "test:unit": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",
     "smoke": "bash scripts/smoke-local.sh",
+    "spec-check": "tsx scripts/spec-check.ts",
     "bootstrap-admin": "tsx scripts/bootstrap-admin.ts",
     "reset-password": "tsx scripts/reset-user-password.ts",
     "rotate-key": "tsx scripts/rotate-master-key.ts",

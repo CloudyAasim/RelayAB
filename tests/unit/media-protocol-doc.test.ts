@@ -302,4 +302,80 @@ describe("§0 quick reference is in sync with the code", () => {
     expect(section0).toContain("【第一块：models");
     expect(section0).toContain("【第二块：specs");
   });
+
+  it("tells the AI to run the judge before delivering", () => {
+    expect(section0).toContain("pnpm spec-check");
+    expect(section0).toContain("没跑过判官就不要交付");
+  });
+});
+
+/**
+ * §0.3 documents the engine's *exact* semantics, and `scripts/spec-check.ts` is
+ * a second implementation of them. If either drifts from the engine, every spec
+ * written against the document is subtly wrong, so the load-bearing invariants
+ * are asserted here rather than trusted.
+ */
+describe("§0.3 engine semantics section stays in sync", () => {
+  const markdown = readFileSync(DOC, "utf8");
+  const section = markdown.slice(
+    markdown.indexOf("### 0.3 引擎怎么跑的"),
+    markdown.indexOf("### 0.4 协议速查"),
+  );
+  const engine = readFileSync(join(process.cwd(), "src", "lib", "media", "engine.ts"), "utf8");
+
+  it("exists and is substantial", () => {
+    expect(section.length).toBeGreaterThan(3000);
+  });
+
+  it.each([
+    ["the full call order", "一次调用的完整顺序"],
+    ["mapping evaluation order", "applyMapping(node, scope)"],
+    ["the $firstPresent object trap", "$firstPresent` 只对标量可靠"],
+    ["key-dropping rules", "键被丢弃的规则"],
+    ["item normalisation", "上游响应怎么变成 items"],
+    ["hex edge cases", "不是合法 hex 就原样透传"],
+    ["poll classification", "异步轮询的判定"],
+    ["$fetch limits", "$fetch` 的展开时机与限制"],
+    ["empty-result handling", "空结果的两种情况"],
+    ["scope construction", "buildMediaScope"],
+    ["url/header precedence", "URL 与 header 的优先级"],
+    ["explicit non-goals", "引擎明确不做的事"],
+  ])("documents %s", (_label, heading) => {
+    expect(section).toContain(heading);
+  });
+
+  it.each([
+    ["MAX_FETCH_MARKERS", /MAX_FETCH_MARKERS = 8/],
+    ["FETCH_TIMEOUT_MS", /FETCH_TIMEOUT_MS = 30_000/],
+  ])("keeps the engine constant %s", (_label, pattern) => {
+    expect(engine).toMatch(pattern);
+  });
+
+  it.each([
+    ["the fetch cap", "最多 8 个"],
+    ["the fetch timeout", "总超时 **30s**"],
+    ["the poll interval default", "intervalMs"],
+  ])("states %s in the prose", (_label, phrase) => {
+    expect(section).toContain(phrase);
+  });
+
+  it("agrees with the validator on the serverless ceiling", () => {
+    const specSource = readFileSync(join(process.cwd(), "src", "lib", "media", "spec.ts"), "utf8");
+    // The ceiling is enforced in the validator; the document must not claim a
+    // different number or an operator will size their timeouts off the doc.
+    expect(specSource).toContain("300_000");
+    expect(markdown).toContain("300000");
+  });
+
+  it("documents the fallback status vocabulary the engine ships", () => {
+    // These defaults are the reason an unlabelled success still converges.
+    expect(section).toContain('""');
+    expect(section).toContain("task_timeout");
+  });
+
+  it("still names the real engine entry points", () => {
+    for (const symbol of ["buildMediaScope", "applyMapping", "classifyStatus"]) {
+      expect(engine, `engine no longer defines ${symbol}`).toContain(symbol);
+    }
+  });
 });

@@ -737,10 +737,20 @@ export function validateMediaSpecs(specs: unknown): {
   for (const entry of parsed) {
     if (!ITEM_PRODUCING_CAPABILITIES.has(entry.capability)) continue;
     const spec = asRecord(list[entry.index]);
+    // `responseMode` other than `json` returns bytes/stream without consulting
+    // `response`, so the items rule only applies to JSON-mode specs.
+    if (String(spec?.responseMode ?? "json") !== "json") continue;
+    if (spec?.allowEmpty === true) continue;
     const response = asRecord(spec?.response);
-    if (response && response.items === undefined && response.text === undefined) {
+    if (!response) {
       errors.push(
-        `specs[${entry.index}].response: "${entry.capability}" must map \`items\` (or opt out with the top-level \`allowEmpty\`)`,
+        `specs[${entry.index}]: "${entry.capability}" has no \`response\` mapping, so every call would return nothing and be charged 0 — add it, or set "allowEmpty": true if an empty result is legitimate`,
+      );
+      continue;
+    }
+    if (response.items === undefined && response.itemsB64 === undefined && response.text === undefined) {
+      errors.push(
+        `specs[${entry.index}].response: "${entry.capability}" must map \`items\` (or \`itemsB64\`) — or opt out with the top-level \`allowEmpty\``,
       );
     }
   }

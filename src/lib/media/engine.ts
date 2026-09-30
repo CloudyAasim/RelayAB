@@ -581,6 +581,12 @@ function collectItems(payload: unknown): MediaItem[] {
   // wrapping it in `$from`.
   if (Array.isArray(record.items)) record.items.forEach((raw) => push(raw));
   else if (record.items !== undefined) push(record.items);
+  // `itemsB64` is the older spelling for "a second array of base64 items"
+  // (vendors that return urls and base64 in separate arrays). It is always
+  // forced to kind "base64" — dropping it silently would turn a working spec
+  // into an empty result.
+  if (Array.isArray(record.itemsB64)) record.itemsB64.forEach((raw) => push(raw, "base64"));
+  else if (record.itemsB64 !== undefined) push(record.itemsB64, "base64");
   return items;
 }
 
