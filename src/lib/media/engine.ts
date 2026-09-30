@@ -309,6 +309,34 @@ function makeFetcher(
 // ---------------------------------------------------------------------------
 
 /**
+ * Effective lookup table for `$enum` / `$mapSize`.
+ *
+ * A vendor can ship model tiers with different capabilities behind one endpoint
+ * (MiniMax: `MiniMax-H3` takes `2K`, `MiniMax-H3-Max` does not). `byModel`
+ * keys an override table by the **upstream** model name and is consulted first,
+ * per key, so a model that differs on one size does not have to repeat the rest.
+ */
+function resolveEnumTable(
+  params: Record<string, unknown>,
+  key: "map" | "table",
+  scope: unknown,
+): Map<string, unknown> {
+  const merged = new Map<string, unknown>();
+  for (const [from, value] of Object.entries(asRecord(params[key]) ?? {})) {
+    merged.set(from, value);
+  }
+  const byModel = asRecord(params.byModel);
+  if (byModel) {
+    const model = getPath(scope, "$.model");
+    const override = model === undefined ? null : asRecord(byModel[String(model)]);
+    if (override) {
+      for (const [from, value] of Object.entries(override)) merged.set(from, value);
+    }
+  }
+  return merged;
+}
+
+/**
  * Evaluate a mapping tree against a scope.
  *
  * `undefined` results propagate so the caller can drop the key entirely — that
@@ -363,11 +391,11 @@ export function applyMapping(node: MediaMapping, scope: unknown): unknown {
     const params = asRecord(record.$enum);
     if (!params) return undefined;
     const raw = getPath(scope, String(params.path ?? "$"));
-    const table = asRecord(params.map) ?? {};
+    const table = resolveEnumTable(params, "map", scope);
     if (raw === undefined || raw === null) {
       return params.default === undefined ? undefined : params.default;
     }
-    const mapped = table[String(raw)];
+    const mapped = table.get(String(raw));
     return mapped !== undefined ? mapped : params.default ?? raw;
   }
 
@@ -376,8 +404,8 @@ export function applyMapping(node: MediaMapping, scope: unknown): unknown {
     if (!params) return undefined;
     const raw = getPath(scope, String(params.path ?? "$.size"));
     if (raw === undefined || raw === null) return params.default;
-    const table = asRecord(params.table) ?? {};
-    return table[String(raw)] ?? params.default ?? raw;
+    const table = resolveEnumTable(params, "table", scope);
+    return table.get(String(raw)) ?? params.default ?? raw;
   }
 
   if ("$dataUrl" in record) {

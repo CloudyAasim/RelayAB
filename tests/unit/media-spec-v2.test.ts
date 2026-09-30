@@ -923,3 +923,187 @@ describe("validation surface", () => {
     expect(result.errors.join(" ")).toContain("must map `items`");
   });
 });
+
+describe("byModel — one spec, per-model enum/size tables", () => {
+  // MiniMax ships two tiers behind one endpoint: `MiniMax-H3` accepts `2K`,
+  // `MiniMax-H3-Max` explicitly does not. Splitting into two specs would mean two
+  // copies to keep in step, and the judge cannot compare them.
+  const V2_VIDEO: Record<string, unknown> = {
+    specVersion: 2,
+    capability: "video.generate",
+    models: ["minimax-h3", "minimax-h3-max"],
+    transport: { method: "POST", path: "/v2/video_generation" },
+    auth: { type: "bearer" },
+    request: {
+      model: "$.model",
+      content: [{ type: "text", text: "$.prompt" }],
+      resolution: {
+        $mapSize: {
+          path: "$.size",
+          table: { "1280x720": "768P", "1920x1080": "2K" },
+          default: "768P",
+          byModel: { "MiniMax-H3-Max": { "1920x1080": "768P" } },
+        },
+      },
+    },
+    response: { taskId: "$.task_id", status: "$.task.status", items: [{ kind: "url", value: "$.task.content.url" }] },
+    async: { submitTaskId: "$.task_id", poll: { method: "GET", path: "/v2/query/video_generation/{{taskId}}", statusMap: { succeeded: "ok", "": "wait" } } },
+  };
+
+  it("lets one spec serve model tiers with different capabilities", () => {
+    const parsed = parseMediaSpec(V2_VIDEO);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const send = (model: string, size: string) =>
+      (applyMapping(parsed.spec.request, { model, prompt: "p", size }) as Record<string, unknown>).resolution;
+
+    expect(send("MiniMax-H3", "1920x1080")).toBe("2K");
+    expect(send("MiniMax-H3-Max", "1920x1080")).toBe("768P");
+    // Keys the model does not override still come from the shared table.
+    expect(send("MiniMax-H3", "1280x720")).toBe("768P");
+    expect(send("MiniMax-H3-Max", "1280x720")).toBe("768P");
+  });
+
+  it("works on $enum too", () => {
+    const parsed = parseMediaSpec({
+      specVersion: 2,
+      capability: "image.generate",
+      transport: { method: "POST", path: "/v1/images" },
+      auth: { type: "bearer" },
+      request: {
+        model: "$.model",
+        response_format: {
+          $enum: {
+            path: "$.responseFormat",
+            map: { b64_json: "base64", url: "url" },
+            default: "url",
+            byModel: { "image-01-live": { b64_json: "url" } },
+          },
+        },
+      },
+      response: { items: [{ kind: "url", value: "$.url" }] },
+    });
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const send = (model: string) =>
+      (applyMapping(parsed.spec.request, { model, responseFormat: "b64_json" }) as Record<string, unknown>)
+        .response_format;
+    expect(send("image-01")).toBe("base64");
+    expect(send("image-01-live")).toBe("url");
+  });
+
+  it("is inert when no model matches", () => {
+    const parsed = parseMediaSpec(V2_VIDEO);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const body = applyMapping(parsed.spec.request, {
+      model: "Some-Other-Model",
+      prompt: "p",
+      size: "1920x1080",
+    }) as Record<string, unknown>;
+    expect(body.resolution).toBe("2K");
+  });
+
+  it("rejects an override key the shared table does not have", () => {
+    const parsed = parseMediaSpec({
+      ...V2_VIDEO,
+      request: {
+        model: "$.model",
+        resolution: {
+          $mapSize: {
+            path: "$.size",
+            table: { "1280x720": "768P" },
+            default: "768P",
+            byModel: { "MiniMax-H3-Max": { "3840x2160": "8K" } },
+          },
+        },
+      },
+    });
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.errors.join(" ")).toContain("override keys must exist there");
+  });
+
+  it("rejects a malformed byModel", () => {
+    for (const byModel of ["nope", { "MiniMax-H3-Max": "nope" }, { "": { a: 1 } }]) {
+      const parsed = parseMediaSpec({
+        ...V2_VIDEO,
+        request: {
+          model: "$.model",
+          resolution: { $mapSize: { path: "$.size", table: { a: "b" }, byModel } },
+        },
+      });
+      expect(parsed.ok, JSON.stringify(byModel)).toBe(false);
+    }
+  });
+});
+
+describe("errorCode / errorMessage are full mappings", () => {
+  // A vendor can put errors in two places: an OpenAI-shaped envelope for 4xx/5xx,
+  // and a task-shaped object when a poll comes back `failed`. There is room for
+  // both, but only if the operator knows these two slots take a mapping.
+  const spec = {
+    specVersion: 2,
+    capability: "video.generate",
+    transport: { method: "POST", path: "/v2/video_generation" },
+    auth: { type: "bearer" },
+    request: { model: "$.model" },
+    response: {
+      taskId: "$.task_id",
+      status: "$.task.status",
+      items: [{ kind: "url", value: "$.task.content.url" }],
+      successCount: { $const: 1 },
+      errorCode: { $firstPresent: ["$.error.type", "$.task.error.code"] },
+      errorMessage: { $firstPresent: ["$.error.message", "$.task.error.message"] },
+    },
+    errors: [{ httpStatus: 402, status: 402, code: "upstream_credit_exhausted" }],
+    async: {
+      submitTaskId: "$.task_id",
+      poll: {
+        method: "GET",
+        path: "/v2/query/video_generation/{{taskId}}",
+        intervalMs: 1,
+        timeoutMs: 2000,
+        statusPath: "$.task.status",
+        statusMap: { succeeded: "ok", failed: "fail", "": "wait" },
+      },
+    },
+  };
+
+  it("surfaces the submit-phase message", async () => {
+    const parsed = parseMediaSpec(spec);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const out = await executeMedia({
+      spec: parsed.spec,
+      provider,
+      input: { model: "MiniMax-H3", prompt: "p" },
+      fetchImpl: (async () =>
+        json({ error: { type: "insufficient_balance_error", message: "insufficient balance (1008)" } }, 402)) as never,
+    });
+    expect(out.ok).toBe(false);
+    if (out.ok) return;
+    expect(out.error).toMatchObject({ status: 402, code: "upstream_credit_exhausted" });
+    expect(out.error.message).toBe("insufficient balance (1008)");
+  });
+
+  it("surfaces the poll-phase message too, instead of trading it away", async () => {
+    const parsed = parseMediaSpec(spec);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const out = await executeMedia({
+      spec: parsed.spec,
+      provider,
+      input: { model: "MiniMax-H3", prompt: "p" },
+      fetchImpl: (async (u: string | URL | Request) => {
+        const url = String(u);
+        if (url.endsWith("/v2/video_generation")) return json({ task_id: "t1" });
+        return json({ task: { status: "failed", error: { code: "1026", message: "contains sensitive content" } } });
+      }) as never,
+    });
+    expect(out.ok).toBe(false);
+    if (out.ok) return;
+    expect(out.error.code).toBe("upstream_task_failed");
+    expect(out.error.message).toBe("contains sensitive content");
+  });
+});

@@ -280,7 +280,7 @@
 | `$toString` | `{"$toString": "$.n"}` | 厂商要字符串，客户端给了数字 |
 | `$dataUrl` | `{"$dataUrl": "$.image"}` | **只往请求里用**：裸 base64 → `data:image/png;base64,…` |
 | `$file` | `{"$file": {"path":…, "filename":…, "contentType":…}}` | **只往请求里用**：data URL → 真的 multipart 文件（需 multipart） |
-| `$firstPresent` | `{"$firstPresent": [<映射>, …]}` | 取第一个**标量**有值的；厂商必填但客户端可能不传时用它兜默认 |
+| `$firstPresent` | `{"$firstPresent": [<映射>, …]}` | 取第一个有值的；**厂商必填但客户端可能不传时用它兜默认**；`errorCode`/`errorMessage` 也会用到它（见 §7.2） |
 | `$from` | `{"$from": "$.data.urls", "$to": {…}}` | **只往响应里用**：数组逐项映射 |
 | `$merge` | `{"$merge": [<映射>, <映射>]}` | 合并多个对象 |
 | `$eq` | `{"$eq": [<映射>, <映射>]}` | 深度相等（`errors.when` 主力） |
@@ -305,8 +305,24 @@
 | `taskId` | string | 异步任务的 id（`async` 必填） |
 | `status` | string | 异步状态（`async.poll.statusPath` 指向它） |
 | `text` | string | 转写文本（`audio.stt`） |
-| `errorCode` | any | 上游错误码，进错误响应的 message |
-| `errorMessage` | string | 上游错误文案，**优先于我们的 code 返回给客户端** |
+| `errorCode` | 映射 | 上游错误码 |
+| `errorMessage` | 映射 | 上游错误文案，**优先于我们的 code 返回给客户端** |
+
+> **`errorCode` / `errorMessage` 是完整映射，不是路径字符串。**
+>
+> 很多厂商把错误放在**两个地方**：4xx/5xx 用 OpenAI 形状的 `{"error":{…}}`，
+> 而异步任务 `status=failed` 时错误在 `task.error` 里。两个都要，用 `$firstPresent`：
+>
+> ```jsonc
+> "errorCode":    { "$firstPresent": ["$.error.type", "$.task.error.code"] },
+> "errorMessage": { "$firstPresent": ["$.error.message", "$.task.error.message"] }
+> ```
+>
+> 提交阶段的 402 就会带厂商原文 `insufficient balance (1008)`，轮询失败则带
+> `video description contains sensitive content`——**不必二选一**。
+>
+> 顺带提醒：`errors[].when` 里查的路径必须和这里**同源**。判官会按
+> `response.errorCode` 的路径喂值，两边不一致时规则永不触发（§17）。
 
 **item**：
 
@@ -333,6 +349,8 @@
 
 - `when` 匹配**原始响应体**（未映射）；`httpStatus` 匹配 HTTP 状态码。**任一命中即触发**。
 - **两个都不写会保存报错**（规则永远不会触发）。
+- `when` 里的路径要和 `response.errorCode` **同源**——判官就是按那条路径喂值来验证规则的，
+  两者不一致时规则永不触发，而且不会报错（§7.2）。
 - `status` / `code` 是返回给客户端的；`message` 选填，不写时优先用 `response.errorMessage`。
 - **厂商文档 `responses:` 里列出的每个状态码都要映射**，包括看起来不可能发生的
   （例：MiniMax 用 **422** 表示内容拦截）。漏一个 = 客户端收到 502。
@@ -876,7 +894,33 @@ MediaProvider {
 典型例子：MiniMax 视频 V2 的 `required: [model, content, resolution, duration]`，
 其中 `duration` 在 OpenAI 形状的视频接口里没有对应字段。
 
-### 6.4 `$dataUrl` 的方向
+### 6.4 `byModel`：一份 spec 服务能力不同的模型档位
+
+同一家厂商常把多个档位放在同一个端点后面，**但支持的枚举值不一样**。
+典型：MiniMax 视频 V2 里 `MiniMax-H3` 支持 `768P / 2K`，`MiniMax-H3-Max` 只支持
+`480P / 768P`、**明确不支持 2K**。
+
+`$enum` 和 `$mapSize` 都有一个可选的 `byModel`，键是**上游模型名**（不是客户端模型名）：
+
+```jsonc
+"resolution": {
+  "$mapSize": {
+    "path": "$.size",
+    "table": { "1280x720": "768P", "1920x1080": "2K" },
+    "default": "768P",
+    "byModel": { "MiniMax-H3-Max": { "1920x1080": "768P" } }   // ← 只覆盖这一个键
+  }
+}
+```
+
+查表顺序：**`byModel[$.model]` → 共享 `table` → `default`**。
+所以只在一个档位上不同的模型**不必重复整张表**，也不用把 spec 拆成两份——
+拆了就会出现两份副本各自漂移，而且判官没法比较它们。
+
+> `byModel` 的键必须用**上游模型名**（`models[].upstreamId`），
+> 因为 `$.model` 在作用域里就是上游模型名。覆盖项里出现共享表没有的键会在保存时报错。
+
+### 6.5 `$dataUrl` 的方向
 
 > ### ⚠️ `$dataUrl` 往**请求**里用，**响应**里绝不用
 >
@@ -1312,15 +1356,19 @@ upstream task did not finish in time (last status "Rendering" — check async.po
     "content": [ { "type": "text", "text": "$.prompt" } ],   // V2 不是 prompt，是 content[]
     "duration": "$.duration",
     "resolution": { "$enum": { "path": "$.size",
-      "map": { "1280x720": "768P", "1920x1080": "2K" }, "default": "768P" } }
+      "map": { "1280x720": "768P", "1920x1080": "2K" },
+      "default": "768P",
+      // 若同一份 spec 还服务 MiniMax-H3-Max（不支持 2K），用 byModel 覆盖，不必拆两份
+      "byModel": { "MiniMax-H3-Max": { "1920x1080": "768P" } } } }
   },
   "response": {
     "taskId": "$.task_id",
     "status": "$.task.status",
     "items": [ { "kind": "url", "value": "$.task.content.url" } ],  // V2 直接给 url
     "successCount": { "$const": 1 },
-    "errorCode": "$.error.type",
-    "errorMessage": "$.error.message"
+    // 提交/4xx/5xx 的错误在 $.error.*，轮询里 status=failed 的在 $.task.error.* —— 两处都要
+    "errorCode": { "$firstPresent": ["$.error.type", "$.task.error.code"] },
+    "errorMessage": { "$firstPresent": ["$.error.message", "$.task.error.message"] }
   },
   "async": {
     "submitTaskId": "$.task_id",
@@ -1494,12 +1542,12 @@ upstream task did not finish in time (last status "Rendering" — check async.po
 
 ---
 
-## 17. 交稿前自查（十二条，每条都有真实翻车案例）
+## 17. 交稿前自查（十三条，每条都有真实翻车案例）
 
 这七条都真实发生过，且**都不会在保存时报错**——只有跑起来才暴露：
 
 1. **`$dataUrl` 用到 `response` 里**（最隐蔽）
-   → `$dataUrl` 往请求里用，base64 往响应里用（§6.4）。
+   → `$dataUrl` 往请求里用，base64 往响应里用（§6.5）。
 
 2. **客户端没传、但厂商 required 的参数没兜默认值**
    → 翻厂商 `required:` 列表，凡是对外端点没有对应入参的，用 `$firstPresent` 补默认（§6.3）。
@@ -1534,19 +1582,25 @@ upstream task did not finish in time (last status "Rendering" — check async.po
     → `$dataUrl` / `$file` 只能往**请求**里用（响应里应该写 `value: "$.data.audio"`）；
     `$from` / `$fetch` 只能往**响应**里用。判官的 `PART 1` 会直接报出来。
 
-11. **目录和实际能力对不上**
+11. **`errors.when` 与 `response.errorCode` 不同源**
+    → 规则查 `$.error.type`，而 `errorCode` 写 `$.task.error.code`：判官按后者喂值，
+    规则永不触发。厂商把错误放在**两处**时，两边都用 `$firstPresent` 一起覆盖（§7.2）。
+
+12. **目录和实际能力对不上**
     → `metadata.modes` 写了没映射的模式、`metadata.max_n` 与 `limits.maxN` 不一致、
     `metadata.sizes` 少了映射表里支持的尺寸——客户端只看得见目录。
 
-12. **同一 capability 多份 spec 却没写 `models`**
+13. **同一 capability 多份 spec 却没写 `models`**
     → 保存会直接报错（§3.4）；别靠「第一份生效」。
+    同一厂商两个档位能力不同（如 H3 支持 2K、H3-Max 不支持）时，优先用 `byModel`（§6.4），
+    而不是拆两份 spec。
 
 > 外加一条常识：**`metadata.modes` 只写你真支持的**。写了 `image-to-video` 却没映射
 > `first_frame_image`，客户端传图过来会被当文生视频跑，目录里却宣传着支持图生视频（§11）。
 
 > ### 这份清单存在的原因
 >
-> 十二条里**没有一条能在保存时拦住你**——这正是它们危险的地方。每一类都真实发生过，
+> 十三条里**没有一条能在保存时拦住你**——这正是它们危险的地方。每一类都真实发生过，
 > 而且都是「自查表全绿、上线才发现」。
 >
 > 所以 §0.8 要求第 4/6/7/8 项**必须附上厂商文档原文**：写不出原文就说明没查，

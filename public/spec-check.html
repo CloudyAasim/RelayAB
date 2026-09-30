@@ -196,6 +196,25 @@
     return scope;
   }
 
+  /**
+   * 有效查找表：先查 byModel[上游模型名] 的覆盖项，再落到共享表。
+   * 同一家厂商的模型档位能力不同（MiniMax-H3 支持 2K，H3-Max 不支持）时，
+   * 一份 spec 就不必拆成两份，两份也不会各自漂移。
+   */
+  function resolveEnumTable(params, key, scope) {
+    var merged = {};
+    var base = isRecord(params[key]) ? params[key] : {};
+    Object.keys(base).forEach(function (k) { merged[k] = base[k]; });
+    if (isRecord(params.byModel)) {
+      var model = getPath(scope, "$.model");
+      var override = model === undefined || model === null
+        ? null
+        : (isRecord(params.byModel[String(model)]) ? params.byModel[String(model)] : null);
+      if (override) Object.keys(override).forEach(function (k) { merged[k] = override[k]; });
+    }
+    return merged;
+  }
+
   /* -------------------------------------------------------- 映射求值 ---- */
   /** 顺序与 engine.applyMapping 完全一致：先匹配先生效。 */
   function applyMapping(node, scope) {
@@ -235,7 +254,7 @@
       var p = node.$enum;
       if (!isRecord(p)) return undefined;
       var raw = getPath(scope, String(p.path === undefined ? "$" : p.path));
-      var table = isRecord(p.map) ? p.map : {};
+      var table = resolveEnumTable(p, "map", scope);
       if (raw === undefined || raw === null)
         return p.default === undefined ? undefined : p.default;
       var mapped = table[String(raw)];
@@ -247,7 +266,7 @@
       if (!isRecord(q)) return undefined;
       var r2 = getPath(scope, String(q.path === undefined ? "$.size" : q.path));
       if (r2 === undefined || r2 === null) return q.default;
-      var t2 = isRecord(q.table) ? q.table : {};
+      var t2 = resolveEnumTable(q, "table", scope);
       var m2 = t2[String(r2)];
       return m2 !== undefined ? m2 : (q.default !== undefined ? q.default : r2);
     }
@@ -571,6 +590,39 @@
     keys.forEach(function (k) { walkMapping(node[k], path + "." + k, errors); });
   }
 
+  function validateByModel(params, tableKey, path, errors) {
+    if (params.byModel === undefined) return;
+    var byModel = params.byModel;
+    if (!isRecord(byModel)) {
+      errors.push(path + ".byModel: expected an object keyed by upstream model name");
+      return;
+    }
+    var declared = isRecord(params[tableKey]) ? params[tableKey] : {};
+    Object.keys(byModel).forEach(function (model) {
+      if (!model) { errors.push(path + ".byModel: model names must be non-empty"); return; }
+      var table = byModel[model];
+      if (!isRecord(table)) { errors.push(path + ".byModel." + model + ": expected an object of " + tableKey + " entries"); return; }
+      Object.keys(table).forEach(function (key) {
+        var v = table[key];
+        if (typeof v !== "string" && typeof v !== "number" && typeof v !== "boolean") {
+          errors.push(path + ".byModel." + model + "." + key + ": expected a string value");
+        } else if (Object.keys(declared).length && !(key in declared)) {
+          errors.push(path + ".byModel." + model + "." + key + ": not present in the shared " + tableKey + " — override keys must exist there");
+        }
+      });
+    });
+  }
+  function validateByModelTables(node, path, errors) {
+    if (node === null || node === undefined) return;
+    if (Array.isArray(node)) { node.forEach(function (n, i) { validateByModelTables(n, path + "[" + i + "]", errors); }); return; }
+    if (!isRecord(node)) return;
+    ["$enum", "$mapSize"].forEach(function (key) {
+      if (key in node && isRecord(node[key]))
+        validateByModel(node[key], key === "$enum" ? "map" : "table", path + "." + key, errors);
+    });
+    Object.keys(node).forEach(function (k) { if (typeof node[k] === "object") validateByModelTables(node[k], path + "." + k, errors); });
+  }
+
   function validateSpec(raw) {
     var errors = [], warnings = [];
     if (!isRecord(raw)) return { ok: false, errors: ["spec: expected a JSON object"], warnings: null };
@@ -616,7 +668,10 @@
     else if (["bearer", "header", "query", "none"].indexOf(raw.auth.type) < 0)
       errors.push("auth.type: must be bearer, header, query or none");
 
-    if (raw.request !== undefined) walkMapping(raw.request, "request", errors);
+    if (raw.request !== undefined) {
+      walkMapping(raw.request, "request", errors);
+      validateByModelTables(raw.request, "request", errors);
+    }
     if (raw.response !== undefined) {
       walkMapping(raw.response, "response", errors);
       if (isRecord(raw.response) && raw.response.allowEmpty !== undefined)
@@ -1143,6 +1198,10 @@
         out.push(["warn", prefix + " " + spec.capability + " 的产物声明为 url，但请求里没有任何参数要求上游返回 url（取自 " +
           generic.map(function (r) { return r.path; }).join(", ") + "）—— MiniMax 的 t2a_v2 / music_generation 默认是 hex"]);
     }
+
+    var byModelUsed = false;
+    walkPairs(spec.request, function (node) { if (isRecord(node) && node.byModel !== undefined) byModelUsed = true; });
+    if (byModelUsed) out.push(["info", prefix + " 使用了 byModel：同一份 spec 内按上游模型覆盖枚举/尺寸表（模型档位能力不同时不必拆 spec）"]);
 
     if (spec.limits && typeof spec.limits.timeoutMs === "number" && spec.limits.timeoutMs > 240000)
       out.push(["warn", prefix + " limits.timeoutMs=" + spec.limits.timeoutMs + " 贴近 serverless 上限（300s）"]);

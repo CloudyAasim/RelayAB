@@ -384,6 +384,75 @@ function validateMappingMap(
 }
 
 /**
+ * `$enum.byModel` / `$mapSize.byModel`: an override table keyed by the *upstream*
+ * model name, so one spec can serve model tiers with different capabilities
+ * (MiniMax `MiniMax-H3` accepts `2K`, `MiniMax-H3-Max` does not).
+ */
+function validateByModel(
+  params: Record<string, unknown>,
+  tableKey: "map" | "table",
+  path: string,
+  errors: string[],
+): void {
+  const byModel = params.byModel;
+  if (byModel === undefined) return;
+  const record = asRecord(byModel);
+  if (!record) {
+    errors.push(`${path}.byModel: expected an object keyed by upstream model name`);
+    return;
+  }
+  const declared = asRecord(params[tableKey]);
+  for (const [model, override] of Object.entries(record)) {
+    if (!model) {
+      errors.push(`${path}.byModel: model names must be non-empty`);
+      continue;
+    }
+    const table = asRecord(override);
+    if (!table) {
+      errors.push(`${path}.byModel.${model}: expected an object of ${tableKey} entries`);
+      continue;
+    }
+    for (const [key, value] of Object.entries(table)) {
+      if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") {
+        errors.push(`${path}.byModel.${model}.${key}: expected a string value`);
+        continue;
+      }
+      // An override that silently re-maps a key the shared table does not know
+      // is almost always a typo in one of the two.
+      if (declared && !(key in declared)) {
+        errors.push(
+          `${path}.byModel.${model}.${key}: not present in the shared ${tableKey} — override keys must exist there`,
+        );
+      }
+    }
+  }
+}
+
+/** Walk a mapping tree looking for `$enum` / `$mapSize` nodes to check `byModel`. */
+function validateByModelTables(
+  node: unknown,
+  path: string,
+  errors: string[],
+): void {
+  if (node === null || node === undefined) return;
+  if (Array.isArray(node)) {
+    node.forEach((item, index) => validateByModelTables(item, `${path}[${index}]`, errors));
+    return;
+  }
+  const record = asRecord(node);
+  if (!record) return;
+  for (const key of ["$enum", "$mapSize"] as const) {
+    if (key in record) {
+      const params = asRecord(record[key]);
+      if (params) validateByModel(params, key === "$enum" ? "map" : "table", `${path}.${key}`, errors);
+    }
+  }
+  for (const [childKey, child] of Object.entries(record)) {
+    if (typeof child === "object") validateByModelTables(child, `${path}.${childKey}`, errors);
+  }
+}
+
+/**
  * Parse and structurally validate an operator-authored spec.
  *
  * Deliberately permissive about *values* (the engine ignores what it does not
@@ -490,7 +559,10 @@ export function parseMediaSpec(raw: unknown): SpecParse {
     }
   }
 
-  if (root.request !== undefined) validateMapping(root.request, "request", errors);
+  if (root.request !== undefined) {
+    validateMapping(root.request, "request", errors);
+    validateByModelTables(root.request, "request", errors);
+  }
   if (root.response !== undefined) {
     validateMapping(root.response, "response", errors);
     const response = asRecord(root.response);
