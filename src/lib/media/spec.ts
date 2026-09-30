@@ -1,7 +1,7 @@
 /**
  * src/lib/media/spec.ts
  *
- * The declarative **media adapter protocol** (specVersion 2).
+ * The declarative **media adapter protocol** (specVersion 1 — the first and only version).
  *
  * A spec is data, not code: an operator edits it in the admin panel (or
  * imports an exported one) and the generic engine in ./engine executes it.
@@ -11,11 +11,11 @@
  * A spec lives under one media provider (base URL, credentials, client→upstream
  * model names) and serves exactly one `capability`.
  *
- * ## Why v2
+ * ## The mechanisms, and the failure each one closes
  *
- * v1 was validated by replaying four independently written MiniMax specs
- * through the real engine. Every recurring failure came from one of five
- * protocol gaps, and each is now closed here:
+ * Every mechanism below exists because a real spec, written by hand against a
+ * real vendor's docs, failed in exactly that way. There is no version history to
+ * read: this is the first version. The list is the specification's rationale.
  *
  *  1. **Two vendor API versions of the same capability could not coexist.**
  *     Specs were picked by `capability` alone and the first match won, so a
@@ -143,9 +143,17 @@ export interface MediaAsync {
     statusMap?: Record<string, MediaTaskState>;
     /**
      * `caseInsensitive` (default) because a single vendor documents the same
-     * state as both `Success` and `success`; `exact` restores v1 behaviour.
+     * state as both `Success` and `success`; `exact` restores strict matching.
      */
     statusMatch?: "exact" | "caseInsensitive";
+    /**
+     * Body for a `POST` poll. Some vendors take the task id in the body rather
+     * than the path; mappings are evaluated with the request scope plus
+     * `taskId`, so `{"task_ids": ["$.taskId"]}` works.
+     */
+    request?: MediaMapping;
+    /** Overrides `transport.contentType` for the poll request. */
+    contentType?: string;
   };
 }
 
@@ -156,7 +164,7 @@ export interface MediaLimits {
 }
 
 export interface MediaSpec {
-  specVersion: 2;
+  specVersion: 1;
   capability: MediaCapability;
   displayName?: string;
   /**
@@ -207,11 +215,69 @@ export type MediaMapping = unknown;
 /** What the upstream actually returned for an item, and how to normalize it. */
 export const MEDIA_ITEM_ENCODINGS = ["plain", "base64", "hex", "dataUrl"] as const;
 
-const CONTENT_TYPES = [
+/** Content types the engine encodes structurally; anything else is sent raw. */
+export const STRUCTURED_CONTENT_TYPES = [
   "application/json",
   "multipart/form-data",
   "application/x-www-form-urlencoded",
 ] as const;
+
+/** `type/subtype`, so raw bodies (`audio/wav`, `image/png`) are expressible. */
+const MEDIA_TYPE = /^[\w.+-]+\/[\w.+-]+$/;
+
+/**
+ * Allowed keys per level.
+ *
+ * Rejecting unknown keys only at the top level let every other typo through
+ * silently: `transport.contenttype`, `limits.max_n` and `async.poll.body` all
+ * parsed "successfully" and were then ignored, so the operator believed a
+ * setting had taken effect when it had not. Silent acceptance of a typo is worse
+ * than a loud rejection — that is the whole thesis of this protocol.
+ */
+const TRANSPORT_KEYS = new Set(["method", "path", "headers", "query", "contentType"]);
+const AUTH_KEYS = new Set(["type", "name", "prefix"]);
+const LIMITS_KEYS = new Set(["maxN", "timeoutMs"]);
+const ASYNC_KEYS = new Set(["submitTaskId", "poll"]);
+const POLL_KEYS = new Set([
+  "method",
+  "path",
+  "intervalMs",
+  "timeoutMs",
+  "statusPath",
+  "successValues",
+  "failureValues",
+  "statusMap",
+  "statusMatch",
+  "request",
+  "contentType",
+]);
+const ERROR_RULE_KEYS = new Set(["when", "httpStatus", "status", "code", "message"]);
+/**
+ * Keys the engine actually reads out of a `response` mapping. Anything else is
+ * a typo (`itemz`), which would otherwise surface much later as an empty result.
+ */
+const RESPONSE_KEYS = new Set([
+  "items",
+  "itemsB64",
+  "successCount",
+  "taskId",
+  "status",
+  "text",
+  "errorCode",
+  "errorMessage",
+]);
+
+/** Report every key that the engine will not read. */
+function rejectUnknownKeys(
+  record: Record<string, unknown>,
+  allowed: ReadonlySet<string>,
+  path: string,
+  errors: string[],
+): void {
+  for (const key of Object.keys(record)) {
+    if (!allowed.has(key)) errors.push(`${path}.${key}: unknown field (typo?)`);
+  }
+}
 
 /** Top-level spec keys, so a typo like `respone` is reported at save time. */
 const SPEC_KEYS = new Set([
@@ -471,12 +537,8 @@ export function parseMediaSpec(raw: unknown): SpecParse {
     }
   }
 
-  if (root.specVersion !== 2) {
-    errors.push(
-      root.specVersion === 1
-        ? "specVersion: this relay speaks version 2 only — re-import the spec from /admin/docs/media (v1 could not scope a spec to a model, match errors by HTTP status, or declare upstream encoding)"
-        : "specVersion: only 2 is supported",
-    );
+  if (root.specVersion !== 1) {
+    errors.push("specVersion: must be 1");
   }
   if (!isMediaCapability(root.capability)) {
     errors.push(`capability: must be one of ${MEDIA_CAPABILITIES.join(", ")}`);
@@ -501,6 +563,7 @@ export function parseMediaSpec(raw: unknown): SpecParse {
   if (!transport) {
     errors.push("transport: required object");
   } else {
+    rejectUnknownKeys(transport, TRANSPORT_KEYS, "transport", errors);
     if (!["POST", "GET", "PUT", "PATCH"].includes(String(transport.method))) {
       errors.push("transport.method: must be POST, GET, PUT or PATCH");
     }
@@ -530,10 +593,10 @@ export function parseMediaSpec(raw: unknown): SpecParse {
     }
     if (
       transport.contentType !== undefined &&
-      !(CONTENT_TYPES as readonly unknown[]).includes(transport.contentType)
+      (typeof transport.contentType !== "string" || !MEDIA_TYPE.test(transport.contentType))
     ) {
       errors.push(
-        `transport.contentType: must be one of ${CONTENT_TYPES.join(", ")}`,
+        `transport.contentType: must be a media type such as ${STRUCTURED_CONTENT_TYPES.join(", ")}`,
       );
     }
     if (
@@ -542,12 +605,33 @@ export function parseMediaSpec(raw: unknown): SpecParse {
     ) {
       errors.push("transport.contentType: a GET request cannot carry a body");
     }
+    // A non-structural media type means "the body *is* the file", so the request
+    // mapping has to be a single `$file` node — otherwise there is nothing to
+    // send and the upstream would receive an empty body.
+    if (
+      typeof transport.contentType === "string" &&
+      MEDIA_TYPE.test(transport.contentType) &&
+      !(STRUCTURED_CONTENT_TYPES as readonly string[]).includes(transport.contentType)
+    ) {
+      if (String(transport.method) === "GET") {
+        errors.push("transport.contentType: a GET request cannot carry a body");
+      }
+      const request = asRecord(root.request);
+      const keys = request ? Object.keys(request) : [];
+      const isSingleFile = keys.length === 1 && keys[0] === "$file";
+      if (!isSingleFile) {
+        errors.push(
+          `transport.contentType "${transport.contentType}": a raw media type sends the file bytes as the whole body, so \`request\` must be a single \`$file\` node`,
+        );
+      }
+    }
   }
 
   const auth = asRecord(root.auth);
   if (!auth) {
     errors.push("auth: required object");
   } else {
+    rejectUnknownKeys(auth, AUTH_KEYS, "auth", errors);
     const type = auth.type;
     if (!["bearer", "header", "query", "none"].includes(String(type))) {
       errors.push("auth.type: must be bearer, header, query or none");
@@ -566,6 +650,10 @@ export function parseMediaSpec(raw: unknown): SpecParse {
   if (root.response !== undefined) {
     validateMapping(root.response, "response", errors);
     const response = asRecord(root.response);
+    // A transform node (`$merge`, …) has no contract keys to typo.
+    if (response && !Object.keys(response).some((key) => key.startsWith("$"))) {
+      rejectUnknownKeys(response, RESPONSE_KEYS, "response", errors);
+    }
     if (response && response.allowEmpty !== undefined) {
       errors.push("response.allowEmpty: put `allowEmpty` at the spec top level, not inside `response`");
     }
@@ -596,6 +684,7 @@ export function parseMediaSpec(raw: unknown): SpecParse {
           errors.push(`errors[${index}]: expected an object`);
           return;
         }
+        rejectUnknownKeys(record, ERROR_RULE_KEYS, `errors[${index}]`, errors);
         if (typeof record.status !== "number") {
           errors.push(`errors[${index}].status: required number`);
         }
@@ -628,6 +717,7 @@ export function parseMediaSpec(raw: unknown): SpecParse {
     if (!asyncBlock) {
       errors.push("async: expected an object");
     } else {
+      rejectUnknownKeys(asyncBlock, ASYNC_KEYS, "async", errors);
       if (typeof asyncBlock.submitTaskId !== "string") {
         errors.push("async.submitTaskId: required string");
       }
@@ -635,6 +725,7 @@ export function parseMediaSpec(raw: unknown): SpecParse {
       if (!poll) {
         errors.push("async.poll: required object");
       } else {
+        rejectUnknownKeys(poll, POLL_KEYS, "async.poll", errors);
         const pollPath = typeof poll.path === "string" ? poll.path : "";
         const successValues = asStringList(poll.successValues);
         const failureValues = asStringList(poll.failureValues);
@@ -648,6 +739,14 @@ export function parseMediaSpec(raw: unknown): SpecParse {
         }
         if (poll.method !== undefined && poll.method !== "GET" && poll.method !== "POST") {
           errors.push("async.poll.method: must be GET or POST");
+        }
+        if (poll.intervalMs !== undefined) {
+          const interval = poll.intervalMs;
+          if (typeof interval !== "number" || !Number.isFinite(interval) || interval <= 0) {
+            errors.push(
+              "async.poll.intervalMs: must be a positive number — 0 would busy-loop against the upstream for the whole timeout",
+            );
+          }
         }
         const map = poll.statusMap === undefined ? null : asRecord(poll.statusMap);
         if (poll.statusMap !== undefined && !map) {
@@ -684,6 +783,7 @@ export function parseMediaSpec(raw: unknown): SpecParse {
     if (!limits) {
       errors.push("limits: expected an object");
     } else {
+      rejectUnknownKeys(limits, LIMITS_KEYS, "limits", errors);
       for (const key of ["maxN", "timeoutMs"]) {
         const value = limits[key];
         if (value !== undefined && (typeof value !== "number" || !Number.isFinite(value))) {
@@ -711,7 +811,7 @@ export function parseMediaSpec(raw: unknown): SpecParse {
     ok: true,
     warnings,
     spec: {
-      specVersion: 2,
+      specVersion: 1,
       capability: root.capability as MediaCapability,
       ...(typeof root.displayName === "string" ? { displayName: root.displayName } : {}),
       ...(Array.isArray(root.models) ? { models: root.models as string[] } : {}),

@@ -11,12 +11,7 @@
 import { NextResponse } from "next/server";
 import { authenticateBearer, reasonToHttp, resolveAuthHeader } from "@/lib/auth/apikey";
 import { getUserById as lookupUserById } from "@/lib/db/users";
-import {
-  executeMediaRequest,
-  imageItemsResponse,
-  requirePrompt,
-  type MediaRequestInput,
-} from "@/lib/media/handler";
+import { executeMediaRequest, imageItemsResponse, requirePrompt, resultItems, type MediaRequestInput } from "@/lib/media/handler";
 import type { ApiKey } from "@/lib/db/types";
 
 export const runtime = "nodejs";
@@ -103,5 +98,6 @@ export async function POST(req: Request): Promise<Response> {
       { status: outcome.error.status },
     );
   }
-  return NextResponse.json(imageItemsResponse(outcome.value.result.items));
+  const items = await resultItems(outcome.value.result);
+  return NextResponse.json(imageItemsResponse(items));
 }

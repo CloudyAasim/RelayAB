@@ -1,7 +1,7 @@
 /**
  * src/lib/media/engine.ts
  *
- * The generic executor for the media adapter protocol (specVersion 2).
+ * The generic executor for the media adapter protocol (specVersion 1).
  *
  * Everything vendor-specific lives in a spec (see ./spec.ts); this file only
  * knows how to *interpret* it. Adding a provider therefore means shipping a
@@ -17,6 +17,7 @@
  *   status   → compared against the async rule's success/failure states
  */
 import { decryptSecret } from "../crypto/secrets";
+import { STRUCTURED_CONTENT_TYPES } from "./spec";
 import type {
   MediaErrorRule,
   MediaMapping,
@@ -173,6 +174,23 @@ function resolveTemplate(text: string, scope: unknown): string {
     const resolved = getPath(scope, path.trim());
     return resolved === undefined || resolved === null ? "" : String(resolved);
   });
+}
+
+/**
+ * Is a value "provided"?
+ *
+ * `""` counts as absent. OpenAI-compatible aggregators answer with *both* keys of
+ * a mutually-exclusive pair and blank the one that does not apply:
+ *
+ *   {"data":[{"url":"https://…","b64_json":""}]}          // url requested
+ *   {"data":[{"url":"","b64_json":"iVBORw0KGgo…"}]}        // b64_json requested
+ *
+ * Treating `""` as present made `$ifPresent` pick the blank branch, and the
+ * `""` value is then dropped by the item collector — the client's image silently
+ * disappeared into `upstream_contract_mismatch`. `0` and `false` stay present.
+ */
+function isProvided(value: unknown): boolean {
+  return value !== undefined && value !== null && value !== "";
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -374,7 +392,7 @@ export function applyMapping(node: MediaMapping, scope: unknown): unknown {
         const candidate = asRecord(branch);
         if (!candidate) continue;
         const [[path, mapping]] = Object.entries(candidate);
-        if (getPath(scope, String(path)) === undefined) continue;
+        if (!isProvided(getPath(scope, String(path)))) continue;
         const evaluated = applyMapping(mapping, scope);
         if (evaluated !== undefined) return evaluated;
       }
@@ -383,7 +401,7 @@ export function applyMapping(node: MediaMapping, scope: unknown): unknown {
     const inner = asRecord(record.$ifPresent);
     if (!inner) return undefined;
     const [[path, mapping]] = Object.entries(inner);
-    if (getPath(scope, String(path)) === undefined) return undefined;
+    if (!isProvided(getPath(scope, String(path)))) return undefined;
     return applyMapping(mapping, scope);
   }
 
@@ -414,8 +432,10 @@ export function applyMapping(node: MediaMapping, scope: unknown): unknown {
     // Already usable as-is: data URLs, and public URLs (vendors that accept
     // subject references by URL will fetch it themselves).
     if (raw.startsWith("data:") || /^https?:\/\//.test(raw)) return raw;
-    // Raw base64 from an uploaded file → wrap it in a data URL.
-    return `data:image/png;base64,${raw}`;
+    // Raw base64 from an uploaded file → wrap it in a data URL, labelling it with
+    // the type its own bytes declare. A hardcoded `image/png` mislabels every
+    // JPEG/GIF/WEBP upload, which a stricter vendor is entitled to reject.
+    return `data:${sniffMediaType(raw)};base64,${raw}`;
   }
 
   if ("$file" in record) {
@@ -470,6 +490,12 @@ export function applyMapping(node: MediaMapping, scope: unknown): unknown {
     const params = asRecord(record.$fetch);
     const template = params ? String(params.url ?? "") : "";
     if (!template) return undefined;
+    // No source value, no follow-up request. Without this the marker is emitted
+    // unconditionally and the engine fetches `/files/retrieve?file_id=`, i.e. it
+    // spends the budget on a request that cannot succeed — while a poll is still
+    // running, or on a response that simply has no id.
+    const source = params?.path === undefined ? undefined : getPath(scope, String(params.path));
+    if (params?.path !== undefined && (source === undefined || source === null)) return undefined;
     return {
       [FETCH_MARKER]: {
         url: interpolateUrl(template, scope),
@@ -510,6 +536,65 @@ export function applyMapping(node: MediaMapping, scope: unknown): unknown {
 // ---------------------------------------------------------------------------
 // Upstream call
 // ---------------------------------------------------------------------------
+
+/**
+ * A request body that *is* the file, rather than a structure carrying it.
+ *
+ * Deepgram-style endpoints want `Content-Type: audio/wav` with the raw bytes as
+ * the body, which no amount of JSON/multipart encoding can express. A spec opts
+ * in by mapping `request` to a single `$file` node and declaring a media type
+ * that is not one of the three structural ones.
+ */
+function resolveRawBody(
+  body: unknown,
+  contentType: string,
+): { bytes: Uint8Array; contentType: string } | null {
+  const file = asRecord(body);
+  if (!file || file.__file !== true || typeof file.base64 !== "string") return null;
+  if ((STRUCTURED_CONTENT_TYPES as readonly string[]).includes(contentType)) return null;
+  const binary = atob(file.base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return {
+    bytes,
+    contentType: contentType || String(file.contentType ?? "application/octet-stream"),
+  };
+}
+
+/**
+ * Guess a media type from the first bytes of a base64 payload.
+ *
+ * Called for images and audio alike; the fallback keeps the previous behaviour
+ * (`image/png`) so no existing spec changes meaning.
+ */
+function sniffMediaType(base64: string): string {
+  let head = base64.slice(0, 24).replace(/[^A-Za-z0-9+/]/g, "");
+  // `atob` needs a whole number of 4-char groups; pad down rather than up so we
+  // never invent bytes.
+  head = head.slice(0, head.length - (head.length % 4));
+  let bytes: number[] = [];
+  try {
+    const binary = atob(head);
+    bytes = Array.from(binary, (ch) => ch.charCodeAt(0));
+  } catch {
+    return "image/png";
+  }
+  const starts = (...pattern: number[]) => pattern.every((byte, index) => bytes[index] === byte);
+  const at = (offset: number, ...pattern: number[]) =>
+    pattern.every((byte, index) => bytes[offset + index] === byte);
+
+  if (starts(0x89, 0x50, 0x4e, 0x47)) return "image/png";
+  if (starts(0xff, 0xd8, 0xff)) return "image/jpeg";
+  if (starts(0x47, 0x49, 0x46, 0x38)) return "image/gif";
+  if (starts(0x42, 0x4d)) return "image/bmp";
+  if (starts(0x52, 0x49, 0x46, 0x46) && at(8, 0x57, 0x45, 0x42, 0x50)) return "image/webp";
+  if (starts(0x52, 0x49, 0x46, 0x46) && at(8, 0x57, 0x41, 0x56, 0x45)) return "audio/wav";
+  if (starts(0x49, 0x44, 0x33) || starts(0xff, 0xfb)) return "audio/mpeg";
+  if (starts(0x4f, 0x67, 0x67, 0x53)) return "audio/ogg";
+  if (starts(0x66, 0x4c, 0x61, 0x43)) return "audio/flac";
+  if (at(4, 0x66, 0x74, 0x79, 0x70)) return "image/heic";
+  return "image/png";
+}
 
 /** Base URL a spec talks to: its own override, else the provider's. */
 function specOrigin(spec: MediaSpec, provider: MediaProvider): URL {
@@ -667,8 +752,14 @@ function matchesRule(spec: MediaSpec, rawPayload: unknown): MediaEngineError | n
 }
 
 function decodeJson(text: string): unknown {
+  // Google-style XSSI guards prefix the body with `)]}'`, and a UTF-8 BOM shows
+  // up on the wire often enough to matter. Without stripping them the whole body
+  // fails to parse, becomes `null`, and the call is misreported as "2xx but the
+  // mapping produced no items" — the vendor's real payload never surfaces.
+  let body = text.replace(/^\uFEFF/, "").trimStart();
+  if (body.startsWith(")]}'")) body = body.slice(4).replace(/^[^\n]*\n/, "");
   try {
-    return JSON.parse(text);
+    return JSON.parse(body);
   } catch {
     return null;
   }
@@ -725,6 +816,8 @@ export async function executeMedia(args: ExecuteMediaArgs): Promise<MediaExecute
   }
 
   const contentType = spec.transport.contentType ?? "application/json";
+  const rawBody = resolveRawBody(upstreamBody, contentType);
+  if (rawBody) target.headers.set("Content-Type", rawBody.contentType);
   let response: Response;
   try {
     response = await fetchImpl(target.url.toString(), {
@@ -732,7 +825,11 @@ export async function executeMedia(args: ExecuteMediaArgs): Promise<MediaExecute
       headers: target.headers,
       ...(spec.transport.method === "GET"
         ? {}
-        : { body: encodeBody(upstreamBody, contentType) }),
+        : {
+            body: rawBody
+              ? (rawBody.bytes as unknown as BodyInit)
+              : encodeBody(upstreamBody, contentType),
+          }),
       signal: args.signal,
     });
   } catch (err) {
@@ -748,6 +845,15 @@ export async function executeMedia(args: ExecuteMediaArgs): Promise<MediaExecute
 
   const responseMode = spec.responseMode ?? "json";
   const fetcher = makeFetcher(spec, provider, fetchImpl, args.signal);
+  /**
+   * One follow-up-GET budget per media call.
+   *
+   * Threading it down (instead of letting every `resolveFetches` default to a
+   * fresh allowance) is what actually bounds `$fetch`: a poll loop or an SSE
+   * stream would otherwise get a new allowance per round and multiply the cap by
+   * the number of rounds.
+   */
+  const fetchBudget = { left: MAX_FETCH_MARKERS };
 
   // Audio-style capabilities return bytes; hand them back untouched instead of
   // buffering + JSON-parsing what is not JSON.
@@ -801,8 +907,9 @@ export async function executeMedia(args: ExecuteMediaArgs): Promise<MediaExecute
         error: { status: 502, code: "upstream_error", message: `upstream returned HTTP ${response.status}` },
       };
     }
-    const merged = await mergeSseEvents(spec, parseSseEvents(rawText), fetcher);
-    return finish(spec, merged, { now, startedAt, taskId: undefined });
+    const merged = await mergeSseEvents(spec, parseSseEvents(rawText), fetcher, fetchBudget);
+    if (!merged.ok) return { ok: false, error: merged.error };
+    return finish(spec, merged.payload, { now, startedAt, taskId: undefined });
   }
 
   const rawPayload = decodeJson(rawText);
@@ -810,10 +917,18 @@ export async function executeMedia(args: ExecuteMediaArgs): Promise<MediaExecute
   // Two error vocabularies, both supported: an in-body vendor code (MiniMax V1
   // answers HTTP 200 with a non-zero `base_resp.status_code`) and a real HTTP
   // status (OpenAI, MiniMax V2).
-  const statusError = httpStatusError(spec, response.status, rawPayload);
-  if (statusError) return { ok: false, error: statusError };
+  //
+  // `when` is evaluated **before** `httpStatus` because the in-body code is the
+  // more specific signal and the two routinely overlap: Zhipu answers HTTP 429
+  // for both rate limiting and an exhausted account, and HTTP 400 for both bad
+  // parameters and a content block. Checking the status first would let a
+  // generic `httpStatus: 429` swallow `1113 insufficient balance`, and the
+  // specific rule could never fire. `httpStatus` stays the fallback for statuses
+  // the spec did not enumerate.
   const vendorRuleError = matchesRule(spec, rawPayload);
   if (vendorRuleError) return { ok: false, error: vendorRuleError };
+  const statusError = httpStatusError(spec, response.status, rawPayload);
+  if (statusError) return { ok: false, error: statusError };
 
   if (!response.ok) {
     const mapped = spec.response ? applyMapping(spec.response, rawPayload) : undefined;
@@ -828,7 +943,7 @@ export async function executeMedia(args: ExecuteMediaArgs): Promise<MediaExecute
   }
 
   const mappedSubmit = spec.response
-    ? await resolveFetches(applyMapping(spec.response, rawPayload), fetcher)
+    ? await resolveFetches(applyMapping(spec.response, rawPayload), fetcher, fetchBudget)
     : undefined;
   const submitRecord = asRecord(mappedSubmit);
 
@@ -841,7 +956,16 @@ export async function executeMedia(args: ExecuteMediaArgs): Promise<MediaExecute
         error: { status: 502, code: "no_task_id", message: "upstream did not return a task id" },
       };
     }
-    const poll = await pollUntilDone({ spec, provider, taskId, fetchImpl, signal: args.signal, now });
+    const poll = await pollUntilDone({
+      spec,
+      provider,
+      taskId,
+      fetchImpl,
+      signal: args.signal,
+      now,
+      fetchBudget,
+      scope: input,
+    });
     if (!poll.ok) return { ok: false, error: poll.error };
     return finish(spec, poll.payload, { now, startedAt, taskId });
   }
@@ -857,7 +981,11 @@ function finish(
 ): MediaExecuteResult {
   const items = collectItems(payload);
   const text = textOf(payload);
-  if (items.length === 0 && text === undefined && spec.allowEmpty !== true) {
+  // An opted-in empty result succeeded but produced nothing, so it must not be
+  // billed. `countOf` falls back to 1, which is right for a transcription with
+  // no `items` but wrong here.
+  const producedNothing = items.length === 0 && text === undefined;
+  if (producedNothing && spec.allowEmpty !== true) {
     return {
       ok: false,
       error: {
@@ -874,7 +1002,7 @@ function finish(
     ok: true,
     result: {
       items,
-      successCount: countOf(payload),
+      successCount: producedNothing ? 0 : countOf(payload),
       ...(text !== undefined ? { text } : {}),
       ...(ctx.taskId ? { taskId: ctx.taskId } : {}),
       durationMs: ctx.now() - ctx.startedAt,
@@ -882,19 +1010,25 @@ function finish(
   };
 }
 
+type SseMerge = { ok: true; payload: unknown } | { ok: false; error: MediaEngineError };
+
 async function mergeSseEvents(
   spec: MediaSpec,
   events: unknown[],
   fetcher: (url: string) => Promise<unknown>,
-): Promise<unknown> {
+  budget: { left: number },
+): Promise<SseMerge> {
   const merged: Record<string, unknown> = { items: [] as unknown[] };
   let last: Record<string, unknown> = {};
   for (const event of events) {
-    if (spec.errors) {
-      const ruleError = matchesRule(spec, event);
-      if (ruleError) return last;
-    }
-    const mapped = spec.response ? await resolveFetches(applyMapping(spec.response, event), fetcher) : undefined;
+    // An error rule firing mid-stream must abort the call. Returning the partial
+    // payload instead would surface as `upstream_contract_mismatch` and hide the
+    // vendor's actual complaint.
+    const ruleError = matchesRule(spec, event);
+    if (ruleError) return { ok: false, error: ruleError };
+    const mapped = spec.response
+      ? await resolveFetches(applyMapping(spec.response, event), fetcher, budget)
+      : undefined;
     const record = asRecord(mapped);
     if (!record) continue;
     const items = collectItems(record);
@@ -913,7 +1047,7 @@ async function mergeSseEvents(
     seen.set(`${item.kind}\u0000${item.value}`, item);
   }
   merged.items = [...seen.values()];
-  return merged;
+  return { ok: true, payload: merged };
 }
 
 function countOf(payload: unknown): number {
@@ -1015,6 +1149,10 @@ async function pollUntilDone(args: {
   fetchImpl: typeof fetch;
   signal?: AbortSignal;
   now: () => number;
+  /** Shared across every round, so the follow-up-GET cap is per call. */
+  fetchBudget: { left: number };
+  /** The submit-phase scope, so a poll body can map from it plus `taskId`. */
+  scope: Record<string, unknown>;
 }): Promise<PollSettled> {
   const { spec, provider, taskId, fetchImpl, now } = args;
   const async_ = spec.async;
@@ -1042,11 +1180,37 @@ async function pollUntilDone(args: {
       };
     }
 
+    // A vendor may take the task id in a POST body instead of the path. The
+    // mapping sees the submit scope plus `taskId`, so `{"task_ids":["$.taskId"]}`
+    // works without any special syntax.
+    const pollContentType = async_.poll.contentType ?? spec.transport.contentType ?? "application/json";
+    const pollHeaders = buildHeaders(spec, provider, {
+      ...args.scope,
+      taskId,
+    });
+    let pollBody: BodyInit | undefined;
+    if (async_.poll.method === "POST" && async_.poll.request !== undefined) {
+      const raw = resolveRawBody(
+        applyMapping(async_.poll.request, { ...args.scope, taskId }),
+        pollContentType,
+      );
+      if (raw) {
+        pollHeaders.set("Content-Type", raw.contentType);
+        pollBody = raw.bytes as unknown as BodyInit;
+      } else {
+        pollBody = encodeBody(
+          applyMapping(async_.poll.request, { ...args.scope, taskId }),
+          pollContentType,
+        );
+      }
+    }
+
     let response: Response;
     try {
       response = await fetchImpl(url.toString(), {
         method: async_.poll.method,
-        headers: buildHeaders(spec, provider),
+        headers: pollHeaders,
+        ...(pollBody === undefined ? {} : { body: pollBody }),
         signal: args.signal,
       });
     } catch (err) {
@@ -1061,38 +1225,55 @@ async function pollUntilDone(args: {
     }
     const raw = decodeJson(await response.text());
 
-    const statusError = httpStatusError(spec, response.status, raw);
-    if (statusError) return { ok: false, error: statusError };
+    // Same precedence as the submit path: the vendor's own code first.
     const ruleError = matchesRule(spec, raw);
     if (ruleError) return { ok: false, error: ruleError };
+    const statusError = httpStatusError(spec, response.status, raw);
+    if (statusError) return { ok: false, error: statusError };
 
-    const mapped = spec.response
-      ? await resolveFetches(applyMapping(spec.response, raw), fetcher)
-      : undefined;
-    const record = asRecord(mapped);
-    const status = record && typeof record.status === "string" ? record.status : undefined;
+    // Map first, resolve `$fetch` only once the round can actually be terminal.
+    //
+    // Resolving on every round used to fire a follow-up GET on each `Processing`
+    // poll whose payload happened to carry an id — pure waste, and it drained the
+    // per-call budget before the round that needed it, so a long-running task
+    // ended in `upstream_contract_mismatch` instead of a video.
+    const mappedRaw = spec.response ? applyMapping(spec.response, raw) : undefined;
+    const rawRecord = asRecord(mappedRaw);
+    const status = rawRecord && typeof rawRecord.status === "string" ? rawRecord.status : undefined;
     if (status) lastStatus = status;
 
     const state = status ? classifyStatus(status, async_.poll) : null;
 
     if (state === "fail") {
+      // The message lives on the mapped payload; no fetch resolution needed.
       return {
         ok: false,
-        error: errorFromMapped(mapped, {
+        error: errorFromMapped(mappedRaw, {
           status: 502,
           code: "upstream_task_failed",
           message: `task ${status}`,
         }),
       };
     }
-    if (state === "ok" || (!status && collectItems(mapped).length > 0)) {
-      if (!status && !response.ok) {
+    if (state === "ok") {
+      const mapped = spec.response
+        ? await resolveFetches(mappedRaw, fetcher, args.fetchBudget)
+        : undefined;
+      return { ok: true, payload: mapped };
+    }
+    if (!status) {
+      // No status field at all: the spec reports completion by producing output,
+      // so this is the one place a non-terminal round has to resolve.
+      const mapped = spec.response
+        ? await resolveFetches(mappedRaw, fetcher, args.fetchBudget)
+        : undefined;
+      if (collectItems(mapped).length > 0) return { ok: true, payload: mapped };
+      if (!response.ok) {
         return {
           ok: false,
           error: { status: 502, code: "upstream_error", message: `poll returned HTTP ${response.status}` },
         };
       }
-      return { ok: true, payload: mapped };
     }
     if (now() >= deadline) {
       return {

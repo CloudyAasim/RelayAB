@@ -28,7 +28,7 @@ function makeProvider(): MediaProvider {
 }
 
 const VIDEO_SPEC = {
-  specVersion: 2,
+  specVersion: 1,
   capability: "video.generate",
   transport: { method: "POST", path: "/v1/video_generation" },
   auth: { type: "bearer" },
@@ -130,7 +130,7 @@ describe("$fetch primitive", () => {
 describe("spec validation for polling placeholders", () => {
   it("rejects {{taskId}} on the submit path", () => {
     const parsed = parseMediaSpec({
-      specVersion: 2,
+      specVersion: 1,
       capability: "video.generate",
       transport: { method: "POST", path: "/v1/video_generation?task_id={{taskId}}" },
       auth: { type: "bearer" },
@@ -142,7 +142,7 @@ describe("spec validation for polling placeholders", () => {
 
   it("still allows {{taskId}} on the poll path", () => {
     const parsed = parseMediaSpec({
-      specVersion: 2,
+      specVersion: 1,
       capability: "video.generate",
       transport: { method: "POST", path: "/v1/video_generation" },
       auth: { type: "bearer" },

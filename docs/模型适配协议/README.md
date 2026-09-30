@@ -1,11 +1,11 @@
-# 模型适配协议（媒体能力 · specVersion 2）
+# 模型适配协议（媒体能力 · specVersion 1）
 
 > 新增或调整 **图片 / 视频 / 语音 / 音乐** 供应商时，只改后台里的 JSON，**不改代码、不重新部署**。
 >
 > 后台路径：`/admin/media-providers`　协议全文：本文　示例模板：后台的「导入模板」按钮
 
-**本协议只有一个版本（`specVersion: 2`）。** 没有分支版本、没有厂商专用字段。
-下面 §2 会说明它是怎么被反复实测出来的，以及每个字段为什么长这样。
+**本协议只有一个版本（`specVersion: 1`）——这是第一个也是唯一的版本。** 没有分支版本、没有厂商专用字段。
+§2 列出每个机制，以及它各自防止哪一类故障；这些都是真实厂商文档写出来的 spec 实测撞出来的。
 
 ---
 
@@ -35,7 +35,7 @@
    `{"image": [...], "video": [...]}`，也不要分六段给六个数组——
    一份 spec 一个数组元素，靠 `capability` 字段自描述。
 4. `models` 是**扁平对象**：`{ "<客户端模型名>": {upstreamId, pricePerItem, enabled} }`。
-5. 每份 spec 的 `specVersion` 固定为 `2`。
+5. 每份 spec 的 `specVersion` 固定为 `1`。
 6. 所有 JSON 必须是**严格合法**的（不带注释、不带尾逗号）。
 
 ### 0.2 翻译流程：从厂商文档到 spec
@@ -216,7 +216,7 @@
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `specVersion` | `2` | ✅ | 固定 2，其它值一律拒绝 |
+| `specVersion` | `1` | ✅ | 固定 1（首个版本；字段保留是为了将来做迁移） |
 | `capability` | 枚举 | ✅ | `image.generate` `image.edit` `video.generate` `audio.tts` `audio.stt` `music.generate` |
 | `displayName` | string | — | 后台显示名 |
 | `models` | string[] | 条件必填 | 本 spec 服务的**客户端模型名**。**同一 capability 出现多份时每份都必须写**（§3.4） |
@@ -229,7 +229,7 @@
 | `errors` | array | — | 见 0.3.5 |
 | `async` | object | 异步时✅ | 见 0.3.6 |
 | `limits` | object | — | 见下 |
-| `allowEmpty` | boolean | — | 允许「2xx 但没有产物」（如内容拦截）；否则报 `upstream_contract_mismatch` |
+| `allowEmpty` | boolean | — | 允许「2xx 但没有产物」（如内容拦截）；否则报 `upstream_contract_mismatch`。**这种情况 `successCount` 为 0，不计费** |
 | `metadata` | object | — | **原样**透出到 `/v1/models` 的 `relay` 字段 |
 
 **任何不在此表里的顶层字段都会在保存时报错**（`xxx: unknown spec field`）——
@@ -248,7 +248,7 @@
 | --- | --- | --- | --- |
 | `method` | 枚举 | ✅ | `POST`（默认）/ `GET` / `PUT` / `PATCH`。`GET` 不带 body |
 | `path` | string | ✅ | 相对 `baseUrl`，以 `/` 开头。**只能用 `{{model}}` 一个占位符**（URL 编码后的上游模型名）；`{{taskId}}` 只能在 `async.poll.path` |
-| `contentType` | 枚举 | — | `application/json`（默认）/ `multipart/form-data` / `application/x-www-form-urlencoded` |
+| `contentType` | media type | — | `application/json`（默认）/ `multipart/form-data` / `application/x-www-form-urlencoded`；**其它类型（如 `audio/wav`）= 裸字节请求体**，见下 |
 | `headers` | object | — | `{ "<头名>": <映射> }`。**值是映射**，解析不出值就不发这个头 |
 | `query` | object | — | `{ "<参数名>": <映射> }`，规则同上 |
 
@@ -274,7 +274,7 @@
 | 原语 | 写法 | 什么时候用 |
 | --- | --- | --- |
 | `$const` | `{"$const": <任意>}` | 固定值、默认值 |
-| `$ifPresent` | 单分支 `{"$ifPresent": {"$.voice": <映射>}}`；多分支 `{"$ifPresent": [{"$.url": …}, {"$.b64_json": …}]}` | 客户端给了才发；多分支时**第一个键存在的生效** |
+| `$ifPresent` | 单分支 `{"$ifPresent": {"$.voice": <映射>}}`；多分支 `{"$ifPresent": [{"$.url": …}, {"$.b64_json": …}]}` | 给了才发；多分支取**第一个键有值的**。**空字符串算「没给」** |
 | `$enum` | `{"$enum": {"path":…, "map":{…}, "default":…}}` | 换一套词汇（`b64_json` → `base64`） |
 | `$mapSize` | `{"$mapSize": {"path":…, "table":{…}, "default":…}}` | 尺寸换算（`$enum` 的特例） |
 | `$toString` | `{"$toString": "$.n"}` | 厂商要字符串，客户端给了数字 |
@@ -347,7 +347,11 @@
 ]
 ```
 
-- `when` 匹配**原始响应体**（未映射）；`httpStatus` 匹配 HTTP 状态码。**任一命中即触发**。
+- `when` 匹配**原始响应体**（未映射）；`httpStatus` 匹配 HTTP 状态码。
+- **判定顺序固定：先 `when`，再 `httpStatus`。** 业务码比传输状态更具体，而两者经常重叠——
+  智谱的 HTTP 429 既可能是限流、也可能是欠费（`1113`），HTTP 400 既可能是参数错、也可能是涉敏（`1301`）。
+  先看 `httpStatus` 会让通用规则吞掉具体规则。所以**两条都写**：`when` 负责精确区分，
+  `httpStatus` 负责兜住你没列举的状态码。
 - **两个都不写会保存报错**（规则永远不会触发）。
 - `when` 里的路径要和 `response.errorCode` **同源**——判官就是按那条路径喂值来验证规则的，
   两者不一致时规则永不触发，而且不会报错（§7.2）。
@@ -368,6 +372,8 @@
 | `async.poll` 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `method` | `GET`\|`POST` | — | 默认 `GET` |
+| `request` | 映射 | — | **`POST` 轮询的请求体**。有些厂商把 task id 放在 body 而不是路径里；映射可用 `$.taskId`（你的作用域 + 本次任务 id） |
+| `contentType` | media type | — | 轮询请求的 content type，默认沿用 `transport.contentType` |
 | `path` | string | ✅ | **唯一**能用 `{{taskId}}` 的地方 |
 | `intervalMs` | number | — | 轮询间隔，默认 3000 |
 | `timeoutMs` | number | — | ≤ 300000，默认 240000 |
@@ -434,7 +440,7 @@ binary/stream/sse 回传、空结果检测、按 `successCount` 计费。
 
 ### 0.5 硬规则（逐条可判定）
 
-1. `specVersion` 必须是 `2`。
+1. `specVersion` 必须是 `1`。
 2. 输出**两个独立 JSON 块**，`specs` 是**一个平铺数组**。
 3. 同一 `capability` 多份 spec 时，**每份都要写 `models`**，且不能有模型被两份同时声明。
 4. 厂商 `required:` 的每个字段都要有归属；我们没有对应入参的，**用 `$firstPresent` 兜默认**。
@@ -496,6 +502,7 @@ pnpm spec-check my-specs.json
 - happy path 能产出产物
 - 每条 `httpStatus` 规则映射到正确的状态和 code
 - 每条 `when` 规则能真的触发（`$eq` 右值的字面量会被喂进去）
+- 同一条响应同时命中 `when` 与 `httpStatus` 时，**具体的 `when` 胜出**（§8）
 - 异步终态能收敛、失败态立即失败、**未知状态不会假装成功**
 - `encoding: "hex"` 真的产出了可解码的 base64
 - 映射为空时报 `upstream_contract_mismatch`，而不是静默成功并计费 0
@@ -578,7 +585,7 @@ pnpm spec-check my-specs.json
 > 两处都能靠「把文档里那一行抄出来」当场发现。
 
 - [ ] 输出是两个独立 JSON 块，`specs` 是一个平铺数组？
-- [ ] 每份 spec 的 `specVersion` 是 `2`？
+- [ ] 每份 spec 的 `specVersion` 是 `1`？
 - [ ] 同一 capability 的多份 spec 都写了 `models`，且无模型被重复声明？
 - [ ] 厂商 `required:` 逐条对过，没有对应入参的字段用了 `$firstPresent` 兜默认？**（贴原文）**
 - [ ] 每个枚举映射表里的值都能在厂商文档里找到？**（贴出该字段的 `enum:` 列表）**
@@ -644,21 +651,21 @@ pnpm spec-check my-specs.json
 
 ---
 
-## 2. 为什么是 2（v1 做不到的五件事）
+## 2. 每个机制各防哪一类故障
 
-这份协议不是设计出来的，是**拿四份独立写成的 MiniMax spec 反复跑真实引擎**逼出来的。
-每一类反复出现的故障，现在都由协议本身兜住：
+这份协议不是设计出来的，是**拿多份独立写成的厂商 spec（MiniMax / 智谱 / Deepgram / Stability / Replicate）
+反复跑真实引擎**逼出来的。下面每一类故障都真实发生过，现在都由协议本身兜住：
 
-| 曾经的现象 | 根因 | 2 里的机制 |
+| 曾经的现象 | 根因 | 机制 |
 | --- | --- | --- |
-| V2 的视频 spec 被 V1 的**静默顶掉**，H3 请求被发到 `/v1/video_generation` | spec 只按 `capability` 选，第一份永远生效 | `spec.models` 按模型分流；两份都不写 `models` **保存时报错**（§3.4） |
+| 同能力的第二份 spec 被第一份**静默顶掉**，H3 请求被发到 `/v1/video_generation` | spec 只按 `capability` 选，第一份永远生效 | `spec.models` 按模型分流；两份都不写 `models` **保存时报错**（§3.4） |
 | 客户端传 `response_format: "b64_json"`，上游收到 `url`，**不报错** | 图片端点是白名单，蛇形键取不到值 | 所有端点透传请求体，且**每个键同时以蛇形和驼峰暴露**（§6.1） |
 | TTS 客户端拿到的音频**解不出来** | 上游默认吐 hex，spec 写成 base64 | `items[].encoding` 声明上游编码，引擎负责归一（§7） |
 | 视频任务成功了，客户端**等满 280 秒**拿到 504 | 厂商文档里同一状态有 `Success` 和 `success` 两种写法 | 状态匹配**默认忽略大小写**，可用 `statusMap` 一次归一整个词表；超时错误会报出**实际观察到的状态**（§9） |
 | 余额不足被当成 502 返回 | V2 用 HTTP 状态码 + `error.type`，V1 用 HTTP 200 + `base_resp` | 错误规则**两种都能匹配**（§8） |
 
-> v1 的 spec 会被明确拒绝，并告诉你该去哪重新导入。**没有静默兼容**——
-> 一个字段含义悄悄变了，比直接报错危险得多。
+> `specVersion` 字段保留着，但它的用途是**将来**：一旦线上存了 spec，破坏性变更必须能被识别，
+> 否则旧数据会被静默误读。现在只有一个版本，不存在兼容分支。
 
 ---
 
@@ -688,7 +695,7 @@ MediaProvider {
 
 ```text
 {
-  "specVersion": 2,                     // 必填，只能是 2
+  "specVersion": 1,                     // 必填，固定为 1
   "capability": "image.generate",      // 必填，见 §3.3
   "displayName": "MiniMax Image",      // 选填，后台显示用
   "models": ["minimax-image-01"],       // 选填，见 §3.4
@@ -772,7 +779,7 @@ MediaProvider {
 >
 > ```text
 > 请严格按「两个独立的 JSON 块」输出：第一块是 models（扁平对象，key=客户端模型名），
-> 第二块是 specs（扁平数组，每份 spec 用 capability 字段自描述，specVersion 固定为 2）。
+> 第二块是 specs（扁平数组，每份 spec 用 capability 字段自描述，specVersion 固定为 1）。
 > 不要合并，也不要按图片/视频/语音/音乐分组或嵌套。
 > 动笔前先读本文 §6.1（每个端点到底有哪些 `$.键`）、**§6.3（厂商必填但客户端可能不传的参数）**、
 > §7.2（结果形态与编码）、§8（**厂商的每个状态码都要映射**）、§9（异步状态词表），
@@ -869,7 +876,36 @@ MediaProvider {
 
 只有 `$file` 依赖 `contentType: multipart/form-data`，其余原语与 contentType 无关。
 
+> ### 裸字节请求体：body 就是那个文件
+>
+> 有些接口（Deepgram 的语音识别）要求 `Content-Type: audio/wav`，**body 直接是音频字节**，
+> 既不是 JSON 也不是 multipart。写法：`contentType` 写成该媒体类型，`request` 就是**单个 `$file`**：
+>
+> ```jsonc
+> "transport": { "method": "POST", "path": "/v1/listen", "contentType": "audio/wav" },
+> "request": { "$file": { "path": "$.image", "filename": "$.filename" } }
+> ```
+>
+> 引擎检测到「contentType 不是三种结构化类型」+「`request` 是单个 `$file`」时，
+> 会把文件字节当作整个请求体发出，`Content-Type` 用你声明的类型。
+> 两者不匹配（声明了裸类型但 request 不是单个 `$file`）**保存时报错**——否则上游只会收到空 body。
+
 > **映射对象里出现表以外的 `$xxx` 键会报错**，写错的原语名当场暴露。
+>
+> ### `$ifPresent` 判定的是「有值」，而**空字符串算没值**
+>
+> OpenAI 兼容的图像接口会把**互斥的两个键都返回**，不用那个留空。这是实测的真实响应：
+>
+> ```jsonc
+> // 客户端要 url
+> {"data": [{ "url": "https://…/out.png", "b64_json": "",  "revised_prompt": "" }]}
+> // 客户端要 b64_json
+> {"data": [{ "url": "", "b64_json": "iVBORw0KGgo…", "revised_prompt": "" }]}
+> ```
+>
+> 所以「二选一」必须用 `$ifPresent` 多分支，而它把 `""` 当「没给」——
+> 否则会挑中空的那一支，`value: ""` 再被丢弃，**客户的图就静默消失了**（报成
+> `upstream_contract_mismatch`，毫无线索）。`0` 和 `false` 仍算有值。
 
 ### 6.3 客户端没给、但厂商必填的参数
 
@@ -929,6 +965,11 @@ MediaProvider {
 >   `data:image/png;base64,…`，客户端 `base64 -d` 直接失败。
 >
 > 响应方向要「还原」时用 `encoding: "dataUrl"`（§7.2）。
+>
+> `$dataUrl` 会**按字节判断类型**（PNG / JPEG / GIF / WEBP / WAV / MP3 / FLAC…），
+> 认不出时才回落到 `image/png`。别指望它一定写 `image/png` —— 实测把 JPEG 字节标成
+> `image/png` 时智谱容忍了，但更严格的厂商有权拒绝。入参已经是 `data:` 或 `http(s):`
+> 时**原样透传**，不会二次包装。
 
 ---
 
@@ -999,7 +1040,9 @@ MediaProvider {
 - 只能再发**一次 GET**（同源、复用该 spec 的鉴权和 origin 校验）。
 - 单次调用最多 8 次、总超时 30s。
 - `$fetch.url` 用 `{{ $.x }}`（会做 URL 编码）；`async.poll.path` 用 `{{taskId}}`（原样拼接）。**两套占位符不要混用。**
-- 上游还没有 `file_id` 时（例如任务还在 `processing`）不会白白发请求。
+- **源值不存在就不发请求**：`path` 取不到（任务还在 `processing`、或响应里压根没有 id）时整个节点
+  求值为 `undefined`，不会拿空 id 去打一次注定失败的 GET。
+- **轮询期间只在可以判定终态的那一轮才取回源**，所以长任务会在预算被耗光之前拿到产物。
 
 ### 7.4 `responseMode`：上游返回的不是 JSON 时
 
@@ -1057,8 +1100,21 @@ upstream returned 2xx but the spec's response mapping produced no items — chec
 规则：
 
 - `when` 匹配的是**原始响应体**（未经映射），因为厂商错误码都在那里。
-- `when` 和 `httpStatus` **任一命中**即触发；两个都不写会**保存时报错**
-  （否则这条规则永远不会触发）。
+- **顺序：先 `when`，再 `httpStatus`。** 别把通用状态码放在前面指望它「先兜住」——
+  它会让后面更具体的业务码永不触发。正确写法是**两条都写**：
+
+  ```jsonc
+  "errors": [
+    { "httpStatus": 429, "status": 429, "code": "rate_limited" },              // 兜底
+    { "when": { "$eq": ["$.error.code", "1113"] }, "status": 402,              // 精确
+      "code": "upstream_credit_exhausted" }
+  ]
+  ```
+
+  这样 `1113` 得到 `402 欠费`，其余 429 仍是 `429 限流`。
+  **只写 `when`、故意不写通用 `httpStatus` 是常见的错误权衡**：具体码对了，
+  但没列举的状态码会退化成一个不准确的 `502 upstream_error`。
+- 两个都不写会**保存时报错**（否则这条规则永远不会触发）。
 - `status` + `code` 是**返回给客户端**的状态和错误码。
 - 规则没写 `message` 时，若 `response.errorMessage` 有映射，会用**厂商自己的错误文案**，
   比我们的 code 有用得多。
@@ -1229,6 +1285,8 @@ upstream task did not finish in time (last status "Rendering" — check async.po
 | 无对象存储 | 上传图片要转成 URL 得自己先传好，再用常量或 `$firstPresent` 引用（§17.6） |
 | 无重试 / 无故障转移 | 媒体按件计费，自动重试可能重复扣费，故不做 |
 | 扩展新原语要改代码 | 协议刻意不执行代码，代价就是这里 |
+| **两步鉴权 / 请求签名不支持** | `auth` 只有 bearer / header / query / none。需要「先换 token 再调用」或 HMAC/JWT 签名的厂商（阿里云、百度、Kling 等）只能靠外部代理转一次 |
+| 二进制产物会转成 base64 | 图片类端点收到裸字节响应时转成 `b64_json` 交给客户端（保持 OpenAI 形状）；`audio/speech` 仍回裸字节 |
 
 ---
 
@@ -1240,7 +1298,7 @@ upstream task did not finish in time (last status "Rendering" — check async.po
 
 ```jsonc
 {
-  "specVersion": 2,
+  "specVersion": 1,
   "capability": "image.generate",
   "displayName": "MiniMax Image (image-01 / image-01-live)",
   "transport": { "method": "POST", "path": "/v1/image_generation", "contentType": "application/json" },
@@ -1295,7 +1353,7 @@ upstream task did not finish in time (last status "Rendering" — check async.po
 
 ```jsonc
 {
-  "specVersion": 2,
+  "specVersion": 1,
   "capability": "video.generate",
   "displayName": "MiniMax Video V1 (Hailuo-02 / T2V-01)",
   "models": ["minimax-hailuo-02", "minimax-t2v-01"],
@@ -1345,7 +1403,7 @@ upstream task did not finish in time (last status "Rendering" — check async.po
 
 ```jsonc
 {
-  "specVersion": 2,
+  "specVersion": 1,
   "capability": "video.generate",
   "displayName": "MiniMax Video V2 (H3)",
   "models": ["minimax-h3"],
@@ -1394,7 +1452,7 @@ upstream task did not finish in time (last status "Rendering" — check async.po
 
 ```jsonc
 {
-  "specVersion": 2,
+  "specVersion": 1,
   "capability": "audio.tts",
   "displayName": "MiniMax T2A v2 (speech-2.8-hd)",
   "transport": { "method": "POST", "path": "/v1/t2a_v2", "contentType": "application/json" },
@@ -1443,7 +1501,7 @@ upstream task did not finish in time (last status "Rendering" — check async.po
 
 ```jsonc
 {
-  "specVersion": 2,
+  "specVersion": 1,
   "capability": "audio.stt",
   "displayName": "MiniMax ASR (asr-1.0)",
   "transport": {
@@ -1491,7 +1549,7 @@ upstream task did not finish in time (last status "Rendering" — check async.po
 
 ```jsonc
 {
-  "specVersion": 2,
+  "specVersion": 1,
   "capability": "image.generate",
   "displayName": "OpenAI Images (gpt-image-1 / dall-e-3)",
   "transport": { "method": "POST", "path": "/v1/images/generations", "contentType": "application/json" },
@@ -1512,6 +1570,7 @@ upstream task did not finish in time (last status "Rendering" — check async.po
     // `$ifPresent` 的数组写法：按顺序试，第一个「键存在」的分支生效；都不存在就丢掉这一项。
     // ⚠️ 不要用 $firstPresent 做这件事——它取的是「第一个能取到值的标量」，
     //    对 {kind,value} 这种对象无效（对象永远不是 undefined，第一个分支会永远命中）。
+    // 用 $ifPresent 是因为它把空字符串也算「没给」：厂商常把两个键都返回、不用那个留空。
     "items": { "$from": "$.data", "$to": { "$ifPresent": [
       { "$.url": { "kind": "url", "value": "$.url" } },
       { "$.b64_json": { "kind": "base64", "value": "$.b64_json" } }
@@ -1542,7 +1601,7 @@ upstream task did not finish in time (last status "Rendering" — check async.po
 
 ---
 
-## 17. 交稿前自查（十三条，每条都有真实翻车案例）
+## 17. 交稿前自查（十五条，每条都有真实翻车案例）
 
 这七条都真实发生过，且**都不会在保存时报错**——只有跑起来才暴露：
 
@@ -1590,7 +1649,15 @@ upstream task did not finish in time (last status "Rendering" — check async.po
     → `metadata.modes` 写了没映射的模式、`metadata.max_n` 与 `limits.maxN` 不一致、
     `metadata.sizes` 少了映射表里支持的尺寸——客户端只看得见目录。
 
-13. **同一 capability 多份 spec 却没写 `models`**
+13. **字段名拼错（现在会被拒绝）**
+    → `transport.contenttype`、`limits.max_n`、`async.poll.body` 这类拼错**保存时直接报错**。
+    以前只在顶层拒绝，其余层级静默忽略——运营者会以为配置生效了。
+
+14. **`$ifPresent` 选到了空字符串那一支**
+    → 厂商同时返回 `url` 和 `b64_json`、不用那个留空时，二者必须用 `$ifPresent` 多分支；
+    空字符串会被当成「没给」，所以能挑中有值的那一支。
+
+15. **同一 capability 多份 spec 却没写 `models`**
     → 保存会直接报错（§3.4）；别靠「第一份生效」。
     同一厂商两个档位能力不同（如 H3 支持 2K、H3-Max 不支持）时，优先用 `byModel`（§6.4），
     而不是拆两份 spec。
@@ -1600,7 +1667,7 @@ upstream task did not finish in time (last status "Rendering" — check async.po
 
 > ### 这份清单存在的原因
 >
-> 十三条里**没有一条能在保存时拦住你**——这正是它们危险的地方。每一类都真实发生过，
+> 十五条里**大部分不能在保存时拦住你**——这正是它们危险的地方。每一类都真实发生过，
 > 而且都是「自查表全绿、上线才发现」。
 >
 > 所以 §0.8 要求第 4/6/7/8 项**必须附上厂商文档原文**：写不出原文就说明没查，

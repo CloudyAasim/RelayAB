@@ -100,7 +100,7 @@ describe("spec-check catches the bugs that reached production", () => {
   it("flags an empty-string default for a required upstream field", async () => {
     // `lyrics` has minLength 1 at MiniMax; sending "" is worse than omitting it.
     const broken = {
-      specVersion: 2,
+      specVersion: 1,
       capability: "music.generate",
       transport: { method: "POST", path: "/v1/music_generation" },
       auth: { type: "bearer" },
@@ -127,7 +127,7 @@ describe("spec-check catches the bugs that reached production", () => {
   it("flags a media capability with no response mapping at all", async () => {
     // Silently succeeded and charged 0 credits before §7.5 existed.
     const broken = {
-      specVersion: 2,
+      specVersion: 1,
       capability: "image.generate",
       transport: { method: "POST", path: "/v1/image_generation" },
       auth: { type: "bearer" },
@@ -150,7 +150,7 @@ describe("spec-check catches the bugs that reached production", () => {
     // MiniMax t2a_v2 / music_generation default to hex, so a `kind: "url"` item
     // fed from `data.audio` hands the client a hex string as a URL.
     const music: Record<string, unknown> = {
-      specVersion: 2,
+      specVersion: 1,
       capability: "music.generate",
       transport: { method: "POST", path: "/v1/music_generation" },
       auth: { type: "bearer" },
@@ -163,7 +163,7 @@ describe("spec-check catches the bugs that reached production", () => {
 
   it("stays quiet when the audio spec does declare the format switch", async () => {
     const music: Record<string, unknown> = {
-      specVersion: 2,
+      specVersion: 1,
       capability: "music.generate",
       transport: { method: "POST", path: "/v1/music_generation" },
       auth: { type: "bearer" },
@@ -176,7 +176,7 @@ describe("spec-check catches the bugs that reached production", () => {
 
   it("stays quiet for video/image capabilities, whose artefact fields are URL-named", async () => {
     const video: Record<string, unknown> = {
-      specVersion: 2,
+      specVersion: 1,
       capability: "video.generate",
       transport: { method: "POST", path: "/v1/video_generation" },
       auth: { type: "bearer" },
@@ -229,7 +229,7 @@ describe("payload synthesis", () => {
   it("populates exactly one `$ifPresent` branch", () => {
     // OpenAI's data[] entries are either {url} or {b64_json}, never both.
     const openAiLike: MediaSpec = {
-      specVersion: 2,
+      specVersion: 1,
       capability: "image.generate",
       transport: { method: "POST", path: "/v1/images/generations" },
       auth: { type: "bearer" },
@@ -261,7 +261,7 @@ describe("payload synthesis", () => {
  */
 describe("real vendor responses (fixtures)", () => {
   const ZHIPU_IMAGE_BROKEN = {
-    specVersion: 2,
+    specVersion: 1,
     capability: "image.generate",
     displayName: "Zhipu GLM-Image (Async)",
     transport: { method: "POST", path: "/api/paas/v4/async/images/generations" },
@@ -361,7 +361,7 @@ describe("real vendor responses (fixtures)", () => {
 describe("direction and consistency rules", () => {
   it("rejects $dataUrl in a response", async () => {
     const broken = {
-      specVersion: 2,
+      specVersion: 1,
       capability: "audio.tts",
       transport: { method: "POST", path: "/v1/t2a_v2" },
       auth: { type: "bearer" },
@@ -375,7 +375,7 @@ describe("direction and consistency rules", () => {
 
   it("rejects $from in a request", async () => {
     const broken = {
-      specVersion: 2,
+      specVersion: 1,
       capability: "image.generate",
       transport: { method: "POST", path: "/v1/image_generation" },
       auth: { type: "bearer" },
@@ -388,7 +388,7 @@ describe("direction and consistency rules", () => {
 
   it("flags items and itemsB64 pointing at the same upstream array", async () => {
     const broken = {
-      specVersion: 2,
+      specVersion: 1,
       capability: "image.generate",
       transport: { method: "POST", path: "/v1/image_generation" },
       auth: { type: "bearer" },
@@ -404,7 +404,7 @@ describe("direction and consistency rules", () => {
 
   it("flags a catalogue limit that disagrees with the enforced one", async () => {
     const broken = {
-      specVersion: 2,
+      specVersion: 1,
       capability: "image.generate",
       transport: { method: "POST", path: "/v1/image_generation" },
       auth: { type: "bearer" },
@@ -419,7 +419,7 @@ describe("direction and consistency rules", () => {
 
   it("notes sizes the mapping accepts but the catalogue never advertises", async () => {
     const partial = {
-      specVersion: 2,
+      specVersion: 1,
       capability: "video.generate",
       transport: { method: "POST", path: "/v1/video_generation" },
       auth: { type: "bearer" },
@@ -443,7 +443,7 @@ describe("direction and consistency rules", () => {
 
   it("rejects an item with a non-url kind and a meaningless encoding", async () => {
     const broken = {
-      specVersion: 2,
+      specVersion: 1,
       capability: "image.generate",
       transport: { method: "POST", path: "/v1/image_generation" },
       auth: { type: "bearer" },

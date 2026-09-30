@@ -40,7 +40,7 @@ const json = (body: unknown, status = 200) =>
 
 describe("gap 1 — two vendor API versions of one capability", () => {
   const v1 = spec({
-    specVersion: 2,
+    specVersion: 1,
     capability: "video.generate",
     models: ["hailuo"],
     transport: { method: "POST", path: "/v1/video_generation" },
@@ -52,7 +52,7 @@ describe("gap 1 — two vendor API versions of one capability", () => {
     },
   });
   const v2 = spec({
-    specVersion: 2,
+    specVersion: 1,
     capability: "video.generate",
     models: ["h3"],
     transport: { method: "POST", path: "/v2/video_generation" },
@@ -76,7 +76,7 @@ describe("gap 1 — two vendor API versions of one capability", () => {
 
   it("keeps a spec without `models` as the catch-all", () => {
     const unscoped = spec({
-      specVersion: 2,
+      specVersion: 1,
       capability: "video.generate",
       transport: { method: "POST", path: "/v3/video_generation" },
       auth: { type: "bearer" },
@@ -94,14 +94,14 @@ describe("gap 1 — two vendor API versions of one capability", () => {
   it("refuses to save two unscoped specs of the same capability", () => {
     const result = validateMediaSpecs([
       {
-        specVersion: 2,
+        specVersion: 1,
         capability: "video.generate",
         transport: { method: "POST", path: "/v1/video_generation" },
         auth: { type: "bearer" },
         response: { items: [] },
       },
       {
-        specVersion: 2,
+        specVersion: 1,
         capability: "video.generate",
         transport: { method: "POST", path: "/v2/video_generation" },
         auth: { type: "bearer" },
@@ -114,7 +114,7 @@ describe("gap 1 — two vendor API versions of one capability", () => {
   it("refuses a model claimed by two specs", () => {
     const result = validateMediaSpecs([
       {
-        specVersion: 2,
+        specVersion: 1,
         capability: "video.generate",
         models: ["h3"],
         transport: { method: "POST", path: "/a" },
@@ -122,7 +122,7 @@ describe("gap 1 — two vendor API versions of one capability", () => {
         response: { items: [] },
       },
       {
-        specVersion: 2,
+        specVersion: 1,
         capability: "video.generate",
         models: ["h3"],
         transport: { method: "POST", path: "/b" },
@@ -135,7 +135,7 @@ describe("gap 1 — two vendor API versions of one capability", () => {
 
   it("still resolves an image.edit request through image-to-image modes", () => {
     const image = spec({
-      specVersion: 2,
+      specVersion: 1,
       capability: "image.generate",
       transport: { method: "POST", path: "/v1/image_generation" },
       auth: { type: "bearer" },
@@ -209,7 +209,7 @@ describe("gap 2 — snake_case vs camelCase", () => {
 
 describe("gap 3 — upstream encoding", () => {
   const tts = spec({
-    specVersion: 2,
+    specVersion: 1,
     capability: "audio.tts",
     transport: { method: "POST", path: "/v1/t2a_v2" },
     auth: { type: "bearer" },
@@ -233,7 +233,7 @@ describe("gap 3 — upstream encoding", () => {
 
   it("leaves a plain url alone", async () => {
     const urlSpec = spec({
-      specVersion: 2,
+      specVersion: 1,
       capability: "audio.tts",
       transport: { method: "POST", path: "/v1/t2a_v2" },
       auth: { type: "bearer" },
@@ -250,7 +250,7 @@ describe("gap 3 — upstream encoding", () => {
 
   it("strips a data URL prefix when asked for base64", async () => {
     const dataUrlSpec = spec({
-      specVersion: 2,
+      specVersion: 1,
       capability: "audio.tts",
       transport: { method: "POST", path: "/v1/t2a_v2" },
       auth: { type: "bearer" },
@@ -268,7 +268,7 @@ describe("gap 3 — upstream encoding", () => {
 
   it("accepts a single object where an array was expected", async () => {
     const singleSpec = spec({
-      specVersion: 2,
+      specVersion: 1,
       capability: "image.generate",
       transport: { method: "POST", path: "/v1/image_generation" },
       auth: { type: "bearer" },
@@ -289,7 +289,7 @@ describe("gap 3 — upstream encoding", () => {
 describe("gap 4 — error vocabularies", () => {
   it("matches a rule on the upstream HTTP status", async () => {
     const s = spec({
-      specVersion: 2,
+      specVersion: 1,
       capability: "image.generate",
       transport: { method: "POST", path: "/v2/video_generation" },
       auth: { type: "bearer" },
@@ -310,7 +310,7 @@ describe("gap 4 — error vocabularies", () => {
 
   it("still matches an in-body vendor code on a 200, and surfaces the vendor's own message", async () => {
     const s = spec({
-      specVersion: 2,
+      specVersion: 1,
       capability: "image.generate",
       transport: { method: "POST", path: "/v1/image_generation" },
       auth: { type: "bearer" },
@@ -332,7 +332,7 @@ describe("gap 4 — error vocabularies", () => {
 
   it("rejects a rule that can never fire", () => {
     const parsed = parseMediaSpec({
-      specVersion: 2,
+      specVersion: 1,
       capability: "image.generate",
       transport: { method: "POST", path: "/x" },
       auth: { type: "bearer" },
@@ -349,7 +349,7 @@ describe("gap 4 — error vocabularies", () => {
 
 describe("gap 5 — async status vocabularies", () => {
   const base = {
-    specVersion: 2,
+    specVersion: 1,
     capability: "video.generate",
     transport: { method: "POST", path: "/v1/video_generation" },
     auth: { type: "bearer" },
@@ -534,7 +534,7 @@ function poller(submitBody: unknown, pollBody: unknown): typeof fetch {
 describe("silent emptiness", () => {
   it("refuses a mapped 2xx that produced nothing", async () => {
     const s = spec({
-      specVersion: 2,
+      specVersion: 1,
       capability: "image.generate",
       transport: { method: "POST", path: "/v1/image_generation" },
       auth: { type: "bearer" },
@@ -555,7 +555,7 @@ describe("silent emptiness", () => {
 
   it("accepts an empty result when the spec opts in", async () => {
     const s = spec({
-      specVersion: 2,
+      specVersion: 1,
       capability: "image.generate",
       transport: { method: "POST", path: "/v1/image_generation" },
       auth: { type: "bearer" },
@@ -573,7 +573,7 @@ describe("silent emptiness", () => {
 
   it("does not apply to transcription, which has no items", async () => {
     const s = spec({
-      specVersion: 2,
+      specVersion: 1,
       capability: "audio.stt",
       transport: { method: "POST", path: "/v1/speech_to_text" },
       auth: { type: "bearer" },
@@ -594,7 +594,7 @@ describe("silent emptiness", () => {
 describe("transport breadth", () => {
   it("maps header values from the request scope", async () => {
     const s = spec({
-      specVersion: 2,
+      specVersion: 1,
       capability: "audio.stt",
       transport: {
         method: "POST",
@@ -620,7 +620,7 @@ describe("transport breadth", () => {
 
   it("omits a header whose mapping resolves to nothing", async () => {
     const s = spec({
-      specVersion: 2,
+      specVersion: 1,
       capability: "audio.stt",
       transport: { method: "POST", path: "/v1/speech_to_text", headers: { language: "$.language" } },
       auth: { type: "bearer" },
@@ -642,7 +642,7 @@ describe("transport breadth", () => {
 
   it("substitutes {{model}} in a path-style endpoint", async () => {
     const s = spec({
-      specVersion: 2,
+      specVersion: 1,
       capability: "image.generate",
       transport: { method: "POST", path: "/v2/models/{{model}}/images" },
       auth: { type: "bearer" },
@@ -664,7 +664,7 @@ describe("transport breadth", () => {
 
   it("lets a spec override the provider base URL", async () => {
     const s = spec({
-      specVersion: 2,
+      specVersion: 1,
       capability: "image.generate",
       baseUrl: "https://api.minimax.io",
       transport: { method: "POST", path: "/v2/video_generation" },
@@ -687,7 +687,7 @@ describe("transport breadth", () => {
 
   it("encodes a form-urlencoded body", async () => {
     const s = spec({
-      specVersion: 2,
+      specVersion: 1,
       capability: "image.generate",
       transport: {
         method: "POST",
@@ -717,7 +717,7 @@ describe("transport breadth", () => {
 
   it("collects url items from an SSE stream", async () => {
     const s = spec({
-      specVersion: 2,
+      specVersion: 1,
       capability: "image.generate",
       responseMode: "sse",
       transport: { method: "POST", path: "/v1/images" },
@@ -800,7 +800,7 @@ describe("new primitives", () => {
   it("handles a mixed array where some items are urls and some are base64", async () => {
     // OpenAI's real shape: every entry in `data` is either {url} or {b64_json}.
     const s = spec({
-      specVersion: 2,
+      specVersion: 1,
       capability: "image.generate",
       transport: { method: "POST", path: "/v1/images/generations" },
       auth: { type: "bearer" },
@@ -842,7 +842,7 @@ describe("new primitives", () => {
 
   it("rejects an $ifPresent branch that is not a single-key object", () => {
     const parsed = parseMediaSpec({
-      specVersion: 2,
+      specVersion: 1,
       capability: "image.generate",
       transport: { method: "POST", path: "/x" },
       auth: { type: "bearer" },
@@ -858,21 +858,25 @@ describe("new primitives", () => {
 // ---------------------------------------------------------------------------
 
 describe("validation surface", () => {
-  it("rejects a version it does not speak, and says why", () => {
-    const parsed = parseMediaSpec({
-      specVersion: 1,
-      capability: "image.generate",
-      transport: { method: "POST", path: "/x" },
-      auth: { type: "bearer" },
-    });
-    expect(parsed.ok).toBe(false);
-    if (parsed.ok) return;
-    expect(parsed.errors.join(" ")).toContain("version 2");
+  it("accepts exactly version 1 and rejects anything else", () => {
+    // There is no version history: 1 is the first and only version, so the only
+    // message is a plain "must be 1".
+    for (const specVersion of [2, "1", 0]) {
+      const parsed = parseMediaSpec({
+        specVersion,
+        capability: "image.generate",
+        transport: { method: "POST", path: "/x" },
+        auth: { type: "bearer" },
+      });
+      expect(parsed.ok, String(specVersion)).toBe(false);
+      if (parsed.ok) continue;
+      expect(parsed.errors.join(" ")).toContain("specVersion: must be 1");
+    }
   });
 
   it("rejects an unknown top-level field", () => {
     const parsed = parseMediaSpec({
-      specVersion: 2,
+      specVersion: 1,
       capability: "image.generate",
       transport: { method: "POST", path: "/x" },
       auth: { type: "bearer" },
@@ -885,7 +889,7 @@ describe("validation surface", () => {
 
   it("rejects a timeout beyond the serverless ceiling", () => {
     const parsed = parseMediaSpec({
-      specVersion: 2,
+      specVersion: 1,
       capability: "music.generate",
       transport: { method: "POST", path: "/x" },
       auth: { type: "bearer" },
@@ -899,7 +903,7 @@ describe("validation surface", () => {
 
   it("warns when an item-producing capability maps no items", () => {
     const parsed = parseMediaSpec({
-      specVersion: 2,
+      specVersion: 1,
       capability: "image.generate",
       transport: { method: "POST", path: "/x" },
       auth: { type: "bearer" },
@@ -913,7 +917,7 @@ describe("validation surface", () => {
   it("rejects a media capability with no items and no allowEmpty", () => {
     const result = validateMediaSpecs([
       {
-        specVersion: 2,
+        specVersion: 1,
         capability: "image.generate",
         transport: { method: "POST", path: "/x" },
         auth: { type: "bearer" },
@@ -929,7 +933,7 @@ describe("byModel — one spec, per-model enum/size tables", () => {
   // `MiniMax-H3-Max` explicitly does not. Splitting into two specs would mean two
   // copies to keep in step, and the judge cannot compare them.
   const V2_VIDEO: Record<string, unknown> = {
-    specVersion: 2,
+    specVersion: 1,
     capability: "video.generate",
     models: ["minimax-h3", "minimax-h3-max"],
     transport: { method: "POST", path: "/v2/video_generation" },
@@ -966,7 +970,7 @@ describe("byModel — one spec, per-model enum/size tables", () => {
 
   it("works on $enum too", () => {
     const parsed = parseMediaSpec({
-      specVersion: 2,
+      specVersion: 1,
       capability: "image.generate",
       transport: { method: "POST", path: "/v1/images" },
       auth: { type: "bearer" },
@@ -1043,7 +1047,7 @@ describe("errorCode / errorMessage are full mappings", () => {
   // and a task-shaped object when a poll comes back `failed`. There is room for
   // both, but only if the operator knows these two slots take a mapping.
   const spec = {
-    specVersion: 2,
+    specVersion: 1,
     capability: "video.generate",
     transport: { method: "POST", path: "/v2/video_generation" },
     auth: { type: "bearer" },
@@ -1105,5 +1109,105 @@ describe("errorCode / errorMessage are full mappings", () => {
     if (out.ok) return;
     expect(out.error.code).toBe("upstream_task_failed");
     expect(out.error.message).toBe("contains sensitive content");
+  });
+});
+
+describe("error rule precedence: vendor code before HTTP status", () => {
+  /**
+   * The two routinely overlap. Zhipu answers HTTP 429 for both rate limiting and
+   * an exhausted account, and HTTP 400 for both bad parameters and a content
+   * block. If the generic `httpStatus` rule were checked first, the specific
+   * `when` rule could never fire — an operator's only workaround used to be to
+   * *omit* the generic rule, which then lost the fallback for unlisted codes.
+   */
+  const ZHIPU_SHAPED = {
+    specVersion: 1,
+    capability: "image.generate",
+    transport: { method: "POST", path: "/paas/v4/images/generations" },
+    auth: { type: "bearer" },
+    request: { model: "$.model", prompt: "$.prompt" },
+    response: {
+      items: [{ kind: "url", value: "$.data[0].url" }],
+      errorCode: "$.error.code",
+      errorMessage: "$.error.message",
+    },
+    errors: [
+      { httpStatus: 400, status: 400, code: "bad_request" },
+      { httpStatus: 429, status: 429, code: "rate_limited" },
+      { when: { $eq: ["$.error.code", "1301"] }, status: 400, code: "content_filter" },
+      { when: { $eq: ["$.error.code", "1113"] }, status: 402, code: "upstream_credit_exhausted" },
+    ],
+  };
+
+  const call = async (httpStatus: number, body: unknown) => {
+    const parsed = parseMediaSpec(ZHIPU_SHAPED);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) throw new Error("unparseable");
+    const out = await executeMedia({
+      spec: parsed.spec,
+      provider,
+      input: { model: "glm-image", prompt: "p" },
+      fetchImpl: (async () => json(body, httpStatus)) as never,
+    });
+    return out.ok ? null : { status: out.error.status, code: out.error.code };
+  };
+
+  it("lets a specific business code beat a generic HTTP status", async () => {
+    // 429 normally means rate limiting …
+    expect(await call(429, { error: { code: "1302" } })).toEqual({ status: 429, code: "rate_limited" });
+    // … but not when the body says the account is empty.
+    expect(await call(429, { error: { code: "1113" } })).toEqual({
+      status: 402,
+      code: "upstream_credit_exhausted",
+    });
+    expect(await call(400, { error: { code: "1301" } })).toEqual({ status: 400, code: "content_filter" });
+  });
+
+  it("keeps the generic rule as the fallback for unlisted codes", async () => {
+    // This is what the "just omit httpStatus" workaround gave up.
+    expect(await call(429, { error: { code: "1321" } })).toEqual({ status: 429, code: "rate_limited" });
+    expect(await call(400, { error: { code: "1214" } })).toEqual({ status: 400, code: "bad_request" });
+  });
+
+  it("still reports an unmapped 5xx", async () => {
+    expect(await call(500, { error: { code: "1230" } })).toEqual({ status: 502, code: "upstream_error" });
+  });
+
+  it("uses the same precedence while polling", async () => {
+    const parsed = parseMediaSpec({
+      ...ZHIPU_SHAPED,
+      capability: "video.generate",
+      response: { taskId: "$.id", status: "$.task_status", items: [{ kind: "url", value: "$.video_result[0].url" }] },
+      errors: [
+        { httpStatus: 429, status: 429, code: "rate_limited" },
+        { when: { $eq: ["$.error.code", "1113"] }, status: 402, code: "upstream_credit_exhausted" },
+      ],
+      async: {
+        submitTaskId: "$.id",
+        poll: {
+          method: "GET",
+          path: "/api/paas/v4/async-result/{{taskId}}",
+          intervalMs: 1,
+          timeoutMs: 2000,
+          statusPath: "$.task_status",
+          statusMap: { PROCESSING: "wait", SUCCESS: "ok", FAIL: "fail", "": "wait" },
+        },
+      },
+    });
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const out = await executeMedia({
+      spec: parsed.spec,
+      provider,
+      input: { model: "cogvideox-3", prompt: "p" },
+      fetchImpl: (async (u: string | URL | Request) => {
+        const url = String(u);
+        if (url.endsWith("/videos/generations")) return json({ id: "t1", task_status: "PROCESSING" });
+        return json({ error: { code: "1113", message: "余额不足" } }, 429);
+      }) as never,
+    });
+    expect(out.ok).toBe(false);
+    if (out.ok) return;
+    expect(out.error).toMatchObject({ status: 402, code: "upstream_credit_exhausted" });
   });
 });

@@ -161,6 +161,32 @@ export async function executeMediaRequest(args: {
   };
 }
 
+/**
+ * Items to report to an OpenAI-shaped client, given a possibly binary result.
+ *
+ * `responseMode: "binary"` covers vendors that stream image bytes (Stability's
+ * `Accept: image/*`). Those results carry no `items`, so the images endpoint used
+ * to answer `{"data":[]}` while still charging for one item. Converting the bytes
+ * into a `b64_json` item keeps the OpenAI shape and makes the charge match what
+ * the client received. `/v1/audio/speech` still returns raw bytes — that *is* its
+ * shape.
+ */
+export async function resultItems(result: MediaResult): Promise<MediaItem[]> {
+  if (result.items.length > 0) return result.items;
+  if (!result.binary) return result.items;
+  const body = result.binary.body.byteLength > 0 ? result.binary.body : await drain(result.binary.stream);
+  if (!body || body.byteLength === 0) return result.items;
+  const bytes = new Uint8Array(body);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return [{ kind: "base64", value: btoa(binary) }];
+}
+
+async function drain(stream: ReadableStream<Uint8Array> | undefined): Promise<ArrayBuffer | undefined> {
+  if (!stream) return undefined;
+  return new Response(stream).arrayBuffer();
+}
+
 /** OpenAI Images response from normalized media items. */
 export function imageItemsResponse(
   items: MediaItem[],

@@ -16,7 +16,7 @@ import { createMediaProvider } from "@/lib/db/media-providers";
 import type { MediaSpec } from "@/lib/media/spec";
 
 const VIDEO_SPEC = {
-  specVersion: 2,
+  specVersion: 1,
   capability: "video.generate",
   transport: { method: "POST", path: "/v1/videos" },
   auth: { type: "bearer" },
@@ -41,7 +41,7 @@ const VIDEO_SPEC = {
 } as unknown as MediaSpec;
 
 const TTS_SPEC = {
-  specVersion: 2,
+  specVersion: 1,
   capability: "audio.tts",
   transport: { method: "POST", path: "/v1/tts" },
   auth: { type: "bearer" },
@@ -50,7 +50,7 @@ const TTS_SPEC = {
 } as unknown as MediaSpec;
 
 const STT_SPEC = {
-  specVersion: 2,
+  specVersion: 1,
   capability: "audio.stt",
   transport: {
     method: "POST",

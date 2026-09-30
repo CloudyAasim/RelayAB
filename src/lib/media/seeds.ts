@@ -30,7 +30,7 @@ const SIZE_TO_ASPECT: Record<string, string> = {
  * which is surfaced to clients through `/v1/models`.
  */
 export const MINIMAX_IMAGE_SPEC: MediaSpec = {
-  specVersion: 2,
+  specVersion: 1,
   capability: "image.generate",
   displayName: "MiniMax Image (image-01 / image-01-live)",
   transport: { method: "POST", path: "/v1/image_generation", contentType: "application/json" },
@@ -92,7 +92,7 @@ export const MINIMAX_IMAGE_SPEC: MediaSpec = {
  * reason `$fetch` exists — its query endpoint returns a `file_id`, not a URL.
  */
 export const MINIMAX_VIDEO_V1_SPEC: MediaSpec = {
-  specVersion: 2,
+  specVersion: 1,
   capability: "video.generate",
   displayName: "MiniMax Video V1 (Hailuo-02 / T2V-01)",
   models: ["minimax-hailuo-02", "minimax-t2v-01"],
@@ -168,7 +168,7 @@ export const MINIMAX_VIDEO_V1_SPEC: MediaSpec = {
  * capability alone.
  */
 export const MINIMAX_VIDEO_V2_SPEC: MediaSpec = {
-  specVersion: 2,
+  specVersion: 1,
   capability: "video.generate",
   displayName: "MiniMax Video V2 (H3)",
   models: ["minimax-h3"],
@@ -234,7 +234,7 @@ export const MINIMAX_VIDEO_V2_SPEC: MediaSpec = {
  * base64 either way.
  */
 export const MINIMAX_TTS_SPEC: MediaSpec = {
-  specVersion: 2,
+  specVersion: 1,
   capability: "audio.tts",
   displayName: "MiniMax T2A v2 (speech-2.8-hd)",
   transport: { method: "POST", path: "/v1/t2a_v2", contentType: "application/json" },
@@ -287,7 +287,7 @@ export const MINIMAX_TTS_SPEC: MediaSpec = {
  * `transport.headers` accepts mappings rather than only literals.
  */
 export const MINIMAX_STT_SPEC: MediaSpec = {
-  specVersion: 2,
+  specVersion: 1,
   capability: "audio.stt",
   displayName: "MiniMax ASR (asr-1.0)",
   transport: {
@@ -325,7 +325,7 @@ export const MINIMAX_STT_SPEC: MediaSpec = {
  * engine hand the audio bytes straight back instead of JSON-parsing them.
  */
 export const OPENAI_TTS_SPEC: MediaSpec = {
-  specVersion: 2,
+  specVersion: 1,
   capability: "audio.tts",
   displayName: "OpenAI-compatible TTS",
   transport: { method: "POST", path: "/audio/speech" },
@@ -347,7 +347,7 @@ export const OPENAI_TTS_SPEC: MediaSpec = {
  * `$file` turns it into a real multipart file part on the way out.
  */
 export const OPENAI_STT_SPEC: MediaSpec = {
-  specVersion: 2,
+  specVersion: 1,
   capability: "audio.stt",
   displayName: "OpenAI-compatible transcription",
   transport: { method: "POST", path: "/audio/transcriptions", contentType: "multipart/form-data" },
@@ -367,7 +367,7 @@ export const OPENAI_STT_SPEC: MediaSpec = {
 
 /** Template for vendors that answer with a task id you poll. */
 export const ASYNC_VIDEO_SPEC: MediaSpec = {
-  specVersion: 2,
+  specVersion: 1,
   capability: "video.generate",
   displayName: "Async video vendor (submit + poll)",
   transport: { method: "POST", path: "/v1/videos" },

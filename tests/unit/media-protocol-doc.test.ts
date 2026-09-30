@@ -104,11 +104,11 @@ describe("protocol document", () => {
       if (!parsed.ok) {
         throw new Error(`line ${entry.line}: ${parsed.errors.join("; ")}`);
       }
-      expect(parsed.spec.specVersion).toBe(2);
+      expect(parsed.spec.specVersion).toBe(1);
     },
   );
 
-  it("demonstrates v1/v2 coexistence with two video specs", () => {
+  it("demonstrates two specs of one capability coexisting", () => {
     const videoSpecs = specs
       .map((s) => s.raw)
       .filter((raw) => (raw as { capability?: string }).capability === "video.generate");
@@ -124,10 +124,10 @@ describe("protocol document", () => {
     expect(paths).toContain("/v2/video_generation");
   });
 
-  it("declares specVersion 2 in the example of the two JSON blocks", () => {
+  it("declares specVersion 1 in the example of the two JSON blocks", () => {
     // §4 tells the operator to hand the models/specs blocks to an admin, so the
     // documented shape must not lead them astray.
-    expect(markdown).toContain("specVersion 固定为 2");
+    expect(markdown).toContain("specVersion 固定为 1");
   });
 
   it("documents every primitive the engine implements", () => {

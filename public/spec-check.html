@@ -151,6 +151,8 @@
     return cursor;
   }
   function isRecord(v) { return typeof v === "object" && v !== null && !Array.isArray(v); }
+  /** "" 视为未提供；0 与 false 仍然算有值。 */
+  function isProvided(v) { return v !== undefined && v !== null && v !== ""; }
   function sameValue(a, b) {
     if (a === b) return true;
     if (Array.isArray(a) && Array.isArray(b))
@@ -215,6 +217,31 @@
     return merged;
   }
 
+  /** 从 base64 前几个字节猜媒体类型；认不出时沿用 image/png（向后兼容）。 */
+  var B64CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  function sniffMediaType(b64) {
+    var head = String(b64).slice(0, 24).replace(/[^A-Za-z0-9+/]/g, "");
+    head = head.slice(0, head.length - (head.length % 4));
+    var bytes = [];
+    try {
+      var bin = (typeof atob === "function" ? atob(head) : Buffer.from(head, "base64").toString("binary"));
+      for (var i = 0; i < bin.length; i++) bytes.push(bin.charCodeAt(i));
+    } catch (e) { return "image/png"; }
+    function st() { for (var i = 0; i < arguments.length; i++) if (bytes[i] !== arguments[i]) return false; return true; }
+    function at(off) { for (var i = 1; i < arguments.length; i++) if (bytes[off + i - 1] !== arguments[i]) return false; return true; }
+    if (st(0x89, 0x50, 0x4e, 0x47)) return "image/png";
+    if (st(0xff, 0xd8, 0xff)) return "image/jpeg";
+    if (st(0x47, 0x49, 0x46, 0x38)) return "image/gif";
+    if (st(0x42, 0x4d)) return "image/bmp";
+    if (st(0x52, 0x49, 0x46, 0x46) && at(8, 0x57, 0x45, 0x42, 0x50)) return "image/webp";
+    if (st(0x52, 0x49, 0x46, 0x46) && at(8, 0x57, 0x41, 0x56, 0x45)) return "audio/wav";
+    if (st(0x49, 0x44, 0x33) || st(0xff, 0xfb)) return "audio/mpeg";
+    if (st(0x4f, 0x67, 0x67, 0x53)) return "audio/ogg";
+    if (st(0x66, 0x4c, 0x61, 0x43)) return "audio/flac";
+    if (at(4, 0x66, 0x74, 0x79, 0x70)) return "image/heic";
+    return "image/png";
+  }
+
   /* -------------------------------------------------------- 映射求值 ---- */
   /** 顺序与 engine.applyMapping 完全一致：先匹配先生效。 */
   function applyMapping(node, scope) {
@@ -233,12 +260,14 @@
     if ("$const" in node) return node.$const;
 
     if ("$ifPresent" in node) {
+      // "" 视为「没提供」：OpenAI 兼容聚合商会把互斥的两个键都返回，不用那个留空。
+      // 把 "" 当存在会让 $ifPresent 挑中空分支，value 再被 items 收集丢弃 → 产物静默消失。
       if (Array.isArray(node.$ifPresent)) {
         for (var b = 0; b < node.$ifPresent.length; b++) {
           var br = node.$ifPresent[b];
           if (!isRecord(br)) continue;
           var k0 = Object.keys(br)[0];
-          if (getPath(scope, k0) === undefined) continue;
+          if (!isProvided(getPath(scope, k0))) continue;
           var ev = applyMapping(br[k0], scope);
           if (ev !== undefined) return ev;
         }
@@ -246,7 +275,7 @@
       }
       if (!isRecord(node.$ifPresent)) return undefined;
       var key = Object.keys(node.$ifPresent)[0];
-      if (getPath(scope, key) === undefined) return undefined;
+      if (!isProvided(getPath(scope, key))) return undefined;
       return applyMapping(node.$ifPresent[key], scope);
     }
 
@@ -275,7 +304,8 @@
       var d = getPath(scope, String(node.$dataUrl));
       if (typeof d !== "string" || !d.length) return undefined;
       if (d.indexOf("data:") === 0 || /^https?:\/\//.test(d)) return d;
-      return "data:image/png;base64," + d;
+      // 用字节自己声明的类型，而不是硬编码 image/png（否则 JPEG/GIF 全被标错）
+      return "data:" + sniffMediaType(d) + ";base64," + d;
     }
 
     if ("$file" in node) {
@@ -314,6 +344,12 @@
       var fp = isRecord(node.$fetch) ? node.$fetch : {};
       var tpl = String(fp.url === undefined ? "" : fp.url);
       if (!tpl) return undefined;
+      // 没有源值就不发请求：否则会拿空 id 去打一次注定失败的 GET，
+      // 还会在轮询期间把每次调用的预算耗掉。
+      if (fp.path !== undefined) {
+        var srcv = getPath(scope, String(fp.path));
+        if (srcv === undefined || srcv === null) return undefined;
+      }
       var url = tpl.replace(/\{\{\s*([^}]+?)\s*\}\}/g, function (_, path) {
         var v = getPath(scope, path.trim());
         return v === undefined || v === null ? "" : encodeURIComponent(String(v));
@@ -411,20 +447,26 @@
     var m = applyMapping(spec.response, raw);
     return isRecord(m) && typeof m.errorMessage === "string" ? m.errorMessage : "";
   }
-  /** 顺序与 engine 一致：先 httpStatus，再 when，最后 !ok。 */
+  /**
+   * 顺序与 engine 一致：**先 when、再 httpStatus、最后 !ok**。
+   *
+   * 业务错误码比传输状态更具体，而两者经常重叠：智谱的 HTTP 429 既可能是限流
+   * 也可能是欠费(1113)，HTTP 400 既可能是参数错也可能是涉敏(1301)。先看 httpStatus
+   * 就会让通用规则吞掉具体规则。httpStatus 只作未列举状态的兜底。
+   */
   function matchError(spec, raw, httpStatus) {
     var vm = vendorMessageOf(spec, raw);
     var rules = spec.errors || [];
+    for (var j = 0; j < rules.length; j++) {
+      var r2 = rules[j];
+      if (r2.when === undefined) continue;
+      if (applyMapping(r2.when, raw) === true) return ruleError(r2, vm);
+    }
     for (var i = 0; i < rules.length; i++) {
       var r = rules[i];
       if (r.httpStatus === undefined) continue;
       var want = Array.isArray(r.httpStatus) ? r.httpStatus : [r.httpStatus];
       if (want.indexOf(httpStatus) >= 0) return ruleError(r, vm);
-    }
-    for (var j = 0; j < rules.length; j++) {
-      var r2 = rules[j];
-      if (r2.when === undefined) continue;
-      if (applyMapping(r2.when, raw) === true) return ruleError(r2, vm);
     }
     if (httpStatus < 200 || httpStatus >= 300)
       return { status: 502, code: "upstream_error", message: "upstream returned HTTP " + httpStatus };
@@ -470,7 +512,8 @@
       ? String(spec.async.poll.path).split("?")[0].split("{{taskId}}")[0]
       : "";
 
-    // $fetch 展开：模拟一次同源 GET，返回能喂饱 pick 的最小响应
+    // $fetch 展开：模拟一次同源 GET，返回能喂饱 pick 的最小响应。
+    // 预算在整次调用里共享（轮询/SSE 不会每轮重置），与真引擎一致。
     var fetchBudget = 8;
     function resolveFetches(value) {
       if (Array.isArray(value)) return value.map(resolveFetches);
@@ -488,7 +531,9 @@
     function finish(payload, taskId) {
       var items = collectItems(payload);
       var text = textOf(payload);
-      if (!items.length && text === undefined && spec.allowEmpty !== true) {
+      // 选择 allowEmpty 的空结果「成功了但什么都没产出」——不该计费
+      var producedNothing = !items.length && text === undefined;
+      if (producedNothing && spec.allowEmpty !== true) {
         return {
           ok: false,
           error: {
@@ -500,7 +545,8 @@
         };
       }
       return {
-        ok: true, items: items, text: text, taskId: taskId, count: countOf(payload)
+        ok: true, items: items, text: text, taskId: taskId,
+        count: producedNothing ? 0 : countOf(payload)
       };
     }
 
@@ -563,6 +609,25 @@
   var CONTENT_TYPES = ["application/json", "multipart/form-data", "application/x-www-form-urlencoded"];
   var SPEC_KEYS = ["specVersion", "capability", "displayName", "models", "baseUrl", "transport", "auth",
     "request", "response", "responseMode", "errors", "async", "limits", "allowEmpty", "metadata"];
+  var TRANSPORT_KEYS = { method: 1, path: 1, headers: 1, query: 1, contentType: 1 };
+  var AUTH_KEYS = { type: 1, name: 1, prefix: 1 };
+  var LIMITS_KEYS = { maxN: 1, timeoutMs: 1 };
+  var ASYNC_KEYS = { submitTaskId: 1, poll: 1 };
+  var POLL_KEYS = { method: 1, path: 1, intervalMs: 1, timeoutMs: 1, statusPath: 1,
+    successValues: 1, failureValues: 1, statusMap: 1, statusMatch: 1, request: 1, contentType: 1 };
+  var ERROR_RULE_KEYS = { when: 1, httpStatus: 1, status: 1, code: 1, message: 1 };
+  var RESPONSE_KEYS = { items: 1, itemsB64: 1, successCount: 1, taskId: 1, status: 1,
+    text: 1, errorCode: 1, errorMessage: 1 };
+  var STRUCTURED_CT = { "application/json": 1, "multipart/form-data": 1, "application/x-www-form-urlencoded": 1 };
+  var MEDIA_TYPE = /^[\w.+-]+\/[\w.+-]+$/;
+
+  /** 未知字段一律报错——只在顶层拒绝过一次，其余层的拼错都静默通过了。 */
+  function rejectUnknown(record, allowed, path, errors) {
+    Object.keys(record).forEach(function (k) {
+      if (!allowed[k]) errors.push(path + "." + k + ": unknown field (typo?)");
+    });
+  }
+
   var TRANSFORMS = ["$const", "$ifPresent", "$enum", "$mapSize", "$dataUrl", "$from", "$to", "$merge",
     "$eq", "$file", "$fetch", "$firstPresent", "$toString"];
 
@@ -629,10 +694,8 @@
     Object.keys(raw).forEach(function (k) {
       if (SPEC_KEYS.indexOf(k) < 0) errors.push(k + ": unknown spec field (typo?)");
     });
-    if (raw.specVersion !== 2)
-      errors.push(raw.specVersion === 1
-        ? "specVersion: this relay speaks version 2 only — re-import the spec from /admin/docs/media"
-        : "specVersion: only 2 is supported");
+    // 只有一个版本：字段保留是为了将来做迁移，不是兼容分支。
+    if (raw.specVersion !== 1) errors.push("specVersion: must be 1");
     if (CAPS.indexOf(raw.capability) < 0)
       errors.push("capability: must be one of " + CAPS.join(", "));
 
@@ -659,14 +722,18 @@
         if (leftover.indexOf("{{") >= 0 || leftover.indexOf("}}") >= 0)
           errors.push("transport.path: the only placeholder allowed on the submit path is {{model}}");
       }
-      if (t.contentType !== undefined && CONTENT_TYPES.indexOf(t.contentType) < 0)
-        errors.push("transport.contentType: must be one of " + CONTENT_TYPES.join(", "));
+      rejectUnknown(t, TRANSPORT_KEYS, "transport", errors);
+      if (t.contentType !== undefined && (typeof t.contentType !== "string" || !MEDIA_TYPE.test(t.contentType)))
+        errors.push("transport.contentType: must be a media type such as " + CONTENT_TYPES.join(", "));
       if (t.method === "GET" && t.contentType === "multipart/form-data")
         errors.push("transport.contentType: a GET request cannot carry a body");
     }
     if (!isRecord(raw.auth)) errors.push("auth: required object");
-    else if (["bearer", "header", "query", "none"].indexOf(raw.auth.type) < 0)
-      errors.push("auth.type: must be bearer, header, query or none");
+    else {
+      rejectUnknown(raw.auth, AUTH_KEYS, "auth", errors);
+      if (["bearer", "header", "query", "none"].indexOf(raw.auth.type) < 0)
+        errors.push("auth.type: must be bearer, header, query or none");
+    }
 
     if (raw.request !== undefined) {
       walkMapping(raw.request, "request", errors);
@@ -674,6 +741,8 @@
     }
     if (raw.response !== undefined) {
       walkMapping(raw.response, "response", errors);
+      if (isRecord(raw.response) && !Object.keys(raw.response).some(function (k) { return k[0] === "$"; }))
+        rejectUnknown(raw.response, RESPONSE_KEYS, "response", errors);
       if (isRecord(raw.response) && raw.response.allowEmpty !== undefined)
         errors.push("response.allowEmpty: put `allowEmpty` at the spec top level, not inside `response`");
     }
@@ -684,6 +753,7 @@
       if (!Array.isArray(raw.errors)) errors.push("errors: expected an array");
       else raw.errors.forEach(function (rule, i) {
         if (!isRecord(rule)) { errors.push("errors[" + i + "]: expected an object"); return; }
+        rejectUnknown(rule, ERROR_RULE_KEYS, "errors[" + i + "]", errors);
         if (typeof rule.status !== "number") errors.push("errors[" + i + "].status: required number");
         if (typeof rule.code !== "string" || !rule.code) errors.push("errors[" + i + "].code: required string");
         if (rule.when === undefined && rule.httpStatus === undefined)
@@ -700,16 +770,21 @@
     if (raw.async !== undefined) {
       if (!isRecord(raw.async)) errors.push("async: expected an object");
       else {
+        rejectUnknown(raw.async, ASYNC_KEYS, "async", errors);
         if (typeof raw.async.submitTaskId !== "string") errors.push("async.submitTaskId: required string");
         var poll = raw.async.poll;
         if (!isRecord(poll)) errors.push("async.poll: required object");
         else {
+          rejectUnknown(poll, POLL_KEYS, "async.poll", errors);
           if (typeof poll.path !== "string" || poll.path[0] !== "/")
             errors.push('async.poll.path: must be a string starting with "/"');
           else if (poll.path.indexOf("{{taskId}}") < 0)
             warnings.push("async.poll.path: has no {{taskId}}, so every poll would query the same URL");
           if (poll.method !== undefined && poll.method !== "GET" && poll.method !== "POST")
             errors.push("async.poll.method: must be GET or POST");
+          if (poll.intervalMs !== undefined &&
+              (typeof poll.intervalMs !== "number" || !isFinite(poll.intervalMs) || poll.intervalMs <= 0))
+            errors.push("async.poll.intervalMs: must be a positive number — 0 would busy-loop against the upstream for the whole timeout");
           if (poll.statusMap !== undefined) {
             if (!isRecord(poll.statusMap)) errors.push("async.poll.statusMap: expected an object of vendor state -> ok|fail|wait");
             else {
@@ -731,12 +806,15 @@
 
     if (raw.limits !== undefined) {
       if (!isRecord(raw.limits)) errors.push("limits: expected an object");
-      else ["maxN", "timeoutMs"].forEach(function (k) {
+      else {
+      rejectUnknown(raw.limits, LIMITS_KEYS, "limits", errors);
+      ["maxN", "timeoutMs"].forEach(function (k) {
         var v = raw.limits[k];
         if (v !== undefined && (typeof v !== "number" || !isFinite(v))) errors.push("limits." + k + ": expected a finite number");
       });
       if (typeof raw.limits.timeoutMs === "number" && raw.limits.timeoutMs > 300000)
         errors.push("limits.timeoutMs: 300000 is the serverless ceiling — a longer timeout can never be honoured");
+      }
     }
     if (raw.metadata !== undefined && !isRecord(raw.metadata)) errors.push("metadata: expected an object");
 
@@ -1521,19 +1599,21 @@
     add_("statusMap 兜底项让未知状态继续等", function () {
       return classifyStatus("BrandNew", { statusMap: { Success: "ok", "": "wait" } }) === "wait";
     });
-    add_("v1 spec 被拒绝并说明原因", function () {
-      return !validateSpec({ specVersion: 1, capability: "image.generate", transport: { method: "POST", path: "/x" }, auth: { type: "bearer" } }).ok;
+    add_("只接受 specVersion 1", function () {
+      var bad = !validateSpec({ specVersion: 2, capability: "image.generate", transport: { method: "POST", path: "/x" }, auth: { type: "bearer" } }).ok;
+      var good = validateSpec({ specVersion: 1, capability: "image.generate", transport: { method: "POST", path: "/x" }, auth: { type: "bearer" }, response: { items: [{ kind: "url", value: "$.url" }] } }).ok;
+      return bad && good;
     });
     add_("两份无 models 的同能力 spec 被拒绝", function () {
-      var mk = function (path) { return { specVersion: 2, capability: "video.generate", transport: { method: "POST", path: path }, auth: { type: "bearer" }, response: { items: [{ kind: "url", value: "$.url" }] } }; };
+      var mk = function (path) { return { specVersion: 1, capability: "video.generate", transport: { method: "POST", path: path }, auth: { type: "bearer" }, response: { items: [{ kind: "url", value: "$.url" }] } }; };
       return validateDocument([mk("/a"), mk("/b")]).errors.length > 0;
     });
     add_("必填媒体能力没有 response 被拒绝", function () {
-      return validateDocument([{ specVersion: 2, capability: "image.generate", transport: { method: "POST", path: "/x" }, auth: { type: "bearer" }, request: { prompt: "$.prompt" } }]).errors.length > 0;
+      return validateDocument([{ specVersion: 1, capability: "image.generate", transport: { method: "POST", path: "/x" }, auth: { type: "bearer" }, request: { prompt: "$.prompt" } }]).errors.length > 0;
     });
     add_("端到端：合法视频 spec 通过", function () {
       var spec = {
-        specVersion: 2, capability: "video.generate",
+        specVersion: 1, capability: "video.generate",
         transport: { method: "POST", path: "/v1/video_generation" }, auth: { type: "bearer" },
         request: { model: "$.model", prompt: "$.prompt" },
         response: { taskId: "$.task_id", status: "$.status", items: [{ kind: "url", value: "$.file_url" }] },
@@ -1544,7 +1624,7 @@
     });
     add_("端到端：缺 duration 兜底会暴露在请求预览里", function () {
       var spec = {
-        specVersion: 2, capability: "video.generate",
+        specVersion: 1, capability: "video.generate",
         transport: { method: "POST", path: "/v1/video_generation" }, auth: { type: "bearer" },
         request: { model: "$.model", prompt: "$.prompt", duration: { $firstPresent: ["$.duration", { $const: 6 }] } },
         response: { taskId: "$.task_id", status: "$.status", items: [{ kind: "url", value: "$.file_url" }] },
@@ -1653,7 +1733,7 @@
     el("in").value = JSON.stringify({
       models: { "my-image": { upstreamId: "image-01", pricePerItem: 100, enabled: true } },
       specs: [{
-        specVersion: 2, capability: "image.generate", displayName: "示例",
+        specVersion: 1, capability: "image.generate", displayName: "示例",
         models: ["my-image"],
         transport: { method: "POST", path: "/v1/image_generation", contentType: "application/json" },
         auth: { type: "bearer" },

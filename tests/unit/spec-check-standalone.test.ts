@@ -155,7 +155,7 @@ const CORPUS: {
   {
     name: "同步图片：$from 数组 → url items",
     spec: {
-      specVersion: 2,
+      specVersion: 1,
       capability: "image.generate",
       transport: { method: "POST", path: "/v1/image_generation" },
       auth: { type: "bearer" },
@@ -172,7 +172,7 @@ const CORPUS: {
   {
     name: "itemsB64 也要被读到（v2 曾静默丢失它）",
     spec: {
-      specVersion: 2,
+      specVersion: 1,
       capability: "image.generate",
       transport: { method: "POST", path: "/v1/image_generation" },
       auth: { type: "bearer" },
@@ -188,7 +188,7 @@ const CORPUS: {
   {
     name: "hex 编码归一：kind=base64 + encoding=hex",
     spec: {
-      specVersion: 2,
+      specVersion: 1,
       capability: "audio.tts",
       transport: { method: "POST", path: "/v1/t2a_v2" },
       auth: { type: "bearer" },
@@ -201,7 +201,7 @@ const CORPUS: {
   {
     name: "厂商码错误（HTTP 200 + base_resp）",
     spec: {
-      specVersion: 2,
+      specVersion: 1,
       capability: "image.generate",
       transport: { method: "POST", path: "/v1/image_generation" },
       auth: { type: "bearer" },
@@ -215,7 +215,7 @@ const CORPUS: {
   {
     name: "HTTP 状态码错误（V2 风格）",
     spec: {
-      specVersion: 2,
+      specVersion: 1,
       capability: "video.generate",
       transport: { method: "POST", path: "/v2/video_generation" },
       auth: { type: "bearer" },
@@ -229,7 +229,7 @@ const CORPUS: {
   {
     name: "异步：pending → success 收敛",
     spec: {
-      specVersion: 2,
+      specVersion: 1,
       capability: "video.generate",
       transport: { method: "POST", path: "/v1/video_generation" },
       auth: { type: "bearer" },
@@ -252,7 +252,7 @@ const CORPUS: {
   {
     name: "异步：失败态立刻失败",
     spec: {
-      specVersion: 2,
+      specVersion: 1,
       capability: "video.generate",
       transport: { method: "POST", path: "/v1/video_generation" },
       auth: { type: "bearer" },
@@ -272,7 +272,7 @@ const CORPUS: {
   {
     name: "$fetch：file_id → download_url",
     spec: {
-      specVersion: 2,
+      specVersion: 1,
       capability: "video.generate",
       transport: { method: "POST", path: "/v1/video_generation" },
       auth: { type: "bearer" },
@@ -302,7 +302,7 @@ const CORPUS: {
   {
     name: "空结果被拦下（而不是静默 0 产物）",
     spec: {
-      specVersion: 2,
+      specVersion: 1,
       capability: "image.generate",
       transport: { method: "POST", path: "/v1/image_generation" },
       auth: { type: "bearer" },
@@ -316,7 +316,7 @@ const CORPUS: {
   {
     name: "n 超过 maxN 被拒",
     spec: {
-      specVersion: 2,
+      specVersion: 1,
       capability: "image.generate",
       transport: { method: "POST", path: "/v1/image_generation" },
       auth: { type: "bearer" },
@@ -330,7 +330,7 @@ const CORPUS: {
   {
     name: "$ifPresent 多分支：二选一的产物",
     spec: {
-      specVersion: 2,
+      specVersion: 1,
       capability: "image.generate",
       transport: { method: "POST", path: "/v1/images/generations" },
       auth: { type: "bearer" },
@@ -353,7 +353,7 @@ const CORPUS: {
   {
     name: "语音转写：只有 text，没有 items",
     spec: {
-      specVersion: 2,
+      specVersion: 1,
       capability: "audio.stt",
       transport: { method: "POST", path: "/v1/speech_to_text" },
       auth: { type: "bearer" },
@@ -397,7 +397,7 @@ describe("standalone judge: scope building matches the engine", () => {
 
 describe("standalone judge: static checks", () => {
   const base = {
-    specVersion: 2,
+    specVersion: 1,
     capability: "image.generate",
     transport: { method: "POST", path: "/v1/image_generation" },
     auth: { type: "bearer" },
@@ -483,7 +483,7 @@ describe("standalone judge: static checks", () => {
 
 describe("standalone judge: real vendor response reconciliation", () => {
   const ZHIPU_IMAGE = {
-    specVersion: 2,
+    specVersion: 1,
     capability: "image.generate",
     displayName: "Zhipu GLM-Image (Async)",
     transport: { method: "POST", path: "/api/paas/v4/async/images/generations" },
@@ -542,7 +542,7 @@ describe("standalone judge: real vendor response reconciliation", () => {
 
 function baseSpec() {
   return {
-    specVersion: 2,
+    specVersion: 1,
     capability: "image.generate",
     transport: { method: "POST", path: "/v1/image_generation" },
     auth: { type: "bearer" },
