@@ -65,6 +65,33 @@ describe("spec-check on the built-in templates", () => {
   });
 });
 
+  const SPEC_WHEN_NO_ERRORCODE = {
+    specVersion: 1,
+    capability: "video.generate",
+    displayName: "按厂商码判错，但没有 errorCode 映射",
+    models: ["vid-1"],
+    transport: { method: "POST", path: "/v1/videos" },
+    auth: { type: "bearer" },
+    request: { model: "$.model", prompt: "$.prompt" },
+    response: {
+      taskId: "$.video_id",
+      status: "$.status",
+      items: [{ kind: "url", value: "$.url" }],
+      successCount: { $const: 1 },
+    },
+    // Deliberately no `errorCode` in response — that is what broke the probe.
+    errors: [{ when: { $eq: ["$.code", "insufficient_quota"] }, status: 402, code: "upstream_credit_exhausted" }],
+    async: {
+      submitTaskId: "$.video_id",
+      poll: {
+        method: "GET",
+        path: "/status?task_id={{taskId}}",
+        statusPath: "$.status",
+        statusMap: { queued: "wait", completed: "ok", failed: "fail", "": "wait" },
+      },
+    },
+  };
+
 describe("spec-check catches the bugs that reached production", () => {
   it("flags a hex payload mapped without `encoding`", async () => {
     // The real incident: MiniMax T2A defaults to hex, the spec said base64, and
@@ -79,6 +106,19 @@ describe("spec-check catches the bugs that reached production", () => {
     // Either the probe fails, or the heuristic about a missing encoding is
     // there to catch it — both are acceptable; silence is not.
     expect(output.includes("✗") || output.includes("encoding")).toBe(true);
+  });
+
+  it("probes a `when` rule even when the spec maps no errorCode", async () => {
+    // The probe used to inject the vendor code only where the spec said
+    // `errorCode` lives. A spec whose errors match on `$.code` but which maps no
+    // `errorCode` therefore got nothing injected, the synthesized response was a
+    // plain success, and the probe reported "规则没触发（被当成成功）" — blaming the
+    // spec for a defect in the probe. Real instance: the Agnes video spec, whose
+    // rule is sound (the engine fires it on submit, on poll, and ahead of
+    // `no_task_id`) but which the judge reported as broken.
+    const result = await checkSpecDocument([SPEC_WHEN_NO_ERRORCODE]);
+    expect(result.lines.join("\n")).toContain("insufficient_quota");
+    expect(result.failed).toBe(0);
   });
 
   it("flags a poll path that hangs off the submit path", async () => {

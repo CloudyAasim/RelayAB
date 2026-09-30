@@ -395,6 +395,33 @@ describe("standalone judge: scope building matches the engine", () => {
   });
 });
 
+  const SPEC_WHEN_NO_ERRORCODE = {
+    specVersion: 1,
+    capability: "video.generate",
+    displayName: "按厂商码判错，但没有 errorCode 映射",
+    models: ["vid-1"],
+    transport: { method: "POST", path: "/v1/videos" },
+    auth: { type: "bearer" },
+    request: { model: "$.model", prompt: "$.prompt" },
+    response: {
+      taskId: "$.video_id",
+      status: "$.status",
+      items: [{ kind: "url", value: "$.url" }],
+      successCount: { $const: 1 },
+    },
+    // Deliberately no `errorCode` in response — that is what broke the probe.
+    errors: [{ when: { $eq: ["$.code", "insufficient_quota"] }, status: 402, code: "upstream_credit_exhausted" }],
+    async: {
+      submitTaskId: "$.video_id",
+      poll: {
+        method: "GET",
+        path: "/status?task_id={{taskId}}",
+        statusPath: "$.status",
+        statusMap: { queued: "wait", completed: "ok", failed: "fail", "": "wait" },
+      },
+    },
+  };
+
 describe("standalone judge: static checks", () => {
   const base = {
     specVersion: 1,
@@ -443,6 +470,15 @@ describe("standalone judge: static checks", () => {
         },
       ],
     });
+    expect(result.failed).toBe(0);
+  });
+
+  it("probes a `when` rule even when the spec maps no errorCode", () => {
+    // Same defect as in scripts/spec-check.ts, and the standalone must stay in
+    // parity: injecting the vendor code only at the spec's `errorCode` path made a
+    // perfectly sound rule look broken.
+    const result = judge.run({ specs: [SPEC_WHEN_NO_ERRORCODE] });
+    expect(result.lines.map((l) => l.text).join("\n")).toContain("insufficient_quota");
     expect(result.failed).toBe(0);
   });
 

@@ -1410,6 +1410,9 @@
       if (Array.isArray(eq) && eq.length === 2 && typeof eq[0] === "string" && eq[0][0] === "$" && eq[1] !== 0) {
         probes.push(["厂商码 " + eq[0] + " == " + eq[1] + " → " + rule.code, "§8", function () {
           var next = JSON.parse(JSON.stringify(payload));
+          // 见 scripts/spec-check.ts 同一处：注入到规则自己的条件路径，
+          // 否则只映射 errorCode 的 spec 会被误报成「规则没触发」。
+          setAtPath(next, eq[0], eq[1]);
           readPaths(spec.response).forEach(function (r) { if (r.field === "errorCode") setAtPath(next, r.path, eq[1]); });
           var out = executeSpec(spec, input, function (url, scope, phase, tid) {
             var r = serve(url, scope, phase, tid);

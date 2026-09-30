@@ -845,6 +845,14 @@ function probesFor(spec: MediaSpec, label: string, fixtures: Fixtures | null): P
       docRef: "§8",
       run: async () => {
         const next = JSON.parse(JSON.stringify(payload)) as Record<string, unknown>;
+        // Inject at the rule's **own condition path** first. Routing this through
+        // the spec's `errorCode` mapping alone made the probe lie: a spec whose
+        // errors match on `$.code` but which maps no `errorCode` got nothing
+        // injected, so the synthesized response was a plain success and the probe
+        // reported "规则没触发（被当成成功）" — blaming the spec for a defect in
+        // the probe. The condition is what the engine evaluates, so that is where
+        // the value belongs; the mapped paths are still filled for realism.
+        setAtPath(next, eq[0], wanted);
         for (const read of readPaths(spec.response)) {
           if (read.field === "errorCode") setAtPath(next, read.path, wanted);
         }
