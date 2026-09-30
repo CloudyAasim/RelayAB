@@ -18,6 +18,7 @@
 import { providerFaces, type ApiKey, type Provider } from "@/lib/db/types";
 import { listProviders } from "@/lib/db/providers";
 import { listMediaProviders } from "@/lib/db/media-providers";
+import type { MediaProvider, MediaSpec } from "@/lib/media/spec";
 
 export interface OpenAIModelEntry {
   id: string;
@@ -77,11 +78,30 @@ export function openAIModelList(ids: string[], createdAt: number): OpenAIModelEn
 }
 
 /**
+ * The spec that will actually serve a client model, mirroring the selection the
+ * request path performs.
+ *
+ * A provider can hold specs of several capabilities (AgnesCN has an image spec
+ * and a video spec), so "the provider's first spec" is not an answer: it labelled
+ * a video model as `image.generate`. Prefer the spec that names the model, then
+ * an unscoped spec (which serves every model of its capability), then fall back
+ * to the first spec for models no spec claims — which validation already warns
+ * about.
+ */
+function specServingModel(provider: MediaProvider, clientModel: string): MediaSpec | undefined {
+  return (
+    provider.specs.find((spec) => spec.models?.includes(clientModel)) ??
+    provider.specs.find((spec) => !spec.models || spec.models.length === 0) ??
+    provider.specs[0]
+  );
+}
+
+/**
  * Media models visible to one key, annotated so a client can tell them apart
  * from chat models without trial and error.
  *
- * The capability comes from the provider's spec, and the rest is the spec's
- * own `metadata` (modes, edit_mode, sizes, max_n) passed through verbatim.
+ * The capability comes from the spec that serves the model, and the rest is that
+ * spec's own `metadata` (modes, edit_mode, sizes, max_n) passed through verbatim.
  */
 export async function listClientMediaModelEntries(
   key: ApiKey,
@@ -90,10 +110,10 @@ export async function listClientMediaModelEntries(
   const providers = await listMediaProviders({ enabledOnly: true });
   const out: OpenAIModelEntry[] = [];
   for (const provider of providers) {
-    const spec = provider.specs[0];
     for (const [clientModel, model] of Object.entries(provider.models)) {
       if (!model.enabled) continue;
       if (key.allowedModels.length > 0 && !key.allowedModels.includes(clientModel)) continue;
+      const spec = specServingModel(provider, clientModel);
       out.push({
         id: clientModel,
         object: "model",

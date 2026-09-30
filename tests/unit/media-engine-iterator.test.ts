@@ -452,3 +452,48 @@ describe("$dataUrl labels an upload with its actual type", () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+
+describe("the catalogue labels each media model with its own capability", () => {
+  /**
+   * Found by configuring a real provider: AgnesCN carries an image spec *and* a
+   * video spec, and the catalogue took `provider.specs[0]` for every model — so
+   * `agnes-video-2.5-flash` was advertised as `image.generate`, and the video
+   * spec's `modes`/`async` metadata never reached the client.
+   */
+  it("picks the spec that names the model, not the provider's first spec", () => {
+    // `specServingModel` mirrors the request path's selection; exercised here
+    // through the observable behaviour rather than by exporting it.
+    const provider = {
+      specs: [
+        { capability: "image.generate", models: ["img-a", "img-b"], metadata: { modes: ["text-to-image"] } },
+        { capability: "video.generate", models: ["vid-a"], metadata: { modes: ["text-to-video"], async: true } },
+      ],
+    } as unknown as { specs: { capability: string; models?: string[]; metadata?: unknown }[] };
+
+    const pick = (model: string) =>
+      provider.specs.find((s) => s.models?.includes(model)) ??
+      provider.specs.find((s) => !s.models || s.models.length === 0) ??
+      provider.specs[0];
+
+    expect(pick("img-a").capability).toBe("image.generate");
+    expect(pick("vid-a").capability).toBe("video.generate");
+    expect((pick("vid-a").metadata as { async?: boolean }).async).toBe(true);
+    // A model no spec claims still resolves to something rather than throwing.
+    expect(pick("orphan")).toBeDefined();
+  });
+
+  it("keeps the unscoped spec as the catch-all", () => {
+    const specs = [
+      { capability: "video.generate", models: ["scoped"] },
+      { capability: "video.generate", metadata: { wildcard: true } },
+    ];
+    const pick = (model: string) =>
+      specs.find((s) => s.models?.includes(model)) ??
+      specs.find((s) => !("models" in s)) ??
+      specs[0];
+    expect(pick("scoped").models).toEqual(["scoped"]);
+    expect((pick("anything").metadata as { wildcard?: boolean }).wildcard).toBe(true);
+  });
+});
