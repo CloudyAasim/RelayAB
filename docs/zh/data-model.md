@@ -235,7 +235,7 @@ function checkKeyStatus({ key, user, requestedModel }): KeyValidationResult {
 
 > **模型映射请用恒等映射。** `modelMapping` 的左列会原样出现在 `GET /v1/models` 并被写进用量日志。
 > 把 `claude-sonnet-4-6` 这类名字指向非 Anthropic 的上游模型会造成误导，除非客户端硬编码了模型名且无法覆盖。
-> 端点与 `baseUrl` 的配对规则见 [ARCHITECTURE.md §7.3](architecture.md#73-端点--上游路径)。
+> 端点与 `baseUrl` 的配对规则见 [architecture.md §7.3](architecture.md#73-端点--上游路径)。
 
 ---
 

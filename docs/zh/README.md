@@ -1,6 +1,6 @@
 # RelayAB 技术文档
 
-> **本文档套为中文。** English version: [../README.md](../README.md)
+> **本文档套为中文。** English version: [../README.md](../en/README.md)
 >
 > 语言切换只放在**顶层这两页**（本页与英文索引）；各篇正文之间互链，**不会把你送到另一种语言的页面**。
 
@@ -45,4 +45,4 @@ RelayAB 是一个自托管 AI API 网关（API 中转站）。
 
 - [../../README.md](../../README.md) —— 项目中文 README（原版）
 - [../模型适配协议/README.md](../模型适配协议/README.md) —— 媒体供应商协议（中文）
-- [../README.md](../README.md) —— English documentation index（英文文档索引）
+- [../README.md](../en/README.md) —— English documentation index（英文文档索引）

@@ -176,10 +176,10 @@ Vendor differences (endpoints, field names, authentication, how sizes are expres
 sync vs. async, error codes, result encoding) all live inside the spec, so
 **adding or adjusting a provider means editing JSON in the admin panel, not editing
 code**. See the protocol and its primitives in
-[模型适配协议/README.md](./模型适配协议/README.md).
+[模型适配协议/README.md)](../模型适配协议/README.md).
 
 > **Note:** the media adapter protocol is maintained in Chinese only —
-> [`docs/模型适配协议/README.md`](./模型适配协议/README.md).
+> [`docs/模型适配协议/README.md`)](../模型适配协议/README.md).
 
 The protocol has **exactly one version** (`specVersion: 1`), with no variant
 versions. A single provider may hold multiple specs with the same `capability`
@@ -262,7 +262,7 @@ admin sees when granting access must be exactly the ceiling the user can consume
     so a single very cheap request is not rounded up to 1 credit.
   - `tokens`: accumulates by total_tokens.
 - `quotaLimit === 0` means **not yet allocated**; all calls are rejected (rather than meaning "unlimited").
-- After each request completes, `usage.prompt_tokens` / `usage.completion_tokens` are taken from the upstream response and converted into consumption using the credit rates in [`quota/rates.ts`](../src/lib/quota/rates.ts).
+- After each request completes, `usage.prompt_tokens` / `usage.completion_tokens` are taken from the upstream response and converted into consumption using the credit rates in [`quota/rates.ts`](../../src/lib/quota/rates.ts).
 
 ### 6.3 Model Permission = Account Allowlist ∩ Key Allowlist
 
@@ -423,7 +423,7 @@ pnpm test:e2e           # needs the Next dev server + the embedded mock
 - Node Version: 22.x
 
 ### 9.2 Environment Variables (set in the Vercel Dashboard)
-See [`.env.example`](../.env.example).
+See [`.env.example`](../../.env.example).
 
 ### 9.3 First Startup
 - The first time a request hits the app (submitting the login form, reading the session on a page, or a proxy endpoint verifying a key), a bootstrap runs once, lazily: if the database is empty → create the `RELAY_ADMIN_USERNAME` (default `admin`) admin using `RELAY_AUTH` as the password; if `OPENAI_KEYS` / `ANTHROPIC_KEYS` are set → create the corresponding providers automatically.

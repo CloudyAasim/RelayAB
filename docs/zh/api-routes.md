@@ -180,7 +180,7 @@ Content-Type: application/json
 
 > 注意 `baseUrl` 要填上游的 **Anthropic** 基址。比如 MiniMax 的 OpenAI 基址是
 > `https://api.minimax.cn/v1`，而 Anthropic 基址是 `https://api.minimax.cn/anthropic`，
-> 两者不能混用。配置步骤见 [ARCHITECTURE.md §7.5](architecture.md#75-新增一条-anthropic-provider)。
+> 两者不能混用。配置步骤见 [architecture.md §7.5](architecture.md#75-新增一条-anthropic-provider)。
 
 ---
 
@@ -484,7 +484,7 @@ Content-Type: application/json
 | `GET /api/admin/users/[id]/delete-form` | 删除用户前的确认表单 |
 | `GET /api/user/keys` · `GET/PATCH/DELETE /api/user/keys/[id]` | 用户自己的 Key 管理 |
 | `GET /api/user/profile` | 已登录用户的个人资料 |
-| `/api/_emu/[...path]` | 内嵌的 Vercel API 模拟器 —— **仅开发环境**，见 [DEPLOYMENT.md §6](./deployment.md#6-嵌入式-vercel-api-mock开发模式) |
+| `/api/_emu/[...path]` | 内嵌的 Vercel API 模拟器 —— **仅开发环境**，见 [deployment.md §6](./deployment.md#6-嵌入式-vercel-api-mock开发模式) |
 
 ---
 

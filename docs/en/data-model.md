@@ -5,7 +5,7 @@
 > integration, which injects `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`
 > automatically; a standalone Upstash database works as well.
 > All keys share the `relay:` prefix, so the databases can be split by prefix later if needed.
-> The types are defined in [`src/lib/db/types.ts`](../src/lib/db/types.ts); this document is a summary.
+> The types are defined in [`src/lib/db/types.ts`](../../src/lib/db/types.ts); this document is a summary.
 
 ---
 

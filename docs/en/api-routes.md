@@ -447,11 +447,11 @@ Matching UI: `/dashboard/usage` for users, `/admin/usage` for admins (with drill
 ### 2.6 Media Endpoints (image / video / speech / music)
 
 OpenAI-shaped media endpoints, driven by a **declarative adapter protocol** (see
-[模型适配协议/README.md](./模型适配协议/README.md)). Authentication is the same as for
+[模型适配协议/README.md)](../模型适配协议/README.md)). Authentication is the same as for
 `/v1/*` (Bearer `sk-relay-…`).
 
 > **Note:** the media adapter protocol is maintained in Chinese only —
-> [`docs/模型适配协议/README.md`](./模型适配协议/README.md).
+> [`docs/模型适配协议/README.md`)](../模型适配协议/README.md).
 
 | Endpoint | Body | Notes |
 | --- | --- | --- |

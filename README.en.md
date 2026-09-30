@@ -105,7 +105,7 @@ will not pick up the form automatically. Two ways to handle it:
   the URL field) → install the Upstash Marketplace integration → Redeploy
 
 For more detail (bypassing deployment protection, self-hosted key rotation,
-backup strategy) see [docs/deployment.md](docs/deployment.md).
+backup strategy) see [docs/en/deployment.md](docs/en/deployment.md).
 
 ## Features
 
@@ -266,7 +266,7 @@ the client configuration instead.
 
 For the complete rules (including `upstreamFormat` and protocol conversion, and
 the step-by-step Anthropic provider setup) see
-[docs/architecture.md §7](docs/architecture.md#7-upstream-providers-and-model-mapping).
+[docs/en/architecture.md §7](docs/en/architecture.md#7-upstream-providers-and-model-mapping).
 
 ## Testing
 
@@ -315,16 +315,16 @@ pnpm list-usage [--user <name>] [--days N]     # usage summary
 
 ## Documentation
 
-Start at **[docs/README.md](docs/README.md)** — the documentation index.
+Start at **[docs/en/README.md](docs/en/README.md)** — the documentation index.
 
 | Document | Contents |
 |---|---|
-| [docs/architecture.md](docs/architecture.md) | Full architecture + data model + design decisions |
-| [docs/data-model.md](docs/data-model.md) | Redis key naming + field definitions |
-| [docs/api-routes.md](docs/api-routes.md) | Complete API route specification |
-| [docs/testing.md](docs/testing.md) | The test pyramid + tooling |
-| [docs/admin.md](docs/admin.md) | Administrator guide (users / keys / providers) |
-| [docs/deployment.md](docs/deployment.md) | Deploying to Vercel + bypassing deployment protection + the smoke-test checklist |
+| [docs/en/architecture.md](docs/en/architecture.md) | Full architecture + data model + design decisions |
+| [docs/en/data-model.md](docs/en/data-model.md) | Redis key naming + field definitions |
+| [docs/en/api-routes.md](docs/en/api-routes.md) | Complete API route specification |
+| [docs/en/testing.md](docs/en/testing.md) | The test pyramid + tooling |
+| [docs/en/admin.md](docs/en/admin.md) | Administrator guide (users / keys / providers) |
+| [docs/en/deployment.md](docs/en/deployment.md) | Deploying to Vercel + bypassing deployment protection + the smoke-test checklist |
 
 > **Note:** the media adapter protocol — the declarative JSON spec format for
 > image / video / speech / music providers, along with its offline validator
@@ -346,7 +346,7 @@ Start at **[docs/README.md](docs/README.md)** — the documentation index.
 
 ## Full deployment to Vercel
 
-See [docs/deployment.md](docs/deployment.md). The environment variables that
+See [docs/en/deployment.md](docs/en/deployment.md). The environment variables that
 matter most:
 
 | Name | Source |
