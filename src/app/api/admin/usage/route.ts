@@ -10,7 +10,7 @@
  *
  * The response keeps the v1 `totals` + `breakdown` shape and adds the richer
  * `summary` / `series` / `byKey` / `byModel` / `byUser` fields the usage page
- * consumes. See docs/API_ROUTES.md.
+ * consumes. See docs/api-routes.md.
  */
 import { NextResponse } from "next/server";
 import { listAllApiKeys } from "@/lib/db/keys";

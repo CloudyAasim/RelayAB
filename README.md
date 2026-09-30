@@ -1,10 +1,54 @@
+<div align="center">
+
+# ⏸ 停更公告 · A Long Pause, Not a Farewell
+
+</div>
+
+> **中文为原版声明，英文采用机器翻译，实际公告内容以中文版本为准，英文版本仅供参考。**
+>
+> **The Chinese text below is the original announcement. The English text is a
+> machine translation, provided for reference only — in case of any discrepancy,
+> the Chinese version prevails.**
+
+## 中文（原版）
+
+很遗憾，这个基于 Vercel 开发的开源项目，要停更很长、很长一段时间了。
+
+开发过程中，额度消耗远超预期；而我本人并没有一份正式工作。我所在的地区，大家普遍挣得少，平时花得也少。Vercel 的 Pro 月费按美元全球统一收取，就我所知，并没有针对不同地区的价格折扣；从我们这边的收入来看，它就像是按挣得多的地方来定价。超出免费额度后的用量费用虽然会因地区而异，但对我这样连每月 20 美元都难以承担的人来说，并无实质帮助。每月 20 美元，实在过于昂贵。
+
+所以，这个项目只能先搁置下来，停更很久、很久。这里并不是说它一定不再做了，也不是就此别过，只是眼下不得不按下暂停键，归期未定。感谢大家一直以来的关注和支持，后会有期。
+
+**免责声明**：上面说“我的地区这边挣得少，平时花得也少”，只是对我个人情况和感受的描述，并不是一个绝对结论，也不代表这个地区的所有人都收入低、消费低，更不是说这里所有东西都便宜。请不要把它当成对整个地区的概括或刻板印象。
+
+## English (machine translation, for reference only)
+
+It is with regret that I have to say this Vercel-based open-source project will be paused for a long, long time.
+
+During development, usage ran far beyond what I had expected. I do not have a full-time job. In my region, people generally earn little and spend little. Vercel's Pro plan, as far as I know, is billed at a flat $20 per month in USD, with no regional discount; against local incomes here, it feels priced for places where people earn much more. Usage fees beyond the free allowance may vary by region, but that is little comfort to someone who cannot afford the $20 base fee. Twenty dollars a month is simply too much for me.
+
+So the project has to be set aside for a long, long time. This is not to say it will never be developed again, nor that this is a final goodbye. It only means I must press pause, with no date set for its return. Thank you all for your past interest and support. Until then—see you down the road.
+
+**Disclaimer**: My statement that “people around here earn little and spend little” is only a description of my own situation and impressions. It is not an absolute conclusion, nor does it mean everyone in my region has low income or low spending, or that everything here is cheap. Please do not take it as a generalization or stereotype about the whole region.
+
+## Vercel 官方通知原文
+
+> **Deployments Paused**
+>
+> Your team exceeded the Hobby fair use limits. Upgrade to Pro to resume service.
+
+---
+
 # RelayAB
 
 > 一个自托管的 AI API 网关（API 中转站），用于将上游 AI 服务的 API Key
 > 安全、可控地分享给少数人，并实现精细的权限和用量管理。
 > 一键部署到 Vercel。
+>
+> English version: [README.en.md](README.en.md) · [中文](README.md)
 
 ## 一键部署到 Vercel
+
+> ⚠️ **本项目已停更，作者不再维护**（见开头《停更公告》）。你仍然可以自行 fork 并部署使用，但不会再有修复、更新或答疑；遇到问题请自行排查，代码与协议文档都在仓库里。
 
 点下面按钮，Vercel 在 "Add Environment Variables" 区**只让你填 1 个变量** —— `RELAY_AUTH`。Upstash 的两个变量**不在这填**，等部署成功后再用 Vercel Marketplace 一键装；公网地址由 `VERCEL_URL` 自动推导，不用填。
 
@@ -44,7 +88,7 @@ Deploy Button 走的是 "新建项目" 路径；现有项目**不会自动获得
 - **(干净)** Vercel Dashboard → Settings → General → **Delete Project** → 再点 Deploy Button 走新建流程
 - **(实用)** 现有项目 → **Settings → Environment Variables** → 手动加 3 个 key（Upstash 两个先填任意占位字符串也行，缺 URL 校验就在 URL 那栏填 `https://placeholder.upstash.io`）→ 装 Upstash Marketplace → Redeploy
 
-更多细节（部署保护绕过、自托管密钥轮换、备份策略）见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。
+更多细节（部署保护绕过、自托管密钥轮换、备份策略）见 [docs/deployment.md](docs/deployment.md)。
 
 ## 功能
 
@@ -183,7 +227,7 @@ MiniMaxAnthropic   kind=anthropic  baseUrl=https://api.minimax.cn/anthropic 上�
 支持指定模型（例如 Claude Code 的 `ANTHROPIC_MODEL`），改客户端配置即可。
 
 完整规则（含 `upstreamFormat` 与协议转换、Anthropic Provider 的分步配置）见
-[docs/ARCHITECTURE.md §7](docs/ARCHITECTURE.md#7-上游-provider-与模型映射)。
+[docs/architecture.md §7](docs/architecture.md#7-upstream-providers-and-model-mapping)。
 
 ## 测试
 
@@ -232,14 +276,20 @@ pnpm list-usage [--user <name>] [--days N]     # 用量摘要
 
 ## 文档
 
+入口：[docs/README.md](docs/README.md)（文档索引）。
+
 | 文档 | 说明 |
 |---|---|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 完整架构 + 数据模型 + 业务决策 |
-| [docs/DATA_MODEL.md](docs/DATA_MODEL.md) | Redis 键命名 + 字段定义 |
-| [docs/API_ROUTES.md](docs/API_ROUTES.md) | API 路由完整规范 |
-| [docs/TESTING.md](docs/TESTING.md) | 测试金字塔 + 工具 |
-| [docs/ADMIN.md](docs/ADMIN.md) | 管理员操作指南（用户/Key/Provider 管理） |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | 部署到 Vercel + 部署保护绕过 + 冒烟测试清单 |
+| [docs/architecture.md](docs/architecture.md) | 完整架构 + 数据模型 + 业务决策 |
+| [docs/data-model.md](docs/data-model.md) | Redis 键命名 + 字段定义 |
+| [docs/api-routes.md](docs/api-routes.md) | API 路由完整规范 |
+| [docs/testing.md](docs/testing.md) | 测试金字塔 + 工具 |
+| [docs/admin.md](docs/admin.md) | 管理员操作指南（用户/Key/Provider 管理） |
+| [docs/deployment.md](docs/deployment.md) | 部署到 Vercel + 部署保护绕过 + 冒烟测试清单 |
+
+> **注意**：媒体供应商协议（图片 / 视频 / 语音 / 音乐供应商的声明式 JSON spec 格式，
+> 及其离线校验器「判官」）**仅有中文版**：
+> [docs/模型适配协议/README.md](docs/模型适配协议/README.md)。
 
 ## 安全要点
 
@@ -251,7 +301,7 @@ pnpm list-usage [--user <name>] [--days N]     # 用量摘要
 
 ## 完整部署到 Vercel
 
-详见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。最关键的环境变量：
+详见 [docs/deployment.md](docs/deployment.md)。最关键的环境变量：
 
 | 名称 | 来源 |
 |---|---|

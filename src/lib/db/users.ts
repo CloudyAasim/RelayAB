@@ -4,7 +4,7 @@
  * Repository for `User` entities. A user is the human owner of one or
  * more API keys and may have role=admin or role=user.
  *
- * Schema (mirrors `docs/DATA_MODEL.md` §1):
+ * Schema (mirrors `docs/data-model.md` §1):
  *   HASH relay:user:{userId}       → User fields
  *   STRING relay:user:by-username:{username} → userId
  *

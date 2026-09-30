@@ -66,7 +66,7 @@ export async function verifyPassword(
 
 /**
  * Generate a cryptographically-strong random password suitable for
- * admin-issued initial passwords (see DEPLOYMENT.md §3).
+ * admin-issued initial passwords (see deployment.md §3).
  *
  * Format: 4 groups of 4 base62 chars separated by dashes, e.g.
  * `Ab12-cd34-EF56-gh78`. ~96 bits of entropy.

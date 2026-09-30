@@ -3,7 +3,7 @@
  *
  * Repository for customer `ApiKey` entities.
  *
- * Schema (mirrors `docs/DATA_MODEL.md` §2):
+ * Schema (mirrors `docs/data-model.md` §2):
  *   HASH    relay:apikey:{keyId}               → ApiKey fields
  *   STRING  relay:apikey:hash:{sha256(key)}    → keyId  (Bearer lookup)
  *   SET     relay:apikey:by-user:{userId}      → [keyId, ...]

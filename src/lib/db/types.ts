@@ -3,7 +3,7 @@
  *
  * Domain types shared between the persistence layer (Redis) and the
  * business logic layer. These mirror the shapes described in
- * docs/DATA_MODEL.md.
+ * docs/data-model.md.
  *
  * Convention: all `id` fields are ULID strings (26 chars, sortable).
  * All timestamps are ISO 8601 strings (UTC) for portability.
