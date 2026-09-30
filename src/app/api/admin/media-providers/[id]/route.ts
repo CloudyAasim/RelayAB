@@ -14,7 +14,7 @@ import {
   updateMediaProvider,
   MediaProviderValidationError,
 } from "@/lib/db/media-providers";
-import { parseMediaSpec } from "@/lib/media/spec";
+import { validateMediaSpecs } from "@/lib/media/spec";
 
 export const dynamic = "force-dynamic";
 
@@ -65,12 +65,10 @@ export async function PATCH(
     );
   }
 
+  let specWarnings: string[] = [];
   if (Array.isArray(body.specs)) {
-    const issues: string[] = [];
-    body.specs.forEach((entry, index) => {
-      const parsed = parseMediaSpec(entry);
-      if (!parsed.ok) issues.push(`specs[${index}]: ${parsed.errors.join("; ")}`);
-    });
+    const { errors: issues, warnings } = validateMediaSpecs(body.specs);
+    specWarnings = warnings;
     if (issues.length > 0) {
       return NextResponse.json(
         { ok: false, error: { code: "bad_request", message: issues.join(" | ") } },
@@ -95,7 +93,11 @@ export async function PATCH(
         { status: 404 },
       );
     }
-    return NextResponse.json({ ok: true, data: { provider: toPublicMediaProvider(provider) } });
+    return NextResponse.json({
+      ok: true,
+      data: { provider: toPublicMediaProvider(provider) },
+      ...(specWarnings.length > 0 ? { warnings: specWarnings } : {}),
+    });
   } catch (err) {
     if (err instanceof MediaProviderValidationError) {
       return NextResponse.json(

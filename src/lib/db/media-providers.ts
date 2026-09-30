@@ -17,7 +17,7 @@
 import { encryptSecret } from "../crypto/secrets";
 import { generateId } from "../crypto/hashing";
 import { getRedis } from "./redis";
-import { parseMediaSpec, type MediaCapability, type MediaProvider, type MediaSpec, type PublicMediaProvider } from "../media/spec";
+import { parseMediaSpec, validateMediaSpecs, type MediaCapability, type MediaProvider, type MediaSpec, type PublicMediaProvider } from "../media/spec";
 
 const ID_KEY = (id: string) => `relay:media-provider:${id}`;
 const INDEX_KEY = "relay:media-provider:index";
@@ -60,17 +60,16 @@ export function toPublicMediaProvider(provider: MediaProvider): PublicMediaProvi
 }
 
 function parseSpecs(raw: unknown[]): MediaSpec[] {
+  // Cross-spec rules (no two unscoped specs for the same capability) live in
+  // `validateMediaSpecs`, so a provider cannot be saved in a state where one
+  // spec silently shadows another.
+  const { errors } = validateMediaSpecs(raw);
+  if (errors.length > 0) throw new MediaProviderValidationError(errors);
   const out: MediaSpec[] = [];
-  const issues: string[] = [];
-  raw.forEach((entry, index) => {
+  raw.forEach((entry) => {
     const parsed = parseMediaSpec(entry);
-    if (parsed.ok) {
-      out.push(parsed.spec);
-    } else {
-      issues.push(`specs[${index}]: ${parsed.errors.join("; ")}`);
-    }
+    if (parsed.ok) out.push(parsed.spec);
   });
-  if (issues.length > 0) throw new MediaProviderValidationError(issues);
   return out;
 }
 
@@ -198,6 +197,27 @@ export function pickSpec(
 }
 
 /**
+ * Spec that serves a specific client model.
+ *
+ * A provider may hold several specs of the same capability when the vendor
+ * ships more than one API version (MiniMax video V1 vs V2). Those specs declare
+ * `models`, and the model decides which one runs — without it, capability alone
+ * would silently send a v2 model to the v1 endpoint.
+ */
+export function pickSpecForModel(
+  provider: MediaProvider,
+  capability: string,
+  clientModel: string,
+): MediaSpec | null {
+  const candidates = provider.specs.filter((spec) => spec.capability === capability);
+  if (candidates.length === 0) return null;
+  const scoped = candidates.find((spec) => spec.models?.includes(clientModel));
+  if (scoped) return scoped;
+  // A spec that does not declare `models` serves every model of its capability.
+  return candidates.find((spec) => !spec.models || spec.models.length === 0) ?? null;
+}
+
+/**
  * Spec that serves a request, allowing an image-to-image model to be reached
  * through a provider whose single `image.generate` spec also declares
  * `modes: ["image-to-image"]` (the MiniMax shape) instead of a second spec.
@@ -205,8 +225,9 @@ export function pickSpec(
 export function pickSpecForRequest(
   provider: MediaProvider,
   capability: MediaCapability,
+  clientModel: string,
 ): MediaSpec | null {
-  const exact = pickSpec(provider, capability);
+  const exact = pickSpecForModel(provider, capability, clientModel);
   if (exact) return exact;
   if (capability !== "image.edit") return null;
   return (

@@ -9,7 +9,7 @@
 import { pickSpecForRequest, resolveMediaProviderForModel } from "@/lib/db/media-providers";
 import { shouldRejectBeforeRequest } from "@/lib/quota/calculator";
 import { computeMediaCredits, settleMediaUsage } from "./billing";
-import { executeMedia, type MediaItem, type MediaResult } from "./engine";
+import { buildMediaScope, executeMedia, type MediaItem, type MediaResult } from "./engine";
 import type { MediaCapability, MediaProvider, MediaSpec } from "./spec";
 import type { ApiKey, User } from "@/lib/db/types";
 
@@ -62,14 +62,8 @@ export type MediaExecutionOutcome =
   | { ok: false; error: MediaRequestFailure };
 
 /** The scope a spec's mapping is evaluated against. */
-function buildScope(input: MediaRequestInput): Record<string, unknown> {
-  const { extra, ...rest } = input;
-  const scope: Record<string, unknown> = { ...(extra ?? {}), ...rest };
-  // Drop absent optionals so specs can use `$ifPresent`.
-  for (const [key, value] of Object.entries(scope)) {
-    if (value === undefined) delete scope[key];
-  }
-  return scope;
+export function buildScope(input: MediaRequestInput): Record<string, unknown> {
+  return buildMediaScope({ ...input } as Record<string, unknown>);
 }
 
 /**
@@ -102,7 +96,7 @@ export async function executeMediaRequest(args: {
     };
   }
 
-  const spec = pickSpecForRequest(resolved.provider, capability);
+  const spec = pickSpecForRequest(resolved.provider, capability, input.model);
   if (!spec) {
     return {
       ok: false,

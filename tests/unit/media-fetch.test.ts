@@ -28,7 +28,7 @@ function makeProvider(): MediaProvider {
 }
 
 const VIDEO_SPEC = {
-  specVersion: 1,
+  specVersion: 2,
   capability: "video.generate",
   transport: { method: "POST", path: "/v1/video_generation" },
   auth: { type: "bearer" },
@@ -130,7 +130,7 @@ describe("$fetch primitive", () => {
 describe("spec validation for polling placeholders", () => {
   it("rejects {{taskId}} on the submit path", () => {
     const parsed = parseMediaSpec({
-      specVersion: 1,
+      specVersion: 2,
       capability: "video.generate",
       transport: { method: "POST", path: "/v1/video_generation?task_id={{taskId}}" },
       auth: { type: "bearer" },
@@ -142,13 +142,18 @@ describe("spec validation for polling placeholders", () => {
 
   it("still allows {{taskId}} on the poll path", () => {
     const parsed = parseMediaSpec({
-      specVersion: 1,
+      specVersion: 2,
       capability: "video.generate",
       transport: { method: "POST", path: "/v1/video_generation" },
       auth: { type: "bearer" },
       async: {
         submitTaskId: "$.task_id",
-        poll: { method: "GET", path: "/v1/query/video_generation?task_id={{taskId}}" },
+        poll: {
+          method: "GET",
+          path: "/v1/query/video_generation?task_id={{taskId}}",
+          successValues: ["Success"],
+          failureValues: ["Fail"],
+        },
       },
     });
     expect(parsed.ok).toBe(true);

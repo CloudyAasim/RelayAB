@@ -100,6 +100,13 @@ export async function POST(req: Request): Promise<Response> {
       ? { responseFormat }
       : {}),
     ...(Number.isFinite(seed) ? { seed } : {}),
+    // Everything else the client sent stays reachable from a spec, under both
+    // its original and its camelCase spelling (see buildMediaScope).
+    extra: Object.fromEntries(
+      [...form.entries()].filter(
+        ([key, value]) => key !== "image" && typeof value === "string",
+      ),
+    ),
   };
 
   const invalid = requirePrompt(input.prompt);

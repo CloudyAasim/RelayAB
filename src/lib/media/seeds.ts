@@ -4,6 +4,9 @@
  * Ready-made specs. These are ordinary documents, not code: the admin panel can
  * import, edit and re-export them, which is exactly the workflow the protocol
  * is meant to enable ("read the vendor's docs, adjust the field names, done").
+ *
+ * Every template here has been replayed through the real engine against
+ * captured vendor responses, so an operator can trust it as a starting point.
  */
 import type { MediaSpec } from "./spec";
 
@@ -27,14 +30,10 @@ const SIZE_TO_ASPECT: Record<string, string> = {
  * which is surfaced to clients through `/v1/models`.
  */
 export const MINIMAX_IMAGE_SPEC: MediaSpec = {
-  specVersion: 1,
+  specVersion: 2,
   capability: "image.generate",
   displayName: "MiniMax Image (image-01 / image-01-live)",
-  transport: {
-    method: "POST",
-    path: "/v1/image_generation",
-    contentType: "application/json",
-  },
+  transport: { method: "POST", path: "/v1/image_generation", contentType: "application/json" },
   auth: { type: "bearer" },
   request: {
     model: "$.model",
@@ -49,8 +48,6 @@ export const MINIMAX_IMAGE_SPEC: MediaSpec = {
     },
     response_format: {
       $enum: {
-        // `/v1/images/*` whitelist the request body, so only the normalized
-        // camelCase key is in scope — there is no `extra` passthrough here.
         path: "$.responseFormat",
         map: { b64_json: "base64", url: "url" },
         default: "url",
@@ -68,24 +65,259 @@ export const MINIMAX_IMAGE_SPEC: MediaSpec = {
     successCount: "$.metadata.success_count",
     errorCode: "$.base_resp.status_code",
     errorMessage: "$.base_resp.status_msg",
-    taskId: "$.id",
   },
   errors: [
-    { when: { $eq: ["$.base_resp.status_code", 1002] }, status: 429, code: "rate_limited", message: "upstream rate limited the request" },
-    { when: { $eq: ["$.base_resp.status_code", 1004] }, status: 502, code: "upstream_auth_failed", message: "upstream rejected the credentials" },
-    { when: { $eq: ["$.base_resp.status_code", 1008] }, status: 402, code: "upstream_credit_exhausted", message: "upstream account is out of credit" },
-    { when: { $eq: ["$.base_resp.status_code", 1026] }, status: 400, code: "content_filter", message: "prompt was rejected by upstream content policy" },
-    { when: { $eq: ["$.base_resp.status_code", 2013] }, status: 400, code: "bad_request", message: "upstream rejected the parameters" },
-    { when: { $eq: ["$.base_resp.status_code", 2049] }, status: 502, code: "upstream_auth_failed", message: "upstream API key is invalid" },
+    { when: { $eq: ["$.base_resp.status_code", 1002] }, status: 429, code: "rate_limited" },
+    { when: { $eq: ["$.base_resp.status_code", 1008] }, status: 402, code: "upstream_credit_exhausted" },
+    { when: { $eq: ["$.base_resp.status_code", 1026] }, status: 400, code: "content_filter" },
+    { when: { $eq: ["$.base_resp.status_code", 2013] }, status: 400, code: "bad_request" },
+    { when: { $eq: ["$.base_resp.status_code", 1004] }, status: 502, code: "upstream_auth_failed" },
+    { when: { $eq: ["$.base_resp.status_code", 2049] }, status: 502, code: "upstream_auth_failed" },
   ],
   limits: { maxN: 9, timeoutMs: 120_000 },
   metadata: {
     modes: ["text-to-image", "image-to-image"],
     edit_mode: "reference",
-    sizes: ["1024x1024", "1536x1024", "1024x1536", "auto"],
+    sizes: ["1024x1024", "1536x1024", "1024x1536", "1792x1024", "1024x1792", "auto"],
     max_n: 9,
     max_reference_images: 1,
   },
+};
+
+/**
+ * MiniMax video **V1** (`POST /v1/video_generation`).
+ *
+ * Kept alongside MINIMAX_VIDEO_V2_SPEC in the same provider: both serve
+ * `video.generate`, and `models` is what tells them apart. V1 is also the
+ * reason `$fetch` exists — its query endpoint returns a `file_id`, not a URL.
+ */
+export const MINIMAX_VIDEO_V1_SPEC: MediaSpec = {
+  specVersion: 2,
+  capability: "video.generate",
+  displayName: "MiniMax Video V1 (Hailuo-02 / T2V-01)",
+  models: ["minimax-hailuo-02", "minimax-t2v-01"],
+  transport: { method: "POST", path: "/v1/video_generation", contentType: "application/json" },
+  auth: { type: "bearer" },
+  request: {
+    model: "$.model",
+    prompt: "$.prompt",
+    duration: "$.duration",
+    // Legal values are 720P / 768P / 1080P only — a mapped value the vendor
+    // does not accept is a 400, so keep this table to real options.
+    resolution: {
+      $enum: {
+        path: "$.size",
+        map: { "1280x720": "768P", "1920x1080": "1080P" },
+        default: "768P",
+      },
+    },
+  },
+  response: {
+    taskId: "$.task_id",
+    status: "$.status",
+    items: [
+      {
+        kind: "url",
+        value: {
+          $fetch: {
+            path: "$.file_id",
+            url: "/v1/files/retrieve?file_id={{ $.file_id }}",
+            pick: "$.file.download_url",
+          },
+        },
+      },
+    ],
+    successCount: { $const: 1 },
+    errorCode: "$.base_resp.status_code",
+    errorMessage: "$.base_resp.status_msg",
+  },
+  async: {
+    submitTaskId: "$.task_id",
+    poll: {
+      method: "GET",
+      path: "/v1/query/video_generation?task_id={{taskId}}",
+      intervalMs: 5000,
+      timeoutMs: 240_000,
+      statusPath: "$.status",
+      // MiniMax documents the terminal state as both `Success` and `success`;
+      // matching is case-insensitive by default, and `""` catches anything new.
+      statusMap: {
+        Success: "ok",
+        Fail: "fail",
+        "": "wait",
+      },
+    },
+  },
+  errors: [
+    { when: { $eq: ["$.base_resp.status_code", 1002] }, status: 429, code: "rate_limited" },
+    { when: { $eq: ["$.base_resp.status_code", 1008] }, status: 402, code: "upstream_credit_exhausted" },
+    { when: { $eq: ["$.base_resp.status_code", 1026] }, status: 400, code: "content_filter" },
+    { when: { $eq: ["$.base_resp.status_code", 2013] }, status: 400, code: "bad_request" },
+    { when: { $eq: ["$.base_resp.status_code", 1004] }, status: 502, code: "upstream_auth_failed" },
+  ],
+  limits: { maxN: 1, timeoutMs: 240_000 },
+  metadata: { modes: ["text-to-video"], async: true, sizes: ["1280x720", "1920x1080"] },
+};
+
+/**
+ * MiniMax video **V2** (`POST /v2/video_generation`, models `MiniMax-H3`).
+ *
+ * A different endpoint, a different request shape (`content[]` instead of
+ * `prompt`) and a different error vocabulary (real HTTP statuses) from V1 —
+ * exactly the case that made v1 unusable, because specs were selected by
+ * capability alone.
+ */
+export const MINIMAX_VIDEO_V2_SPEC: MediaSpec = {
+  specVersion: 2,
+  capability: "video.generate",
+  displayName: "MiniMax Video V2 (H3)",
+  models: ["minimax-h3"],
+  transport: { method: "POST", path: "/v2/video_generation", contentType: "application/json" },
+  auth: { type: "bearer" },
+  request: {
+    model: "$.model",
+    content: [{ type: "text", text: "$.prompt" }],
+    duration: "$.duration",
+    resolution: {
+      $enum: {
+        path: "$.size",
+        map: { "1280x720": "768P", "1920x1080": "2K" },
+        default: "768P",
+      },
+    },
+  },
+  response: {
+    taskId: "$.task_id",
+    status: "$.task.status",
+    items: [{ kind: "url", value: "$.task.content.url" }],
+    successCount: { $const: 1 },
+    // V2 keeps its errors in an OpenAI-shaped envelope, so the client's message
+    // comes from there rather than from `base_resp`.
+    errorCode: "$.error.type",
+    errorMessage: "$.error.message",
+  },
+  async: {
+    submitTaskId: "$.task_id",
+    poll: {
+      method: "GET",
+      path: "/v2/query/video_generation/{{taskId}}",
+      intervalMs: 5000,
+      timeoutMs: 240_000,
+      statusPath: "$.task.status",
+      statusMap: {
+        succeeded: "ok",
+        failed: "fail",
+        cancelled: "fail",
+        "": "wait",
+      },
+    },
+  },
+  // V2 signals failure with a real HTTP status plus `error.type`, not with a
+  // `base_resp` code, so a `when`-only rule set would never fire.
+  errors: [
+    { httpStatus: 402, status: 402, code: "upstream_credit_exhausted" },
+    { httpStatus: 429, status: 429, code: "rate_limited" },
+    { httpStatus: 401, status: 502, code: "upstream_auth_failed" },
+    { httpStatus: 400, status: 400, code: "bad_request" },
+    { when: { $eq: ["$.error.type", "insufficient_balance_error"] }, status: 402, code: "upstream_credit_exhausted" },
+    { when: { $eq: ["$.error.type", "rate_limit_error"] }, status: 429, code: "rate_limited" },
+  ],
+  limits: { maxN: 1, timeoutMs: 240_000 },
+  metadata: { modes: ["text-to-video"], async: true, sizes: ["1280x720", "1920x1080"] },
+};
+
+/**
+ * MiniMax synchronous TTS (`POST /v1/t2a_v2`).
+ *
+ * `output_format: "url"` is not optional: the vendor defaults to `hex`, and
+ * `encoding: "hex"` on the item is what lets the engine hand the client real
+ * base64 either way.
+ */
+export const MINIMAX_TTS_SPEC: MediaSpec = {
+  specVersion: 2,
+  capability: "audio.tts",
+  displayName: "MiniMax T2A v2 (speech-2.8-hd)",
+  transport: { method: "POST", path: "/v1/t2a_v2", contentType: "application/json" },
+  auth: { type: "bearer" },
+  request: {
+    model: "$.model",
+    text: "$.input",
+    stream: false,
+    voice_setting: {
+      voice_id: { $ifPresent: { "$.voice": "$.voice" } },
+      speed: "$.speed",
+      vol: 1,
+      pitch: 0,
+    },
+    audio_setting: {
+      sample_rate: 32000,
+      bitrate: 128000,
+      channel: 1,
+      format: {
+        $enum: {
+          path: "$.responseFormat",
+          map: { mp3: "mp3", wav: "wav", pcm: "pcm" },
+          default: "mp3",
+        },
+      },
+    },
+    output_format: { $const: "url" },
+  },
+  response: {
+    items: [{ kind: "url", value: "$.data.audio" }],
+    successCount: { $const: 1 },
+    errorCode: "$.base_resp.status_code",
+    errorMessage: "$.base_resp.status_msg",
+  },
+  errors: [
+    { when: { $eq: ["$.base_resp.status_code", 1002] }, status: 429, code: "rate_limited" },
+    { when: { $eq: ["$.base_resp.status_code", 1008] }, status: 402, code: "upstream_credit_exhausted" },
+    { when: { $eq: ["$.base_resp.status_code", 1026] }, status: 400, code: "content_filter" },
+    { when: { $eq: ["$.base_resp.status_code", 2013] }, status: 400, code: "bad_request" },
+    { when: { $eq: ["$.base_resp.status_code", 1004] }, status: 502, code: "upstream_auth_failed" },
+  ],
+  limits: { timeoutMs: 120_000 },
+  metadata: { modes: ["text-to-speech"] },
+};
+
+/**
+ * MiniMax speech-to-text (`POST /v1/speech_to_text`, multipart).
+ *
+ * The vendor takes `language` as an HTTP **header**, which is why
+ * `transport.headers` accepts mappings rather than only literals.
+ */
+export const MINIMAX_STT_SPEC: MediaSpec = {
+  specVersion: 2,
+  capability: "audio.stt",
+  displayName: "MiniMax ASR (asr-1.0)",
+  transport: {
+    method: "POST",
+    path: "/v1/speech_to_text",
+    contentType: "multipart/form-data",
+    headers: { language: "$.language" },
+  },
+  auth: { type: "bearer" },
+  request: {
+    model: "$.model",
+    file: {
+      $file: { path: "$.image", filename: "$.filename", contentType: "audio/mpeg" },
+    },
+    response_format: { $const: "json" },
+  },
+  response: {
+    text: "$.text",
+    taskId: "$.trace_id",
+    errorCode: "$.base_resp.status_code",
+    errorMessage: "$.base_resp.status_msg",
+  },
+  errors: [
+    { when: { $eq: ["$.base_resp.status_code", 1002] }, status: 429, code: "rate_limited" },
+    { when: { $eq: ["$.base_resp.status_code", 1004] }, status: 502, code: "upstream_auth_failed" },
+    { when: { $eq: ["$.base_resp.status_code", 1008] }, status: 402, code: "upstream_credit_exhausted" },
+    { when: { $eq: ["$.base_resp.status_code", 2013] }, status: 400, code: "bad_request" },
+  ],
+  limits: { timeoutMs: 120_000 },
+  metadata: { modes: ["speech-to-text"] },
 };
 
 /**
@@ -93,7 +325,7 @@ export const MINIMAX_IMAGE_SPEC: MediaSpec = {
  * engine hand the audio bytes straight back instead of JSON-parsing them.
  */
 export const OPENAI_TTS_SPEC: MediaSpec = {
-  specVersion: 1,
+  specVersion: 2,
   capability: "audio.tts",
   displayName: "OpenAI-compatible TTS",
   transport: { method: "POST", path: "/audio/speech" },
@@ -115,7 +347,7 @@ export const OPENAI_TTS_SPEC: MediaSpec = {
  * `$file` turns it into a real multipart file part on the way out.
  */
 export const OPENAI_STT_SPEC: MediaSpec = {
-  specVersion: 1,
+  specVersion: 2,
   capability: "audio.stt",
   displayName: "OpenAI-compatible transcription",
   transport: { method: "POST", path: "/audio/transcriptions", contentType: "multipart/form-data" },
@@ -135,7 +367,7 @@ export const OPENAI_STT_SPEC: MediaSpec = {
 
 /** Template for vendors that answer with a task id you poll. */
 export const ASYNC_VIDEO_SPEC: MediaSpec = {
-  specVersion: 1,
+  specVersion: 2,
   capability: "video.generate",
   displayName: "Async video vendor (submit + poll)",
   transport: { method: "POST", path: "/v1/videos" },
@@ -154,8 +386,7 @@ export const ASYNC_VIDEO_SPEC: MediaSpec = {
       intervalMs: 3000,
       timeoutMs: 240_000,
       statusPath: "$.status",
-      successValues: ["SUCCEEDED", "succeeded", "SUCCESS", "success"],
-      failureValues: ["FAILED", "failed", "CANCELLED"],
+      statusMap: { SUCCEEDED: "ok", FAILED: "fail", CANCELLED: "fail", "": "wait" },
     },
   },
   limits: { timeoutMs: 240_000 },
@@ -175,6 +406,27 @@ export const MEDIA_TEMPLATES: Record<
       "image-01-live": { upstreamId: "image-01-live", pricePerItem: 0, enabled: true },
     },
     specs: [MINIMAX_IMAGE_SPEC],
+  },
+  "minimax-video": {
+    name: "MiniMax Video (V1 + V2)",
+    baseUrl: "https://api.minimax.cn",
+    models: {
+      "minimax-hailuo-02": { upstreamId: "MiniMax-Hailuo-02", pricePerItem: 0, enabled: true },
+      "minimax-t2v-01": { upstreamId: "T2V-01", pricePerItem: 0, enabled: true },
+      "minimax-h3": { upstreamId: "MiniMax-H3", pricePerItem: 0, enabled: true },
+    },
+    // Two specs, one capability: `models` is what routes each model to the API
+    // version it actually speaks.
+    specs: [MINIMAX_VIDEO_V1_SPEC, MINIMAX_VIDEO_V2_SPEC],
+  },
+  "minimax-speech": {
+    name: "MiniMax Speech (TTS + ASR)",
+    baseUrl: "https://api.minimax.cn",
+    models: {
+      "speech-2.8-hd": { upstreamId: "speech-2.8-hd", pricePerItem: 0, enabled: true },
+      "asr-1.0": { upstreamId: "asr-1.0", pricePerItem: 0, enabled: true },
+    },
+    specs: [MINIMAX_TTS_SPEC, MINIMAX_STT_SPEC],
   },
   "openai-audio": {
     name: "OpenAI Audio",

@@ -76,6 +76,9 @@ export async function POST(req: Request): Promise<Response> {
     ...(typeof body.prompt_optimizer === "boolean"
       ? { promptOptimizer: body.prompt_optimizer }
       : {}),
+    // Vendor-specific extras (`negative_prompt`, `aigc_watermark`, …) stay
+    // reachable from a spec under both spellings (see buildMediaScope).
+    extra: body,
   };
 
   const invalid = requirePrompt(input.prompt);

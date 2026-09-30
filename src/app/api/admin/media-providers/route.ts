@@ -15,7 +15,7 @@ import {
   toPublicMediaProvider,
   MediaProviderValidationError,
 } from "@/lib/db/media-providers";
-import { parseMediaSpec } from "@/lib/media/spec";
+import { validateMediaSpecs } from "@/lib/media/spec";
 
 export const dynamic = "force-dynamic";
 
@@ -69,11 +69,7 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   // Dry-run the specs so a typo is reported here rather than on a live call.
-  const specIssues: string[] = [];
-  (Array.isArray(body.specs) ? body.specs : []).forEach((entry, index) => {
-    const parsed = parseMediaSpec(entry);
-    if (!parsed.ok) specIssues.push(`specs[${index}]: ${parsed.errors.join("; ")}`);
-  });
+  const { errors: specIssues, warnings: specWarnings } = validateMediaSpecs(body.specs);
   if (specIssues.length > 0) {
     return NextResponse.json(
       { ok: false, error: { code: "bad_request", message: specIssues.join(" | ") } },
@@ -91,7 +87,13 @@ export async function POST(req: Request): Promise<Response> {
       ...(body.models ? { models: body.models as never } : {}),
       ...(Array.isArray(body.specs) ? { specs: body.specs } : {}),
     });
-    return NextResponse.json({ ok: true, data: { provider: toPublicMediaProvider(provider) } });
+    return NextResponse.json({
+      ok: true,
+      data: { provider: toPublicMediaProvider(provider) },
+      // Non-fatal notes ("a poll path with no {{taskId}}", …) so the panel can
+      // show them next to the form instead of burying them in server logs.
+      ...(specWarnings.length > 0 ? { warnings: specWarnings } : {}),
+    });
   } catch (err) {
     if (err instanceof MediaProviderValidationError) {
       return NextResponse.json(

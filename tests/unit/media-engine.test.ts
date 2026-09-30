@@ -48,7 +48,7 @@ describe("parseMediaSpec", () => {
 
   it("rejects an unknown capability and a bad path", () => {
     const parsed = parseMediaSpec({
-      specVersion: 1,
+      specVersion: 2,
       capability: "image.hologram",
       transport: { method: "POST", path: "v1/nope" },
       auth: { type: "bearer" },
@@ -61,7 +61,7 @@ describe("parseMediaSpec", () => {
 
   it("rejects a transform mixed with plain keys", () => {
     const parsed = parseMediaSpec({
-      specVersion: 1,
+      specVersion: 2,
       capability: "image.generate",
       transport: { method: "POST", path: "/x" },
       auth: { type: "bearer" },
@@ -223,7 +223,7 @@ describe("executeMedia (MiniMax spec)", () => {
 
 describe("executeMedia (async provider)", () => {
   const ASYNC_SPEC: MediaSpec = {
-    specVersion: 1,
+    specVersion: 2,
     capability: "video.generate",
     transport: { method: "POST", path: "/v1/videos" },
     auth: { type: "bearer" },
