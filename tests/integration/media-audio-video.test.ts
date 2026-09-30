@@ -178,6 +178,95 @@ describe("media video / audio endpoints", () => {
     expect(JSON.parse(String(calls[0].body))).toMatchObject({ input: "hello", voice: "alloy" });
   });
 
+  it("speech: decodes a JSON vendor's hex audio into bytes (MiniMax t2a_v2 shape)", async () => {
+    // MiniMax has no byte-stream mode: `output_format` is `url` or `hex` and the
+    // payload sits in JSON. The route used to answer `no_audio` for that, so the
+    // endpoint could only ever serve vendors that stream bytes — after the engine
+    // had already succeeded.
+    const hex = "49443304000000fffb90c4"; // "ID3\x04…"
+    vi.stubGlobal("fetch", async (url: string | URL | Request, init?: RequestInit) => {
+      calls.push({ url: String(url), body: init?.body });
+      return new Response(
+        JSON.stringify({ data: { audio: hex, status: 2 }, base_resp: { status_code: 0 } }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+
+    await createMediaProvider({
+      name: "MiniMax Speech",
+      baseUrl: "https://api.minimax.cn",
+      apiKey: "vendor-key",
+      models: { "speech-2.8-hd": { upstreamId: "speech-2.8-hd", pricePerItem: 1, enabled: true } },
+      specs: [
+        {
+          specVersion: 1,
+          capability: "audio.tts",
+          models: ["speech-2.8-hd"],
+          transport: { method: "POST", path: "/v1/t2a_v2" },
+          auth: { type: "bearer" },
+          request: { model: "$.model", text: "$.input", output_format: { $const: "hex" } },
+          response: { items: [{ kind: "base64", encoding: "hex", value: "$.data.audio" }] },
+        } as unknown as Record<string, unknown>,
+      ],
+    });
+
+    const { POST } = await import("@/app/api/v1/audio/speech/route");
+    const res = await POST(
+      new Request("http://localhost/api/v1/audio/speech", {
+        method: "POST",
+        headers: { authorization: `Bearer ${key()}` },
+        body: JSON.stringify({ model: "speech-2.8-hd", input: "你好", response_format: "wav" }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    // Content type follows the format the client asked for, not a guess.
+    expect(res.headers.get("content-type")).toBe("audio/wav");
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    expect(Array.from(bytes)).toEqual(Array.from(Buffer.from(hex, "hex")));
+  });
+
+  it("speech: refuses a JSON result that carries a URL instead of bytes", async () => {
+    // A spec that maps the audio to `kind: "url"` cannot answer an endpoint whose
+    // contract is byte output. Better a clear `no_audio` than a 200 with a URL
+    // string dressed up as an audio file.
+    vi.stubGlobal("fetch", async () =>
+      new Response(
+        JSON.stringify({ data: { audio: "https://cdn/out.mp3" }, base_resp: { status_code: 0 } }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ));
+
+    await createMediaProvider({
+      name: "Url TTS",
+      baseUrl: "https://api.example.test",
+      apiKey: "vendor-key",
+      models: { "tts-url": { upstreamId: "tts-url", pricePerItem: 1, enabled: true } },
+      specs: [
+        {
+          specVersion: 1,
+          capability: "audio.tts",
+          models: ["tts-url"],
+          transport: { method: "POST", path: "/v1/tts" },
+          auth: { type: "bearer" },
+          request: { model: "$.model", text: "$.input" },
+          response: { items: [{ kind: "url", value: "$.data.audio" }] },
+        } as unknown as Record<string, unknown>,
+      ],
+    });
+
+    const { POST } = await import("@/app/api/v1/audio/speech/route");
+    const res = await POST(
+      new Request("http://localhost/api/v1/audio/speech", {
+        method: "POST",
+        headers: authed("tts-url"),
+        body: JSON.stringify({ model: "tts-url", input: "hello" }),
+      }),
+    );
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body.error.code).toBe("no_audio");
+    expect(body.error.message).toContain("base64");
+  });
+
   it("transcriptions: uploads audio as a real multipart file and returns text", async () => {
     vi.stubGlobal("fetch", async (url: string | URL | Request, init?: RequestInit) => {
       calls.push({ url: String(url), body: init?.body });
