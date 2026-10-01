@@ -19,6 +19,23 @@ function line(field: string, before: unknown, after: unknown): string | null {
   return `  ${field}\n    - ${b}\n    + ${a}`;
 }
 
+/**
+ * Diff a field only when the patch actually names it.
+ *
+ * A patch that omits `baseUrl` leaves it alone — `updateProvider` merges
+ * `patch.baseUrl ?? existing.baseUrl`. Rendering the omission as
+ * "- <current>  + (未设置)" would claim the change wipes a field it never
+ * touches, and the diff is what the admin is asked to trust.
+ */
+function patchedLine(
+  patch: Record<string, unknown>,
+  field: string,
+  before: unknown,
+): string | null {
+  if (!(field in patch)) return null;
+  return line(field, before, patch[field]);
+}
+
 function format(value: unknown): string {
   if (value === undefined) return "(未设置)";
   if (value === null) return "(空)";
@@ -39,24 +56,26 @@ function section(title: string, lines: Array<string | null>): string[] {
  * before-state has to be read off the *current* row — a diff against anything
  * else is worse than no diff, because it looks authoritative.
  */
-export function renderProviderDiff(provider: Provider, patch: Record<string, unknown>): string {
+export function renderProviderDiff(
+  provider: Provider,
+  patch: Record<string, unknown>,
+  summary?: string,
+): string {
   const out: string[] = [
     `服务商：${provider.name}  (${provider.id})`,
-    `变更摘要：${String(patch.__summary ?? "(未填写)")}`,
+    `变更摘要：${summary ?? "(未填写)"}`,
     "",
   ];
 
   out.push(
     ...section("字段变更", [
-      line("baseUrl", provider.baseUrl, patch.baseUrl),
-      line(
-        "anthropicBaseUrl",
-        provider.anthropicBaseUrl,
-        patch.anthropicBaseUrl === undefined ? undefined : patch.anthropicBaseUrl,
-      ),
-      line("openaiEnabled", provider.openaiEnabled, patch.openaiEnabled),
-      line("anthropicEnabled", provider.anthropicEnabled, patch.anthropicEnabled),
-      line("enabled", provider.enabled, patch.enabled),
+      patchedLine(patch, "baseUrl", provider.baseUrl),
+      patchedLine(patch, "anthropicBaseUrl", provider.anthropicBaseUrl ?? null),
+      patchedLine(patch, "openaiEnabled", provider.openaiEnabled),
+      patchedLine(patch, "anthropicEnabled", provider.anthropicEnabled),
+      patchedLine(patch, "enabled", provider.enabled),
+      patchedLine(patch, "priority", provider.priority),
+      patchedLine(patch, "upstreamFormat", provider.upstreamFormat),
     ]),
   );
 
@@ -104,17 +123,19 @@ export function renderProviderDiff(provider: Provider, patch: Record<string, unk
 export function renderMediaDiff(
   provider: MediaProvider,
   patch: Record<string, unknown>,
+  summary?: string,
 ): string {
   const out: string[] = [
     `媒体服务商：${provider.name}  (${provider.id})`,
-    `变更摘要：${String(patch.__summary ?? "(未填写)")}`,
+    `变更摘要：${summary ?? "(未填写)"}`,
     "",
   ];
 
   out.push(
     ...section("字段变更", [
-      line("baseUrl", provider.baseUrl, patch.baseUrl),
-      line("enabled", provider.enabled, patch.enabled),
+      patchedLine(patch, "baseUrl", provider.baseUrl),
+      patchedLine(patch, "enabled", provider.enabled),
+      patchedLine(patch, "priority", provider.priority),
     ]),
   );
 

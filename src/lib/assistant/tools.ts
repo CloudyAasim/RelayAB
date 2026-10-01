@@ -535,9 +535,9 @@ async function proposeProviderUpdate(
     return fail("没有提供任何要修改的字段。");
   }
 
-  const diff = renderProviderDiff(provider, patch);
   const summary =
     typeof args.summary === "string" && args.summary.trim() ? args.summary.trim() : "未说明的变更";
+  const diff = renderProviderDiff(provider, patch, summary);
 
   const action = await createAssistantAction({
     userId: ctx.user.id,
@@ -574,9 +574,9 @@ async function proposeMediaProviderUpdate(
 
   if (Object.keys(patch).length === 0) return fail("没有提供任何要修改的字段。");
 
-  const diff = renderMediaDiff(provider, patch);
   const summary =
     typeof args.summary === "string" && args.summary.trim() ? args.summary.trim() : "未说明的变更";
+  const diff = renderMediaDiff(provider, patch, summary);
 
   const action = await createAssistantAction({
     userId: ctx.user.id,
