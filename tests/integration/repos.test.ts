@@ -9,8 +9,6 @@
  * - providers: create / get / list / findProvidersForModel / update / delete
  * - usage:    record / list / aggregate
  * - cascade:  deleting a user removes their api keys
- *
- * Mocks the @vercel/sdk so any cross-module imports don't try to hit real APIs.
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import {

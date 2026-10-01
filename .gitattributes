@@ -1,0 +1,33 @@
+# Normalise line endings at the repository boundary.
+#
+# Why this exists: without it, a Windows checkout (core.autocrlf=true) rewrites
+# LF to CRLF in the working tree, and re-committing that churn shows up as
+# "modified" files with a zero-line diff. That ambiguity is what made
+# scripts/smoke-local.sh look dirty for weeks while containing no real change.
+#
+# `text=auto` lets git sniff each file: anything that looks binary is left
+# untouched, everything else is normalised. It is the safe default — prefer it
+# over a blanket `text`.
+* text=auto eol=lf
+
+# --- Shell scripts ---------------------------------------------------------
+# Enforced separately because getting this wrong fails only at deploy time: a
+# CRLF shell script is byte-identical to the working copy but errors on Linux
+# with "$'\r': command not found". These run on the Debian host, not just here.
+*.sh text eol=lf
+*.bash text eol=lf
+
+# --- Binary assets ---------------------------------------------------------
+# Redundant under `text=auto`, but explicit is cheaper than debugging a
+# corrupted asset later.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+*.zip binary
+*.gz binary

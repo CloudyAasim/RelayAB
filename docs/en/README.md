@@ -20,7 +20,7 @@ Technical documentation for RelayAB, a self-hosted AI API gateway.
 | Understand how the whole thing fits together | [architecture.md](architecture.md) |
 | Know what a Redis key or a field means | [data-model.md](data-model.md) |
 | Call an endpoint, or add one | [api-routes.md](api-routes.md) |
-| Deploy it to Vercel | [deployment.md](deployment.md) |
+| Deploy it to your own server | [deployment.md](deployment.md) |
 | Manage users, keys, and providers | [admin.md](admin.md) |
 | Run or extend the test suite | [testing.md](testing.md) |
 | Add an image / video / speech / music provider | [模型适配协议/README.md)](../模型适配协议/README.md) — **Chinese only** |
@@ -32,7 +32,7 @@ Technical documentation for RelayAB, a self-hosted AI API gateway.
 | [architecture.md](architecture.md) | Goals and non-goals, top-level architecture, the design decisions behind them, encryption and security |
 | [data-model.md](data-model.md) | Redis key naming, every entity and its fields, per-key TTLs |
 | [api-routes.md](api-routes.md) | Every public proxy endpoint, every admin API, middleware behaviour |
-| [deployment.md](deployment.md) | One-click deploy, Upstash, first run, bypassing deployment protection, the smoke-test checklist |
+| [deployment.md](deployment.md) | Self-hosted architecture, database choice, first run, the smoke-test checklist, troubleshooting |
 | [admin.md](admin.md) | The admin panel, end to end: users, keys, providers, error codes, debugging |
 | [testing.md](testing.md) | The test pyramid, the tools, how to run each layer |
 | [模型适配协议/README.md)](../模型适配协议/README.md) | **Chinese only.** The media adapter protocol: spec format, every primitive, the offline validator ("the judge"), and worked examples |

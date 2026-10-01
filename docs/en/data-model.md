@@ -1,9 +1,14 @@
 # Data Model
 
-> All data is persisted in **Upstash Redis** (over the REST API, no connection pool).
-> The recommended way to provision it is the **Vercel Marketplace → Upstash for Redis**
-> integration, which injects `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`
-> automatically; a standalone Upstash database works as well.
+> All data is persisted in a **Redis-protocol database**. Two transports are
+> supported:
+> - **A local Valkey / Redis** (the self-hosting default) — set `REDIS_URL`, and
+>   ioredis connects over TCP
+> - **Hosted Upstash** — set `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`
+>   and it is spoken to over REST
+>
+> Key structure and field definitions are identical across both, so switching
+> backends requires no data migration. `REDIS_URL` takes precedence when present.
 > All keys share the `relay:` prefix, so the databases can be split by prefix later if needed.
 > The types are defined in [`src/lib/db/types.ts`](../../src/lib/db/types.ts); this document is a summary.
 

@@ -5,8 +5,8 @@
  * protocol (`docs/模型适配协议/README.md`) and the judge
  * (`scripts/spec-check.ts`). Rendering "from the repo" is the point — the panel
  * must never show a second copy that can drift — but it only works if the file
- * actually ships, so both the section registry and the bundler config are
- * pinned here.
+ * is actually reachable at request time, so the section registry, the read
+ * path and the deployment unit that pins the working directory are pinned here.
  */
 import { describe, it, expect } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
@@ -14,7 +14,6 @@ import { join } from "node:path";
 import { ADMIN_SECTION_IDS, isAdminDocId, isKnownDocsPath } from "@/lib/docs/sections";
 
 const JUDGE = join(process.cwd(), "scripts", "spec-check.ts");
-const NEXT_CONFIG = readFileSync(join(process.cwd(), "next.config.ts"), "utf8");
 const DICT = readFileSync(join(process.cwd(), "src", "lib", "i18n", "dict.ts"), "utf8");
 
 describe("admin docs: judge page", () => {
@@ -38,10 +37,29 @@ describe("admin docs: judge page", () => {
   });
 
   it("ships the source file with the deployment", () => {
-    // Without outputFileTracingIncludes the page renders "could not read" in
-    // production while working fine locally.
-    expect(NEXT_CONFIG).toContain('"./scripts/spec-check.ts"');
-    expect(NEXT_CONFIG).toContain("outputFileTracingIncludes");
+    // The page reads the judge straight off disk, so what has to be guaranteed
+    // is that the file is reachable at runtime.
+    //
+    // This used to be an `outputFileTracingIncludes` entry in next.config.ts,
+    // which is how a Vercel function gets the file into its bundle. That
+    // deployment model is gone: the self-hosted app runs `next start` from a
+    // full checkout, so the file is simply on disk and the binding
+    // constraint moves to "the process must start in the repository root".
+    // Asserting on the bundler directive here would guard nothing.
+    expect(existsSync(JUDGE)).toBe(true);
+    expect(existsSync(join(process.cwd(), "docs", "模型适配协议", "README.md"))).toBe(true);
+
+    // The component must resolve the file from the working directory.
+    const component = readFileSync(
+      join(process.cwd(), "src", "components", "docs", "SpecCheckReference.tsx"),
+      "utf8",
+    );
+    expect(component).toContain("process.cwd()");
+
+    // ...and the unit that starts the app must pin that working directory,
+    // or the read above silently resolves against the wrong root.
+    const unit = readFileSync(join(process.cwd(), "deploy", "relayab.service"), "utf8");
+    expect(unit).toMatch(/^WorkingDirectory=/m);
   });
 
   it("has a label in both languages", () => {

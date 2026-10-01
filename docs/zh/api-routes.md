@@ -484,7 +484,6 @@ Content-Type: application/json
 | `GET /api/admin/users/[id]/delete-form` | 删除用户前的确认表单 |
 | `GET /api/user/keys` · `GET/PATCH/DELETE /api/user/keys/[id]` | 用户自己的 Key 管理 |
 | `GET /api/user/profile` | 已登录用户的个人资料 |
-| `/api/_emu/[...path]` | 内嵌的 Vercel API 模拟器 —— **仅开发环境**，见 [deployment.md §6](./deployment.md#6-嵌入式-vercel-api-mock开发模式) |
 
 ---
 
@@ -505,9 +504,7 @@ Content-Type: application/json
    `/api/user*` 的响应，作为纵深防御（处理函数本身也会读取 cookie）。
 4. **用量视图 cookie** —— 记住用量页面上最近使用的 range/scope/metric，并在 URL
    不带视图参数时重放它。
-5. **部署保护绕过** —— 当设置了环境变量密钥时注入 `x-vercel-protection-bypass`，
-   让服务端 SDK 调用透明通过。
-6. **未知 `/docs` slug** —— 重定向到文档索引。
+5. **未知 `/docs` slug** —— 重定向到文档索引。
 
 公开资源与静态资源会提前返回。
 

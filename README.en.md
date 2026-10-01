@@ -36,7 +36,8 @@ So the project has to be set aside for a long, long time. This is not to say it 
 
 > A self-hosted AI API gateway (an API relay) for sharing upstream AI service API
 > keys securely and under control, with fine-grained permission and usage
-> management. One-click deploy to Vercel.
+> management. Deploy it to your own Debian server (Valkey + systemd + nginx) —
+> **no platform fee**.
 >
 > **Language / 语言: English (this page) · [中文](README.md)** — the switch lives only here; pages never send you into the other language on their own
 
@@ -44,68 +45,83 @@ So the project has to be set aside for a long, long time. This is not to say it 
 > top). You may still fork and deploy it yourself, but there will be no further
 > fixes, updates, or support.
 
-## One-click deploy to Vercel
+## Deploy to a Debian server
 
-Click the button below. On Vercel's "Add Environment Variables" step you only
-fill in **one** variable — `RELAY_AUTH`. The two Upstash variables are **not**
-filled in here; install them after deployment via the Vercel Marketplace. The
-public URL is derived automatically from `VERCEL_URL`, so there is nothing to
-fill in.
+The one-click Vercel path has been removed — Vercel's $20/month Pro plan is
+exactly the cost called out in the notice at the top of this file. RelayAB now
+runs on a machine you control: no platform fee, no request ceiling.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FCloudyAasim%2FRelayAB&env=RELAY_AUTH&envDescription=Master%20password%20%2B%20first%20admin%20login%20password&envLink=https%3A%2F%2Fgithub.com%2FCloudyAasim%2FRelayAB%23readme)
+**Full step-by-step runbook: [deploy/README.md](deploy/README.md)** (Chinese).
 
-### Steps (what to click at each one)
+At a glance:
 
-1. **Click the button** → opens `vercel.com/new/clone`. Vercel first asks you to
-   click "Continue with GitHub" to authorize (skipped if already signed in).
-2. The **New Project** page appears. Scroll down to the "Add Environment
-   Variables" section — there is **a single input, `RELAY_AUTH`**. Enter a
-   **high-entropy string** (32+ bytes of random characters; you choose the value,
-   it is the root secret). Click **Deploy**.
-3. Wait for **Ready**, and note the `*.vercel.app` URL.
-4. **Storage → Create Database → Upstash** → Free → Create.
-5. **Deployments** → the newest entry at the top → **⋯** → **Redeploy** — this
-   time the Upstash credentials take effect.
+```bash
+# 1. Database (Debian 13 ships this in its main archive — no third-party repo)
+sudo apt install -y valkey-server
+#    in /etc/valkey/valkey.conf set: requirepass + maxmemory-policy noeviction
+sudo systemctl enable --now valkey-server
 
-> ⚠️ **The variable names Vercel's Upstash Marketplace injects are
-> `KV_REST_API_URL` / `KV_REST_API_TOKEN`** (a naming leftover from the Vercel KV
-> era), not `UPSTASH_REDIS_REST_*`. RelayAB's code and `/healthz` accept both
-> names — `UPSTASH_*` takes priority, `KV_*` is the fallback. So the deployment
-> succeeds whichever set Vercel injects.
+# 2. Code and build
+sudo useradd -r -m -d /opt/relayab -s /usr/sbin/nologin relayab
+sudo -u relayab git clone <repo> /opt/relayab
+cd /opt/relayab && corepack pnpm install --frozen-lockfile && corepack pnpm build
+
+# 3. Environment
+cp deploy/env.production.example .env.production   # RELAY_AUTH / REDIS_URL / RELAY_BUILD_ID
+chmod 600 .env.production
+
+# 4. Service
+sudo cp deploy/relayab.service /etc/systemd/system/
+sudo systemctl enable --now relayab
+
+# 5. Reverse proxy and TLS
+sudo cp deploy/nginx.conf /etc/nginx/sites-available/relayab
+sudo ln -s /etc/nginx/sites-available/relayab /etc/nginx/sites-enabled/relayab
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d api.your-domain.com
+```
+
+`deploy/` ships ready-to-use copies of everything: the systemd unit, the nginx
+site, the Valkey config notes, and an env template.
+
+### Three things that are easy to get wrong
+
+1. **nginx must disable response buffering** (`proxy_buffering off` plus
+   `X-Accel-Buffering no`), or SSE streaming degrades into "hang, then dump
+   everything at once".
+2. **systemd's `WorkingDirectory` must be the repository root.** Two admin pages
+   read files out of the checkout at request time (`docs/模型适配协议/README.md`
+   and `scripts/spec-check.ts`); deploying only `.next` leaves them reading
+   "could not read".
+3. **Valkey's `maxmemory-policy` must be `noeviction`.** Balances, quotas and
+   usage logs all live in Redis, and a policy like `allkeys-lru` will *silently
+   evict* those records once memory fills up.
 
 ### Verify
 
 ```bash
-curl -s https://<your-app>.vercel.app/healthz
+curl -s https://<your-domain>/healthz
 ```
 
 Expected:
 
 ```json
-{"ok":true,"data":{"status":"ok","env":{"required":3,"configured":3}}}
+{"ok":true,"status":"ok","storage":"redis","required":2,"configured":2,"revision":"v179"}
 ```
 
-If `status` is `"degraded"`, `env.missing` in the response tells you what is
-still unset:
+`storage` tells you which database transport is live (`redis` = local Valkey over
+TCP), and `revision` comes from the `RELAY_BUILD_ID` you set — there is no
+platform-injected commit SHA when self-hosting, so **without it you cannot tell
+which build is actually running**.
 
-- Only Upstash missing → you have not installed the Marketplace yet, go back to step 4
-- `RELAY_AUTH` also missing → it was not filled in during the Deploy Button
-  step; go back and fill it in
+### Staying on hosted Upstash
 
-### If you already have this project in Vercel
+Set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` to use the HTTP REST
+transport instead; no code changes. `REDIS_URL` takes precedence when present.
 
-The Deploy Button takes the "create new project" path; an **existing** project
-will not pick up the form automatically. Two ways to handle it:
-
-- **(Clean)** Vercel Dashboard → Settings → General → **Delete Project** → then
-  click the Deploy Button and go through the new-project flow
-- **(Practical)** Existing project → **Settings → Environment Variables** → add
-  the 3 keys by hand (for the two Upstash ones any placeholder string will do
-  initially; if the URL check complains, put `https://placeholder.upstash.io` in
-  the URL field) → install the Upstash Marketplace integration → Redeploy
-
-For more detail (bypassing deployment protection, self-hosted key rotation,
-backup strategy) see [docs/en/deployment.md](docs/en/deployment.md).
+For configuration detail (architecture, database choice, smoke-test checklist,
+troubleshooting, master-key rotation) see
+[docs/en/deployment.md](docs/en/deployment.md).
 
 ## Features
 
@@ -148,13 +164,12 @@ backup strategy) see [docs/en/deployment.md](docs/en/deployment.md).
 | Layer | Technology |
 |---|---|
 | Framework | Next.js 15 App Router + React 19 + TypeScript 5 |
-| Data | Upstash for Redis (one-click install via Vercel Marketplace) |
+| Data | Redis protocol — Valkey 8.1 over TCP via ioredis, or Upstash over REST |
 | Authentication | iron-session 8 + bcryptjs (work factor 12) |
 | Encryption | AES-256-GCM (Node `crypto`) + bcryptjs |
-| Upstream AI | Vercel AI SDK (`ai` + `@ai-sdk/openai` + `@ai-sdk/anthropic`) |
-| Vercel API | `@vercel/sdk` |
+| Upstream AI | hand-written protocol translation over `fetch` |
 | Testing | Vitest + Playwright |
-| Local mock | embedded `@emulators/adapter-next` |
+| Deployment | systemd + nginx (config shipped in `deploy/`) |
 | UI | Tailwind CSS 3 + hand-written components |
 
 ## Quick start
@@ -171,22 +186,31 @@ pnpm install
 cp .env.example .env.local
 ```
 
-**Only one is required; the other two are injected automatically on Vercel:**
+**Only one is required; you also need a database:**
 
 ```bash
 # Required: the master password (also the admin login password)
 RELAY_AUTH="<openssl rand -hex 32>"
 
-# Injected automatically by the Marketplace on Vercel; set manually only when self-hosting
-UPSTASH_REDIS_REST_URL="https://<your-db>.upstash.io"
-UPSTASH_REDIS_REST_TOKEN="<your-token>"
+# Database (pick one). A local Valkey over TCP is the self-hosting default:
+REDIS_URL="redis://:<password>@127.0.0.1:6379"
+
+# …or hosted Upstash over HTTP REST, with no code changes:
+# UPSTASH_REDIS_REST_URL="https://<your-db>.upstash.io"
+# UPSTASH_REDIS_REST_TOKEN="<your-token>"
 ```
 
-**You do not configure the public URL.** The endpoint URL shown on
-`/dashboard/docs` and on the welcome page is taken from `VERCEL_URL`
-automatically, falling back to the Host header of the incoming request. Only set
-`RELAY_PUBLIC_URL` explicitly for a custom domain or reverse-proxy setup (where
-the address users should call differs from the one they actually reach).
+**Local development needs no database at all.** Leave both unset and `pnpm dev`
+uses the in-memory store — outside production the default is
+`EMULATE_VERCEL_LOCAL=1`, and everything is wiped on restart.
+
+**Set the public URL explicitly.** The endpoint shown on `/dashboard/docs` and
+the welcome page is resolved from database settings, then `RELAY_PUBLIC_URL`,
+then the request's `x-forwarded-proto` / `x-forwarded-host` headers. The last
+one works when you sit behind nginx, but it is an implicit dependency: the
+moment the proxy stops forwarding, every page advertises
+`http://127.0.0.1:3000`. Set `RELAY_PUBLIC_URL` to your domain once the proxy
+is in place.
 
 **Optional: bootstrap an upstream provider automatically (takes effect on first run)**
 
@@ -202,18 +226,20 @@ ANTHROPIC_BASE_URL="https://api.anthropic.com"
 Both `SESSION_PASSWORD` and `RELAY_MASTER_KEY_HEX` are derived from `RELAY_AUTH`
 (HMAC-SHA256) — **there is nothing to generate by hand**.
 
-### 3. Install Upstash (recommended)
+### 3. Start the development server
 
-Vercel Dashboard → project → **Storage** → **Create Database** → **Upstash**
-automatically injects `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`.
-
-### 4. Start the development server
+No database is needed locally — with neither `REDIS_URL` nor `UPSTASH_*` set, the
+app uses the in-memory store (`EMULATE_VERCEL_LOCAL=1`, only active when
+`NODE_ENV !== "production"`, wiped on restart).
 
 ```bash
 pnpm dev          # → http://localhost:3000
 ```
 
-### 5. The first admin is created automatically!
+To exercise a real database locally, point `REDIS_URL` at your Valkey or
+Upstash instance.
+
+### 4. The first admin is created automatically!
 
 On first run, RelayAB automatically creates the `admin` user using `RELAY_AUTH`
 as the password.
@@ -283,6 +309,7 @@ pnpm build               # Next.js production build
 
 ```
 RelayAB/
+├── deploy/              self-hosting config (systemd / nginx / Valkey / env template)
 ├── docs/                technical documentation
 ├── scripts/             operations scripts (bootstrap / reset / rotate)
 ├── src/
@@ -298,7 +325,6 @@ RelayAB/
 │       ├── db/           persistence (users / keys / providers / usage)
 │       ├── proxy/        upstream proxy (openai / anthropic)
 │       ├── quota/        quota (credits / rates / calculator)
-│       ├── vercel/       Vercel SDK wrapper
 │       └── config.ts     environment variables
 ├── tests/               unit / integration / e2e
 └── configuration files
@@ -324,7 +350,8 @@ Start at **[docs/en/README.md](docs/en/README.md)** — the documentation index.
 | [docs/en/api-routes.md](docs/en/api-routes.md) | Complete API route specification |
 | [docs/en/testing.md](docs/en/testing.md) | The test pyramid + tooling |
 | [docs/en/admin.md](docs/en/admin.md) | Administrator guide (users / keys / providers) |
-| [docs/en/deployment.md](docs/en/deployment.md) | Deploying to Vercel + bypassing deployment protection + the smoke-test checklist |
+| [docs/en/deployment.md](docs/en/deployment.md) | Self-hosted architecture + database choice + smoke-test checklist + troubleshooting |
+| [deploy/README.md](deploy/README.md) | Debian step-by-step runbook (Chinese) |
 
 > **Note:** the media adapter protocol — the declarative JSON spec format for
 > image / video / speech / music providers, along with its offline validator
@@ -344,14 +371,24 @@ Start at **[docs/en/README.md](docs/en/README.md)** — the documentation index.
 5. **A database leak alone is not fatal**: with Redis but without the env var,
    upstream keys cannot be decrypted
 
-## Full deployment to Vercel
+## Production deployment
 
-See [docs/en/deployment.md](docs/en/deployment.md). The environment variables that
-matter most:
+Step-by-step runbook: [deploy/README.md](deploy/README.md). Design and
+configuration detail: [docs/en/deployment.md](docs/en/deployment.md). The
+environment variables that matter most:
 
 | Name | Source |
 |---|---|
 | `RELAY_AUTH` | `openssl rand -hex 32` (admin login password + key derivation seed) |
-| `UPSTASH_REDIS_REST_URL` | injected automatically by the Vercel Marketplace |
-| `UPSTASH_REDIS_REST_TOKEN` | injected automatically by the Vercel Marketplace |
+| `REDIS_URL` | self-hosted Valkey/Redis connection string, e.g. `redis://:<password>@127.0.0.1:6379` |
+| `RELAY_BUILD_ID` | version or commit sha, surfaced as `revision` in `/healthz` |
+| `RELAY_PUBLIC_URL` | recommended: `https://your-domain` |
+| `NODE_ENV` | `production` (which also defaults `EMULATE_VERCEL_LOCAL` to `0`) |
 | `RELAY_ADMIN_USERNAME` | optional, defaults to `admin` |
+| `RELAY_MASTER_KEY_HEX` | optional, derived from `RELAY_AUTH` by default |
+
+`SESSION_PASSWORD` and (by default) `RELAY_MASTER_KEY_HEX` are both derived from
+`RELAY_AUTH`; there is nothing to generate by hand.
+
+If you would rather not operate a database, set `UPSTASH_REDIS_REST_URL` +
+`UPSTASH_REDIS_REST_TOKEN` instead — the hosted transport needs no code changes.

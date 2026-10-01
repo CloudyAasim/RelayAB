@@ -161,7 +161,7 @@ describe("Test 5 · /healthz logic", () => {
   });
 });
 
-describe("Test 6 · redis.ts: actionable error when Upstash missing", () => {
+describe("Test 6 · redis.ts: actionable error when no database is configured", () => {
   it("throws with helpful message", () => {
     __resetRedisForTest();
     setEnv({
@@ -170,7 +170,10 @@ describe("Test 6 · redis.ts: actionable error when Upstash missing", () => {
       NODE_ENV: "production",
     });
     expect(() => getRedis()).toThrow(/Redis is not configured/);
-    expect(() => getRedis()).toThrow(/Vercel Marketplace/);
+    // The message has to name both supported transports, otherwise an operator
+    // on a self-hosted box is sent to set up an Upstash account they do not need.
+    expect(() => getRedis()).toThrow(/REDIS_URL/);
+    expect(() => getRedis()).toThrow(/UPSTASH_REDIS_REST_URL/);
     expect(() => getRedis()).toThrow(/\/healthz/);
     __resetRedisForTest();
   });
@@ -223,19 +226,42 @@ describe("Test 8 · keys.ts listAllApiKeys SCAN filter", () => {
   });
 });
 
-describe("Test 9 · README Deploy Button URL is well-formed", () => {
-  it("has correct shape", () => {
+describe("Test 9 · 自托管部署配置自洽", () => {
+  it("nginx 关闭了响应缓冲并转发了 X-Forwarded-*", () => {
+    // The single highest-risk misconfiguration on a self-hosted box: nginx
+    // buffering turns every streamed completion into "hang, then dump".
+    const nginx = fs.readFileSync("./deploy/nginx.conf", "utf-8");
+    expect(nginx).toContain("proxy_buffering off");
+    expect(nginx).toContain("X-Accel-Buffering no");
+    // public-url.ts derives the public address from these two headers.
+    expect(nginx).toContain("X-Forwarded-Proto");
+    expect(nginx).toContain("X-Forwarded-Host");
+  });
+
+  it("systemd 从仓库根启动（管理台要读仓库里的文件）", () => {
+    const unit = fs.readFileSync("./deploy/relayab.service", "utf-8");
+    expect(unit).toMatch(/^WorkingDirectory=/m);
+    // Without a build id, /healthz cannot report which version is live.
+    expect(unit).toContain("RELAY_BUILD_ID");
+    expect(unit).toContain("NODE_ENV=production");
+  });
+
+  it("README 指向 deploy/ 且不再宣传 Vercel 一键部署", () => {
     const r = fs.readFileSync("./README.md", "utf-8");
-    const m = r.match(/https:\/\/vercel\.com\/new\/clone\?[^)]+/);
-    expect(m).not.toBeNull();
-    if (!m) return;
-    const u = new URL(m[0]);
-    expect(u.pathname).toBe("/new/clone");
-    expect(u.host).toBe("vercel.com");
-    expect(u.searchParams.get("repository-url")).toBe("https://github.com/CloudyAasim/RelayAB");
-    expect(u.searchParams.get("env")).toBe("RELAY_AUTH");
-    expect(u.searchParams.get("envDescription")).not.toBeNull();
-    expect(u.searchParams.get("envLink") || "").toContain("#readme");
+    expect(r).toContain("deploy/README.md");
+    expect(r).not.toContain("vercel.com/new/clone");
+  });
+
+  it("部署文件齐全", () => {
+    for (const f of [
+      "./deploy/README.md",
+      "./deploy/relayab.service",
+      "./deploy/nginx.conf",
+      "./deploy/valkey.conf.example",
+      "./deploy/env.production.example",
+    ]) {
+      expect(fs.existsSync(f), `${f} must exist`).toBe(true);
+    }
   });
 });
 
@@ -286,13 +312,25 @@ describe("Test 12 · package.json sanity", () => {
 describe("Test 13 · README structure", () => {
   it("has all key sections", () => {
     const r = fs.readFileSync("./README.md", "utf-8");
-    expect(r).toContain("vercel.com/new/clone");
-    expect(r).toContain("env=RELAY_AUTH");
-    expect(r).toContain("KV_REST_API_URL");
-    expect(r).toContain("KV_REST_API_TOKEN");
+    // The three variables a self-hosted deployment cannot boot without.
+    expect(r).toContain("RELAY_AUTH");
+    expect(r).toContain("REDIS_URL");
+    expect(r).toContain("RELAY_BUILD_ID");
     expect(r).toContain("/healthz");
     expect(r).toContain("## 许可证");
     expect((r.match(/^## /gm) || []).length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("中英文 README 对同一套部署方式保持一致", () => {
+    const zh = fs.readFileSync("./README.md", "utf-8");
+    const en = fs.readFileSync("./README.en.md", "utf-8");
+    for (const r of [zh, en]) {
+      expect(r).toContain("deploy/README.md");
+      expect(r).toContain("valkey-server");
+      expect(r).toContain("maxmemory-policy noeviction");
+      expect(r).toContain("proxy_buffering off");
+      expect(r).not.toContain("vercel.com/button");
+    }
   });
 });
 

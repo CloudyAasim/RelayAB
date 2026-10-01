@@ -1,7 +1,10 @@
 # 数据模型
 
-> 所有数据持久化在 **Upstash Redis**（通过 REST API，无连接池）。
-> 推荐通过 **Vercel Marketplace → Upstash for Redis** 集成自动注入 `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`；也支持独立 Upstash 数据库。
+> 所有数据持久化在 **Redis 协议数据库**里。两种传输都支持：
+> - **本机 Valkey / Redis**（自托管默认）——设 `REDIS_URL`，由 ioredis 走 TCP 连接
+> - **Upstash 托管版**——设 `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`，走 REST
+>
+> 两种传输的键结构与字段定义完全一致，换后端不需要迁移数据。`REDIS_URL` 存在时优先走 TCP。
 > 键统一前缀 `relay:`，便于将来按库 prefix 切分。
 > 类型定义在 [`src/lib/db/types.ts`](../src/lib/db/types.ts)，本文档为概要。
 

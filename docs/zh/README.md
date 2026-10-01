@@ -13,7 +13,7 @@ RelayAB 是一个自托管 AI API 网关（API 中转站）。
 | 搞清整体怎么拼起来的 | [architecture.md](architecture.md) |
 | 查某个 Redis key 或字段什么意思 | [data-model.md](data-model.md) |
 | 调用某个接口，或新增一个 | [api-routes.md](api-routes.md) |
-| 部署到 Vercel | [deployment.md](deployment.md) |
+| 部署到自己的服务器 | [deployment.md](deployment.md) |
 | 管理用户、Key、供应商 | [admin.md](admin.md) |
 | 跑测试或扩充测试 | [testing.md](testing.md) |
 | 接入图片 / 视频 / 语音 / 音乐供应商 | [../模型适配协议/README.md](../模型适配协议/README.md) |

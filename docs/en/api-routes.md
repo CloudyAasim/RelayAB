@@ -503,7 +503,6 @@ at its `/api/...` path.
 | `GET /api/admin/users/[id]/delete-form` | Confirmation form before deleting a user |
 | `GET /api/user/keys` · `GET/PATCH/DELETE /api/user/keys/[id]` | The user's own key management |
 | `GET /api/user/profile` | The signed-in user's own profile |
-| `/api/_emu/[...path]` | The embedded Vercel API emulator — **development only**, see [deployment.md §6](deployment.md#6-embedded-vercel-api-mock-development-mode) |
 
 ---
 
@@ -528,9 +527,7 @@ at its `/api/...` path.
    responses, as defence in depth (the handlers read cookies too).
 4. **Usage-view cookie** — remembers the last-used range/scope/metric on the usage
    screens and replays it when the URL carries no view parameters.
-5. **Deployment Protection bypass** — injects `x-vercel-protection-bypass` when the
-   env secret is set, so server-side SDK calls get through transparently.
-6. **Unknown `/docs` slugs** — redirected to the docs index.
+5. **Unknown `/docs` slugs** — redirected to the docs index.
 
 Public and static assets return early.
 

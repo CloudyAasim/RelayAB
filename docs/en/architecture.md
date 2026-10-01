@@ -9,7 +9,7 @@
 ## 1. Goals and Non-Goals
 
 ### 1.1 Goals
-- A single Vercel project is enough to deploy — no extra server.
+- Deploys to a Debian server you control — **no platform fee, no request ceiling**.
 - Manage a small number (single digits) of users and multiple API keys per user.
 - Per-key configuration: quota cap, expiry time, enabled state, model restrictions.
 - Provide proxy endpoints compatible with OpenAI Chat Completions and Anthropic Messages.
@@ -28,9 +28,12 @@
 
 ```
                                  ┌──────────────────────────────────────┐
-    ┌────────┐  Bearer sk-xxx    │           Vercel Platform            │
+    ┌────────┐  Bearer sk-xxx    │        self-hosted Debian server     │
     │ Client │ ────────────────► │  ┌────────────────────────────────┐ │
-    └────────┘                   │  │  Next.js 15 App Router          │ │
+    └────────┘                   │  │  nginx :443  (TLS, no buffer)   │ │
+                                 │  └────────────────────────────────┘ │
+                                 │  ┌────────────────────────────────┐ │
+                                 │  │  Next.js 15 App Router          │ │
                                  │  │                                │ │
                                  │  │  /v1/chat/completions           │ │
                                  │  │  /anthropic/v1/messages         │ │
@@ -43,14 +46,13 @@
                                  │  │  │   ├─ auth (iron-session)  │ │ │
                                  │  │  │   ├─ encryption (AES-GCM) │ │ │
                                  │  │  │   ├─ quota engine         │ │ │
-                                 │  │  │   ├─ upstream routing     │ │ │
-                                 │  │  │   └─ Vercel REST client   │ │ │
+                                 │  │  │   └─ upstream routing     │ │ │
                                  │  │  └──────────────────────────┘ │ │
                                  │  └────────────────────────────────┘ │
                                  │                  │                  │
                                  │                  ▼                  │
                                  │  ┌────────────────────────────────┐ │
-                                 │  │  Upstash Redis (KV + persist)  │ │
+                                 │  │  Valkey 8.1  127.0.0.1:6379    │ │
                                  │  │  users / api_keys / providers  │ │
                                  │  │  usage_logs / sessions         │ │
                                  │  └────────────────────────────────┘ │
@@ -67,16 +69,14 @@
 
 | Topic | Decision | Rationale |
 |---|---|---|
-| Deployment platform | Vercel free tier | User requirement; best Next.js fit; no extra ops burden |
+| Deployment | Own Debian server (systemd + nginx) | No platform fee, no request ceiling; nginx must disable buffering or SSE streaming breaks |
 | Framework | Next.js 15 App Router | Server Actions / Route Handlers from one source; SSR-friendly |
-| Data store | **Vercel Marketplace → Upstash for Redis** (or standalone Upstash, API is identical) | One-click install; region auto-matched; REST access, no connection pool |
+| Data store | **Local Valkey** (`REDIS_URL` + ioredis over TCP); Upstash also supported | Self-hosted, no external dependency; connections are reused instead of one HTTP request per command |
 | Authentication | iron-session + bcryptjs | Lightweight, Edge-compatible, no external dependency; bcryptjs is pure JS |
 | Upstream key encryption | AES-256-GCM, master key from env | Standard practice; consistent with the TokenPlan approach |
-| Vercel API calls | `@vercel/sdk` | Official SDK with complete types; switching baseURL is one line to point at a local mock |
-| Local mock | `@emulators/adapter-next` | Embedded, zero ports; tests need no separate process |
-| AI proxy | Vercel AI SDK (`ai`) + `@ai-sdk/openai` / `@ai-sdk/anthropic` | Supports streaming, custom baseURL, model mapping |
+| AI proxy | Hand-written proxy layer (`src/lib/proxy/*`) | Direct control of SSE framing, protocol conversion, and baseURL; no third-party SDK |
 | UI | Tailwind CSS + hand-written components | Small and controllable; skipping shadcn reduces the learning curve |
-| Testing | Vitest + Playwright | Vitest integrates well with Vite/Turbopack; Playwright is Vercel's recommended E2E tool |
+| Testing | Vitest + Playwright | Vitest integrates well with Vite/Turbopack; Playwright covers login and responsive regressions |
 
 ### 2.2 Interface Rendering and Response Speed
 
@@ -154,15 +154,9 @@ See [`api-routes.md`](./api-routes.md) for the full definition. Summary:
 | `/api/admin/media-providers` | GET / POST | CRUD for media providers and their declarative adapter specs |
 | `/v1/images/*`, `/v1/videos/*`, `/v1/audio/*` | POST | Media generation (image / image-to-image / video / speech / music), driven by the adapter protocol |
 
-### 4.3 Embedded Mock (development only)
-
-| Path | Method | Purpose |
-|---|---|---|
-| `/api/_emu/[...path]` | ANY | Forwards to `@emulators/vercel` |
-
 ---
 
-### 4.4 Media Adapter Protocol
+### 4.3 Media Adapter Protocol
 
 Media capabilities do not go through the chat protocol surface. Instead they use a
 **declarative spec + a generic engine**:
@@ -223,14 +217,6 @@ billing unit are all different (media is billed per item).
 - Library: **iron-session 8**.
 - Storage: HttpOnly + Secure + SameSite=Lax cookie, roughly 1 KB after encryption.
 - No JWT (the server can invalidate it proactively).
-
-### 5.5 Vercel Deployment Protection
-- If the project has Deployment Protection enabled, requests must carry the following header automatically:
-  ```
-  x-vercel-protection-bypass: <secret>
-  ```
-- RelayAB's own API passes that header through (handled at the middleware layer).
-- See [`deployment.md`](./deployment.md#7-bypassing-deployment-protection).
 
 ---
 
@@ -382,48 +368,39 @@ common configuration mistake:
 
 ## 8. Local Development and the Testing Loop
 
-### 8.1 Embedded Mock Strategy (Option C)
-
-```
-/api/_emu/vercel/*  →  the catch-all route of @emulators/adapter-next
-                         ↓
-                       Hono routes: /v10/projects, /v2/user, ...
-```
-
-- After `next dev` starts, `baseURL` of `@vercel/sdk` is overridden by an environment variable to `http://localhost:3000/api/_emu/vercel`, so every SDK call hits the local mock.
-- Under a production build (`NODE_ENV=production`) the route file returns 404, and the SDK falls back to `https://api.vercel.com` by default.
-
-### 8.2 Testing Pyramid
+### 8.1 Testing Pyramid
 
 | Level | Tool | Coverage |
 |---|---|---|
 | Unit | Vitest | Encryption, hashing, quota calculation, credit rates, expiry checks |
-| Integration | Vitest + Next.js test handler | Routes + real Redis (mock or testcontainers) + the embedded mock |
+| Integration | Vitest + Next.js test handler | Routes + real Redis (mock or testcontainers) |
 | E2E | Playwright | Login, creating a key, viewing usage, calling the OpenAI-compatible endpoint |
 
-### 8.3 CI / Local One-Command Scripts
+### 8.2 CI / Local One-Command Scripts
 
 ```bash
 pnpm install
 pnpm test:unit          # pure functions, seconds
 pnpm test:integration   # integration, needs a local Redis (a test mock is used)
-pnpm test:e2e           # needs the Next dev server + the embedded mock
+pnpm test:e2e           # needs the Next dev server
 ```
 
 ---
 
 ## 9. Deployment
 
-### 9.1 Vercel Configuration
-- Framework Preset: Next.js
-- Build Command: `pnpm build`
-- Output: `.next`
-- Install Command: `pnpm install`
-- Region: `hnd1` (Tokyo, friendly to Asian users) or `iad1` (US)
-- Node Version: 22.x
+### 9.1 Server Setup
+- Node.js 24 + pnpm 10 (`corepack enable` is enough)
+- Valkey 8.1 on `127.0.0.1:6379` with `maxmemory-policy noeviction`
+- systemd service, with `WorkingDirectory` pinned to the repository root
+- nginx reverse proxy + Let's Encrypt, **with response buffering disabled** (otherwise SSE breaks)
 
-### 9.2 Environment Variables (set in the Vercel Dashboard)
-See [`.env.example`](../../.env.example).
+Ready-made configs live in [`deploy/`](../../deploy/README.md):
+`relayab.service` / `nginx.conf` / `valkey.conf.example` / `env.production.example`.
+
+### 9.2 Environment Variables
+See [`deploy/env.production.example`](../../deploy/env.production.example).
+`RELAY_AUTH`, `REDIS_URL` and `RELAY_BUILD_ID` are required.
 
 ### 9.3 First Startup
 - The first time a request hits the app (submitting the login form, reading the session on a page, or a proxy endpoint verifying a key), a bootstrap runs once, lazily: if the database is empty → create the `RELAY_ADMIN_USERNAME` (default `admin`) admin using `RELAY_AUTH` as the password; if `OPENAI_KEYS` / `ANTHROPIC_KEYS` are set → create the corresponding providers automatically.
@@ -455,7 +432,6 @@ RelayAB/
 │   │   └── api/
 │   │       ├── auth/{login,logout}/route.ts
 │   │       ├── admin/...
-│   │       ├── _emu/[...path]/route.ts
 │   │       ├── v1/chat/completions/route.ts
 │   │       ├── v1/models/route.ts
 │   │       └── anthropic/v1/messages/route.ts
@@ -463,12 +439,11 @@ RelayAB/
 │   │   ├── auth/         (session.ts, password.ts)
 │   │   ├── crypto/       (secrets.ts, hashing.ts)
 │   │   ├── db/           (redis.ts, repositories)
-│   │   ├── vercel/       (client.ts, api-keys.ts)
 │   │   ├── proxy/        (openai.ts, anthropic.ts, stream.ts)
 │   │   ├── quota/        (credits.ts, rates.ts, calculator.ts)
 │   │   └── config.ts
 │   ├── components/       (UI components)
-│   └── middleware.ts     (auth + bypass header injection)
+│   └── middleware.ts     (path normalisation / CORS / usage-view cookie)
 ├── tests/
 │   ├── unit/
 │   ├── integration/
@@ -493,11 +468,11 @@ RelayAB/
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| Master key leak | An attacker can decrypt every upstream key | Keep the master key only in Vercel environment variables; never log it; rotate with a script periodically |
-| Accidental Redis deletion | All users/keys lost | Enable Upstash automatic backups; run `db snapshot export` periodically |
-| Vercel serverless timeout | Long streaming requests get truncated | Configure `maxDuration: 60` (Pro) or split into chunks (v2) |
+| Master key leak | An attacker can decrypt every upstream key | Keep the master key only in `.env.production` (`chmod 600`); never log it; rotate with a script periodically |
+| Accidental Redis deletion | All users/keys lost | Enable AOF (`appendfsync everysec`); add a daily backup cron (`valkey-cli --rdb`) |
+| nginx response buffering | Long streaming requests hang, then dump at once | Disable `proxy_buffering` in the site config and send `X-Accel-Buffering no` |
+| Single-machine failure | App and database go down together | Valkey and the app share one host; plan backups and recovery yourself |
 | Rate limits | A shared upstream key easily triggers OpenAI/Anthropic throttling | The quota engine throttles inherently; v2 adds a per-provider rate |
-| Embedded mock leaking into production | Mock data becomes externally accessible | Only load it when `NODE_ENV !== "production"` |
 
 ---
 

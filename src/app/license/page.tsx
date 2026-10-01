@@ -55,16 +55,10 @@ interface Dep {
 }
 
 const RUNTIME_DEPS: Dep[] = [
-  { name: "@ai-sdk/anthropic", version: "1.2.12", license: "Apache-2.0", repo: "https://github.com/vercel/ai", copyright: "Vercel Inc." },
-  { name: "@ai-sdk/openai", version: "1.3.24", license: "Apache-2.0", repo: "https://github.com/vercel/ai", copyright: "Vercel Inc." },
-  { name: "@emulators/adapter-next", version: "0.11.2", license: "Apache-2.0", copyright: "Vercel Labs" },
-  { name: "@emulators/core", version: "0.11.2", license: "Apache-2.0", copyright: "Vercel Labs" },
-  { name: "@emulators/vercel", version: "0.11.2", license: "Apache-2.0", copyright: "Vercel Labs" },
   { name: "@upstash/redis", version: "1.38.4", license: "MIT", repo: "https://github.com/upstash/redis-js", copyright: "Upstash Inc." },
-  { name: "@vercel/sdk", version: "1.28.35", license: "Apache-2.0", repo: "https://github.com/vercel/sdk", copyright: "Vercel Inc." },
-  { name: "ai", version: "4.3.19", license: "Apache-2.0", repo: "https://github.com/vercel/ai", copyright: "Vercel Inc." },
   { name: "bcryptjs", version: "2.4.3", license: "MIT", repo: "https://github.com/dcodeIO/bcrypt.js", copyright: "Dawid Ciężarkiewicz" },
   { name: "clsx", version: "2.1.1", license: "MIT", repo: "https://github.com/lukeed/clsx", copyright: "Luke Edwards" },
+  { name: "ioredis", version: "5.11.1", license: "MIT", repo: "https://github.com/redis/ioredis", copyright: "Redis Inc." },
   { name: "iron-session", version: "8.0.4", license: "MIT", repo: "https://github.com/vvo/iron-session", copyright: "Vercel Inc." },
   { name: "jose", version: "5.10.0", license: "MIT", repo: "https://github.com/panva/jose", copyright: "Filip Skokan" },
   { name: "lucide-react", version: "0.460.0", license: "ISC", repo: "https://github.com/lucide-icons/lucide", copyright: "Lucide Contributors" },

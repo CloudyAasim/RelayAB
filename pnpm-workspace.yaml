@@ -1,2 +1,5 @@
+# pnpm 10+ blocks dependency lifecycle scripts by default and requires an
+# explicit opt-in. esbuild's install script downloads the platform binary that
+# `next build` and vitest rely on, so it has to be allowed to run.
 allowBuilds:
-  esbuild: set this to true or false
+  esbuild: true

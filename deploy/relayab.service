@@ -1,0 +1,61 @@
+# RelayAB — systemd unit for a self-hosted Debian deployment.
+#
+# Install:
+#   sudo cp deploy/relayab.service /etc/systemd/system/relayab.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now relayab
+#
+# Replace /opt/relayab if the checkout lives somewhere else. The path matters:
+# the app resolves two admin documentation files relative to process.cwd().
+
+[Unit]
+Description=RelayAB — self-hosted AI API relay/gateway
+Documentation=https://github.com/CloudyAasim/RelayAB
+After=network-online.target valkey-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=relayab
+Group=relayab
+
+# The app reads docs/模型适配协议/README.md and scripts/spec-check.ts relative
+# to process.cwd() (src/components/docs/ProtocolReference.tsx and
+# SpecCheckReference.tsx). Starting from any other directory leaves both admin
+# doc pages rendering "could not read".
+WorkingDirectory=/opt/relayab
+
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/relayab/.env.production
+
+# Reported by /healthz as `revision`. VERCEL_GIT_COMMIT_SHA does not exist off
+# Vercel, so without this the endpoint cannot tell you which build is live —
+# which is exactly what makes "did my deploy land?" unanswerable. Bump it (or
+# have your deploy script write `git rev-parse --short HEAD`) on each release.
+Environment=RELAY_BUILD_ID=v178
+
+ExecStart=/usr/bin/node node_modules/next/dist/bin/next start -H 127.0.0.1 -p 3000
+
+Restart=always
+RestartSec=5
+# Streaming completions can legitimately run for minutes; do not let systemd
+# call a live request "hung" during a normal `systemctl stop`.
+TimeoutStopSec=45
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=relayab
+
+# --- Hardening -------------------------------------------------------------
+# The service needs no write access outside its own .next directory.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/opt/relayab/.next
+
+[Install]
+WantedBy=multi-user.target

@@ -6,13 +6,23 @@
  *
  * "Required" depends on where the data actually lives:
  *   - RELAY_AUTH is ALWAYS required.
- *   - Upstash URL + TOKEN are required only when a real database is in use.
+ *   - A Redis connection is required only when a real database is in use.
  *     Outside production the default is an in-process Redis mock
  *     (`EMULATE_VERCEL_LOCAL=1`), which needs no credentials.
+ *
+ * The database side accepts either transport, matching the precedence in
+ * `lib/db/redis.ts`:
+ *   - `REDIS_URL` (redis:// or rediss://)  -> TCP via ioredis  -> "redis"
+ *   - `UPSTASH_REDIS_REST_*` / `KV_*`       -> HTTP REST       -> "upstash"
+ *
+ * Anything else is reported as missing rather than silently assumed, so a
+ * half-configured deployment shows up here instead of as a burst of 500s.
  */
 
 export interface HealthEnv {
   RELAY_AUTH?: string;
+  // Self-hosted TCP connection string (ioredis). Takes precedence.
+  REDIS_URL?: string;
   // Upstash SDK default
   UPSTASH_REDIS_REST_URL?: string;
   UPSTASH_REDIS_REST_TOKEN?: string;
@@ -22,13 +32,14 @@ export interface HealthEnv {
   KV_REST_API_READ_ONLY_TOKEN?: string;
   // Upstash Redis direct
   KV_URL?: string;
-  REDIS_URL?: string;
-  // Legacy / other providers
-  REDIS_HOST?: string;
-  REDIS_PASSWORD?: string;
   NODE_ENV?: string;
   EMULATE_VERCEL_LOCAL?: string;
-  /** Vercel-provided short SHA of the running deployment. */
+  /**
+   * Vercel-provided short SHA of the running deployment.
+   *
+   * Only present on Vercel. On a self-hosted server it is absent and
+   * RELAY_BUILD_ID below takes over.
+   */
   VERCEL_GIT_COMMIT_SHA?: string;
   /** Fallback build identifier set by the operator when running off Vercel. */
   RELAY_BUILD_ID?: string;
@@ -37,7 +48,7 @@ export interface HealthEnv {
 export interface HealthReport {
   ok: boolean;
   status: "ok" | "degraded" | "unconfigured";
-  storage: "memory" | "upstash";
+  storage: "memory" | "redis" | "upstash";
   required: number;
   configured: number;
   missing?: string[];
@@ -71,56 +82,77 @@ function hasValue(val?: string): boolean {
   return Boolean(val?.trim());
 }
 
+function isTcpUrl(url: string): boolean {
+  return url.startsWith("redis://") || url.startsWith("rediss://");
+}
+
 /**
- * Accept ALL common Upstash/Redis env-var naming conventions:
- *   - UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN  (Upstash SDK default)
- *   - KV_REST_API_URL / KV_REST_API_TOKEN               (Vercel Marketplace)
- *   - KV_URL / REDIS_URL                               (Upstash Redis direct)
- *   - KV_REST_API_READ_ONLY_TOKEN                       (Vercel KV)
+ * Decide which transport this environment would use, and what (if anything) is
+ * still missing for it.
+ *
+ * Mirrors `resolveRedisTransport()` in `lib/db/redis.ts`: a `redis://` URL
+ * wins outright, otherwise the Upstash-style URL + token pair is required.
+ * Keeping the two in step matters — when they drifted, `/healthz` happily
+ * reported `ok` for a `REDIS_URL`-only box while every data route threw
+ * "Redis is not configured".
  */
-export function computeHealth(env: HealthEnv): HealthReport {
-  const usingMemory = isUsingMemoryStore(env);
-
-  // Try multiple possible URL variables
-  const url =
-    env.UPSTASH_REDIS_REST_URL ??
-    env.KV_REST_API_URL ??
-    env.KV_URL ??
-    undefined;
-
-  // Try multiple possible TOKEN variables
-  const token =
-    env.UPSTASH_REDIS_REST_TOKEN ??
-    env.KV_REST_API_TOKEN ??
-    env.KV_REST_API_READ_ONLY_TOKEN ??
-    undefined;
-
-  // If we have a REDIS_URL, parse it for connection info
-  const hasRedisUrl = hasValue(env.REDIS_URL);
-
-  const missing: string[] = [];
-  if (!env.RELAY_AUTH?.trim()) missing.push("RELAY_AUTH");
-
-  if (!usingMemory) {
-    // Check if we have any usable database configuration
-    const hasUrl = hasValue(url);
-    const hasToken = hasValue(token);
-
-    // If we have KV_URL or REDIS_URL, we might be able to use it
-    if (!hasUrl && !hasRedisUrl) {
-      missing.push("UPSTASH_REDIS_REST_URL (or KV_REST_API_URL / KV_URL / REDIS_URL)");
-    }
-    if (!hasToken && !hasRedisUrl) {
-      missing.push("UPSTASH_REDIS_REST_TOKEN (or KV_REST_API_TOKEN)");
-    }
+function resolveStorage(env: HealthEnv): {
+  storage: HealthReport["storage"];
+  missing: string[];
+} {
+  if (isUsingMemoryStore(env)) {
+    return { storage: "memory", missing: [] };
   }
 
-  const required = usingMemory ? 1 : 3;
+  const missing: string[] = [];
+
+  const tcp = env.REDIS_URL?.trim();
+  if (tcp) {
+    // A TCP connection string is self-contained: host, port and any password
+    // are inline, so there is no second variable to check.
+    if (!isTcpUrl(tcp)) missing.push("REDIS_URL (must start with redis:// or rediss://)");
+    return { storage: "redis", missing };
+  }
+
+  const url =
+    env.UPSTASH_REDIS_REST_URL?.trim() ??
+    env.KV_REST_API_URL?.trim() ??
+    env.KV_URL?.trim();
+
+  const token =
+    env.UPSTASH_REDIS_REST_TOKEN?.trim() ??
+    env.KV_REST_API_TOKEN?.trim() ??
+    env.KV_REST_API_READ_ONLY_TOKEN?.trim();
+
+  if (!hasValue(url)) {
+    missing.push("REDIS_URL (or UPSTASH_REDIS_REST_URL / KV_REST_API_URL / KV_URL)");
+  }
+  if (!hasValue(token)) {
+    missing.push("UPSTASH_REDIS_REST_TOKEN (or KV_REST_API_TOKEN)");
+  }
+
+  return { storage: "upstash", missing };
+}
+
+export function computeHealth(env: HealthEnv): HealthReport {
+  const { storage, missing: storageMissing } = resolveStorage(env);
+
+  const missing: string[] = [];
+  if (!hasValue(env.RELAY_AUTH)) missing.push("RELAY_AUTH");
+  missing.push(...storageMissing);
+
+  /**
+   * How many variables this transport actually needs. The TCP path is one
+   * variable fewer than the REST path because a `redis://` URL carries its
+   * own password, while Upstash splits host and token across two.
+   */
+  const required =
+    storage === "memory" ? 1 : storage === "redis" ? 2 : 3;
   const configured = required - missing.length;
   const status: HealthReport["status"] =
     missing.length === 0
       ? "ok"
-      : missing.length === required
+      : missing.length >= required
         ? "unconfigured"
         : "degraded";
 
@@ -135,7 +167,7 @@ export function computeHealth(env: HealthEnv): HealthReport {
   return {
     ok: missing.length === 0,
     status,
-    storage: usingMemory ? "memory" : "upstash",
+    storage,
     required,
     configured,
     missing: missing.length > 0 ? missing : undefined,

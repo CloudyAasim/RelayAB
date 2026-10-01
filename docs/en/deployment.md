@@ -1,351 +1,349 @@
-# Complete guide to deploying on Vercel
+# Complete Debian Deployment Guide
 
-> Assumes you have already:
-> - Forked / cloned the RelayAB project into your own GitHub account.
-> - Registered a Vercel account (https://vercel.com).
+> This covers self-hosting. For the step-by-step runbook see
+> **[`deploy/README.md`](../../deploy/README.md)** (Chinese); this file explains
+> *why* each step matters and what to verify afterwards.
+>
+> Assumed:
+> - A Debian 12/13 server
+> - A domain with an A record pointing at it
 
 ---
 
-## 1. One-click deploy
+## 1. Architecture
 
-### 1.1 Import the project
-1. Log in to the Vercel Dashboard.
-2. **Add New → Project → Import** the GitHub repository you forked.
-3. The Framework Preset is auto-detected as **Next.js**.
-4. **Do not click Deploy yet** — first install the Upstash integration as described in §2.
+```
+                 ┌──────────────────────────────────────────┐
+   internet ───▶ │  nginx  :443                              │
+                 │   ├─ TLS termination (Let's Encrypt)      │
+                 │   ├─ reverse proxy → 127.0.0.1:3000      │
+                 │   └─ SSE buffering disabled              │
+                 └────────────────┬─────────────────────────┘
+                                  │
+                 ┌────────────────▼─────────────────────────┐
+                 │  RelayAB  (systemd, node)                │
+                 │   next start, WorkingDirectory=repo root  │
+                 │   /v1/*  /anthropic/*  /api/*  admin UI   │
+                 └────────────────┬─────────────────────────┘
+                                  │  TCP (ioredis)
+                 ┌────────────────▼─────────────────────────┐
+                 │  Valkey 8.1  127.0.0.1:6379               │
+                 │   users / keys / balances / usage logs   │
+                 └──────────────────────────────────────────┘
+```
 
-### 1.2 Required environment variables
+Three things that matter:
 
-**Only one variable is truly required:**
+1. **Valkey listens on `127.0.0.1` only** and is never exposed. No need to open 6379.
+2. **nginx must disable response buffering**, or SSE streaming degrades into
+   "hang, then dump everything at once".
+3. **RelayAB must start from the repository root** — two admin pages read files
+   out of the checkout at request time.
+
+---
+
+## 2. Environment variables
+
+**Three required:**
 
 | Name | Source | Notes |
-| --- | --- | --- |
-| `RELAY_AUTH` | Manual: `openssl rand -hex 32` | Master password. Doubles as the admin login password and as the session-key derivation seed |
-| `UPSTASH_REDIS_REST_URL` | Injected automatically by the Vercel Marketplace | Upstash REST URL |
-| `UPSTASH_REDIS_REST_TOKEN` | Injected automatically by the Vercel Marketplace | Upstash REST token |
+|---|---|---|
+| `RELAY_AUTH` | manual: `openssl rand -hex 32` | master password; also seeds the admin login and session key |
+| `REDIS_URL` | manual: `redis://:<password>@127.0.0.1:6379` | self-hosted Valkey connection string |
+| `RELAY_BUILD_ID` | manual: version or commit sha | surfaced as `revision` in `/healthz` |
 
-> **You do not need to configure a public URL.** The endpoint address shown on the
-> docs page and the welcome page falls back to `VERCEL_URL`, and when that is
-> absent it reads the Host header of the current request — so both Vercel
-> deployments and common self-hosted setups work with zero configuration.
-> Only set `RELAY_PUBLIC_URL` to override when "the address users should call"
-> differs from "the address they actually reach" (for example, a custom domain
-> or a reverse proxy sits in front of the app).
+**Strongly recommended:**
 
-**Derived automatically** (no manual setup needed):
-- `SESSION_PASSWORD` — derived from `RELAY_AUTH` (HMAC-SHA256)
-- `RELAY_MASTER_KEY_HEX` — derived from `RELAY_AUTH` by default (set it explicitly to rotate it independently)
+| Name | Notes |
+|---|---|
+| `RELAY_PUBLIC_URL` | `https://your.domain`. Without it the app falls back to nginx's `X-Forwarded-*` headers, which works but adds an implicit dependency |
+| `NODE_ENV` | `production` |
+| `EMULATE_VERCEL_LOCAL` | must be `0` (or unset), or nothing is persisted |
 
-**Optional**:
-- `OPENAI_KEYS` — comma-separated list of keys; an OpenAI provider is created automatically on first run (rotation enabled when several keys are given)
-- `ANTHROPIC_KEYS` — same, for the Anthropic provider
-- `OPENAI_BASE_URL` / `ANTHROPIC_BASE_URL` — override the default endpoint (Azure / self-hosted proxy)
-- `RELAY_ADMIN_USERNAME` — admin username (default `admin`)
-- `RELAY_DEFAULT_LOCALE` — default UI language, `zh-CN` (default) or `en`; visitors can still switch in the footer
-- `VERCEL_PROTECTION_BYPASS` — bypass secret for deployment protection
-- `EMULATE_VERCEL_LOCAL` — `"1"` enables the embedded Vercel mock (**local development only**)
-- `RELAY_MASTER_KEY_HEX` — explicit master key (**set this when rotating independently of `RELAY_AUTH`**)
+**Derived automatically** (do not set):
+- session key — HMAC-SHA256 from `RELAY_AUTH`
+- `RELAY_MASTER_KEY_HEX` — derived from `RELAY_AUTH` unless set explicitly
 
-> ⚠️ **`AI_GATEWAY_API_KEY` is not read by this codebase.** Earlier versions of this
-> document listed it as a way to route upstream traffic through the Vercel AI
-> Gateway, and §4 below told you to set it. Nothing in `src/` or `scripts/` reads
-> that variable, so setting it has **no effect**. It is left out of the table
-> above deliberately.
+**Optional:**
+- `OPENAI_KEYS` / `ANTHROPIC_KEYS` — comma-separated; auto-creates providers on first boot
+- `OPENAI_BASE_URL` / `ANTHROPIC_BASE_URL` — endpoint overrides (Azure / self-hosted proxy)
+- `RELAY_ADMIN_USERNAME` — default `admin`
+- `RELAY_DEFAULT_LOCALE` — `zh-CN` (default) or `en`
+- `RELAY_MASTER_KEY_HEX` — explicit master key (set this to decouple it from `RELAY_AUTH`)
 
-### 1.3 Deploy
-Click **Deploy**. Vercel runs `pnpm install && pnpm build`, then publishes to `*.vercel.app`.
+> **Why `RELAY_BUILD_ID` deserves its own row:** on Vercel, `/healthz` read
+> `revision` from `VERCEL_GIT_COMMIT_SHA`, which the platform injected for free.
+> Self-hosted there is no such variable, so without `RELAY_BUILD_ID` the field
+> is `null` and you cannot answer "which build is actually live" — the single
+> most useful fact when debugging a deployment. Have your deploy script write
+> `git rev-parse --short HEAD` into it.
+
+Full template: [`deploy/env.production.example`](../../deploy/env.production.example).
 
 ---
 
-## 2. Upstash for Redis (Vercel Marketplace integration) ⭐ recommended
+## 3. Database options
 
-> This is the official Marketplace integration on Vercel:
-> - One-click install, creates an Upstash database automatically.
-> - Credentials are injected into the project's environment variables automatically.
-> - The region is chosen automatically as the one closest to your Vercel deployment.
-> - Managed together with the Vercel project — no separate account to maintain.
->
-> We call the REST API directly through the `@upstash/redis` SDK, which is
-> **fully compatible with a standalone Upstash database**.
+### 3.1 Valkey (recommended, the self-hosting default)
 
-### 2.1 Installation steps
-
-1. Open your Vercel project → the **Storage** tab.
-2. Click **Create Database** → find **Upstash** under the **Marketplace** section.
-   > You can also search for "Upstash" directly in the Vercel Dashboard.
-3. Choose **Upstash for Redis**.
-4. Configure:
-   - **Plan**: Free (plenty — 30k requests/day, 256 MB storage)
-   - **Region**: the default is fine, Vercel picks the closest region
-   - **Name**: changeable, defaults to `relayab-redis`
-5. Click **Create** and accept the Marketplace terms.
-6. Vercel then automatically:
-   - creates an Upstash database
-   - binds the following environment variables to **all environments** (Production / Preview / Development):
-     - `UPSTASH_REDIS_REST_URL`
-     - `UPSTASH_REDIS_REST_TOKEN`
-   - (optionally) in some cases also `KV_REST_API_URL` / `KV_REST_API_TOKEN` (the Vercel KV naming convention, **which we do not use**)
-
-### 2.2 Verify the integration
-
-After the deployment finishes, check in Vercel Dashboard → Project → **Settings → Environment Variables** that:
-- `UPSTASH_REDIS_REST_URL` exists
-- `UPSTASH_REDIS_REST_TOKEN` exists
-
-Check the Functions logs to see whether startup succeeded:
-```
-[relayab] redis: connected to https://xxx.upstash.io
-```
-
-### 2.3 Why not Vercel KV?
-
-Vercel KV was superseded by **Upstash for Redis** in 2024 (Vercel unified its storage backend on Upstash). The underlying API is identical, but the Marketplace integration is more stable. We use the `@upstash/redis` SDK directly and depend on no Vercel private package.
-
-### 2.4 Backup strategy
-
-- Free plan: automatic daily backups, 1 day of retention.
-- In the Upstash Console (click "Open in Upstash" at the top right of the Marketplace card) you can trigger an Export manually.
-- Recommend a manual Export once a week.
-
-### 2.5 If you prefer not to use the Marketplace integration
-
-You can also sign up for a standalone Upstash account (https://upstash.com), create a database by hand, and fill `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` into the Vercel environment variables. **There is zero impact on the code** — the SDK call path is exactly the same.
-
----
-
-## 3. First run and bootstrap
-
-Bootstrap is **lazy**: after the deployment finishes, the first request that actually
-touches the app (submitting the login form, visiting any page/endpoint that reads
-the session, or calling the proxy endpoint with a key) triggers a single bootstrap;
-it never runs again afterwards (once per instance, and a failure is retried on the
-next request).
-
-When you visit `https://your-app.vercel.app/login` you will see:
-
-- **The admin account has been created automatically**
-  - Username: `admin` (or your custom `RELAY_ADMIN_USERNAME`)
-  - Password: your `RELAY_AUTH` value
-
-- **The upstream provider has been created automatically** (if `OPENAI_KEYS` / `ANTHROPIC_KEYS` are set)
-  - Several keys create several provider entities (with rotation enabled)
-  - The default model mapping covers common models such as gpt-4o / gpt-4o-mini / claude-3-5-sonnet
-
-- **If no upstream key is set**, add one by hand at `/admin/providers` after logging in
-
-**Recommended immediately after the first login**:
-1. Change your own password at `/admin/users` (or reset a new one)
-2. Create a regular user at `/admin/users`
-3. Create an API key for each user at `/admin/keys` (the plaintext is shown only once!)
-4. Confirm / add the upstream provider at `/admin/providers`
-5. Hand the customer keys out to the users
-
-### Creating the admin manually with no environment variables locally
-
-If you would rather not derive the password from `RELAY_AUTH`, use the script:
+Debian 13 (trixie) ships `valkey-server` in its main archive:
 
 ```bash
+sudo apt install -y valkey-server valkey-tools
+```
+
+Valkey is the community fork of Redis 7.2.4 (Linux Foundation, BSD). It is
+**wire- and command-compatible**, so ioredis needs no changes. Debian also
+carries `redis-server 8.x`; the licence difference (AGPLv3 vs BSD) has no
+practical effect when you self-host, because AGPL's network clause only bites
+when you run a *modified* copy as a service for others.
+
+See [`deploy/valkey.conf.example`](../../deploy/valkey.conf.example). The one
+line that must be right:
+
+```conf
+maxmemory-policy noeviction
+```
+
+**Why it has to be noeviction:** RelayAB stores **authoritative** data in Redis —
+users, API keys, balances, usage logs, quotas. Valkey is an in-memory store, so
+once `maxmemory` is reached, a policy like `allkeys-lru` will *silently evict*
+those records: no error, endpoints keep returning 200, but quotas and usage logs
+vanish. `noeviction` fails loudly instead, which is the safe behaviour.
+
+### 3.2 Staying on hosted Upstash
+
+Still supported: set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` and
+the app uses the HTTP REST transport. `REDIS_URL` takes precedence when present.
+
+Worth it when you do not want to operate a database, or when the app and the data
+store live separately. The cost is that every Redis command becomes an HTTP
+request (the code already batches them into pipelines — see `hgetallMany`).
+
+---
+
+## 4. First boot and bootstrap
+
+Bootstrapping is **lazy**: the first request that actually touches the app
+(submitting the login form, opening a page that reads the session, or calling
+the proxy with a key) triggers it once. It never runs again per instance, and a
+failure is retried on the next request.
+
+Visiting `https://your.domain/login`:
+
+- **The admin account is created automatically**
+  - username: `admin` (or `RELAY_ADMIN_USERNAME`)
+  - password: your `RELAY_AUTH` value
+
+- **Upstream providers are auto-created** if `OPENAI_KEYS` / `ANTHROPIC_KEYS` are set
+  - multiple keys create multiple provider entities (rotation enabled)
+
+**Right after the first login:**
+1. Change your own password in `/admin/users`
+2. Create regular users in `/admin/users`
+3. Issue API keys in `/admin/keys` (plaintext is shown once!)
+4. Confirm/add upstream providers in `/admin/providers`
+5. Distribute the keys
+
+### Creating the admin manually
+
+```bash
+cd /opt/relayab
 pnpm bootstrap-admin --username admin --password <your-password>
 ```
 
-This script creates the admin account and returns immediately.
+### Verifying configuration
 
-## 4. Routing Upstream Traffic Through the Vercel AI Gateway (optional)
+```bash
+curl -s https://your.domain/healthz | jq
+```
 
-If you want upstream traffic to go through the Vercel AI Gateway instead of calling
-OpenAI/Anthropic directly:
+Expect `{"ok":true,"status":"ok","storage":"redis",...}`.
 
-1. Create a key in Vercel Dashboard → **AI Gateway → API Keys**.
-2. Add a provider in `/admin/providers` with:
-   - **API base URL** = `https://ai-gateway.vercel.sh/v1`
-   - **upstream key** = the AI Gateway key (paste it into the provider's key field)
-   - **Kind** stays `openai` or `anthropic` — the Gateway speaks those protocols
-3. Map the models you want to route through it.
+`storage` is new in this deployment model and tells you which transport is live:
 
-This way the Vercel AI Gateway adds its own quota / rate limiting, which stacks on
-top of RelayAB's.
-
-> ⚠️ There is **no `AI_GATEWAY_API_KEY` environment variable** in this codebase.
-> Earlier versions of this section told you to set one; nothing reads it, so it did
-> nothing. The gateway key goes into the **provider's own key field**, like any
-> other upstream key — which is encrypted with AES-256-GCM before being stored.
+| Value | Meaning |
+|---|---|
+| `redis` | TCP transport via `REDIS_URL` — correct for self-hosting |
+| `upstash` | REST transport. If you meant to use local Valkey, `REDIS_URL` is not being read |
+| `memory` | in-memory store. **Should never appear in production** — `EMULATE_VERCEL_LOCAL` is misconfigured |
 
 ---
 
-## 5. Connecting real upstream API keys
+## 5. Wiring up real upstream keys
 
-### 5.1 Adding a provider
-1. Log in to RelayAB → **/admin/providers → New Provider**.
+1. Sign in → **/admin/providers → New Provider**.
 2. Fill in:
    - Name: `OpenAI Production`
    - Kind: `openai`
-   - API Key: `sk-...` (taken from the OpenAI Dashboard)
-   - Model Mapping: `{ "gpt-4o-mini": "gpt-4o-mini-2024-07-18", "gpt-4o": "gpt-4o-2024-08-06" }`
+   - API Key: `sk-...`
+   - Model Mapping: `{ "gpt-4o-mini": "gpt-4o-mini-2024-07-18" }`
 3. Save.
 
-Plaintext keys are **never persisted** — RelayAB encrypts them with `RELAY_MASTER_KEY_HEX` and stores the ciphertext in Redis.
+Plaintext keys are **never persisted** — RelayAB encrypts them with
+`RELAY_MASTER_KEY_HEX` (AES-256-GCM) before writing to Redis.
 
-### 5.2 Model mapping strategy
-- The `model` field in a client request is treated as a "logical name".
-- The admin writes "logical name → real upstream model name" in the model mapping.
-- If the mapping does not match: in v1 the client's `model` is forwarded verbatim (suits the case where the provider itself is the naming authority).
+### Routing through a gateway
 
----
-
-## 6. Embedded Vercel API mock (development mode)
-
-During local development, `src/app/api/_emu/[...path]/route.ts` is enabled:
-- When `EMULATE_VERCEL_LOCAL === "1"` and `NODE_ENV !== "production"`.
-- All SDK calls to `https://api.vercel.com/*` are redirected to `http://localhost:3000/api/_emu/*`.
-- This lets you test everything locally without any external service.
-
-**It must be off in production** (it is off by default), otherwise users will be served mock data.
+To reach upstreams via a third-party gateway (AI Gateway, unified proxy, …) you
+need **no environment variable at all**: set the provider's API base URL to the
+gateway and paste the gateway key into the provider's own key field. It is stored
+and encrypted exactly like any other upstream key.
 
 ---
 
-## 7. Bypassing deployment protection
+## 6. Smoke-test checklist
 
-### 7.1 When you need it
-When the Vercel project has **Deployment Protection** enabled (Settings → Deployment Protection → Enabled):
-- Every request (including API calls) is intercepted by Vercel with an SSO login.
-- Client SDKs can no longer call the API normally.
+### 6.1 Basics
+- [ ] `curl https://your.domain/healthz` returns `{"ok":true,...}` with `storage: redis`
+- [ ] `revision` shows your `RELAY_BUILD_ID` (not `null`)
+- [ ] `/login` renders
+- [ ] Bootstrap admin can sign in
+- [ ] Redirects to `/admin`
 
-### 7.2 Generating a bypass secret
-1. Vercel Dashboard → your project → **Settings → Deployment Protection**.
-2. Find the **Protection Bypass** section → enter an easy-to-remember secret → **Add**.
-3. Copy the generated **Bypass Secret** (shown once — store it in a password manager).
+### 6.2 Administration
+- [ ] Create a test user in `/admin/users`
+- [ ] Issue a key for them (`quotaType=credits`, `quotaLimit=100000`)
+- [ ] Copy the plaintext key (shown once)
+- [ ] Disable then re-enable the key, confirm the state flips
 
-### 7.3 Using it with RelayAB
+### 6.3 Providers
+- [ ] Add a real upstream provider in `/admin/providers`
+- [ ] If you use image/audio/video, confirm `/admin/media-providers`
 
-#### Scenario A: client SDK calls
-Have users add a header in their own OpenAI client configuration:
-```typescript
-import OpenAI from "openai";
-const client = new OpenAI({
-  apiKey: "sk-relay-xxx",
-  baseURL: "https://your-app.vercel.app/v1",
-  defaultHeaders: {
-    "x-vercel-protection-bypass": "<your-bypass-secret>",
-  },
-});
-```
-
-#### Scenario B: server-side internal calls
-`src/middleware.ts` injects it automatically:
-```typescript
-if (process.env.VERCEL_PROTECTION_BYPASS) {
-  headers.set("x-vercel-protection-bypass", process.env.VERCEL_PROTECTION_BYPASS);
-}
-```
-
-### 7.4 Security advice
-- A bypass secret is equivalent to "can bypass Vercel authentication" — if it leaks, anyone can get in.
-- Requests only really reach RelayAB after your `sk-relay-xxx` API key has also been validated → two layers of protection.
-- Never commit the bypass secret to Git.
-
----
-
-## 8. Smoke test checklist (tick off each item after deploying)
-
-### 8.1 Basics
-- [ ] Visiting `https://your-app.vercel.app/healthz` returns `{"ok":true,...}`.
-- [ ] The `/login` page renders correctly.
-- [ ] You can log in with the bootstrapped admin account.
-- [ ] After login you are redirected to `/admin`.
-
-### 8.2 Administration
-- [ ] Create a test user at `/admin/users`.
-- [ ] Create a key for that user (set `quotaType=credits`, `quotaLimit=100000`, i.e. 100 credits).
-- [ ] Copy the plaintext key (shown only once).
-- [ ] The key shows up in the list at `/admin/keys`.
-- [ ] Disable the key, then re-enable it, and confirm the status switches correctly.
-
-### 8.3 Providers
-- [ ] Add a real OpenAI provider at `/admin/providers` (with your own OpenAI key).
-- [ ] Add an Anthropic provider.
-
-### 8.4 Proxy calls
-- [ ] Call `/v1/chat/completions` with `curl`, passing `Authorization: Bearer sk-relay-xxx`:
+### 6.4 Proxy calls
+- [ ] Non-streaming:
   ```bash
-  curl -X POST https://your-app.vercel.app/v1/chat/completions \
+  curl -X POST https://your.domain/v1/chat/completions \
     -H "Authorization: Bearer sk-relay-xxx" \
     -H "Content-Type: application/json" \
     -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"say hi"}]}'
   ```
-- [ ] The response contains `usage.total_tokens`.
-- [ ] Visit `/admin/usage` again and confirm `creditsUsed` increased (accumulated at 0.001-credit precision).
+- [ ] Response contains `usage.total_tokens`
+- [ ] **Streaming must arrive token by token** (not all at once):
+  ```bash
+  curl -N -X POST https://your.domain/v1/chat/completions \
+    -H "Authorization: Bearer sk-relay-xxx" \
+    -H "Content-Type: application/json" \
+    -d '{"model":"gpt-4o-mini","stream":true,"messages":[{"role":"user","content":"count to 20"}]}'
+  ```
+  > `-N` disables curl's own buffering. If this looks fine but a browser client
+  > stutters, nginx buffering is misconfigured — see §8.1.
+- [ ] `/admin/usage` shows the increased consumption
 
-### 8.5 User dashboard
-- [ ] Log in with the test user account (not admin).
-- [ ] Open `/dashboard` and you can see your own keys.
-- [ ] Inspect the per-key usage details.
+### 6.5 User dashboard
+- [ ] Sign in as the test user (not admin)
+- [ ] `/dashboard` lists their keys
+- [ ] Per-key usage detail renders
 
-### 8.6 Security
-- [ ] Calling `/api/admin/users` directly (no cookie) → 401.
-- [ ] Calling `/v1/chat/completions` with a disabled key → 403 key_disabled.
-- [ ] Calling with an expired key → 403 key_expired.
-- [ ] Calling with a key whose quota is exhausted → 403 `quota_exceeded_credits`.
-- [ ] In the Upstash Console, search `relay:user:*` and confirm `passwordHash` is a bcrypt hash.
-- [ ] In the Upstash Console, search `relay:provider:*` and confirm `encryptedApiKey` is base64 ciphertext.
-
----
-
-## 9. Troubleshooting
-
-### 9.1 500 errors after deploying
-- Check the Vercel function logs: `Dashboard → Deployments → click into it → Functions`.
-- Most common cause: missing environment variables (confirm that `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` were injected automatically by the Marketplace).
-
-### 9.2 The Marketplace integration did not take effect
-- Vercel Dashboard → Project → **Storage** → confirm the Upstash database card shows **Connected**.
-- If it shows **Not Connected**: click into the card → **Connect to Project**.
-
-### 9.3 Calls return `model_not_mapped`
-- Check `/admin/providers` and make sure the model mapping contains the requested model.
-- Check that the provider is enabled.
-
-### 9.4 Calls time out
-- Vercel Hobby functions run for at most 10 seconds (streaming can be extended to 30 seconds).
-- Pro allows up to 60 seconds.
-- Extremely long streaming responses may get truncated → consider chunking (v2).
-
-### 9.5 Upstash connection errors
-- In the Upstash Console (click "Open in Upstash" on the Marketplace card), under the **Connect** tab, verify the credentials with cURL.
-- Check whether the region is very far from your Vercel region.
-
-### 9.6 The embedded mock shows up in production
-- Confirm that `EMULATE_VERCEL_LOCAL` is unset or `"0"`.
-- `src/app/api/_emu/[...path]/route.ts` has a production guard at the top.
+### 6.6 Security
+- [ ] Unauthenticated `GET /api/admin/users` → 401
+- [ ] Disabled key → 403 `key_disabled`
+- [ ] Expired key → 403 `key_expired`
+- [ ] Exhausted quota → 403 `quota_exceeded_credits`
+- [ ] Port 6379 is not publicly reachable: `ss -tlnp | grep 6379` must show only `127.0.0.1:6379`
+- [ ] `valkey-cli -a '<password>' hgetall relay:user:<id>` shows a bcrypt `passwordHash`
+- [ ] `valkey-cli -a '<password>' hgetall relay:provider:<id>` shows a base64 `encryptedApiKey`
 
 ---
 
-## 10. Upgrades / maintenance
+## 7. Backups
 
-### 10.1 Upgrading dependencies
+All state lives under the standard `relay:*` key namespace, so a backup is a
+backup of Redis itself:
+
 ```bash
-pnpm update --latest
+valkey-cli -a '<password>' --rdb /var/backups/relayab-$(date +%F).rdb
 ```
-Then run the full test suite locally + verify in a preview deployment.
 
-### 10.2 Master key rotation (important)
-1. Generate a new master key: `openssl rand -hex 32`.
-2. Run `pnpm rotate-key` (which runs `scripts/rotate-master-key.ts`; it needs the
-   old key as `OLD_RELAY_MASTER_KEY_HEX` and the new one as `RELAY_MASTER_KEY_HEX`).
-3. Re-encrypt the `encryptedApiKey` of every `relay:provider:*` with the new master key.
-4. Update the Vercel environment variable `RELAY_MASTER_KEY_HEX`.
-5. Redeploy.
+A daily cron entry is worth adding. Usage logs are business records — archive
+them separately.
 
-> ⚠️ **Losing the master key means losing every upstream key permanently** — they
-> are stored as AES-256-GCM ciphertext keyed by it, and there is no recovery path.
-> Take a copy of `RELAY_MASTER_KEY_HEX` somewhere safe before rotating.
+Migrating from the old Upstash instance uses the same mechanism: export an RDB
+and load it. **No transformation needed** — what is stored is plain strings;
+Upstash's automatic `JSON.parse` was a client behaviour, not a data format.
 
-### 10.3 Data export / import
+> **No export/import scripts exist.** Earlier revisions of this doc told you to
+> run `scripts/export-data.ts` and `scripts/import-data.ts`; neither file exists.
 
-> ⚠️ **There are no export/import scripts.** Earlier versions of this section told
-> you to run `scripts/export-data.ts` and `scripts/import-data.ts`; **neither file
-> exists**. `scripts/` contains only `bootstrap-admin.ts`, `check-env.ts`,
-> `list-usage.ts`, `reset-user-password.ts`, `rotate-master-key.ts`,
-> `smoke-local.sh` and `spec-check.ts`.
->
-> For now, a backup means dumping Redis yourself — the data lives in the standard
-> `relay:*` keys, so a `SCAN`-based export of that namespace is sufficient.
+---
+
+## 8. Troubleshooting
+
+### 8.1 Streaming hangs, then dumps at once
+nginx response buffering. The site config needs:
+```nginx
+proxy_buffering off;
+proxy_cache off;
+proxy_set_header X-Accel-Buffering no;
+proxy_set_header Connection "";
+```
+Then `sudo nginx -t && sudo systemctl reload nginx`.
+
+### 8.2 Docs pages show `http://127.0.0.1:3000`
+nginx is not forwarding `X-Forwarded-Proto` / `X-Forwarded-Host`, or
+`RELAY_PUBLIC_URL` is unset. The former is the cause; the latter is the cheap
+belt-and-braces fix.
+
+### 8.3 Admin doc pages say "could not read"
+systemd's `WorkingDirectory` is not the repo root, or only `.next` was deployed.
+`src/components/docs/ProtocolReference.tsx` and `SpecCheckReference.tsx` read
+from the checkout via `process.cwd()`, so a full clone is required.
+
+### 8.4 `/healthz` says ok but endpoints 500
+Check `storage` first. If it is `unconfigured`, `REDIS_URL` is not being read —
+look for a value starting with `http://` (only `redis://` / `rediss://` select
+the TCP transport), or check systemd is actually loading the file
+(`journalctl -u relayab | grep -i env`).
+
+### 8.5 Redis connection errors in the log
+```bash
+valkey-cli -a '<password>' ping          # is the password right
+sudo systemctl status valkey-server      # is it up
+```
+ioredis runs with `maxRetriesPerRequest: 3`, so requests during a Valkey restart
+fail fast instead of hanging.
+
+### 8.6 The service exits immediately
+```bash
+sudo journalctl -u relayab -n 100 --no-pager
+```
+Usually an absolute-path problem in `EnvironmentFile`, or `RELAY_AUTH` shorter
+than 8 characters.
+
+### 8.7 Calls return `model_not_mapped`
+Check the provider's model mapping and that the provider is enabled.
+
+### 8.8 Long responses get truncated
+Proxy routes set `maxDuration = 300`; give nginx more headroom with
+`proxy_read_timeout 600s`.
+
+---
+
+## 9. Upgrades and maintenance
+
+### 9.1 Upgrading
+```bash
+cd /opt/relayab
+git pull
+corepack pnpm install --frozen-lockfile
+corepack pnpm build
+sudo systemctl restart relayab
+```
+
+**Update `RELAY_BUILD_ID` after every upgrade**, otherwise `/healthz` still
+reports the old revision and you will think the deploy did not land.
+
+### 9.2 Rotating the master key (important)
+1. `openssl rand -hex 32`
+2. `pnpm rotate-key` (pass the old key as `OLD_RELAY_MASTER_KEY_HEX`, the new
+   one as `RELAY_MASTER_KEY_HEX`)
+3. Re-encrypt `encryptedApiKey` on every `relay:provider:*`
+4. Update `RELAY_MASTER_KEY_HEX` in `.env.production`
+5. `sudo systemctl restart relayab`
+
+> ⚠️ **Losing the master key = permanently losing every upstream key.** They are
+> stored as AES-256-GCM ciphertext seeded with it, with no recovery path.
+
+> Changing `RELAY_AUTH` has the same blast radius (it invalidates all sessions).
+> Set `RELAY_MASTER_KEY_HEX` explicitly to decouple the two.

@@ -8,7 +8,7 @@
 ## 1. 目标与非目标
 
 ### 1.1 目标
-- 单一 Vercel 项目即可部署，不需要额外服务器。
+- 部署在一台自己的 Debian 服务器上，**没有平台月费、没有请求数上限**。
 - 管理少量（个位数）用户和每个用户的多把 API Key。
 - 每把 Key 可配置：额度上限、过期时间、启用状态、模型限制。
 - 提供兼容 OpenAI Chat Completions 与 Anthropic Messages 的代理接口。
@@ -27,9 +27,12 @@
 
 ```
                                 ┌──────────────────────────────────────┐
-   ┌────────┐  Bearer sk-xxx    │            Vercel 平台              │
+   ┌────────┐  Bearer sk-xxx    │           自托管 Debian 服务器        │
    │ Client │ ────────────────► │  ┌────────────────────────────────┐ │
-   └────────┘                   │  │  Next.js 15 App Router          │ │
+   └────────┘                   │  │  nginx :443  (TLS · 关闭缓冲)   │ │
+                                │  └────────────────────────────────┘ │
+                                │  ┌────────────────────────────────┐ │
+                                │  │  Next.js 15 App Router          │ │
                                 │  │                                │ │
                                 │  │  /v1/chat/completions           │ │
                                 │  │  /anthropic/v1/messages         │ │
@@ -42,14 +45,13 @@
                                 │  │  │   ├─ 认证 (iron-session) │ │ │
                                 │  │  │   ├─ 加密 (AES-GCM)      │ │ │
                                 │  │  │   ├─ 额度引擎            │ │ │
-                                │  │  │   ├─ 上游路由            │ │ │
-                                │  │  │   └─ Vercel REST 客户端  │ │ │
+                                │  │  │   └─ 上游路由            │ │ │
                                 │  │  └──────────────────────────┘ │ │
                                 │  └────────────────────────────────┘ │
                                 │                  │                  │
                                 │                  ▼                  │
                                 │  ┌────────────────────────────────┐ │
-                                │  │  Upstash Redis (KV + 持久化)   │ │
+                                │  │  Valkey 8.1  127.0.0.1:6379    │ │
                                 │  │  users / api_keys / providers  │ │
                                 │  │  usage_logs / sessions         │ │
                                 │  └────────────────────────────────┘ │
@@ -66,16 +68,14 @@
 
 | 主题 | 决策 | 理由 |
 |---|---|---|
-| 部署平台 | Vercel 免费版 | 用户要求；Next.js 适配最好；无额外运维负担 |
+| 部署方式 | 自己的 Debian 服务器（systemd + nginx） | 零平台月费、无请求数上限；nginx 必须关缓冲以保住 SSE 流式 |
 | 框架 | Next.js 15 App Router | Server Actions / Route Handlers 同源；SSR 友好 |
-| 数据存储 | **Vercel Marketplace → Upstash for Redis**（或独立 Upstash，API 完全一致） | 一键安装；Region 自动匹配；REST 访问，无连接池 |
+| 数据存储 | **本机 Valkey**（`REDIS_URL` + ioredis 走 TCP）；也支持 Upstash | 自托管零外部依赖；连接可复用，无需每条命令一次 HTTP |
 | 认证 | iron-session + bcryptjs | 轻量、Edge 兼容、无外部依赖；bcryptjs 纯 JS |
 | 上游 Key 加密 | AES-256-GCM，主密钥从 env | 标准做法；与 TokenPlan 思路一致 |
-| Vercel API 调用 | `@vercel/sdk` | 官方 SDK 类型完整；切换 baseURL 一行实现本地 mock |
-| 本地 mock | `@emulators/adapter-next` | 嵌入式零端口；测试无需独立进程 |
-| AI 代理 | Vercel AI SDK (`ai`) + `@ai-sdk/openai` / `@ai-sdk/anthropic` | 支持流式、自定义 baseURL、模型映射 |
+| AI 代理 | 自写代理层（`src/lib/proxy/*`） | 直接控制 SSE 分帧、协议转换与 baseURL；不依赖第三方 SDK |
 | UI | Tailwind CSS + 自写组件 | 体积小、可控；不引入 shadcn 减少认知负担 |
-| 测试 | Vitest + Playwright | Vitest 与 Vite/Turbopack 集成好；Playwright 是 Vercel 推荐 E2E |
+| 测试 | Vitest + Playwright | Vitest 与 Vite/Turbopack 集成好；Playwright 覆盖登录与响应式回归 |
 
 ### 2.2 界面渲染与响应速度
 
@@ -165,15 +165,9 @@
 | `/api/admin/media-providers` | GET / POST | 媒体供应商与声明式适配 spec 的增删改查 |
 | `/v1/images/*`、`/v1/videos/*`、`/v1/audio/*` | POST | 媒体生成（图片/图生图/视频/语音/音乐），由适配协议驱动 |
 
-### 4.3 嵌入式 Mock（仅开发环境）
-
-| 路径 | 方法 | 用途 |
-|---|---|---|
-| `/api/_emu/[...path]` | ANY | 转发到 `@emulators/vercel` |
-
 ---
 
-### 4.4 媒体适配协议
+### 4.3 媒体适配协议
 
 媒体能力不走聊天协议面，而是**声明式 spec + 通用引擎**：
 
@@ -228,14 +222,6 @@
 - 库：**iron-session 8**。
 - 存储：HttpOnly + Secure + SameSite=Lax cookie，加密后约 1 KB。
 - 不使用 JWT（服务端可主动失效）。
-
-### 5.5 Vercel 部署保护
-- 若项目设置 Deployment Protection，自动跳过需在请求中加：
-  ```
-  x-vercel-protection-bypass: <secret>
-  ```
-- RelayAB 自身 API 透传该 header（中间件层处理）。
-- 详见 [`deployment.md`](./deployment.md#7-部署保护绕过)。
 
 ---
 
@@ -377,50 +363,39 @@
 
 ## 8. 本地开发与测试闭环
 
-### 8.1 嵌入式 Mock 策略（方案 C）
-
-```
-/api/_emu/vercel/*  →  @emulators/adapter-next 的 catch-all 路由
-                         ↓
-                       Hono 路由：/v10/projects, /v2/user, ...
-```
-
-- `next dev` 启动后，`@vercel/sdk` 的 `baseURL` 被环境变量覆盖为
-  `http://localhost:3000/api/_emu/vercel`，所有 SDK 调用命中本地 mock。
-- 生产构建（`NODE_ENV=production`）下，路由文件返回 404，SDK 默认回退到
-  `https://api.vercel.com`。
-
-### 8.2 测试金字塔
+### 8.1 测试金字塔
 
 | 层级 | 工具 | 覆盖 |
 |---|---|---|
 | 单元 | Vitest | 加密、散列、额度计算、积分标准、过期判断 |
-| 集成 | Vitest + Next.js test handler | 路由 + 真实 Redis（mock 或 testcontainers）+ 嵌入式 mock |
+| 集成 | Vitest + Next.js test handler | 路由 + 真实 Redis（mock 或 testcontainers） |
 | E2E | Playwright | 登录、建 Key、看用量、调 OpenAI 兼容接口 |
 
-### 8.3 CI / 本地一键脚本
+### 8.2 CI / 本地一键脚本
 
 ```bash
 pnpm install
 pnpm test:unit          # 纯函数，秒级
 pnpm test:integration   # 集成，需要本地 Redis（测试用 mock）
-pnpm test:e2e           # 需要 Next dev server + 嵌入式 mock
+pnpm test:e2e           # 需要 Next dev server
 ```
 
 ---
 
 ## 9. 部署
 
-### 9.1 Vercel 配置
-- Framework Preset: Next.js
-- Build Command: `pnpm build`
-- Output: `.next`
-- Install Command: `pnpm install`
-- Region: `hnd1`（东京，亚洲用户友好）或 `iad1`（美国）
-- Node Version: 22.x
+### 9.1 服务器配置
+- Node.js 24 + pnpm 10（`corepack enable` 即可）
+- Valkey 8.1，监听 `127.0.0.1:6379`，`maxmemory-policy noeviction`
+- systemd 常驻，`WorkingDirectory` 指向仓库根
+- nginx 反代 + Let's Encrypt 证书，**必须关闭响应缓冲**（否则 SSE 失效）
 
-### 9.2 环境变量（在 Vercel Dashboard 设置）
-见 [`.env.example`](../../.env.example)。
+现成配置在 [`deploy/`](../../deploy/README.md)：
+`relayab.service` / `nginx.conf` / `valkey.conf.example` / `env.production.example`。
+
+### 9.2 环境变量
+见 [`deploy/env.production.example`](../../deploy/env.production.example)。
+必填 `RELAY_AUTH`、`REDIS_URL`、`RELAY_BUILD_ID`。
 
 ### 9.3 首次启动
 - 第一次有请求命中应用时（登录页提交登录、页面读取 session、或代理接口校验 Key），
@@ -431,7 +406,8 @@ pnpm test:e2e           # 需要 Next dev server + 嵌入式 mock
   失败会记录日志并在下一个请求重试。
 - **首次登录后立即修改密码**。
 
-详细步骤见 [`deployment.md`](./deployment.md)。
+详细步骤见 [`deploy/README.md`](../../deploy/README.md) 与
+[`deployment.md`](./deployment.md)。
 
 ---
 
@@ -456,7 +432,6 @@ RelayAB/
 │   │   └── api/
 │   │       ├── auth/{login,logout}/route.ts
 │   │       ├── admin/...
-│   │       ├── _emu/[...path]/route.ts
 │   │       ├── v1/chat/completions/route.ts
 │   │       ├── v1/models/route.ts
 │   │       └── anthropic/v1/messages/route.ts
@@ -464,12 +439,11 @@ RelayAB/
 │   │   ├── auth/         (session.ts, password.ts)
 │   │   ├── crypto/       (secrets.ts, hashing.ts)
 │   │   ├── db/           (redis.ts, repositories)
-│   │   ├── vercel/       (client.ts, api-keys.ts)
 │   │   ├── proxy/        (openai.ts, anthropic.ts, stream.ts)
 │   │   ├── quota/        (credits.ts, rates.ts, calculator.ts)
 │   │   └── config.ts
 │   ├── components/       (UI 组件)
-│   └── middleware.ts     (auth + bypass header 注入)
+│   └── middleware.ts     (路径归一化 / CORS / 用量视图 cookie)
 ├── tests/
 │   ├── unit/
 │   ├── integration/
@@ -494,11 +468,11 @@ RelayAB/
 
 | 风险 | 影响 | 缓解 |
 |---|---|---|
-| 主密钥泄漏 | 攻击者可解密所有上游 Key | 主密钥仅放 Vercel 环境变量；不写入日志；定期轮换脚本 |
-| Redis 误删 | 所有用户/Key 丢失 | 启用 Upstash 自动备份；定期 `db snapshot export` |
-| Vercel Serverless 超时 | 流式长请求被截断 | 配置 `maxDuration: 60`（Pro）或拆 chunk（v2） |
+| 主密钥泄漏 | 攻击者可解密所有上游 Key | 主密钥仅放 `.env.production`（`chmod 600`）；不写入日志；定期轮换脚本 |
+| Redis 误删 | 所有用户/Key 丢失 | 启用 AOF（`appendfsync everysec`）；加日备 cron（`valkey-cli --rdb`） |
+| nginx 响应缓冲 | 流式长请求被卡住后一次性吐出 | 站点配置关闭 `proxy_buffering` 并加 `X-Accel-Buffering no` |
+| 单机故障 | 服务与数据库同时不可用 | Valkey 与应用在同一台机器上，需自行规划备份与故障恢复 |
 | 速率限制 | 共享上游 Key 易触发 OpenAI/Anthropic 限流 | 额度引擎天然限速；v2 加 per-Provider 速率 |
-| 嵌入式 mock 在生产泄漏 | mock 数据被外部访问 | 仅当 `NODE_ENV !== "production"` 时加载 |
 
 ---
 

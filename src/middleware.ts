@@ -9,10 +9,6 @@
  * - Answers CORS preflights and stamps CORS response headers on the public
  *   OpenAI/Anthropic surface, so browser-hosted clients (the ONLYOFFICE AI
  *   plugin, the OpenAI SDK in a web app, ...) can read the responses.
- * - Injects `x-vercel-protection-bypass` when the env secret is set,
- *   so server-side SDK calls can transparently bypass Vercel's
- *   Deployment Protection (the bypass header is otherwise needed
- *   by every SDK client).
  * - Remembers the usage screens' last-used view (range/scope/metric/…)
  *   in a cookie and replays it when the URL carries no view params.
  * - Returns early for static / public assets.
@@ -142,23 +138,7 @@ export function middleware(request: NextRequest) {
     return stampResponse(NextResponse.rewrite(rewritten), cleanPath, cors, viewCookie);
   }
 
-  const bypass = process.env.VERCEL_PROTECTION_BYPASS;
-  if (!bypass) {
-    return stampResponse(NextResponse.next(), cleanPath, cors, viewCookie);
-  }
-
-  // Forward the bypass header on every request so server-internal
-  // fetches to api.vercel.com don't get blocked.
-  const requestHeaders = new Headers(request.headers);
-  if (!requestHeaders.has("x-vercel-protection-bypass")) {
-    requestHeaders.set("x-vercel-protection-bypass", bypass);
-  }
-  return stampResponse(
-    NextResponse.next({ request: { headers: requestHeaders } }),
-    cleanPath,
-    cors,
-    viewCookie,
-  );
+  return stampResponse(NextResponse.next(), cleanPath, cors, viewCookie);
 }
 
 export const config = {

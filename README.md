@@ -42,53 +42,84 @@ So the project has to be set aside for a long, long time. This is not to say it 
 
 > 一个自托管的 AI API 网关（API 中转站），用于将上游 AI 服务的 API Key
 > 安全、可控地分享给少数人，并实现精细的权限和用量管理。
-> 一键部署到 Vercel。
+> 部署到自己的 Debian 服务器（Valkey + systemd + nginx），**无平台月费**。
 >
 > **语言 / Language：中文（本页）· [English](README.en.md)**　——切换只在此处，正文内部不会自动跳语言
 
-## 一键部署到 Vercel
+## 部署到 Debian 服务器
 
 > ⚠️ **本项目已停更，作者不再维护**（见开头《停更公告》）。你仍然可以自行 fork 并部署使用，但不会再有修复、更新或答疑；遇到问题请自行排查，代码与协议文档都在仓库里。
 
-点下面按钮，Vercel 在 "Add Environment Variables" 区**只让你填 1 个变量** —— `RELAY_AUTH`。Upstash 的两个变量**不在这填**，等部署成功后再用 Vercel Marketplace 一键装；公网地址由 `VERCEL_URL` 自动推导，不用填。
+原先的一键部署到 Vercel 的路径已移除——Vercel Pro 每月 20 美元正是《停更公告》里
+提到的原因。RelayAB 现在可以直接跑在自己的机器上，没有平台月费，也没有请求
+数上限。
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FCloudyAasim%2FRelayAB&env=RELAY_AUTH&envDescription=Master%20password%20%2B%20first%20admin%20login%20password&envLink=https%3A%2F%2Fgithub.com%2FCloudyAasim%2FRelayAB%23readme)
+**完整分步手册：[deploy/README.md](deploy/README.md)**
 
-### 步骤（每一步该点什么）
+快速概览：
 
-1. **点击按钮** → 打开 `vercel.com/new/clone`。Vercel 先让你点 "Continue with GitHub" 完成授权（已登录会自动跳过）。
-2. **New Project 页** 出现，向下滚动到 "Add Environment Variables" 区 — **只有一个输入框 `RELAY_AUTH`**。填一个**高熵字符串**（32+ 字节的随机字符；具体值由你定，这是 root secret）。点 **Deploy**。
-3. 等 `Ready` 出现，记下 `*.vercel.app` URL。
-4. **Storage → Create Database → Upstash** → Free → Create。
-5. **Deployments** → 顶部最新一条 → **⋯** → **Redeploy** —— 这次 Upstash 凭证就生效了。
+```bash
+# 1. 数据库（Debian 13 官方源直接内置，无需加第三方仓库）
+sudo apt install -y valkey-server
+#    配置 /etc/valkey/valkey.conf：requirepass + maxmemory-policy noeviction
+sudo systemctl enable --now valkey-server
 
-> ⚠️ **Vercel Upstash Marketplace 注入的变量名是 `KV_REST_API_URL` / `KV_REST_API_TOKEN`**（Vercel KV 时代遗留命名），不是 `UPSTASH_REDIS_REST_*`。RelayAB 的代码和 `/healthz` 同时认这两套名字——`UPSTASH_*` 优先，`KV_*` 兜底。所以不管 Vercel 注入哪套，部署都成功。
+# 2. 代码与构建
+sudo useradd -r -m -d /opt/relayab -s /usr/sbin/nologin relayab
+sudo -u relayab git clone <repo> /opt/relayab
+cd /opt/relayab && corepack pnpm install --frozen-lockfile && corepack pnpm build
+
+# 3. 环境变量
+cp deploy/env.production.example .env.production   # 填 RELAY_AUTH / REDIS_URL / RELAY_BUILD_ID
+chmod 600 .env.production
+
+# 4. 常驻服务
+sudo cp deploy/relayab.service /etc/systemd/system/
+sudo systemctl enable --now relayab
+
+# 5. 反向代理与 TLS
+sudo cp deploy/nginx.conf /etc/nginx/sites-available/relayab
+sudo ln -s /etc/nginx/sites-available/relayab /etc/nginx/sites-enabled/relayab
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d api.your-domain.com
+```
+
+`deploy/` 目录里有全部现成配置：systemd unit、nginx 站点、Valkey 配置说明、
+环境变量模板。
+
+### 三个容易配错的地方
+
+1. **nginx 必须关掉响应缓冲**（`proxy_buffering off` + `X-Accel-Buffering no`），
+   否则 SSE 流式输出会变成「卡住然后一次性全吐」。
+2. **systemd 的 `WorkingDirectory` 必须在仓库根**。管理台有两个页面在运行时读
+   仓库里的文件（`docs/模型适配协议/README.md`、`scripts/spec-check.ts`），
+   只拷 `.next` 会让它们显示「读取失败」。
+3. **Valkey 的 `maxmemory-policy` 必须是 `noeviction`**。余额、配额和用量流水
+   都存在 Redis 里，配成 `allkeys-lru` 会在内存触顶时**静默淘汰**这些记录。
 
 ### 验证
 
 ```bash
-curl -s https://<your-app>.vercel.app/healthz
+curl -s https://<your-domain>/healthz
 ```
 
 期望：
 
 ```json
-{"ok":true,"data":{"status":"ok","env":{"required":3,"configured":3}}}
+{"ok":true,"status":"ok","storage":"redis","required":2,"configured":2,"revision":"v179"}
 ```
 
-如果 `status` 是 `"degraded"`，响应里 `env.missing` 告诉你哪些还没填：
+`storage` 字段用来确认走的是哪条数据库通道（`redis` = 本机 Valkey / TCP），
+`revision` 来自你设置的 `RELAY_BUILD_ID`——自托管没有 Vercel 自动注入的
+commit SHA，**不设置它就无法判断线上跑的是哪一版**。
 
-- 只有 Upstash 缺 → 还没装 Marketplace，跳回 Step 4
-- `RELAY_AUTH` 也缺 → Deploy Button 步骤里没填，回去填
+### 仍然可以用 Upstash 托管版
 
-### 如果你已经在 Vercel 里有这个项目了
+设置 `UPSTASH_REDIS_REST_URL` 和 `UPSTASH_REDIS_REST_TOKEN` 即可走 HTTP REST
+通道，代码零改动。`REDIS_URL` 存在时优先走 TCP。
 
-Deploy Button 走的是 "新建项目" 路径；现有项目**不会自动获得**表单。两种处理：
-
-- **(干净)** Vercel Dashboard → Settings → General → **Delete Project** → 再点 Deploy Button 走新建流程
-- **(实用)** 现有项目 → **Settings → Environment Variables** → 手动加 3 个 key（Upstash 两个先填任意占位字符串也行，缺 URL 校验就在 URL 那栏填 `https://placeholder.upstash.io`）→ 装 Upstash Marketplace → Redeploy
-
-更多细节（部署保护绕过、自托管密钥轮换、备份策略）见 [docs/zh/deployment.md](docs/zh/deployment.md)。
+配置细节（架构、选型理由、冒烟测试清单、故障排查、主密钥轮换）见
+[docs/zh/deployment.md](docs/zh/deployment.md)。
 
 ## 功能
 
@@ -120,13 +151,12 @@ Deploy Button 走的是 "新建项目" 路径；现有项目**不会自动获得
 | 层 | 技术 |
 |---|---|
 | 框架 | Next.js 15 App Router + React 19 + TypeScript 5 |
-| 数据 | Upstash for Redis（Vercel Marketplace 一键安装） |
+| 数据 | Redis 协议（Valkey 8.1 / ioredis 走 TCP，或 Upstash 走 REST） |
 | 认证 | iron-session 8 + bcryptjs（work factor 12） |
 | 加密 | AES-256-GCM（Node `crypto`）+ bcryptjs |
-| 上游 AI | Vercel AI SDK (`ai` + `@ai-sdk/openai` + `@ai-sdk/anthropic`) |
-| Vercel API | `@vercel/sdk` |
+| 上游 AI | 自写协议转换层（`src/lib/proxy/*`，基于 `fetch`） |
+| 部署 | systemd + nginx（配置见 `deploy/`） |
 | 测试 | Vitest + Playwright |
-| 本地 mock | `@emulators/adapter-next` 嵌入式 |
 | UI | Tailwind CSS 3 + 自写组件 |
 
 ## 快速开始
@@ -143,21 +173,28 @@ pnpm install
 cp .env.example .env.local
 ```
 
-**只有 1 个必填，另外 2 个在 Vercel 上会自动注入：**
+**只有 1 个必填，另外需要一台数据库：**
 
 ```bash
 # 必填：主密码（也是管理员登录密码）
 RELAY_AUTH="<openssl rand -hex 32>"
 
-# Vercel 上由 Marketplace 自动注入；自托管时才手动填
-UPSTASH_REDIS_REST_URL="https://<your-db>.upstash.io"
-UPSTASH_REDIS_REST_TOKEN="<your-token>"
+# 数据库（二选一）。自建 Valkey 走 TCP，是自托管场景的默认选择：
+REDIS_URL="redis://:<密码>@127.0.0.1:6379"
+
+# 或者用 Upstash 托管版，走 HTTP REST，代码零改动：
+# UPSTASH_REDIS_REST_URL="https://<your-db>.upstash.io"
+# UPSTASH_REDIS_REST_TOKEN="<your-token>"
 ```
 
-**公网地址不用配。** `/dashboard/docs` 和欢迎页里展示的接口地址会自动取
-`VERCEL_URL`，取不到时读当前请求的 Host 头。只有在自定义域名 / 反向代理
-场景下（用户应该调用的地址 ≠ 他们实际访问到的地址）才需要显式设置
-`RELAY_PUBLIC_URL` 覆盖。
+**本地开发不需要数据库。** 不设置上面任何一个变量直接 `pnpm dev` 即可——
+非生产环境下默认启用内存存储，重启即清空。
+
+**公网地址建议显式设置。** `/dashboard/docs` 和欢迎页里展示的接口地址会依次尝试
+数据库设置、`RELAY_PUBLIC_URL`、请求头里的 `x-forwarded-proto` / `x-forwarded-host`。
+自托管在 nginx 后面时最后那一档能工作，但那是隐式依赖——nginx 一旦漏转发，
+页面就会显示 `http://127.0.0.1:3000`。装好代理后直接把 `RELAY_PUBLIC_URL`
+设成你的域名更稳妥。
 
 **可选：自动 bootstrap 上游 Provider（首次启动时生效）**
 
@@ -172,18 +209,18 @@ ANTHROPIC_BASE_URL="https://api.anthropic.com"
 
 SESSION_PASSWORD 和 RELAY_MASTER_KEY_HEX 都从 RELAY_AUTH 自动派生（HMAC-SHA256），**无需手动生成**。
 
-### 3. 安装 Upstash（推荐）
+### 3. 启动开发服务器
 
-Vercel Dashboard → 项目 → **Storage** → **Create Database** → **Upstash**
-会自动注入 `UPSTASH_REDIS_REST_URL` 和 `UPSTASH_REDIS_REST_TOKEN`。
-
-### 4. 启动开发服务器
+本地开发不需要数据库——不设 `REDIS_URL` / `UPSTASH_*` 时默认走内存存储
+（`EMULATE_VERCEL_LOCAL=1`，仅在 `NODE_ENV !== "production"` 时生效，重启即清空）。
 
 ```bash
 pnpm dev          # → http://localhost:3000
 ```
 
-### 5. 第一个管理员已自动创建！
+要连真实的数据库做本地调试，就把 `REDIS_URL` 指到本机 Valkey 或 Upstash。
+
+### 4. 第一个管理员已自动创建！
 
 首次启动时，RelayAB 自动用 `RELAY_AUTH` 作为密码创建 admin 用户。
 
@@ -244,6 +281,7 @@ pnpm build               # Next.js 生产构建
 
 ```
 RelayAB/
+├── deploy/              自托管部署配置（systemd / nginx / Valkey / env 模板）
 ├── docs/                技术文档
 ├── scripts/             运维脚本（bootstrap / reset / rotate）
 ├── src/
@@ -259,7 +297,6 @@ RelayAB/
 │       ├── db/           持久化（users / keys / providers / usage）
 │       ├── proxy/        上游代理（openai / anthropic）
 │       ├── quota/        配额（credits / rates / calculator）
-│       ├── vercel/       Vercel SDK 封装
 │       └── config.ts     环境变量
 ├── tests/               unit / integration / e2e
 └── 配置文件
@@ -285,7 +322,8 @@ pnpm list-usage [--user <name>] [--days N]     # 用量摘要
 | [docs/zh/api-routes.md](docs/zh/api-routes.md) | API 路由完整规范 |
 | [docs/zh/testing.md](docs/zh/testing.md) | 测试金字塔 + 工具 |
 | [docs/zh/admin.md](docs/zh/admin.md) | 管理员操作指南（用户/Key/Provider 管理） |
-| [docs/zh/deployment.md](docs/zh/deployment.md) | 部署到 Vercel + 部署保护绕过 + 冒烟测试清单 |
+| [docs/zh/deployment.md](docs/zh/deployment.md) | 自托管架构 + 数据库选型 + 冒烟测试清单 + 故障排查 |
+| [deploy/README.md](deploy/README.md) | Debian 分步部署手册 |
 
 > **注意**：媒体供应商协议（图片 / 视频 / 语音 / 音乐供应商的声明式 JSON spec 格式，
 > 及其离线校验器「判官」）**仅有中文版**：
@@ -299,22 +337,27 @@ pnpm list-usage [--user <name>] [--days N]     # 用量摘要
 4. **Session Cookie**：iron-session 加密（HttpOnly + Secure + SameSite=Lax）
 5. **数据库单独泄漏不致命**：拿到 Redis 但拿不到 env var → 无法解密上游 Key
 
-## 完整部署到 Vercel
+## 生产部署
 
-详见 [docs/zh/deployment.md](docs/zh/deployment.md)。最关键的环境变量：
+分步手册见 [deploy/README.md](deploy/README.md)，设计与配置说明见
+[docs/zh/deployment.md](docs/zh/deployment.md)。最关键的环境变量：
 
 | 名称 | 来源 |
 |---|---|
 | `RELAY_AUTH` | `openssl rand -hex 32`（管理员登录密码 + 密钥派生种子） |
-| `UPSTASH_REDIS_REST_URL` | Vercel Marketplace 自动注入 |
-| `UPSTASH_REDIS_REST_TOKEN` | Vercel Marketplace 自动注入 |
+| `REDIS_URL` | 自建 Valkey/Redis 连接串，如 `redis://:<密码>@127.0.0.1:6379` |
+| `RELAY_BUILD_ID` | 版本号或 commit sha，显示在 `/healthz` 的 `revision` |
+| `RELAY_PUBLIC_URL` | 建议设为 `https://你的域名` |
+| `NODE_ENV` | `production`（`EMULATE_VERCEL_LOCAL` 随之默认为 `0`） |
 | `RELAY_ADMIN_USERNAME` | 可选，默认 `admin` |
 | `RELAY_DEFAULT_LOCALE` | 可选，界面默认语言 `zh-CN`（默认）或 `en` |
-| `RELAY_PUBLIC_URL` | 可选，仅当用户应调用的地址 ≠ 实际访问地址时设置（自定义域名 / 反向代理）。默认从 `VERCEL_URL` 或请求 Host 头推导 |
 | `RELAY_MASTER_KEY_HEX` | 可选，默认从 `RELAY_AUTH` 派生 |
 
 `SESSION_PASSWORD` 与（默认情况下的）`RELAY_MASTER_KEY_HEX` 都由 `RELAY_AUTH`
 派生，无需手动设置。
+
+不想自己运维数据库时，改设 `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`
+走托管版，代码零改动。
 
 ## 许可证
 

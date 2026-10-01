@@ -35,7 +35,6 @@ sample**, not an exhaustive index — run `ls tests/unit/` for the full list.
 | **Concurrency** | `tests/unit/concurrency.test.ts` |
 | **Login throttling** | `tests/unit/login-throttle.test.ts` |
 | **Security hardening** | `tests/unit/security-hardening.test.ts` |
-| `vercel/client` | `tests/unit/vercel-client.test.ts` |
 | `proxy/openai` | `tests/unit/proxy-openai.test.ts`, `proxy-openai-stream.test.ts` |
 | `proxy/anthropic` | `tests/unit/proxy-anthropic.test.ts`, `proxy-anthropic-stream.test.ts`, `proxy-anthropic-thinking.test.ts` |
 | **Streaming edge cases** | `tests/unit/proxy-stream-disconnect.test.ts`, `proxy-strip-stream-options.test.ts`, `stream-stopgap.test.ts` |
@@ -67,7 +66,6 @@ pnpm test:unit
 - The repository layer and the proxy layer run in-process, without starting an HTTP server.
 - Redis: an **in-memory mock** (`src/lib/db/__mocks__/memory-redis.ts`), with no dependency on real Upstash.
 - Upstream AI: the proxy layer abstracts HTTP transport behind `fetchImpl`, so tests inject a fake fetch and need no network.
-- The embedded `@emulators/vercel` is used only when the Vercel SDK is required.
 
 ### 2.2 Coverage
 
@@ -178,13 +176,7 @@ SMOKE_PORT=3300 pnpm smoke      # custom port
 
 ## 5. Debugging Tips
 
-### 5.1 Inspect the Embedded Mock Data
-
-Browse to `http://localhost:3000/api/_emu/v10/projects` (the middleware does not block
-it during development). Note the path has no `vercel/` segment — the mock lives at
-`src/app/api/_emu/[...path]/route.ts` and forwards the whole path.
-
-### 5.2 Hit Upstash Redis Directly
+### 5.1 Hit Upstash Redis Directly
 ```bash
 # the env var names RelayAB itself uses; KV_REST_API_* is the legacy alias some
 # Marketplace injects and works here too
@@ -192,7 +184,7 @@ curl -H "Authorization: Bearer $UPSTASH_REDIS_REST_TOKEN" \
   "$UPSTASH_REDIS_REST_URL/keys/relay:user:*?count=10"
 ```
 
-### 5.3 Reproduce the Encryption Round-Trip
+### 5.2 Reproduce the Encryption Round-Trip
 ```typescript
 import { encryptSecret, decryptSecret } from "@/lib/crypto/secrets";
 const ct = encryptSecret("sk-upstream-xxx");

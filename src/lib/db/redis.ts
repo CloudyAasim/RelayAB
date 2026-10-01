@@ -3,11 +3,18 @@
  *
  * Redis client singleton for the entire app.
  *
- * - Uses @upstash/redis (REST-based, no TCP socket). Works in Vercel
- *   serverless functions without code changes.
- * - In test environments we use an in-memory mock that implements the
- *   small subset of the Upstash API we actually use.
- * - Supports multiple environment variable naming conventions:
+ * Two transports are supported, selected in this order:
+ *   1. REDIS_URL             — a `redis://` / `rediss://` connection string,
+ *                              spoken over TCP by ioredis (see redis-tcp.ts).
+ *                              This is the path for a self-hosted server.
+ *   2. UPSTASH_REDIS_REST_*  — Upstash's HTTP/REST API, for hosted databases
+ *                              that expose no TCP port.
+ *
+ * In test environments — and whenever the local emulator is on — we use an
+ * in-memory mock that implements the same `RedisLike` surface, so none of the
+ * three need a reachable database.
+ *
+ * Env-var naming accepted for the REST transport:
  *   - UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN (Upstash SDK default)
  *   - KV_REST_API_URL / KV_REST_API_TOKEN (Vercel Marketplace)
  *   - KV_URL (Upstash Redis direct)
@@ -16,6 +23,7 @@
 import { Redis } from "@upstash/redis";
 import { loadConfig } from "../config";
 import { createMemoryRedis, type RedisLike } from "./__mocks__/memory-redis";
+import { createTcpRedisFromUrl, __resetTcpRedisForTest } from "./redis-tcp";
 export type { RedisLike };
 
 // ---------------------------------------------------------------------------
@@ -39,9 +47,20 @@ function getSharedMemoryRedis(): RedisLike {
 }
 
 /**
+ * Which backend the running configuration selected.
+ *
+ * Exported so `/healthz` can report it instead of guessing, and so a test can
+ * assert the precedence rule without standing up a real server.
+ */
+export type RedisTransport = "memory" | "tcp" | "upstash";
+
+/**
  * Get Redis URL with fallback support for multiple environment variable names.
  */
 function getRedisUrl(): string | undefined {
+  // Self-hosted TCP connection string wins over everything else.
+  const tcp = process.env.REDIS_URL?.trim();
+  if (tcp) return tcp;
   // Try Upstash SDK default first
   if (process.env.UPSTASH_REDIS_REST_URL?.trim()) {
     return process.env.UPSTASH_REDIS_REST_URL.trim();
@@ -58,7 +77,17 @@ function getRedisUrl(): string | undefined {
 }
 
 /**
+ * Is this URL a TCP connection string (ioredis) rather than a REST endpoint?
+ */
+function isTcpUrl(url: string): boolean {
+  return url.startsWith("redis://") || url.startsWith("rediss://");
+}
+
+/**
  * Get Redis token with fallback support for multiple environment variable names.
+ *
+ * A TCP URL carries its own credentials inline (`redis://:pw@host:6379`), so
+ * there is nothing to look up for that transport.
  */
 function getRedisToken(): string | undefined {
   // Try Upstash SDK default first
@@ -93,13 +122,20 @@ export function getRedis(): RedisLike {
   const url = getRedisUrl();
   const token = getRedisToken();
 
+  // TCP transport: credentials are part of the connection string, and the
+  // server being unreachable surfaces as a request error rather than a
+  // config error, so no token is required here.
+  if (url && isTcpUrl(url)) {
+    client = createTcpRedisFromUrl(url);
+    return client;
+  }
+
   if (!url || !token) {
     throw new Error(
-      "[relayab] Redis is not configured. Install Upstash for Redis via " +
-      "Vercel Marketplace (Storage → Create Database → Upstash) to auto-" +
-      "inject UPSTASH_REDIS_REST_URL (or KV_REST_API_URL, KV_URL) and " +
-      "UPSTASH_REDIS_REST_TOKEN (or KV_REST_API_TOKEN, KV_REST_API_READ_ONLY_TOKEN). " +
-      "GET /healthz reports the current state.",
+      "[relayab] Redis is not configured. Set REDIS_URL to a self-hosted\n" +
+        "Valkey/Redis connection string (e.g. redis://:password@127.0.0.1:6379),\n" +
+        "or provide UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN for a\n" +
+        "hosted Upstash database. GET /healthz reports the current state.",
     );
   }
 
@@ -108,11 +144,33 @@ export function getRedis(): RedisLike {
 }
 
 /**
+ * Which transport the current configuration would pick, without opening a
+ * connection. `/healthz` uses this so the report cannot disagree with the
+ * client that `getRedis()` actually built.
+ */
+export function resolveRedisTransport(env: NodeJS.ProcessEnv = process.env): RedisTransport {
+  const nodeEnv = env.NODE_ENV ?? "development";
+  const emulate = env.EMULATE_VERCEL_LOCAL;
+  const usingMemory =
+    nodeEnv === "production" ? emulate === "1" : emulate !== "0";
+  if (usingMemory) return "memory";
+
+  const url = env.REDIS_URL?.trim()
+    || env.UPSTASH_REDIS_REST_URL?.trim()
+    || env.KV_REST_API_URL?.trim()
+    || env.KV_URL?.trim();
+
+  if (url && isTcpUrl(url)) return "tcp";
+  return "upstash";
+}
+
+/**
  * Test-only: clear the cached singleton.
  */
 export function __resetRedisForTest(): void {
   client = null;
   delete (globalThis as RelayGlobal)[MEMORY_REDIS_GLOBAL_KEY];
+  __resetTcpRedisForTest();
 }
 
 /**

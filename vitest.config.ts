@@ -37,7 +37,6 @@ export default defineConfig({
         "src/**/__mocks__/**",
         "src/app/**/page.tsx",
         "src/app/**/layout.tsx",
-        "src/app/api/_emu/**", // emulator pass-through
       ],
     },
   },

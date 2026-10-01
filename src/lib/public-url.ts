@@ -5,10 +5,17 @@
  *
  * Resolution order:
  *   1. Database settings (admin configurable) - highest priority
- *   2. RELAY_PUBLIC_URL - explicit override (custom domain / reverse proxy)
- *   3. VERCEL_URL - injected by Vercel
+ *   2. RELAY_PUBLIC_URL - explicit override (recommended on self-hosted)
+ *   3. VERCEL_URL - legacy Vercel fallback, still honoured so a rollback to
+ *      the old deployment keeps producing correct links without a code change
  *   4. request headers - x-forwarded-proto + x-forwarded-host
  *   5. http://localhost:3000 - last-resort local default
+ *
+ * On a self-hosted box behind nginx, step 4 is what makes the app work with
+ * zero configuration — but it is an *implicit* dependency: if the proxy ever
+ * stops forwarding `X-Forwarded-Proto` / `X-Forwarded-Host`, every page here
+ * silently advertises http://127.0.0.1:3000. Set RELAY_PUBLIC_URL so a proxy
+ * misconfiguration cannot turn into a user-visible wrong address.
  *
  * Server-only: imports `next/headers`. Never call from a client component.
  */

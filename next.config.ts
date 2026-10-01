@@ -1,31 +1,20 @@
 import type { NextConfig } from "next";
-import { withEmulate } from "@emulators/adapter-next";
 
 /**
  * Next.js configuration for RelayAB.
  *
- * Notes:
- * - We use @emulators/adapter-next's `withEmulate` wrapper so that the
- *   embedded Vercel REST API emulator (mounted at /api/_emu) can find its
- *   bundled font files when bundled for serverless deployment.
- * - The wrapper only registers a custom `outputFileTracingIncludes` entry.
- *   In production the emulator is NOT actually loaded (see route.ts); the
- *   `withEmulate` call is therefore a no-op at runtime, but keeps us safe
- *   if we ever flip the conditional.
+ * Self-hosted deployment (Debian + systemd + nginx): the app is started with
+ * `next start` from a full checkout of the repository, so nothing has to be
+ * bundled explicitly. Note that two admin doc pages read files straight off
+ * disk at request time — see `components/docs/ProtocolReference.tsx` and
+ * `components/docs/SpecCheckReference.tsx`, which both resolve paths from
+ * `process.cwd()`. The systemd unit therefore pins `WorkingDirectory` to the
+ * repository root; a trimmed deployment or a `output: "standalone"` image
+ * would leave those pages unable to read their source.
  */
 const baseConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  /**
-   * The admin docs render the media adapter protocol from the repository file
-   * (docs/模型适配协议/README.md) so the panel can never drift from the repo.
-   * Vercel only bundles files it can trace, so include it explicitly —
-   * otherwise the page degrades to "could not read" in production.
-   */
-  outputFileTracingIncludes: {
-    // Both are rendered into the admin docs from the repository itself.
-    "/**": ["./docs/模型适配协议/README.md", "./scripts/spec-check.ts"],
-  },
   experimental: {
     serverActions: {
       bodySizeLimit: "2mb",
@@ -101,4 +90,4 @@ const baseConfig: NextConfig = {
   },
 };
 
-export default withEmulate(baseConfig, { routePrefix: "/api/_emu" });
+export default baseConfig;

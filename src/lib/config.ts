@@ -10,8 +10,12 @@
  * Required (minimum):
  *   RELAY_AUTH                  - master password (admin login + key derivation seed)
  *   RELAY_PUBLIC_URL            - public base URL shown to users (e.g. https://relay.example.com)
- *   UPSTASH_REDIS_REST_URL      - database (auto-injected by Vercel Marketplace)
- *   UPSTASH_REDIS_REST_TOKEN    - database token
+ *
+ * Database — exactly one of:
+ *   REDIS_URL                   - self-hosted Redis/Valkey, spoken over TCP by ioredis
+ *                                 (the normal choice on a self-hosted Debian box)
+ *   UPSTASH_REDIS_REST_URL      - Upstash REST endpoint (hosted alternative)
+ *   UPSTASH_REDIS_REST_TOKEN    - Upstash REST token
  *
  * Optional:
  *   RELAY_MASTER_KEY_HEX        - explicit master key (otherwise derived from RELAY_AUTH)
@@ -20,8 +24,7 @@
  *   ANTHROPIC_KEYS               - "sk-ant-1,sk-ant-2" — auto-create Anthropic provider
  *   OPENAI_BASE_URL              - override OpenAI endpoint (for Azure, proxies, etc.)
  *   ANTHROPIC_BASE_URL           - override Anthropic endpoint
- *   VERCEL_PROTECTION_BYPASS     - bypass Vercel deployment protection
- *   EMULATE_VERCEL_LOCAL         - "1" to enable embedded Vercel REST emulator
+ *   EMULATE_VERCEL_LOCAL         - "1" to use the in-memory store (development only)
  */
 import { z } from "zod";
 import { createHash } from "node:crypto";
@@ -86,12 +89,16 @@ const schema = z.object({
     })
     .optional(),
 
-  // Optional at startup — these are auto-injected by the Upstash for Redis
-  // Vercel Marketplace once you install it on the project. They are required
-  // for the app to actually function (any /api or /admin route touches
-  // Redis). The /healthz endpoint reports whether they are currently present.
-  // The Deploy Button only asks for RELAY_AUTH so you can deploy first,
-  // then install Upstash Marketplace.
+  // Optional at startup — at least one Redis connection must resolve before
+  // any /api or /admin route can work. /healthz reports which one is present.
+  //
+  // Two transports are supported, and they are mutually independent:
+  //   1. REDIS_URL          — standard connection string, spoken over TCP by
+  //                           ioredis. This is the path for a self-hosted
+  //                           deployment (Valkey/Redis on 127.0.0.1).
+  //   2. UPSTASH_REDIS_REST_* — Upstash's HTTP/REST API, kept for hosted
+  //                           deployments that do not expose a TCP port.
+  // REDIS_URL wins when both are present.
   UPSTASH_REDIS_REST_URL: z
     .string()
     .url()
@@ -100,6 +107,24 @@ const schema = z.object({
     })
     .optional(),
   UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
+
+  /**
+   * Standard Redis connection string for a self-hosted server.
+   *
+   * When set, RelayAB connects over a normal TCP socket with ioredis instead
+   * of the Upstash REST API. This is the intended configuration off Vercel,
+   * where a local Valkey/Redis listens on 127.0.0.1: a TCP connection is one
+   * hop shorter and does not pay HTTP-request overhead per command.
+   *
+   * Use `rediss://` for a TLS-terminated endpoint. The password, if any, goes
+   * inline: `redis://:<password>@127.0.0.1:6379`.
+   */
+  REDIS_URL: z
+    .string()
+    .regex(/^rediss?:\/\/.+/, {
+      message: "REDIS_URL must start with redis:// or rediss://",
+    })
+    .optional(),
 
   // Optional with safe defaults
   RELAY_MASTER_KEY_HEX: z.string().optional(),
@@ -116,8 +141,6 @@ const schema = z.object({
   OPENAI_BASE_URL: z.string().optional(),
   ANTHROPIC_KEYS: z.string().optional(),
   ANTHROPIC_BASE_URL: z.string().optional(),
-  VERCEL_PROTECTION_BYPASS: z.string().optional(),
-
   EMULATE_VERCEL_LOCAL: z
     .enum(["0", "1"])
     .optional()
@@ -160,6 +183,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): z.infer<typeof
     UPSTASH_REDIS_REST_TOKEN: emptyToUndefined(
       env.UPSTASH_REDIS_REST_TOKEN ?? env.KV_REST_API_TOKEN ?? env.KV_REST_API_READ_ONLY_TOKEN) ??
       (isTest ? "test-token" : undefined),
+    // Self-hosted path. Empty string disables it so a stray blank value in an
+    // env file cannot make the schema fall back to the REST branch silently.
+    REDIS_URL: emptyToUndefined(env.REDIS_URL),
     RELAY_MASTER_KEY_HEX: env.RELAY_MASTER_KEY_HEX,
     RELAY_ADMIN_USERNAME: emptyToUndefined(env.RELAY_ADMIN_USERNAME) ?? "admin",
     // Passed through explicitly: zod's `.default()` only fires when the key
@@ -170,7 +196,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): z.infer<typeof
     OPENAI_BASE_URL: env.OPENAI_BASE_URL,
     ANTHROPIC_KEYS: env.ANTHROPIC_KEYS,
     ANTHROPIC_BASE_URL: env.ANTHROPIC_BASE_URL,
-    VERCEL_PROTECTION_BYPASS: env.VERCEL_PROTECTION_BYPASS,
     EMULATE_VERCEL_LOCAL: env.EMULATE_VERCEL_LOCAL ?? (isProd ? "0" : "1"),
     NODE_ENV: env.NODE_ENV ?? "development",
   };
@@ -183,9 +208,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): z.infer<typeof
     throw new Error(
       `[relayab] Invalid configuration. Fix the following env vars:\n${issues}\n\n` +
         `Only RELAY_AUTH is strictly required.\n` +
-        `Note: UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are auto-injected\n` +
-        `by the Upstash for Redis Vercel Marketplace after you install it on the project.\n` +
-        `Without them, the app starts but all data routes fail; /healthz reports the state.\n` +
+        `Note: the app also needs a Redis connection. Either set REDIS_URL\n` +
+        `(e.g. redis://:password@127.0.0.1:6379 for a self-hosted Valkey/Redis),\n` +
+        `or provide UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN for a\n` +
+        `hosted Upstash database. Without one, the app starts but all data routes\n` +
+        `fail; /healthz reports the state.\n` +
  +
         `See .env.example for the full list.`,
     );
@@ -289,7 +316,11 @@ function trimSlash(url: string): string {
  *
  * Order:
  *   1. RELAY_PUBLIC_URL — explicit override, for custom domains/proxies
- *   2. VERCEL_URL       — Vercel injects the deployment host automatically
+ *   2. VERCEL_URL       — legacy fallback. Vercel used to inject this
+ *                         automatically; it is still honoured so that
+ *                         rolling back to the old deployment needs no code
+ *                         change, but a self-hosted box should set
+ *                         RELAY_PUBLIC_URL instead.
  *   3. http://localhost:3000 — local dev
  *
  * This cannot see the request, so on a self-hosted box behind an unknown

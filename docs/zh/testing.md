@@ -35,7 +35,6 @@ pnpm type-check && pnpm build
 | **并发** | `tests/unit/concurrency.test.ts` |
 | **登录限流** | `tests/unit/login-throttle.test.ts` |
 | **安全加固** | `tests/unit/security-hardening.test.ts` |
-| `vercel/client` | `tests/unit/vercel-client.test.ts` |
 | `proxy/openai` | `tests/unit/proxy-openai.test.ts`、`proxy-openai-stream.test.ts` |
 | `proxy/anthropic` | `tests/unit/proxy-anthropic.test.ts`、`proxy-anthropic-stream.test.ts`、`proxy-anthropic-thinking.test.ts` |
 | **流式边界情况** | `tests/unit/proxy-stream-disconnect.test.ts`、`proxy-strip-stream-options.test.ts`、`stream-stopgap.test.ts` |
@@ -67,7 +66,6 @@ pnpm test:unit
 - 进程内直接跑仓库层与代理层，不启动 HTTP server。
 - Redis：**内存 mock**（`src/lib/db/__mocks__/memory-redis.ts`），不依赖真实 Upstash。
 - 上游 AI：代理层把 HTTP transport 抽象成 `fetchImpl`，测试注入假的 fetch，无需网络。
-- 嵌入式 `@emulators/vercel` 只在需要 Vercel SDK 时使用。
 
 ### 2.2 覆盖范围
 
@@ -176,12 +174,7 @@ SMOKE_PORT=3300 pnpm smoke      # 自定义端口
 
 ## 5. 调试技巧
 
-### 5.1 看嵌入式 mock 数据
-浏览器访问 `http://localhost:3000/api/_emu/v10/projects`（dev 时 middleware 不挡）。
-注意路径中没有 `vercel/` 这一段——mock 位于
-`src/app/api/_emu/[...path]/route.ts`，并转发整条路径。
-
-### 5.2 直接 hit Upstash Redis
+### 5.1 直接 hit Upstash Redis
 ```bash
 # 这是 RelayAB 自身使用的 env 变量名；KV_REST_API_* 是某些 Marketplace 注入的旧
 # 别名，在这里同样有效
@@ -189,7 +182,7 @@ curl -H "Authorization: Bearer $UPSTASH_REDIS_REST_TOKEN" \
   "$UPSTASH_REDIS_REST_URL/keys/relay:user:*?count=10"
 ```
 
-### 5.3 复现加密 round-trip
+### 5.2 复现加密 round-trip
 ```typescript
 import { encryptSecret, decryptSecret } from "@/lib/crypto/secrets";
 const ct = encryptSecret("sk-upstream-xxx");
