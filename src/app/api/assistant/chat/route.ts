@@ -23,6 +23,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { getAssistantSettings } from "@/lib/db/assistant";
 import { createAssistantThread, getAssistantThread } from "@/lib/db/assistant";
 import { runChat, type ChatEvent } from "@/lib/assistant/chat";
+import { resolvePublicUrl } from "@/lib/public-url";
 
 export const dynamic = "force-dynamic";
 
@@ -90,6 +91,13 @@ export async function POST(req: Request): Promise<Response> {
     ? body.relayKey.trim()
     : undefined;
 
+  // Resolved here, while the request context is still live. The tool loop runs
+  // inside a stream callback, where `next/headers` may no longer resolve, and
+  // without this the model tester addressed http://localhost:3000 and failed
+  // with "fetch failed" on every self-hosted deployment that does not set
+  // RELAY_PUBLIC_URL.
+  const gatewayBase = await resolvePublicUrl();
+
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -104,6 +112,7 @@ export async function POST(req: Request): Promise<Response> {
           thread,
           message,
           ...(relayKey ? { relayKey } : {}),
+          gatewayBase,
           signal: req.signal,
           emit: send,
         });

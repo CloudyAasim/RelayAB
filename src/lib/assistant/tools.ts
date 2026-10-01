@@ -42,6 +42,11 @@ export interface ToolContext {
   user: AuthedUser;
   /** The caller's own `sk-relay-…` key, supplied per request and never stored. */
   relayKey?: string;
+  /**
+   * Where this gateway is reachable, resolved by the route before the tool loop
+   * starts. See `gatewayBase()`.
+   */
+  gatewayBase?: string;
 }
 
 export interface ToolResult {
@@ -57,14 +62,21 @@ export interface ToolResult {
 /**
  * Where the gateway is reachable from the server.
  *
- * `publicUrl()` in lib/config is the canonical resolver: it reads
- * RELAY_PUBLIC_URL, falls back to VERCEL_URL, and only then to localhost.
- * The `settings.publicUrl` row is a *display* override the admin panel edits,
- * and it is null on most deployments — reading it here is what made
- * test_gateway_model fail with "fetch failed" from inside the container.
+ * `config.getPublicUrl()` alone is not enough here. It reads
+ * RELAY_PUBLIC_URL, then VERCEL_URL, then localhost — and a self-hosted
+ * deployment behind nginx usually sets neither, so it answered
+ * "http://localhost:3000" and every `test_gateway_model` call died with
+ * "fetch failed" from inside the container.
+ *
+ * The route resolves the real base with `resolvePublicUrl()`, which can also
+ * read the incoming Host header, and passes it in. The config fallback stays
+ * for callers outside a request scope (the tests) and is the right answer
+ * whenever RELAY_PUBLIC_URL is set, which is still the configuration worth
+ * recommending: header-derived addressing is an implicit dependency on the
+ * proxy forwarding X-Forwarded-*.
  */
-function gatewayBase(): string {
-  return getPublicUrl();
+function gatewayBase(ctx: ToolContext): string {
+  return ctx.gatewayBase ?? getPublicUrl();
 }
 /** Parse tool arguments; a model that sends malformed JSON should not 500. */
 function parseArgs(raw: string): Record<string, unknown> {
@@ -322,7 +334,7 @@ async function testGatewayModel(
     );
   }
 
-  const base = gatewayBase();
+  const base = gatewayBase(ctx);
   const body = {
     model: model.data,
     messages: [

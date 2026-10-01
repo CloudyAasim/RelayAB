@@ -48,6 +48,8 @@ export interface RunChatOptions {
   message: string;
   /** The caller's own gateway key, used only by tools that need it. */
   relayKey?: string;
+  /** Resolved by the route while the request context is live. */
+  gatewayBase?: string;
   signal?: AbortSignal;
   emit: (event: ChatEvent) => void;
 }
@@ -57,7 +59,11 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
   const apiKey = decryptSecret(settings.encryptedApiKey);
   const isAdmin = user.role === "admin";
   const tools = toolDefinitions(isAdmin);
-  const ctx: ToolContext = { user, ...(relayKey ? { relayKey } : {}) };
+  const ctx: ToolContext = {
+    user,
+    ...(relayKey ? { relayKey } : {}),
+    ...(opts.gatewayBase ? { gatewayBase: opts.gatewayBase } : {}),
+  };
 
   // The user's turn goes in first so it is persisted even if the upstream is
   // unreachable — losing the typed message would be the worse failure.
