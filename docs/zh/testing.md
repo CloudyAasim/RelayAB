@@ -27,7 +27,7 @@ pnpm type-check && pnpm build
 | session（iron-session 选项） | `tests/unit/auth-session.test.ts` |
 | Bearer 解析 + Key 校验 | `tests/unit/auth-apikey.test.ts` |
 | 错误词汇表 | `tests/unit/api-errors.test.ts` |
-| 内存 Redis mock 自身 | `tests/unit/memory-redis.test.ts`、`redis-client.test.ts` |
+| SQLite 内存库（:memory:）连接与建表 | `tests/unit/db-types.test.ts`、`bootstrap.test.ts` |
 | 类型 / schema | `tests/unit/db-types.test.ts` |
 | 内置 bootstrap 流程 | `tests/unit/bootstrap.test.ts` |
 | 配额 | `tests/unit/quota-rates.test.ts`、`quota-calculator.test.ts`、`credit-pool.test.ts` |
@@ -64,7 +64,7 @@ pnpm test:unit
 
 ### 2.1 测试环境
 - 进程内直接跑仓库层与代理层，不启动 HTTP server。
-- Redis：**内存 mock**（`src/lib/db/__mocks__/memory-redis.ts`），不依赖真实 Upstash。
+- 数据库：`RELAY_DB_PATH=`:memory:` `（见 `tests/setup.ts`），每个测试文件一份独立内存库，无需任何外部服务。
 - 上游 AI：代理层把 HTTP transport 抽象成 `fetchImpl`，测试注入假的 fetch，无需网络。
 
 ### 2.2 覆盖范围
@@ -96,14 +96,13 @@ pnpm test:unit
 ```typescript
 // tests/integration/repos.test.ts（节选）
 import { beforeEach, expect, it } from "vitest";
-import { __resetRedisForTest, __setRedisForTest } from "@/lib/db/redis";
+import { __resetDbForTest } from "@/lib/db/sqlite";
 import { __resetConfigForTest } from "@/lib/config";
-import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
 import { createApiKey, getApiKeyById } from "@/lib/db/keys";
 
+// 丢掉缓存的连接；下一次访问会用 RELAY_DB_PATH（:memory:）重开一个干净的库
 beforeEach(() => {
-  __resetRedisForTest();
-  __setRedisForTest(createMemoryRedis()); // 每个用例一套干净数据
+  __resetDbForTest();
   __resetConfigForTest();
 });
 
@@ -128,9 +127,9 @@ pnpm test:integration
 
 ## 3. 冒烟测试（真实 HTTP 端到端）
 
-`scripts/smoke-local.sh` 会启动真实的 `next dev`，配 **内存 Redis**
-（`EMULATE_VERCEL_LOCAL=1`）和一个本地 **mock OpenAI 上游**，然后按真实请求链路
-逐项断言：
+`scripts/smoke-local.sh` 会启动真实的 `next dev`，配一个**临时 SQLite 文件库**
+（`RELAY_DB_PATH` 指向脚本自建的临时路径，跑完删除）和一个本地 **mock OpenAI
+上游**，然后按真实请求链路逐项断言：
 
 | 检查 | 断言 |
 |---|---|
@@ -174,13 +173,17 @@ SMOKE_PORT=3300 pnpm smoke      # 自定义端口
 
 ## 5. 调试技巧
 
-### 5.1 直接 hit Upstash Redis
+### 5.1 看一下库里现在有什么
 ```bash
-# 这是 RelayAB 自身使用的 env 变量名；KV_REST_API_* 是某些 Marketplace 注入的旧
-# 别名，在这里同样有效
-curl -H "Authorization: Bearer $UPSTASH_REDIS_REST_TOKEN" \
-  "$UPSTASH_REDIS_REST_URL/keys/relay:user:*?count=10"
+# 库就是一个 SQLite 文件；RELAY_DB_PATH 不设则默认 ./data/relayab.db
+DB="${RELAY_DB_PATH:-./data/relayab.db}"
+sqlite3 "$DB" ".tables"
+sqlite3 "$DB" "SELECT id, username, role FROM users;"
+sqlite3 "$DB" "SELECT name, base_url, enabled FROM providers;"
 ```
+
+测试跑完留下的库可以直接删：`RELAY_DB_PATH=:memory:` 的话更是退出即消失。
+应用运行中不要用 `sqlite3` 写库，只读查询是安全的。
 
 ### 5.2 复现加密 round-trip
 ```typescript

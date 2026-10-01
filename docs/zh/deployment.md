@@ -104,17 +104,15 @@ echo 'RELAY_DB_PATH="/var/lib/relayab/relayab.db"' >> /opt/relayab/.env.producti
 代价是单机单文件：没有内置的高可用，也没有网络可访问性——**这是自托管单机的合理
 取舍**，但也意味着备份要靠自己（见 §7 和 §10 风险表）。
 
-### 3.2 继续用 Upstash 托管版
+### 3.2 早前的托管与 Redis 通道已经移除
 
-代码仍然支持：设置 `UPSTASH_REDIS_REST_URL` 和 `UPSTASH_REDIS_REST_TOKEN` 即可，
-走 HTTP REST 通道。
+托管版 Upstash（`UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`）和本机 TCP
+（`REDIS_URL` / `ioredis`）**都随这次迁移一并删除了**，不是「不推荐」而是不再存在。
+照着旧文档去配这两个变量不会报错，只是完全没有效果——应用照旧写本地 SQLite 文件。
 
-适合应用与数据库要分开部署、或不想让状态留在本机磁盘的场景。代价是每个 Redis 命令
-都是一次 HTTP 请求。**两个变量必须成对设置**——只设一个不会静默回落到本地文件，
-`/healthz` 会报 `degraded` 并点名缺哪个。
-
-> 本机 TCP（`REDIS_URL` / `ioredis`）通道**已经随这次迁移一并移除**。旧文档里
-> `REDIS_URL` 优先于 Upstash 的说法不再成立，配置它不会有任何效果。
+如果你的数据现在在 Upstash 里，迁移前需要自己先导出：直接 REST 拉
+`hgetall relay:user:<id>` 之类是旧结构，新版 schema 不同，请以
+[`src/lib/db/sqlite.ts`](../../src/lib/db/sqlite.ts) 里的建表语句为准手工搬。
 
 ---
 
@@ -164,12 +162,10 @@ curl -s https://你的域名/healthz | jq
 
 | 值 | 含义 |
 |---|---|
-| `sqlite` | 本地 SQLite 文件（自托管正常情况）。不需要任何配置 |
-| `upstash` | 走 REST 通道——**只在你显式设置了 `UPSTASH_REDIS_REST_*` 时才会出现**。没打算用托管版却看到它，说明环境变量被读到了 |
-| `memory` | 非生产环境下的默认内存模式，**生产环境不应出现** |
+| `sqlite` | 本地 SQLite 文件。**这是唯一可能的值**——看到别的说明代码和环境不匹配 |
 
-`required` 会跟着 `storage` 走：SQLite 只需要 `RELAY_AUTH`（1 个），Upstash 通道
-还需要 URL + token 一对（3 个）。
+`required` 固定为 1：SQLite 只需要 `RELAY_AUTH`。库文件本身不需要任何配置项，
+`RELAY_DB_PATH` 没设只是意味着它落在工作目录下的 `data/`。
 
 ---
 
@@ -316,8 +312,8 @@ systemd 的 `WorkingDirectory` 不在仓库根，或部署时只拷了 `.next`�
 
 - 报 `sqlite` 却 500 → 多半是**数据库文件不可写**：`ls -l` 看权限和属主是不是
   `relayab`，目录 `/var/lib/relayab` 是否存在。
-- 报 `upstash` 而你本意是本地文件 → 查环境变量里有没有残留的
-  `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`。
+- `storage` 不是 `sqlite` → 代码和环境里跑的不是一个版本。旧版本会把
+  `UPSTASH_REDIS_REST_*` 读成另一条通道，新版本则完全忽略它们。
 - `missing` 数组点名了变量 → `.env.production` 没被 systemd 加载
   （`journalctl -u relayab | grep -i env`）。
 

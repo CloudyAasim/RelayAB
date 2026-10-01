@@ -4,16 +4,14 @@
  * Pure health-check logic, kept out of the route handler so it can be unit
  * tested directly.
  *
- * "Required" depends on where the data actually lives:
- *   - RELAY_AUTH is ALWAYS required.
- *   - A database is required only when a real store is in use. Outside
- *     production the default is an in-process mock
- *     (`EMULATE_VERCEL_LOCAL=1`), which needs nothing.
+ * SQLite is the only store (see `lib/db/sqlite.ts`): a file managed by Node's
+ * built-in `node:sqlite`, with no service to start, no port to bind and no
+ * password. So there is exactly one variable to check — RELAY_AUTH — and
+ * `storage` is always "sqlite".
  *
- * The store is a local SQLite file by default (see `lib/db/sqlite.ts`), so
- * `storage` is normally "sqlite" and there is nothing to configure — no port,
- * no password, no service. "upstash" appears only when someone has explicitly
- * pointed the app at a hosted Redis, which remains a supported alternative.
+ * Presence is all this can check. Whether the database file is actually
+ * writable is a filesystem question, and the answer only arrives on the first
+ * query; `scripts/check-env.ts` is the tool for asking it before a deploy.
  */
 
 export interface HealthEnv {
@@ -25,12 +23,12 @@ export interface HealthEnv {
    */
   RELAY_DB_PATH?: string;
   NODE_ENV?: string;
-  EMULATE_VERCEL_LOCAL?: string;
   /**
-   * Vercel-provided short SHA of the running deployment.
+   * Deployment revision, shortest-first.
    *
-   * Only present on Vercel. Off Vercel the revision falls through to
-   * DOKKU_GIT_REV and then RELAY_BUILD_ID.
+   * DOKKU_GIT_REV is the one that matters for a self-hosted box; the Vercel
+   * variable is still read so a rollback to the old host keeps reporting a
+   * revision rather than `null`.
    */
   VERCEL_GIT_COMMIT_SHA?: string;
   /**
@@ -40,7 +38,7 @@ export interface HealthEnv {
    * unanswerable.
    */
   DOKKU_GIT_REV?: string;
-  /** Fallback build identifier set by the operator when running off Vercel. */
+  /** Fallback build identifier set by the operator. */
   RELAY_BUILD_ID?: string;
 }
 
@@ -69,27 +67,19 @@ function hasValue(val?: string): boolean {
   return Boolean(val?.trim());
 }
 
-function isTcpUrl(url: string): boolean {
-  return url.startsWith("redis://") || url.startsWith("rediss://");
-}
-
 /**
  * Decide which transport this environment would use, and what (if anything) is
  * still missing for it.
  *
- * Mirrors the store selection in `lib/db/sqlite.ts`. When the two drifted,
- * `/healthz` reported `ok` for a half-configured box while every data route
- * threw — the report is only useful if it cannot disagree with the client that
- * actually got built.
+ * SQLite is the only store. It is a file, so there is nothing to configure
+ * and nothing to go missing — the report would otherwise be a constant. It
+ * stays derived rather than hard-coded so a future store addition has exactly
+ * one place to change.
  */
 function resolveStorage(env: HealthEnv): {
   storage: HealthReport["storage"];
   missing: string[];
 } {
-  // SQLite is the only store. It is a file, so there is nothing to configure
-  // and nothing to go missing — the report would be a constant otherwise,
-  // but it stays derived rather than hard-coded so that a future store
-  // addition has one place to change.
   void env;
   return { storage: "sqlite", missing: [] };
 }

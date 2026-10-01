@@ -5,9 +5,9 @@
 > no Redis/Valkey, no port, no password. Backup is "copy the file".
 >
 > The location is given by `RELAY_DB_PATH`; unset, it defaults to
-> `./data/relayab.db`. A hosted environment may still set
-> `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` to go over Upstash REST,
-> but that is a deliberate alternative deployment, not the default path.
+> `./data/relayab.db`. Earlier versions supported hosted Upstash and a
+> self-hosted Redis; both transports were removed with the migration, so
+> setting `UPSTASH_REDIS_REST_*` or `REDIS_URL` now has no effect.
 >
 > The entity types are defined in [`src/lib/db/types.ts`](../../src/lib/db/types.ts)
 > and the schema in [`src/lib/db/sqlite.ts`](../../src/lib/db/sqlite.ts);

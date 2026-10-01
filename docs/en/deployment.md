@@ -115,20 +115,17 @@ nothing reachable over the network — **a sensible trade for single-box
 self-hosting**, but it means backups are on you (see §7 and the risk table in
 architecture.md).
 
-### 3.2 Staying on hosted Upstash
+### 3.2 The hosted and self-hosted Redis transports are gone
 
-Still supported: set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` and
-the app uses the HTTP REST transport.
+Hosted Upstash (`UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`) and the local
+TCP transport (`REDIS_URL` / `ioredis`) were **removed along with this migration**.
+They are not "discouraged" — they no longer exist. Setting either variable raises no
+error and does nothing; the app writes to the local SQLite file as before.
 
-Worth it when the app and the data store must live separately, or when you do not
-want state sitting on local disk. The cost is that every Redis command becomes an
-HTTP request. **The two variables must be set together** — setting only one does
-not silently fall back to the local file; `/healthz` reports `degraded` and names
-the missing half.
-
-> The local TCP transport (`REDIS_URL` / `ioredis`) was **removed along with this
-> migration**. Older docs said `REDIS_URL` took precedence over Upstash; that is
-> no longer true and setting it does nothing.
+If your data currently lives in Upstash, export it before migrating. Pulling the old
+shape straight out with `hgetall relay:user:<id>` will not map over: the schema
+changed. Transcribe against the `CREATE TABLE` statements in
+[`src/lib/db/sqlite.ts`](../../src/lib/db/sqlite.ts).
 
 ---
 
@@ -177,16 +174,15 @@ Expect:
 The fields are nested under `data`, with `required` / `configured` one level
 deeper still, inside `data.env`.
 
-`storage` tells you which store is live:
+`storage` tells you which store is live, and confirms the migration took:
 
 | Value | Meaning |
 |---|---|
-| `sqlite` | the local SQLite file — the normal self-hosting case. Needs no configuration at all |
-| `upstash` | the REST transport — this only appears if you **explicitly set `UPSTASH_REDIS_REST_*`**. Seeing it when you did not intend to is a sign the variables are being read |
-| `memory` | in-process store. **Should never appear in production** |
+| `sqlite` | the local SQLite file. **This is the only value that can be returned** — anything else means the code and the environment disagree |
 
-`required` follows `storage`: SQLite needs only `RELAY_AUTH` (1), while the
-hosted Redis path also needs the URL and token pair (3).
+`required` is always 1: SQLite needs nothing but `RELAY_AUTH`. The database file
+itself has no configuration; an unset `RELAY_DB_PATH` only means it lands under the
+working directory's `data/`.
 
 ---
 
@@ -342,8 +338,9 @@ Check `storage` first.
 - It says `sqlite` and requests still fail → the **database file is probably not
   writable**: check that `/var/lib/relayab` exists and that both it and the file
   are owned by `relayab`.
-- It says `upstash` when you meant the local file → look for leftover
-  `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` in the environment.
+- `storage` is not `sqlite` → the code and the environment are different
+  versions. Older builds read `UPSTASH_REDIS_REST_*` as a second transport; the
+  current build ignores them entirely.
 - The `missing` array names variables → systemd is not loading
   `.env.production` (`journalctl -u relayab | grep -i env`).
 

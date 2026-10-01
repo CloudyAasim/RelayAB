@@ -1,122 +1,166 @@
 /**
  * scripts/check-env.ts
  *
- * Optional environment-variable validator (manual diagnostic only).
+ * Environment preflight (manual diagnostic only — not wired into any build).
  *
- * No longer wired into any automatic build hook. Run manually with:
- *     pnpm tsx scripts/check-env.ts
+ *     pnpm check-env
  *
- * `/healthz` is the canonical runtime check — it reports the same state as the
- * client that `getRedis()` actually builds. This script is a convenience for
- * catching a typo before the first request.
+ * `/healthz` remains the canonical runtime check. This exists to catch the
+ * two mistakes that are otherwise found the hard way, on the first request:
  *
- * Skipped in `NODE_ENV === "test"` because the test suite supplies its
- * own deterministic defaults via tests/setup.ts.
+ *   1. RELAY_AUTH unset — and the operator has no idea which value the
+ *      existing sessions and encrypted provider keys were derived from.
+ *   2. RELAY_DB_PATH pointing somewhere the app cannot write. SQLite is a
+ *      *file*, so there is no service to start and no credential to get
+ *      wrong; the failure mode is purely filesystem, and the two that actually
+ *      happen are (a) the directory does not exist and cannot be created, and
+ *      (b) the directory exists but belongs to another user — which is exactly
+ *      what a `dokku storage:mount` produces before the ownership is fixed.
+ *
+ * The previous version of this script still checked `REDIS_URL` / `UPSTASH_*`
+ * and told operators to set a Valkey connection string. On a SQLite
+ * deployment it reported "no database configured" while the app was running
+ * perfectly, which is the worst kind of diagnostic: confidently wrong.
  */
 
-/** Always needed, whatever the database transport is. */
+import { existsSync, mkdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { dirname, isAbsolute, resolve } from "node:path";
+
 const REQUIRED = ["RELAY_AUTH"] as const;
 
-const OPTIONAL_DOC: Record<string, string> = {
-  RELAY_AUTH: "Master password (also the first admin login password)",
-  REDIS_URL: "Self-hosted Redis/Valkey, e.g. redis://:<password>@127.0.0.1:6379",
-  UPSTASH_REDIS_REST_URL: "Upstash for Redis REST URL (hosted alternative)",
-  UPSTASH_REDIS_REST_TOKEN: "Upstash for Redis REST token (hosted alternative)",
+const DOC: Record<string, string> = {
+  RELAY_AUTH: "主密码；同时派生会话密钥与 AES 主密钥（改了会让所有已加密的上游密钥失效）",
+  RELAY_DB_PATH: "SQLite 文件路径；生产环境必须放在挂载卷上，例如容器内 /data/relayab.db",
+  RELAY_PUBLIC_URL: "对外公网地址，例如 https://relay.example.com",
+  RELAY_MASTER_KEY_HEX: "显式指定 32 字节十六进制主密钥；不设则由 RELAY_AUTH 派生",
+  RELAY_DEFAULT_LOCALE: "默认语言，zh 或 en",
 };
 
 function has(name: string): boolean {
-  const v = process.env[name];
-  return Boolean(v && v.trim());
+  return Boolean(process.env[name]?.trim());
 }
 
+type State = { level: "ok" | "warn" | "bad"; detail: string };
+
 /**
- * Which database transport this environment selects, mirroring
- * `resolveRedisTransport()` in src/lib/db/redis.ts.
+ * Can the app actually use this database path?
+ *
+ * Deliberately touches the filesystem rather than only inspecting the string:
+ * "RELAY_DB_PATH is set" says nothing about whether the process can create the
+ * file there, and that is the only question that matters.
  */
-function databaseState(): { ok: boolean; detail: string } {
-  const url = has("REDIS_URL") ? process.env.REDIS_URL!.trim() : "";
+function databaseState(): State {
+  const configured = process.env.RELAY_DB_PATH?.trim();
+  const path = configured || `${process.cwd()}/data/relayab.db`;
 
-  if (url) {
-    if (url.startsWith("redis://") || url.startsWith("rediss://")) {
-      return { ok: true, detail: "tcp (ioredis)" };
+  if (path === ":memory:") {
+    return { level: "ok", detail: ":memory:（内存库，重启即失，仅用于测试）" };
+  }
+  if (!isAbsolute(path) && !configured) {
+    // The default lives under cwd(); fine for a systemd unit that owns it.
+    return { level: "ok", detail: `${path}（默认路径，进程工作目录下的 data/）` };
+  }
+
+  const dir = dirname(resolve(path));
+  if (!existsSync(dir)) {
+    try {
+      mkdirSync(dir, { recursive: true });
+      return { level: "ok", detail: `${path}（目录已自动创建）` };
+    } catch (err) {
+      return {
+        level: "bad",
+        detail: `目录 ${dir} 不存在且无法创建：${err instanceof Error ? err.message : String(err)}`,
+      };
     }
-    // Misconfigured: present but not a connection string. This is the case
-    // that used to slip through, because the old check only asked whether
-    // UPSTASH_* was set and never looked at REDIS_URL at all.
-    return {
-      ok: false,
-      detail: "REDIS_URL is set but does not start with redis:// or rediss://",
-    };
   }
 
-  const restUrl = ["UPSTASH_REDIS_REST_URL", "KV_REST_API_URL", "KV_URL"].find(has);
-  const restToken = [
-    "UPSTASH_REDIS_REST_TOKEN",
-    "KV_REST_API_TOKEN",
-    "KV_REST_API_READ_ONLY_TOKEN",
-  ].find(has);
-
-  if (restUrl && restToken) return { ok: true, detail: "upstash (rest)" };
-  if (restUrl || restToken) {
-    return {
-      ok: false,
-      detail: "Upstash pair is half-configured (need both URL and token)",
-    };
+  const probe = `${dir}/.relayab-check-${process.pid}`;
+  try {
+    writeFileSync(probe, "ok");
+    unlinkSync(probe);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const hint = (err as NodeJS.ErrnoException)?.code === "EACCES"
+      ? "—— 目录属主不是应用用户。这正是 dokku storage:mount 建完目录后没 chown 的症状；" +
+        "先 docker exec $CID id -u 拿到 uid，再 chown -R <uid>:<gid> 该目录"
+      : "";
+    return { level: "bad", detail: `目录 ${dir} 不可写：${message}${hint}` };
   }
 
-  return { ok: false, detail: "no database configured" };
+  // Writable, but is the file itself still usable? A directory permission can
+  // allow creating *new* files while an existing database stays unwritable.
+  if (existsSync(path)) {
+    try {
+      if (!statSync(path).isFile()) {
+        return { level: "bad", detail: `${path} 存在但不是普通文件` };
+      }
+    } catch (err) {
+      return {
+        level: "bad",
+        detail: `无法 stat ${path}：${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+  }
+
+  if (configured.startsWith("/home/") || configured.startsWith("/opt/")) {
+    return {
+      level: "warn",
+      detail: `${path}（看起来是宿主机路径。若应用跑在容器里，这里必须写容器内挂载点，例如 /data）`,
+    };
+  }
+  return { level: "ok", detail: path };
 }
 
 function main(): void {
-  const nodeEnv = process.env.NODE_ENV ?? "";
-  const isCI = process.env.CI === "1";
-
-  if (nodeEnv === "test") {
-    console.log("[check-env] NODE_ENV=test → skipping required-env check");
+  if (process.env.NODE_ENV === "test") {
+    console.log("[check-env] NODE_ENV=test → 跳过");
     process.exit(0);
   }
 
   const missing = REQUIRED.filter((k) => !has(k));
   const db = databaseState();
+  const isCI = process.env.CI === "1";
 
-  if (missing.length === 0 && db.ok) {
-    const banner = isCI ? "ci" : "local";
+  for (const [k, v] of Object.entries(DOC)) {
+    if (!has(k)) {
+      console.log(`  · ${k.padEnd(20)} 未设置  — ${v}`);
+    }
+  }
+
+  if (missing.length === 0 && db.level === "ok") {
     console.log(
-      `[check-env] OK (${banner}): ${REQUIRED.length}/${REQUIRED.length} required env vars present, database = ${db.detail}.`,
+      `[check-env] OK (${isCI ? "ci" : "local"}): RELAY_AUTH 已设置，数据库 ${db.detail}`,
     );
     process.exit(0);
   }
 
-  const lines: string[] = [
+  const lines = [
     "",
     "╭──────────────────────────────────────────────────────────────╮",
-    "│  ✗  Incomplete configuration — the app will not serve requests │",
+    "│  ✗  配置不完整，应用会起不来或每次请求都失败                  │",
     "╰──────────────────────────────────────────────────────────────╯",
     "",
   ];
 
   if (missing.length > 0) {
-    lines.push("  Missing required variables:", "");
-    for (const k of missing) lines.push(`    • ${k}    — ${OPTIONAL_DOC[k] ?? ""}`);
+    lines.push("  缺少必填变量：");
+    for (const k of missing) lines.push(`    • ${k}  — ${DOC[k] ?? ""}`);
     lines.push("");
   }
-
-  if (!db.ok) {
-    lines.push("  Database: " + db.detail, "");
+  if (db.level !== "ok") {
+    lines.push(`  数据库：${db.detail}`, "");
+  } else if (db.level === "warn") {
+    lines.push(`  数据库：${db.detail}`, "");
   }
 
   lines.push(
-    "  How to fix (self-hosted Debian — see deploy/env.production.example):",
+    "  自建 Debian 怎么修（见 deploy/env.production.example）：",
     "    1. cp deploy/env.production.example /opt/relayab/.env.production",
-    "    2. Set RELAY_AUTH (openssl rand -hex 32)",
-    "    3. Set REDIS_URL to your Valkey/Redis connection string",
-    "    4. sudo systemctl restart relayab",
+    "    2. RELAY_AUTH=...            # openssl rand -hex 32",
+    "    3. RELAY_DB_PATH=/data/relayab.db   # 容器内挂载点，不是宿主机路径",
+    "    4. systemctl restart relayab（或 dokku 重启应用）",
     "",
-    "  Locally:",
-    "    cp .env.example .env.local   # then edit real values in",
-    "",
-    "  Not using a database? Set EMULATE_VERCEL_LOCAL=1 to run against the",
-    "  in-memory store (development only — nothing is persisted).",
+    "  不需要数据库服务：SQLite 是 Node 内置模块，没有端口也没有密码。",
     "",
   );
 

@@ -180,12 +180,14 @@ Authorization: Bearer sk-relay-xxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ### 7.1 Check a User's Real Quota State
 
 ```bash
-# read the user record straight out of Redis
-# (the env var names RelayAB itself uses; see config.ts — KV_REST_API_* is the
-#  legacy alias some Marketplace injects, and works here too)
-curl -H "Authorization: Bearer $UPSTASH_REDIS_REST_TOKEN" \
-  "$UPSTASH_REDIS_REST_URL/hgetall relay:user:<userId>"
+# The store is a SQLite file; query it directly. Unset RELAY_DB_PATH means
+# ./data/relayab.db under the working directory.
+sqlite3 "$(grep -oP '(?<=^RELAY_DB_PATH=).*' /opt/relayab/.env.production | tr -d '"')" \
+  "SELECT username, role, quota_limit, quota_used FROM users WHERE id = '<userId>';"
 ```
+
+Do not write to the database with `sqlite3` while the app is running — that
+bypasses the transaction layer. Read-only queries are fine.
 
 Compare `quotaLimit` with `quotaUsed`. Credits are stored in units of 0.001 credit,
 so a `quotaLimit` of `100000` means 100 credits. When `quotaUsed` has reached

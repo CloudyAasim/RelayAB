@@ -4,7 +4,7 @@
  * Centralized, validated configuration for RelayAB.
  *
  * Configuration philosophy (inspired by ai-relay):
- * - 3 env vars to start: RELAY_AUTH + Upstash URL/Token
+ * - 1 env var to start: RELAY_AUTH
  * - Everything else is auto-derived at runtime.
  *
  * Required (minimum):

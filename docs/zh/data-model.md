@@ -5,8 +5,8 @@
 > 备份就是复制文件。
 >
 > 库文件位置由 `RELAY_DB_PATH` 决定；不设则默认 `./data/relayab.db`。
-> 托管环境仍可改设 `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` 走 Upstash REST，
-> 但那是一次显式的备选部署，不是默认路径。
+> 早期版本支持过托管的 Upstash 和自建 Redis，这两条通道已随迁移一并移除，
+> 设置 `UPSTASH_REDIS_REST_*` 或 `REDIS_URL` 不会有任何效果。
 >
 > 实体类型定义在 [`src/lib/db/types.ts`](../src/lib/db/types.ts)，建表语句在
 > [`src/lib/db/sqlite.ts`](../src/lib/db/sqlite.ts)，本文档为概要。

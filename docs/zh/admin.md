@@ -176,12 +176,12 @@ Authorization: Bearer sk-relay-xxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ### 7.1 查用户真实配额状态
 
 ```bash
-# 直接从 Redis 读取用户记录
-# （这是 RelayAB 自身使用的 env 变量名；见 config.ts —— KV_REST_API_* 是某些
-#  Marketplace 注入的旧别名，在这里同样有效）
-curl -H "Authorization: Bearer $UPSTASH_REDIS_REST_TOKEN" \
-  "$UPSTASH_REDIS_REST_URL/hgetall relay:user:<userId>"
+# 库就是一个 SQLite 文件，直接查；RELAY_DB_PATH 不设则默认 ./data/relayab.db
+sqlite3 "$(grep -oP '(?<=^RELAY_DB_PATH=).*' /opt/relayab/.env.production | tr -d '"')" \
+  "SELECT username, role, quota_limit, quota_used FROM users WHERE id = '<userId>';"
 ```
+
+应用运行中不要用 `sqlite3` 直接写库——会绕开事务和 WAF。只读查询是安全的。
 
 对比 `quotaLimit` 与 `quotaUsed`。积分以 0.001 积分为单位存储，因此
 `quotaLimit` 为 `100000` 表示 100 积分。当 `quotaUsed` 达到 `quotaLimit` 时，调用会

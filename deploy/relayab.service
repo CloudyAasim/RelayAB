@@ -11,7 +11,7 @@
 [Unit]
 Description=RelayAB — self-hosted AI API relay/gateway
 Documentation=https://github.com/CloudyAasim/RelayAB
-After=network-online.target valkey-server.service
+After=network-online.target
 Wants=network-online.target
 
 [Service]

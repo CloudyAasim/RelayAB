@@ -27,7 +27,7 @@ sample**, not an exhaustive index — run `ls tests/unit/` for the full list.
 | Session (iron-session options) | `tests/unit/auth-session.test.ts` |
 | Bearer parsing + key validation | `tests/unit/auth-apikey.test.ts` |
 | Error vocabulary | `tests/unit/api-errors.test.ts` |
-| The in-memory Redis mock itself | `tests/unit/memory-redis.test.ts`, `redis-client.test.ts` |
+| SQLite in-memory store (:memory:) and schema creation | `tests/unit/db-types.test.ts`, `bootstrap.test.ts` |
 | Types / schema | `tests/unit/db-types.test.ts` |
 | Built-in bootstrap flow | `tests/unit/bootstrap.test.ts` |
 | Quota | `tests/unit/quota-rates.test.ts`, `quota-calculator.test.ts`, `credit-pool.test.ts` |
@@ -64,7 +64,7 @@ pnpm test:unit
 
 ### 2.1 Test Environment
 - The repository layer and the proxy layer run in-process, without starting an HTTP server.
-- Redis: an **in-memory mock** (`src/lib/db/__mocks__/memory-redis.ts`), with no dependency on real Upstash.
+- Database: `RELAY_DB_PATH=:memory:` (see `tests/setup.ts`). Each test file gets its own in-memory database, with no external service involved.
 - Upstream AI: the proxy layer abstracts HTTP transport behind `fetchImpl`, so tests inject a fake fetch and need no network.
 
 ### 2.2 Coverage
@@ -97,14 +97,14 @@ Handlers in-process:
 ```typescript
 // tests/integration/repos.test.ts (excerpt)
 import { beforeEach, expect, it } from "vitest";
-import { __resetRedisForTest, __setRedisForTest } from "@/lib/db/redis";
+import { __resetDbForTest } from "@/lib/db/sqlite";
 import { __resetConfigForTest } from "@/lib/config";
-import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
 import { createApiKey, getApiKeyById } from "@/lib/db/keys";
 
+// Drops the cached handle; the next access reopens a clean database at
+// RELAY_DB_PATH, which is ":memory:" under vitest.
 beforeEach(() => {
-  __resetRedisForTest();
-  __setRedisForTest(createMemoryRedis()); // a clean set of data per case
+  __resetDbForTest();
   __resetConfigForTest();
 });
 
@@ -129,9 +129,10 @@ pnpm test:integration
 
 ## 3. Smoke Tests (Real HTTP End-to-End)
 
-`scripts/smoke-local.sh` starts a real `next dev` with an **in-memory Redis**
-(`EMULATE_VERCEL_LOCAL=1`) and a local **mock OpenAI upstream**, then asserts each
-step along the real request path:
+`scripts/smoke-local.sh` starts a real `next dev` with a **temporary SQLite
+file** (`RELAY_DB_PATH` points at a scratch path the script creates and
+removes) and a local **mock OpenAI upstream**, then asserts each step along the
+real request path:
 
 | Check | Assertion |
 | --- | --- |
@@ -176,13 +177,18 @@ SMOKE_PORT=3300 pnpm smoke      # custom port
 
 ## 5. Debugging Tips
 
-### 5.1 Hit Upstash Redis Directly
+### 5.1 See What Is Actually In the Database
 ```bash
-# the env var names RelayAB itself uses; KV_REST_API_* is the legacy alias some
-# Marketplace injects and works here too
-curl -H "Authorization: Bearer $UPSTASH_REDIS_REST_TOKEN" \
-  "$UPSTASH_REDIS_REST_URL/keys/relay:user:*?count=10"
+# The store is a SQLite file; unset RELAY_DB_PATH means ./data/relayab.db
+DB="${RELAY_DB_PATH:-./data/relayab.db}"
+sqlite3 "$DB" ".tables"
+sqlite3 "$DB" "SELECT id, username, role FROM users;"
+sqlite3 "$DB" "SELECT name, base_url, enabled FROM providers;"
 ```
+
+Whatever a test run leaves behind can just be deleted — and with
+`RELAY_DB_PATH=:memory:` it disappears on exit anyway. Do not write to the
+database with `sqlite3` while the app is running; read-only queries are fine.
 
 ### 5.2 Reproduce the Encryption Round-Trip
 ```typescript
