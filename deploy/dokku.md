@@ -231,7 +231,37 @@ dokku proxy:build-config relay-ab
 
 模板是 sigil 语法（`{{ }}` 插值），sed 时不要破坏原有的插值标记。
 
-## 10. 备份数据库
+## 11. 补全服务商配置（新建后必做）
+
+在管理台新建服务商时通常只填了密钥，base URL、模型映射、媒体 spec 都是空的 ——
+这样的服务商**不会报错，但一个模型也路由不出去**。
+
+仓库自带补全脚本，它会**向上游要真实的模型列表**（而不是猜），并把
+`src/lib/media/seeds.ts` 里已有的 MiniMax 图片 / 视频 / 语音 / STT spec 装进去。
+
+```bash
+# 先看会改成什么，不写入
+dokku exec relay-ab web.1 pnpm configure-minimax --dry-run
+
+# 确认后执行
+dokku exec relay-ab web.1 pnpm configure-minimax
+```
+
+多个服务商时用 `--chat <id>` / `--media <id>` 指定。执行完会打印补全后的
+模型映射、spec 列表，并回读上游核对。
+
+> **密钥无效时脚本会拒绝写入映射**（上游返回 401/403 就中止），不会留下一份
+> 永远路由不通的假配置。
+
+想先看它长什么样而不碰任何数据：
+
+```bash
+pnpm configure-minimax --seed-demo --skip-upstream
+```
+
+`--seed-demo` 会在内存库里造两个只有密钥的假服务商再补全，跑完即消失。
+
+## 12. 备份数据库
 
 数据库就是一个文件，备份也是：
 
