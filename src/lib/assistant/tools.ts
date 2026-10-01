@@ -194,7 +194,7 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
     function: {
       name: "propose_provider_update",
       description:
-        "提出一次聊天服务商配置变更。这不会立刻生效 —— 它生成一份 before/after 对比，等管理员在界面上确认后才执行。baseUrl、模型映射、Anthropic 面、启用开关都可以改。",
+        "提出一次聊天服务商配置变更。这不会立刻生效 —— 它生成一份 before/after 对比，等管理员在界面上确认后才执行。baseUrl、优先级、模型映射、Anthropic 面、启用开关都可以改。",
       parameters: {
         type: "object",
         properties: {
@@ -205,6 +205,10 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
           openaiEnabled: { type: "boolean" },
           anthropicEnabled: { type: "boolean" },
           enabled: { type: "boolean" },
+          priority: {
+            type: "integer",
+            description: "数值越小越优先被选中；并列时取第一个匹配的",
+          },
           modelMapping: {
             type: "object",
             description: "客户端模型名 → 上游模型名 的完整替换表",
@@ -509,6 +513,9 @@ async function proposeProviderUpdate(
   if (typeof args.openaiEnabled === "boolean") patch.openaiEnabled = args.openaiEnabled;
   if (typeof args.anthropicEnabled === "boolean") patch.anthropicEnabled = args.anthropicEnabled;
   if (typeof args.enabled === "boolean") patch.enabled = args.enabled;
+  if (typeof args.priority === "number" && Number.isInteger(args.priority)) {
+    patch.priority = args.priority;
+  }
   if (args.modelMapping && typeof args.modelMapping === "object") {
     const mapping: Record<string, string> = {};
     for (const [k, v] of Object.entries(args.modelMapping as Record<string, unknown>)) {

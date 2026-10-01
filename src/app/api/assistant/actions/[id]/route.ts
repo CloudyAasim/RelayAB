@@ -56,6 +56,7 @@ const ProviderArgsSchema = z
     openaiEnabled: z.boolean().optional(),
     anthropicEnabled: z.boolean().optional(),
     enabled: z.boolean().optional(),
+    priority: z.number().int().optional(),
     modelMapping: z.record(z.string(), z.string()).optional(),
     modelConfigs: z.record(z.string(), ModelConfigSchema).optional(),
   })
