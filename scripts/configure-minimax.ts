@@ -64,52 +64,74 @@ const CHAT_ID = opt("chat");
 const MEDIA_ID = opt("media");
 
 // ---------------------------------------------------------------------------
-// MiniMax facts
+// MiniMax facts (verified against platform.minimax.io/docs, Sep 2026)
 // ---------------------------------------------------------------------------
 
 /**
- * MiniMax serves two protocol surfaces from DIFFERENT base paths, and mixing
- * them is the single most common configuration mistake:
+ * MiniMax keys authenticate against exactly one host, and the rejection is a
+ * bare 401 that never mentions geography — so the only way to tell the hosts
+ * apart is to send the key and see which one stops complaining.
  *
- *   OpenAI-compatible : https://api.minimax.cn/v1
- *   Anthropic-compatible: https://api.minimax.cn/anthropic
+ * Three of them answer, not two:
  *
- * This script configures the OpenAI face, because the upstream model list is
- * only available there. Enabling the Anthropic face too costs nothing and
- * lets clients use `/anthropic/v1/messages` against the same key.
+ *   api.minimax.io     global     key from platform.minimax.io     documented
+ *   api.minimaxi.com   mainland   key from platform.minimaxi.com   documented
+ *   api.minimax.cn     mainland   legacy alias, no longer in the docs
+ *
+ * The third one is why this is a list and not a config flag. It serves the
+ * byte-identical `authorized_error (1004)` envelope as the other two, so it is
+ * unambiguously the real API and not a parked domain or a redirector — but no
+ * current official document names it, which makes it a poor thing to hardcode
+ * into a provider and a good thing to fall back to.
+ *
+ * Probed in that order: the two documented hosts first, the legacy alias last.
  */
-const OPENAI_BASE = "https://api.minimax.cn/v1";
-const ANTHROPIC_BASE = "https://api.minimax.cn/anthropic";
+const REGIONS = [
+  { id: "global", host: "api.minimax.io", documented: true },
+  { id: "cn", host: "api.minimaxi.com", documented: true },
+  { id: "cn-legacy", host: "api.minimax.cn", documented: false },
+] as const;
 
-/** Asked for first; MiniMax's own listing is authoritative when it answers. */
-const MODELS_ENDPOINT = "/models";
+/** Both protocol faces live under each host, on different paths. */
+const OPENAI_PATH = "/v1";
+const ANTHROPIC_PATH = "/anthropic";
 
 /**
- * Fallback list, used only when the upstream cannot be reached. These are the
- * model ids MiniMax documents; the upstream answer always wins when it is
- * available, because vendors add models without warning.
+ * Fallback list, used only when the upstream cannot be reached at all.
+ *
+ * These are the model ids MiniMax documents today. The upstream answer always
+ * wins when it is available, because vendors add and retire models without
+ * notice — and a stale hardcoded list is how a gateway ends up advertising
+ * models that no longer exist.
  */
 const FALLBACK_MODELS = [
+  "MiniMax-M3",
+  "MiniMax-M2.7",
+  "MiniMax-M2.7-highspeed",
   "MiniMax-M2.5",
+  "MiniMax-M2.5-highspeed",
   "MiniMax-M2.1",
+  "MiniMax-M2.1-highspeed",
   "MiniMax-M2",
-  "MiniMax-M1",
-  "abab6.5s-chat",
+  "M2-her",
 ];
 
 /**
- * Context windows for the models we have shipped against. Only used to fill in
- * `modelConfigs` for models the upstream listing returned but we have no entry
- * for; a wrong number here is worse than the schema default, so anything
- * unknown keeps the default rather than being guessed.
+ * Context windows from the MiniMax model table. Only consulted for models the
+ * upstream returned that we have no entry for; anything unknown keeps the
+ * schema default rather than being guessed, because a wrong number here feeds
+ * straight into token accounting.
  */
 const KNOWN_CONTEXT: Record<string, { context: number; output: number }> = {
-  "MiniMax-M2.5": { context: 204_800, output: 131_072 },
-  "MiniMax-M2.1": { context: 204_800, output: 131_072 },
-  "MiniMax-M2": { context: 204_800, output: 131_072 },
+  "MiniMax-M3": { context: 1_000_000, output: 131_072 },
   "MiniMax-M2.7": { context: 204_800, output: 131_072 },
-  "MiniMax-M1": { context: 32_768, output: 32_768 },
-  "abab6.5s-chat": { context: 32_768, output: 8_192 },
+  "MiniMax-M2.7-highspeed": { context: 204_800, output: 131_072 },
+  "MiniMax-M2.5": { context: 204_800, output: 131_072 },
+  "MiniMax-M2.5-highspeed": { context: 204_800, output: 131_072 },
+  "MiniMax-M2.1": { context: 204_800, output: 131_072 },
+  "MiniMax-M2.1-highspeed": { context: 204_800, output: 131_072 },
+  "MiniMax-M2": { context: 204_800, output: 131_072 },
+  "M2-her": { context: 64_000, output: 8_192 },
 };
 
 // ---------------------------------------------------------------------------
@@ -148,43 +170,101 @@ function describeMedia(m: MediaProvider): string {
 // Chat provider
 // ---------------------------------------------------------------------------
 
+/** What one probe of a region told us. */
+interface RegionProbe {
+  region: (typeof REGIONS)[number];
+  ok: boolean;
+  status: number;
+  models: string[];
+  latencyMs: number;
+  detail?: string;
+}
+
+/**
+ * Ask one region for its model list using the stored key.
+ *
+ * A 401 here is the expected answer for the *wrong* region, not a broken key —
+ * which is exactly why both are tried before concluding anything.
+ */
+async function probeRegion(
+  region: (typeof REGIONS)[number],
+  p: Provider,
+): Promise<RegionProbe> {
+  const baseUrl = `https://${region.host}${OPENAI_PATH}`;
+  const res = await callUpstream({
+    baseUrl,
+    encryptedApiKey: p.encryptedApiKey,
+    path: "/models",
+    timeoutMs: 15_000,
+  });
+  const models = res.ok ? extractModelIds(res.body) : [];
+  return {
+    region,
+    ok: res.ok && models.length > 0,
+    status: res.status,
+    models,
+    latencyMs: res.latencyMs,
+    detail: res.error ?? (res.ok ? undefined : summarize(res.body)),
+  };
+}
+
+function summarize(body: unknown): string {
+  const s = typeof body === "string" ? body : JSON.stringify(body ?? "");
+  return s.length > 160 ? `${s.slice(0, 160)}…` : s;
+}
+
+/**
+ * Find the host this key belongs to.
+ *
+ * A region mismatch is indistinguishable from a bad key by status code alone —
+ * every host answers an unauthenticated call with the same `authorized_error
+ * (1004)` envelope. Probing them in turn and reporting which one authenticated
+ * is the only reliable way to tell them apart, and it means the operator never
+ * has to know which platform their key came from.
+ */
+async function resolveRegion(
+  p: Provider,
+): Promise<{ region: (typeof REGIONS)[number]; models: string[] } | null> {
+  c.head(`探测区域  （密钥属于 ${p.name}）`);
+
+  for (const region of REGIONS) {
+    const probe = await probeRegion(region, p);
+    if (probe.ok) {
+      c.ok(
+        `${region.host} 认证通过，${probe.models.length} 个模型（${probe.latencyMs}ms）` +
+          (region.documented ? "" : "  ← 旧域名，官方文档已不再列出"),
+      );
+      return { region, models: probe.models };
+    }
+    const why =
+      probe.status === 401 || probe.status === 403
+        ? "401/403 —— 密钥不属于这个区域（或密钥无效）"
+        : probe.status === 0
+          ? `连不上：${probe.detail ?? "网络错误"}`
+          : `HTTP ${probe.status}：${probe.detail ?? ""}`;
+    c.warn(`${region.host} ${why}`);
+  }
+
+  return null;
+}
+
 async function resolveUpstreamModels(p: Provider): Promise<string[]> {
   if (SKIP_UPSTREAM) {
     c.warn("跳过上游探测，使用内置模型列表");
     return FALLBACK_MODELS;
   }
 
-  // Probe with the base URL as it currently stands, so a provider that was
-  // created with no base URL still gets a real answer rather than a guess.
-  const base = p.baseUrl || OPENAI_BASE;
-  c.head(`探测上游模型列表  ${base}${MODELS_ENDPOINT}`);
-  const res = await callUpstream({
-    baseUrl: base,
-    encryptedApiKey: p.encryptedApiKey,
-    path: MODELS_ENDPOINT,
-    timeoutMs: 15_000,
-  });
-
-  if (!res.ok) {
-    c.bad(`上游返回 ${res.status}${res.error ? ` (${res.error})` : ""}`);
-    const detail =
-      typeof res.body === "string" ? res.body : JSON.stringify(res.body ?? "").slice(0, 200);
-    console.log(`      上游响应: ${detail}`);
-    if (res.status === 401 || res.status === 403) {
-      c.bad("密钥无效或无权限 —— 不会写入任何映射，请先在管理台确认密钥正确。");
-      return [];
-    }
-    c.warn("改用内置模型列表继续。");
-    return FALLBACK_MODELS;
+  const found = await resolveRegion(p);
+  if (found) {
+    c.ok(`使用区域 ${found.region.host}`);
+    c.ok(`模型：${found.models.join(", ")}`);
+    return found.models;
   }
 
-  const ids = extractModelIds(res.body);
-  if (ids.length === 0) {
-    c.warn("上游返回了无法解析的模型列表，改用内置列表");
-    return FALLBACK_MODELS;
-  }
-  c.ok(`上游返回 ${ids.length} 个模型（${res.latencyMs}ms）: ${ids.join(", ")}`);
-  return ids;
+  c.bad(`全部 ${REGIONS.length} 个主机都无法用这个密钥认证`);
+  c.warn("不会写入任何模型映射 —— 一份永远路由不通的假配置比空配置更难排查。");
+  c.warn("请确认密钥是否有效，以及它来自 platform.minimax.io 还是 platform.minimaxi.com。");
+  return [];
 }
 
 function buildModelConfig(id: string): ModelConfig {
@@ -227,8 +307,13 @@ async function configureChat(): Promise<boolean> {
     return true;
   }
 
-  const models = await resolveUpstreamModels(target);
-  if (models.length === 0) return false;
+  const region = SKIP_UPSTREAM ? null : await resolveRegion(target);
+  if (!SKIP_UPSTREAM && !region) {
+    c.bad("无法确定密钥所属区域，未写入任何配置");
+    return false;
+  }
+  const host = region?.region.host ?? REGIONS[0].host;
+  const models = region?.models ?? FALLBACK_MODELS;
 
   // Identity mapping: the client asks for the same id the upstream uses.
   // The docs are explicit that aliasing to something else misleads whoever
@@ -243,13 +328,13 @@ async function configureChat(): Promise<boolean> {
   const faces = defaultFaceFlags(target.kind, target.upstreamFormat);
 
   const updated = await updateProvider(target.id, {
-    baseUrl: OPENAI_BASE,
+    baseUrl: `https://${host}${OPENAI_PATH}`,
     modelMapping,
     modelConfigs,
-    // MiniMax speaks both protocols; turning the Anthropic face on with its
-    // own base is what `/anthropic/v1/messages` needs, and the two bases are
-    // not interchangeable.
-    anthropicBaseUrl: ANTHROPIC_BASE,
+    // MiniMax speaks both protocols; the Anthropic face needs its OWN base
+    // path — the two are not interchangeable, and mixing them is the most
+    // common MiniMax configuration mistake.
+    anthropicBaseUrl: `https://${host}${ANTHROPIC_PATH}`,
     openaiEnabled: faces.openaiEnabled,
     anthropicEnabled: true,
     enabled: true,
@@ -260,11 +345,13 @@ async function configureChat(): Promise<boolean> {
     return false;
   }
 
+  c.ok(`区域      = ${host}`);
   c.ok(`baseUrl   = ${updated.baseUrl}`);
   c.ok(`anthropic = ${updated.anthropicBaseUrl}`);
   c.ok(`模型映射  = ${Object.keys(updated.modelMapping).length} 条`);
   for (const [client, upstream] of Object.entries(updated.modelMapping)) {
-    console.log(`      ${client} → ${upstream}`);
+    const ctx = KNOWN_CONTEXT[client];
+    console.log(`      ${client} → ${upstream}${ctx ? `  (${ctx.context.toLocaleString()} ctx)` : ""}`);
   }
   return true;
 }
@@ -369,7 +456,7 @@ async function verify(): Promise<void> {
     const res = await callUpstream({
       baseUrl: p.baseUrl,
       encryptedApiKey: p.encryptedApiKey,
-      path: MODELS_ENDPOINT,
+      path: "/models",
       timeoutMs: 15_000,
     });
     const advertised = Object.keys(p.modelMapping ?? {});
@@ -387,7 +474,7 @@ async function verify(): Promise<void> {
       c.warn(`  映射里有上游没有的: ${missing.join(", ")}`);
     }
     if (extra.length > 0) {
-      c.warn(`  上游有但没映射: ${extra.join(", ")}  （新模型，用 --chat 重跑一次即可带上）`);
+      c.warn(`  上游有但没映射: ${extra.join(", ")}  （新模型，重跑一次即可带上）`);
     }
   }
 
