@@ -41,6 +41,7 @@ interface Labels {
   promptPlaceholder: string;
   size: string;
   voice: string;
+  voiceHint: string;
   language: string;
   audioFile: string;
   run: string;
@@ -77,6 +78,14 @@ const CAP_LABEL: Record<string, string> = {
   "music.generate": "music.generate",
 };
 
+/**
+ * MiniMax's `t2a_v2` rejects a request with no `voice_setting.voice_id`, so the
+ * field is optional in the spec (`$ifPresent`) and the failure only shows up as
+ * an upstream 400 phrased as `missing required parameter`. Pre-filling a voice
+ * that is known to work turns that into the default path instead of a trap.
+ */
+const DEFAULT_TTS_VOICE = "English_Trustworth_Man";
+
 function extractItems(body: unknown): { urls: string[]; b64: number } {
   const data = (body as { data?: unknown })?.data;
   if (!Array.isArray(data)) return { urls: [], b64: 0 };
@@ -94,7 +103,7 @@ export function MediaTester({ models, labels }: Props) {
   const [model, setModel] = useState(models[0]?.id ?? "");
   const [prompt, setPrompt] = useState("");
   const [size, setSize] = useState("1024x1024");
-  const [voice, setVoice] = useState("");
+  const [voice, setVoice] = useState(DEFAULT_TTS_VOICE);
   const [language, setLanguage] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -271,9 +280,10 @@ export function MediaTester({ models, labels }: Props) {
           {capability === "audio.tts" && (
             <Input
               label={labels.voice}
+              hint={labels.voiceHint}
+              required
               value={voice}
               onChange={(e) => setVoice(e.target.value)}
-              placeholder="English_Trustworth_Man"
             />
           )}
           {isStt && (

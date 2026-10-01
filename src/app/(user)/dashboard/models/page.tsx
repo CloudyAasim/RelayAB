@@ -88,6 +88,7 @@ export default async function ModelsPage() {
               promptPlaceholder: t("dashboard.models.media.promptPlaceholder"),
               size: t("dashboard.models.media.size"),
               voice: t("dashboard.models.media.voice"),
+              voiceHint: t("dashboard.models.media.voiceHint"),
               language: t("dashboard.models.media.language"),
               audioFile: t("dashboard.models.media.audioFile"),
               run: t("dashboard.models.media.run"),

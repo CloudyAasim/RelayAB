@@ -729,6 +729,8 @@ const zhCN: Dict = {
   "dashboard.models.media.promptPlaceholder": "想生成什么？",
   "dashboard.models.media.size": "尺寸",
   "dashboard.models.media.voice": "音色",
+  "dashboard.models.media.voiceHint": "上游必填。留空会被拒（missing required parameter），所以这里已预填一个可用的。",
+
   "dashboard.models.media.language": "语言",
   "dashboard.models.media.audioFile": "音频文件",
   "dashboard.models.media.run": "生成",
@@ -1547,6 +1549,8 @@ const en: Dict = {
   "dashboard.models.media.promptPlaceholder": "What should it make?",
   "dashboard.models.media.size": "Size",
   "dashboard.models.media.voice": "Voice",
+  "dashboard.models.media.voiceHint": "The vendor requires it. An empty value is rejected with 'missing required parameter', so one that is known to work is pre-filled.",
+
   "dashboard.models.media.language": "Language",
   "dashboard.models.media.audioFile": "Audio file",
   "dashboard.models.media.run": "Generate",
