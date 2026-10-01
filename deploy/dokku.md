@@ -33,11 +33,11 @@ dokku git:set relay-ab deploy-branch server
 
 ## 3. 准备数据库目录
 
-容器里每次构建都会换一层，**数据库文件必须放在挂载卷上**，否则重建即丢：
+容器里每次构建都会换一层，**数据库文件必须放在挂载卷上**，否则重建即丢。
+
+### 3.1 建目录并挂载
 
 ```bash
-sudo mkdir -p /home/dokku/data/relay-ab
-sudo chown -R dokku:dokku /home/dokku/data/relay-ab
 dokku storage:ensure-directory relay-ab
 dokku storage:mount relay-ab /home/dokku/data/relay-ab:/data
 ```
@@ -45,6 +45,42 @@ dokku storage:mount relay-ab /home/dokku/data/relay-ab:/data
 `app.json` 已经把 `RELAY_DB_PATH` 设成 `/data/relayab.db`，正好落在挂载点上。
 **如果不做这一步，重建会得到一个空数据库**（用户和密钥全没了，但主密钥还在，
 所以加密后的上游 Key 永久解不开 —— 这一步别省）。
+
+### 3.2 把属主改成容器里应用用户的 uid（必做）
+
+`storage:ensure-directory` 建出来的目录属主是 `dokku` 用户，但 **herokuish
+镜像里的应用进程不是以它运行的** —— 实际是 `herokuishuser`（uid 32767）。
+两边对不上，于是 SQLite 建库时 `EACCES`，表现为：
+
+- 登录页等静态页面**完全正常**（它们不碰数据库）
+- 任何碰数据库的接口 500，Dokku 把它转成
+  "Server is not ready. Please try again shortly."
+- `/healthz` 报 `"ok": false` 且 `data.error` 是 `unable to open database file`
+
+先问出应用实际的 uid，别硬编码：
+
+```bash
+CID=$(docker ps -q --filter name=relay-ab)
+APP_UID=$(docker exec $CID id -u)
+APP_GID=$(docker exec $CID id -g)
+
+sudo chown -R "$APP_UID:$APP_GID" /home/dokku/data/relay-ab
+dokku ps:restart relay-ab
+```
+
+确认：
+
+```bash
+docker exec $(docker ps -q --filter name=relay-ab) touch /data/probe \
+  && echo "可写 ✓" && docker exec $(docker ps -q --filter name=relay-ab) rm /data/probe
+```
+
+> **每次重建后都要重新确认一次。** 不同 Dokku/构建镜像版本下
+> `herokuishuser` 的 uid 可能不同（32767 是当前 herokuish 的常见值，不是保证），
+> 所以脚本里先 `id -u` 读出来再用。
+>
+> 另一个思路是在建 app 时就固定用户：`dokku apps:create relay-ab --user 1000`，
+> 但那只影响新建的 app。
 
 ## 4. 密钥是怎么来的
 
@@ -201,6 +237,35 @@ sudo -u dokku sqlite3 /home/dokku/data/relay-ab/relayab.db \
 别处、数据库单独存在别处，都没有意义；两个都要。
 
 ## 常见问题
+
+**登录页正常，但一提交就跳 "Server is not ready. Please try again shortly."**
+
+这是 Dokku 把应用返回的 500 转成的提示页。**静态页面不碰数据库所以照常渲染，
+只有真正读写数据的接口在失败** —— 绝大多数情况是数据库目录属主不对，见 §3.2。
+先看 `/healthz`：
+
+```bash
+curl -s https://你的域名/healthz | jq .data.error
+```
+
+报 `unable to open database file` 就是权限或挂载问题：
+
+```bash
+CID=$(docker ps -q --filter name=relay-ab)
+docker exec $CID sh -c 'touch /data/probe' \
+  && echo "可写" || { sudo chown -R $(docker exec $CID id -u):$(docker exec $CID id -g) /home/dokku/data/relay-ab; \
+                     dokku ps:restart relay-ab; }
+```
+
+如果 `touch` 本来就成功却仍然报错，看应用日志里 SQLite 的具体错误码：
+`SQLITE_CANTOPEN` 是路径/权限，`SQLITE_READONLY` 是文件系统只读，
+`SQLITE_IOERR` 通常意味着该文件系统不支持 WAL 需要的锁 —— 换挂载点或用
+`journal_mode=DELETE`。
+
+**重启后数据没了**
+
+数据库没落在挂载卷上。`dokku storage:mount relay-ab /home/dokku/data/relay-ab:/data`
+建好后重启容器再 `ls -la /data/`，文件应该还在。
 
 **构建报找不到 pnpm**
 `package.json` 的 `packageManager: "pnpm@10.28.0"` 决定 buildpack 装哪个 pnpm。
