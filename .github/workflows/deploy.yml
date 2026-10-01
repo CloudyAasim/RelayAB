@@ -33,3 +33,9 @@ jobs:
         with:
           git_remote_url: ${{ secrets.GIT_REMOTE_URL }}
           ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY }}
+          # The action pushes this branch name to the Dokku remote, and Dokku
+          # builds whatever arrives. The Debian work lives on `server`; the
+          # action defaults to `master`, which would push the frozen Vercel
+          # code instead — and fail, because the Dokku app's own history is on
+          # master and the push is rejected as non-fast-forward.
+          branch: server
