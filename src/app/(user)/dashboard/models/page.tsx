@@ -54,40 +54,47 @@ export default async function ModelsPage() {
     <SectionPageLayout>
       <SectionPageLayout.Title>{t("dashboard.models.title")}</SectionPageLayout.Title>
 
-      <ModelTester
-        chatModels={chatModels}
-        mediaModels={mediaModels}
-        labels={{
-          title: t("dashboard.models.gateway.title"),
-          desc: t("dashboard.models.gateway.desc"),
-          keyLabel: t("dashboard.models.gateway.keyLabel"),
-          keyHint: t("dashboard.models.gateway.keyHint"),
-          keyPlaceholder: t("dashboard.models.gateway.keyPlaceholder"),
-          prompt: t("dashboard.models.gateway.prompt"),
-          send: t("dashboard.models.gateway.send"),
-          stop: t("dashboard.models.gateway.stop"),
-          empty: t("dashboard.models.gateway.empty"),
-          needsKey: t("dashboard.models.gateway.needsKey"),
-          mediaHint: t("dashboard.models.gateway.mediaHint"),
-        }}
-      />
+      {/* SectionPageLayout renders only its four slots and silently drops any
+          other child — a page without this wrapper shows its title and nothing
+          else. */}
+      <SectionPageLayout.Content>
+        <div className="space-y-4">
+          <ModelTester
+            chatModels={chatModels}
+            mediaModels={mediaModels}
+            labels={{
+              title: t("dashboard.models.gateway.title"),
+              desc: t("dashboard.models.gateway.desc"),
+              keyLabel: t("dashboard.models.gateway.keyLabel"),
+              keyHint: t("dashboard.models.gateway.keyHint"),
+              keyPlaceholder: t("dashboard.models.gateway.keyPlaceholder"),
+              prompt: t("dashboard.models.gateway.prompt"),
+              send: t("dashboard.models.gateway.send"),
+              stop: t("dashboard.models.gateway.stop"),
+              empty: t("dashboard.models.gateway.empty"),
+              needsKey: t("dashboard.models.gateway.needsKey"),
+              mediaHint: t("dashboard.models.gateway.mediaHint"),
+            }}
+          />
 
-      <CustomModelProbe
-        labels={{
-          title: t("dashboard.models.custom.title"),
-          desc: t("dashboard.models.custom.desc"),
-          ephemeral: t("dashboard.models.custom.ephemeral"),
-          baseUrl: t("dashboard.models.custom.baseUrl"),
-          apiKey: t("dashboard.models.custom.apiKey"),
-          model: t("dashboard.models.custom.model"),
-          listModels: t("dashboard.models.custom.listModels"),
-          testChat: t("dashboard.models.custom.testChat"),
-          testing: t("dashboard.models.custom.testing"),
-          ok: t("dashboard.models.custom.ok"),
-          failed: t("dashboard.models.custom.failed"),
-          foundModels: t("dashboard.models.custom.foundModels"),
-        }}
-      />
+          <CustomModelProbe
+            labels={{
+              title: t("dashboard.models.custom.title"),
+              desc: t("dashboard.models.custom.desc"),
+              ephemeral: t("dashboard.models.custom.ephemeral"),
+              baseUrl: t("dashboard.models.custom.baseUrl"),
+              apiKey: t("dashboard.models.custom.apiKey"),
+              model: t("dashboard.models.custom.model"),
+              listModels: t("dashboard.models.custom.listModels"),
+              testChat: t("dashboard.models.custom.testChat"),
+              testing: t("dashboard.models.custom.testing"),
+              ok: t("dashboard.models.custom.ok"),
+              failed: t("dashboard.models.custom.failed"),
+              foundModels: t("dashboard.models.custom.foundModels"),
+            }}
+          />
+        </div>
+      </SectionPageLayout.Content>
     </SectionPageLayout>
   );
 }

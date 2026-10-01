@@ -29,6 +29,7 @@ export function SectionPageLayout({ children, scrollContent = true }: SectionPag
   let actions: ReactNode = null;
   let content: ReactNode = null;
   let breadcrumb: ReactNode = null;
+  const dropped: ReactNode[] = [];
 
   Children.forEach(children, (node) => {
     if (!isValidElement(node)) return;
@@ -37,7 +38,20 @@ export function SectionPageLayout({ children, scrollContent = true }: SectionPag
     else if (child.type === Actions) actions = child.props.children;
     else if (child.type === Content) content = child.props.children;
     else if (child.type === Breadcrumb) breadcrumb = child.props.children;
+    else dropped.push(node);
   });
+
+  // A child that is not one of the four slots renders nowhere. That is a
+  // silent, total failure: the page shows its title and nothing else, with no
+  // error anywhere. It has happened once already, so say something.
+  if (dropped.length > 0 && process.env.NODE_ENV !== "production") {
+    console.warn(
+      `[SectionPageLayout] ${dropped.length} child element(s) are not inside a ` +
+        `Title / Actions / Content / Breadcrumb slot and will NOT be rendered. ` +
+        `Wrap page content in <SectionPageLayout.Content>.`,
+      dropped,
+    );
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

@@ -35,16 +35,22 @@ export default async function AssistantPage() {
     <SectionPageLayout>
       <SectionPageLayout.Title>{t("assistant.title")}</SectionPageLayout.Title>
 
-      {isAdmin && (
-        <div className="space-y-2">
-          <h2 className="text-sm font-medium text-foreground">{t("actions.title")}</h2>
-          <PendingActions isAdmin={isAdmin} />
+      {/* Without this wrapper the layout drops every child except the title and
+          the page renders empty. See SectionPageLayout's child scan. */}
+      <SectionPageLayout.Content>
+        <div className="space-y-4">
+          {isAdmin && (
+            <div className="space-y-2">
+              <h2 className="text-sm font-medium text-foreground">{t("actions.title")}</h2>
+              <PendingActions isAdmin={isAdmin} />
+            </div>
+          )}
+
+          <AssistantChat configured={Boolean(settings)} />
+
+          <AssistantSettingsPanel initial={settings} />
         </div>
-      )}
-
-      <AssistantChat configured={Boolean(settings)} />
-
-      <AssistantSettingsPanel initial={settings} />
+      </SectionPageLayout.Content>
     </SectionPageLayout>
   );
 }
