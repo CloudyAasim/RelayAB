@@ -185,8 +185,8 @@ and within each tier it takes the first one by ascending `priority`. The request
 forwarded to `<baseUrl>/v1/messages`.
 
 > Note that `baseUrl` must be the upstream's **Anthropic** base URL. For example,
-> MiniMax's OpenAI base URL is `https://api.minimax.cn/v1` while its Anthropic base URL is
-> `https://api.minimax.cn/anthropic` — the two cannot be mixed. See
+> MiniMax's OpenAI base URL is `https://api.minimaxi.com/v1` while its Anthropic base URL is
+> `https://api.minimaxi.com/anthropic` — the two cannot be mixed. See
 > [architecture.md §7.5](architecture.md#75-adding-an-anthropic-provider) for the
 > configuration steps.
 

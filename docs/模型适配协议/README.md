@@ -714,7 +714,7 @@ pnpm spec-check my-specs.json
 ```
 MediaProvider {
   id, name
-  baseUrl          // 例如 https://api.minimax.cn
+  baseUrl          // 例如 https://api.minimaxi.com
   encryptedApiKey  // 加密存储，不回传前端
   enabled, priority
   models   { <客户端模型名>: { upstreamId, pricePerItem, enabled } }

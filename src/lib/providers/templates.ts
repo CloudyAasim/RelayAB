@@ -122,7 +122,7 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
     id: "minimax",
     label: "MiniMax",
     kind: "openai",
-    defaultBaseUrl: "https://api.minimax.cn/v1",
+    defaultBaseUrl: "https://api.minimaxi.com/v1",
     defaultContextLength: 1048576,
     defaultMaxOutput: 131072,
     defaultModelMapping: {
@@ -137,7 +137,8 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
       "Content-Type": "application/json",
       "Authorization": "Bearer YOUR_API_KEY",
     },
-    description: "MiniMax 海螺 AI（OpenAI 兼容）。海外用户使用 api.minimax.io，国内用户使用 api.minimax.cn。",
+    description:
+      "MiniMax 海螺 AI（OpenAI 兼容）。密钥分区域且互不通用：海外用 api.minimax.io，国内用 api.minimaxi.com；api.minimax.cn 是仍可用的旧域名，新配置不建议再填。",
     modelsListPath: "/models",
   },
   {

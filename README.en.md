@@ -275,15 +275,15 @@ configuration mistake:
 
 | Endpoint | `baseUrl` must be |
 |---|---|
-| `/v1/chat/completions`, `/v1/responses` | the upstream's OpenAI-compatible base URL, e.g. `https://api.minimax.cn/v1` |
-| `/anthropic/v1/messages` | the upstream's Anthropic-compatible base URL, e.g. `https://api.minimax.cn/anthropic` |
+| `/v1/chat/completions`, `/v1/responses` | the upstream's OpenAI-compatible base URL, e.g. `https://api.minimaxi.com/v1` |
+| `/anthropic/v1/messages` | the upstream's Anthropic-compatible base URL, e.g. `https://api.minimaxi.com/anthropic` |
 
 **The two base URLs of the same upstream are not interchangeable.** To make all
 three endpoints work, create two providers:
 
 ```
-MiniMax            kind=openai     baseUrl=https://api.minimax.cn/v1        upstream format=Responses (native)
-MiniMaxAnthropic   kind=anthropic  baseUrl=https://api.minimax.cn/anthropic upstream format=Anthropic Messages
+MiniMax            kind=openai     baseUrl=https://api.minimaxi.com/v1        upstream format=Responses (native)
+MiniMaxAnthropic   kind=anthropic  baseUrl=https://api.minimaxi.com/anthropic upstream format=Anthropic Messages
 ```
 
 ### How to write model mappings

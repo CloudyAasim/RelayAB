@@ -301,7 +301,7 @@ admin sees when granting access must be exactly the ceiling the user can consume
   id: "01J7R5K8W6Z8X8X8X8X8X8X8X8",
   name: "MiniMax production",
   kind: "openai" | "anthropic" | "custom-openai" | "azure",
-  baseUrl: "https://api.minimax.cn/v1",
+  baseUrl: "https://api.minimaxi.com/v1",
   encryptedApiKey: "base64(iv|ct|tag)",
   modelMapping: {
     "MiniMax-M3": "MiniMax-M3",   // client model → real upstream model
@@ -358,7 +358,7 @@ To make `/anthropic/v1/messages` work you need a provider that speaks the Anthro
 protocol:
 
 1. Pick the **Anthropic** template — this sets `kind` to `anthropic`, sets `upstreamFormat` to `anthropic` automatically, and prefills the Claude models and the `anthropic-version` header.
-2. Change **API request URL** to the upstream's Anthropic base URL. For MiniMax that is `https://api.minimax.cn/anthropic` (note that it is not the same as its OpenAI base URL `https://api.minimax.cn/v1`).
+2. Change **API request URL** to the upstream's Anthropic base URL. For MiniMax that is `https://api.minimaxi.com/anthropic` (note that it is not the same as its OpenAI base URL `https://api.minimaxi.com/v1`).
 3. Fill in **Model Mapping** with the real model names.
 4. This provider will not be selected by `/v1/chat/completions`; it does not interfere with the OpenAI one.
 
@@ -372,8 +372,8 @@ common configuration mistake:
 
 | Endpoint | `baseUrl` must be |
 |---|---|
-| `/v1/chat/completions`, `/v1/responses` | The upstream's OpenAI-compatible base URL (e.g. `https://api.minimax.cn/v1`) |
-| `/anthropic/v1/messages` | The upstream's Anthropic-compatible base URL (e.g. `https://api.minimax.cn/anthropic`) |
+| `/v1/chat/completions`, `/v1/responses` | The upstream's OpenAI-compatible base URL (e.g. `https://api.minimaxi.com/v1`) |
+| `/anthropic/v1/messages` | The upstream's Anthropic-compatible base URL (e.g. `https://api.minimaxi.com/anthropic`) |
 
 ---
 

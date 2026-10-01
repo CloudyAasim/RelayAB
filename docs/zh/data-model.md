@@ -255,7 +255,7 @@ function checkKeyStatus({ key, user, requestedModel }): KeyValidationResult {
   "id": "01J7R5K8W6Z8X8X8X8X8X8X8X8",
   "name": "MiniMax 主力",
   "kind": "openai",
-  "base_url": "https://api.minimax.cn/v1",
+  "base_url": "https://api.minimaxi.com/v1",
   "encrypted_api_key": "AbCdEf123...==",
   "model_mapping": "{\"MiniMax-M3\":\"MiniMax-M3\"}",
   "model_configs": "{}",

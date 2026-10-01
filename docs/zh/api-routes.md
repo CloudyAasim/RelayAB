@@ -179,7 +179,7 @@ Content-Type: application/json
 同一档内按 `priority` 升序取第一个，请求转发到 `<baseUrl>/v1/messages`。
 
 > 注意 `baseUrl` 要填上游的 **Anthropic** 基址。比如 MiniMax 的 OpenAI 基址是
-> `https://api.minimax.cn/v1`，而 Anthropic 基址是 `https://api.minimax.cn/anthropic`，
+> `https://api.minimaxi.com/v1`，而 Anthropic 基址是 `https://api.minimaxi.com/anthropic`，
 > 两者不能混用。配置步骤见 [architecture.md §7.5](architecture.md#75-新增一条-anthropic-provider)。
 
 ---

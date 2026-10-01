@@ -238,14 +238,14 @@ pnpm dev          # → http://localhost:3000
 
 | 端点 | `baseUrl` 必须是 |
 |---|---|
-| `/v1/chat/completions`、`/v1/responses` | 上游的 OpenAI 兼容基址，如 `https://api.minimax.cn/v1` |
-| `/anthropic/v1/messages` | 上游的 Anthropic 兼容基址，如 `https://api.minimax.cn/anthropic` |
+| `/v1/chat/completions`、`/v1/responses` | 上游的 OpenAI 兼容基址，如 `https://api.minimaxi.com/v1` |
+| `/anthropic/v1/messages` | 上游的 Anthropic 兼容基址，如 `https://api.minimaxi.com/anthropic` |
 
 **同一家上游的两套基址不通用。** 想让三个端点都能用，就建两条 Provider：
 
 ```
-MiniMax            kind=openai     baseUrl=https://api.minimax.cn/v1        上游格式=Responses（原生）
-MiniMaxAnthropic   kind=anthropic  baseUrl=https://api.minimax.cn/anthropic 上游格式=Anthropic Messages
+MiniMax            kind=openai     baseUrl=https://api.minimaxi.com/v1        上游格式=Responses（原生）
+MiniMaxAnthropic   kind=anthropic  baseUrl=https://api.minimaxi.com/anthropic 上游格式=Anthropic Messages
 ```
 
 ### 模型映射怎么写

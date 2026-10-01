@@ -404,7 +404,7 @@ export const MEDIA_TEMPLATES: Record<
 > = {
   "minimax-image": {
     name: "MiniMax Image",
-    baseUrl: "https://api.minimax.cn",
+    baseUrl: "https://api.minimaxi.com",
     models: {
       "image-01": { upstreamId: "image-01", pricePerItem: 0, enabled: true },
       "image-01-live": { upstreamId: "image-01-live", pricePerItem: 0, enabled: true },
@@ -413,7 +413,7 @@ export const MEDIA_TEMPLATES: Record<
   },
   "minimax-video": {
     name: "MiniMax Video (V1 + V2)",
-    baseUrl: "https://api.minimax.cn",
+    baseUrl: "https://api.minimaxi.com",
     models: {
       "minimax-hailuo-02": { upstreamId: "MiniMax-Hailuo-02", pricePerItem: 0, enabled: true },
       "minimax-t2v-01": { upstreamId: "T2V-01", pricePerItem: 0, enabled: true },
@@ -425,7 +425,7 @@ export const MEDIA_TEMPLATES: Record<
   },
   "minimax-speech": {
     name: "MiniMax Speech (TTS + ASR)",
-    baseUrl: "https://api.minimax.cn",
+    baseUrl: "https://api.minimaxi.com",
     models: {
       "speech-2.8-hd": { upstreamId: "speech-2.8-hd", pricePerItem: 0, enabled: true },
       "asr-1.0": { upstreamId: "asr-1.0", pricePerItem: 0, enabled: true },

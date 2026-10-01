@@ -302,7 +302,7 @@ Session 由 iron-session 放在 cookie 里，**不落库**。
   id: "01J7R5K8W6Z8X8X8X8X8X8X8X8",
   name: "MiniMax 生产",
   kind: "openai" | "anthropic" | "custom-openai" | "azure",
-  baseUrl: "https://api.minimax.cn/v1",
+  baseUrl: "https://api.minimaxi.com/v1",
   encryptedApiKey: "base64(iv|ct|tag)",
   modelMapping: {
     "MiniMax-M3": "MiniMax-M3",   // 客户端模型 → 上游真实模型
@@ -355,7 +355,7 @@ Session 由 iron-session 放在 cookie 里，**不落库**。
 要让 `/anthropic/v1/messages` 能工作，需要一条 Anthropic 协议的 Provider：
 
 1. 模板选 **Anthropic** —— 这会把 `kind` 设为 `anthropic`，`upstreamFormat` 自动设为 `anthropic`，并预填 Claude 模型与 `anthropic-version` 请求头。
-2. 把 **API 请求地址** 改成上游的 Anthropic 基址。例如 MiniMax 是 `https://api.minimax.cn/anthropic`（注意与它的 OpenAI 基址 `https://api.minimax.cn/v1` 不是同一个）。
+2. 把 **API 请求地址** 改成上游的 Anthropic 基址。例如 MiniMax 是 `https://api.minimaxi.com/anthropic`（注意与它的 OpenAI 基址 `https://api.minimaxi.com/v1` 不是同一个）。
 3. **模型映射** 填真实模型名。
 4. 这条 Provider 不会被 `/v1/chat/completions` 选中；它与 OpenAI 那条互不干扰。
 
@@ -365,8 +365,8 @@ Session 由 iron-session 放在 cookie 里，**不落库**。
 
 | 端点 | `baseUrl` 必须是 |
 |---|---|
-| `/v1/chat/completions`、`/v1/responses` | 上游的 OpenAI 兼容基址（如 `https://api.minimax.cn/v1`） |
-| `/anthropic/v1/messages` | 上游的 Anthropic 兼容基址（如 `https://api.minimax.cn/anthropic`） |
+| `/v1/chat/completions`、`/v1/responses` | 上游的 OpenAI 兼容基址（如 `https://api.minimaxi.com/v1`） |
+| `/anthropic/v1/messages` | 上游的 Anthropic 兼容基址（如 `https://api.minimaxi.com/anthropic`） |
 
 ---
 
