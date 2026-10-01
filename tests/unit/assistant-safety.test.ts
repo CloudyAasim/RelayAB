@@ -26,6 +26,7 @@ import { createUser } from "@/lib/db/users";
 import type { User } from "@/lib/db/types";
 import { createProvider } from "@/lib/db/providers";
 import { InMemoryCookieStore, getSessionFromStore } from "@/lib/auth/session";
+import { __resetConfigForTest } from "@/lib/config";
 import { toolDefinitions, executeTool } from "@/lib/assistant/tools";
 import { getAssistantSettings, saveAssistantSettings, AssistantSettingsError } from "@/lib/db/assistant";
 import {
@@ -295,6 +296,46 @@ describe("assistant: settings", () => {
 });
 
 describe("assistant: one-shot model probe", () => {
+  it("reaches the gateway at its public URL, not localhost", async () => {
+    // Regression: the tool used to resolve the gateway host from the
+    // `settings.publicUrl` row, which is null on most deployments, so it fell
+    // back to http://localhost:3000 and every call from inside the container
+    // died with "fetch failed". The canonical resolver is `getPublicUrl()`.
+    __resetDbForTest();
+    const user = await makeUser("user", "u7");
+    const previous = process.env.RELAY_PUBLIC_URL;
+    process.env.RELAY_PUBLIC_URL = "https://relay.example.com";
+    __resetConfigForTest();
+
+    const seen: string[] = [];
+    vi.stubGlobal("fetch", async (url: string | URL | Request) => {
+      seen.push(String(url));
+      return new Response(
+        JSON.stringify({
+          choices: [{ message: { content: "ok" }, finish_reason: "stop" }],
+          usage: { total_tokens: 3 },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+
+    const result = await executeTool(
+      "test_gateway_model",
+      JSON.stringify({ model: "m1", prompt: "hi" }),
+      {
+        user: { id: user.id, username: user.username, role: user.role, timezone: "shanghai" },
+        relayKey: "sk-relay-test",
+      },
+    );
+
+    expect(seen[0]).toBe("https://relay.example.com/v1/chat/completions");
+    expect(result.ok).toBe(true);
+
+    vi.unstubAllGlobals();
+    __resetConfigForTest();
+    if (previous === undefined) delete process.env.RELAY_PUBLIC_URL;
+    else process.env.RELAY_PUBLIC_URL = previous;
+  });
   it("does not persist the key it was given", async () => {
     __resetDbForTest();
     const user = await makeUser("user", "u6");

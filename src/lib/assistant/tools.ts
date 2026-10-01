@@ -31,7 +31,7 @@ import { listUsers, getUserById } from "../db/users";
 import { listApiKeysByUser } from "../db/keys";
 import { aggregateByKeyMany, listRecentUsage } from "../db/usage";
 import { createAssistantAction } from "../db/assistant";
-import { getSettings } from "../db/settings";
+import { getPublicUrl } from "../config";
 import { knownModelOrDefault } from "../providers/known-models";
 import { decryptSecret } from "../crypto/secrets";
 import { renderProviderDiff, renderMediaDiff } from "./diff";
@@ -54,11 +54,18 @@ export interface ToolResult {
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-async function publicUrl(): Promise<string> {
-  const settings = await getSettings();
-  return (settings.publicUrl ?? "http://localhost:3000").replace(/\/+$/, "");
+/**
+ * Where the gateway is reachable from the server.
+ *
+ * `publicUrl()` in lib/config is the canonical resolver: it reads
+ * RELAY_PUBLIC_URL, falls back to VERCEL_URL, and only then to localhost.
+ * The `settings.publicUrl` row is a *display* override the admin panel edits,
+ * and it is null on most deployments — reading it here is what made
+ * test_gateway_model fail with "fetch failed" from inside the container.
+ */
+function gatewayBase(): string {
+  return getPublicUrl();
 }
-
 /** Parse tool arguments; a model that sends malformed JSON should not 500. */
 function parseArgs(raw: string): Record<string, unknown> {
   if (!raw.trim()) return {};
@@ -315,7 +322,7 @@ async function testGatewayModel(
     );
   }
 
-  const base = await publicUrl();
+  const base = gatewayBase();
   const body = {
     model: model.data,
     messages: [
