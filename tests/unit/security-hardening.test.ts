@@ -26,7 +26,7 @@ describe("security hardening: source invariants", () => {
   });
 
   it("ships baseline security headers", () => {
-    const config = read("next.config.ts");
+    const config = read("next.config.mjs");
     expect(config).toContain('"X-Content-Type-Options"');
     expect(config).toContain('"X-Frame-Options"');
     expect(config).toContain('"Content-Security-Policy"');

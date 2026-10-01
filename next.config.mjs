@@ -1,32 +1,58 @@
-import type { NextConfig } from "next";
-
 /**
  * Next.js configuration for RelayAB.
  *
+ * This file is `.mjs` rather than `.ts` on purpose.
+ *
+ * Next.js loads `next.config.*` on every start, and a TypeScript config has to
+ * be compiled on the fly — which needs the `typescript` package present. On a
+ * container image built with devDependencies pruned (the herokuish/Dokku
+ * buildpack does exactly that) `next start` finds no TypeScript, tries to
+ * install it, and the install re-resolves pnpm's store against a different
+ * path than the one the build used:
+ *
+ *   ERR_PNPM_UNEXPECTED_STORE  The dependencies at "/app/node_modules" are
+ *   currently linked from the store at "/tmp/pnpmcache.XXX/v10". pnpm now
+ *   wants to use the store at "/app/.local/share/pnpm/store/v10"
+ *
+ * A plain `.mjs` config needs no compiler, so the runtime never reaches for
+ * one and the failure mode cannot occur.
+ *
  * Self-hosted deployment (Debian + systemd + nginx): the app is started with
- * `next start` from a full checkout of the repository, so nothing has to be
- * bundled explicitly. Note that two admin doc pages read files straight off
- * disk at request time — see `components/docs/ProtocolReference.tsx` and
+ * `next start` from a full checkout of the repository. Note that two admin doc
+ * pages read files straight off disk at request time — see
+ * `components/docs/ProtocolReference.tsx` and
  * `components/docs/SpecCheckReference.tsx`, which both resolve paths from
- * `process.cwd()`. The systemd unit therefore pins `WorkingDirectory` to the
- * repository root; a trimmed deployment or a `output: "standalone"` image
+ * `process.cwd()`. A trimmed deployment or an `output: "standalone"` image
  * would leave those pages unable to read their source.
+ *
+ * @type {import("next").NextConfig}
  */
-const baseConfig: NextConfig = {
+const baseConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+
   /**
-   * `node:sqlite` is a Node builtin (>= 22.5), but this webpack major predates
-   * it and tries to resolve it from npm, which fails the production build.
-   * Externalising it hands the specifier to Node's own resolver untouched.
-   * The same exclusion is declared in vitest.config.ts for the test runner.
+   * `node:sqlite` is a Node builtin (>= 22.5), but the webpack bundled with
+   * this Next.js major predates it and tries to resolve it from npm, which
+   * fails the production build. Externalising the specifier hands it to
+   * Node's own resolver untouched. The same exclusion is declared in
+   * vitest.config.ts for the test runner.
+   *
+   * @type {(config: import("webpack").Configuration, ctx: { isServer: boolean }) => import("webpack").Configuration}
    */
   webpack: (config, { isServer }) => {
     if (isServer) {
-      config.externals = [...(config.externals ?? []), "node:sqlite"];
+      const current = config.externals;
+      const list = Array.isArray(current)
+        ? current
+        : typeof current === "function"
+          ? [current]
+          : [];
+      config.externals = [...list, "node:sqlite"];
     }
     return config;
   },
+
   experimental: {
     serverActions: {
       bodySizeLimit: "2mb",
@@ -36,9 +62,9 @@ const baseConfig: NextConfig = {
      *
      * Next.js defaults `dynamic` to 0, which means every client-side
      * navigation to one of these (cookie-gated, therefore dynamic) pages
-     * throws away the RSC payload and re-hits the serverless function again —
-     * including for links the router already prefetched. A short window makes
-     * going back/forward and hopping between the sidebar entries instant.
+     * throws away the RSC payload and re-hits the server again — including for
+     * links the router already prefetched. A short window makes going
+     * back/forward and hopping between the sidebar entries instant.
      *
      * Server Actions still invalidate the cache, so a create/rename/delete is
      * visible immediately; the window only covers reads.
@@ -48,6 +74,7 @@ const baseConfig: NextConfig = {
       static: 180,
     },
   },
+
   /**
    * Public proxy paths are OpenAI/Anthropic compatible, while the handlers
    * live under /api/*. Rewrites keep the documented client-facing surface
@@ -60,6 +87,7 @@ const baseConfig: NextConfig = {
       { source: "/anthropic/:path*", destination: "/api/anthropic/:path*" },
     ];
   },
+
   /**
    * Avoid exposing framework hints to upstream APIs, and add the baseline
    * security headers applied to every response.

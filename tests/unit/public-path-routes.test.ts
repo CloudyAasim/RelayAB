@@ -1,7 +1,7 @@
 /**
- * `next.config.ts` rewrites `/v1/:path*` to `/api/v1/:path*`, but Next only
+ * `next.config.mjs` rewrites `/v1/:path*` to `/api/v1/:path*`, but Next only
  * applies a rewrite when no file-system route matches first. A hand-written
- * `src/app/v1/**` route therefore SHADOWS the rewrite â€” which is how
+ * `src/app/v1/**` route therefore SHADOWS the rewrite â€?which is how
  * `/v1/chat/completions` ended up served by a stale copy that predated
  * streaming support and returned 500 on `stream: true`.
  *
@@ -36,7 +36,7 @@ describe("public /v1 routes do not shadow the rewrite", () => {
   });
 
   it("the rewrite maps the public paths to the API routes", () => {
-    const config = require("fs").readFileSync(join(ROOT, "next.config.ts"), "utf-8");
+    const config = require("fs").readFileSync(join(ROOT, "next.config.mjs"), "utf-8");
     expect(config).toContain('source: "/v1/:path*"');
     expect(config).toContain('destination: "/api/v1/:path*"');
     expect(config).toContain('source: "/anthropic/:path*"');
