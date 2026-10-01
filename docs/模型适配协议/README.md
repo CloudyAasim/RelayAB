@@ -1618,10 +1618,10 @@ upstream task did not finish in time (last status "Rendering" — check async.po
     "audio_setting": { "sample_rate": 32000, "bitrate": 128000, "channel": 1,
       "format": { "$enum": { "path": "$.responseFormat",
         "map": { "mp3": "mp3", "wav": "wav", "pcm": "pcm" }, "default": "mp3" } } },
-    "output_format": { "$const": "url" }        // ← 不写就是 hex
+    "output_format": { "$const": "hex" }        // ← 不写就是 hex
   },
   "response": {
-    "items": [ { "kind": "url", "value": "$.data.audio" } ],
+    "items": [ { "kind": "base64", "encoding": "hex", "value": "$.data.audio" } ],
     "successCount": { "$const": 1 },
     "errorCode": "$.base_resp.status_code",
     "errorMessage": "$.base_resp.status_msg"
@@ -1636,18 +1636,21 @@ upstream task did not finish in time (last status "Rendering" — check async.po
 }
 ```
 
-> **如果上游只能吐 hex**，把 items 改成
-> `"items": [ { "kind": "base64", "encoding": "hex", "value": "$.data.audio" } ]`，
-> 引擎会转成客户端能解码的 base64：
+> **`audio.tts` 只能映射成 base64 或字节流。** `/v1/audio/speech` 要回字节，
+> `audioDelivery` 只认 `binary` 响应体和 `kind: "base64"` 条目 —— 声明成
+> `kind: "url"` 会在合成成功之后被引擎丢弃，客户端拿到 502 `no_audio`。
+> `t2a_v2` 支持 `output_format: "url"`，但对**这个端点**没有意义：
 >
 > ```jsonc
+> // ✘ 错：服务不了 /v1/audio/speech，合成成功也拿不到声音
+> "items": [ { "kind": "url", "value": "$.data.audio" } ]
 > // ✘ 错：客户端拿到 49443304… 去 base64 解码 → 乱码，全程不报错
 > "items": [ { "kind": "base64", "value": "$.data.audio" } ]
 > // ✔ 对：声明上游编码，引擎负责转
 > "items": [ { "kind": "base64", "encoding": "hex", "value": "$.data.audio" } ]
 > ```
 >
-> `output_format: "url"` 时 URL **24 小时**有效。
+> `spec-check` 会在部署前把上面第一种形状判掉（§16.4 这条 spec 曾以该形状出厂）。
 
 ### 16.5 STT：multipart 上传 + header 参数
 
