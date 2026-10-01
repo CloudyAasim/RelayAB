@@ -41,6 +41,8 @@ import {
   Activity,
   Wallet,
   FileText,
+  FlaskConical,
+  Sparkles,
   type LucideIcon,
 } from "lucide-react";
 
@@ -63,6 +65,8 @@ export const USER_NAV: NavSection[] = [
     items: [
       { href: "/dashboard", labelKey: "nav.dashboard", titleKey: "dashboard.title", icon: LayoutDashboard, exact: true },
       { href: "/dashboard/usage", labelKey: "nav.usage", titleKey: "usage.title", icon: BarChart3 },
+      { href: "/dashboard/models", labelKey: "nav.models", titleKey: "dashboard.models.title", icon: FlaskConical },
+      { href: "/dashboard/assistant", labelKey: "nav.assistant", titleKey: "assistant.title", icon: Sparkles },
       { href: "/dashboard/docs", labelKey: "nav.docs", titleKey: "docs.title", icon: BookOpen },
       { href: "/dashboard/settings", labelKey: "nav.settings", titleKey: "settings.title", icon: Settings },
     ],
@@ -94,6 +98,8 @@ export const ADMIN_NAV: NavSection[] = [
     items: [
       { href: "/dashboard", labelKey: "nav.myDashboard", titleKey: "dashboard.title", icon: Wallet, exact: true },
       { href: "/dashboard/usage", labelKey: "nav.usage", titleKey: "usage.title", icon: BarChart3 },
+      { href: "/dashboard/models", labelKey: "nav.models", titleKey: "dashboard.models.title", icon: FlaskConical },
+      { href: "/dashboard/assistant", labelKey: "nav.assistant", titleKey: "assistant.title", icon: Sparkles },
       { href: "/dashboard/settings", labelKey: "nav.settings", titleKey: "settings.title", icon: Settings },
     ],
   },

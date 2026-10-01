@@ -191,6 +191,68 @@ CREATE TABLE IF NOT EXISTS login_throttle (
   count      INTEGER NOT NULL,
   expires_at INTEGER NOT NULL
 );
+
+-- The AI assistant runs on the *user's own* upstream key rather than on the
+-- admin's providers, so the configuration is per user: one row per person,
+-- absent until they set it up. encrypted_api_key uses the same master key as
+-- provider keys, which is why a database backup is as sensitive as ever.
+CREATE TABLE IF NOT EXISTS assistant_settings (
+  user_id            TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  base_url           TEXT NOT NULL,
+  encrypted_api_key  TEXT NOT NULL,
+  model              TEXT NOT NULL,
+  protocol           TEXT NOT NULL DEFAULT 'openai',
+  extra_headers      TEXT NOT NULL DEFAULT '{}',
+  created_at         TEXT NOT NULL,
+  updated_at         TEXT NOT NULL
+);
+
+-- Conversations. Threads are per user so one person's history can never be
+-- read through another's id, and messages cascade with the thread.
+CREATE TABLE IF NOT EXISTS assistant_threads (
+  id          TEXT PRIMARY KEY,
+  user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title       TEXT NOT NULL,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_assistant_threads_user ON assistant_threads(user_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS assistant_messages (
+  id            TEXT PRIMARY KEY,
+  thread_id     TEXT NOT NULL REFERENCES assistant_threads(id) ON DELETE CASCADE,
+  role          TEXT NOT NULL,
+  content       TEXT NOT NULL,
+  tool_calls    TEXT,
+  tool_call_id  TEXT,
+  tool_name     TEXT,
+  created_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_assistant_messages_thread ON assistant_messages(thread_id, created_at);
+
+-- Changes the assistant wants to make, waiting for a human.
+--
+-- The assistant never writes provider configuration directly. It records an
+-- intent here; the admin sees a rendered diff and decides. The args column is
+-- the exact payload that will be applied, diff is the human-readable preview,
+-- and the status moves pending -> applied / rejected / failed. Making the
+-- step a row rather than a client-side dialog means a page refresh cannot lose
+-- a pending change, and the applied payload is auditable after the fact.
+CREATE TABLE IF NOT EXISTS assistant_actions (
+  id          TEXT PRIMARY KEY,
+  user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind        TEXT NOT NULL,
+  target_id   TEXT,
+  summary     TEXT NOT NULL,
+  args        TEXT NOT NULL,
+  diff        TEXT NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'pending',
+  result      TEXT,
+  created_at  TEXT NOT NULL,
+  resolved_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_assistant_actions_user ON assistant_actions(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_assistant_actions_status ON assistant_actions(status, created_at DESC);
 `;
 
 // ---------------------------------------------------------------------------

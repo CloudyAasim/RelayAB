@@ -46,6 +46,7 @@ import { callUpstream, extractModelIds } from "../src/lib/providers/upstream";
 import { MEDIA_TEMPLATES } from "../src/lib/media/seeds";
 import { defaultFaceFlags, type ModelConfig } from "../src/lib/db/types";
 import { withTransaction } from "../src/lib/db/sqlite";
+import { knownModelOrDefault, lookupKnownModel } from "../src/lib/providers/known-models";
 
 // ---------------------------------------------------------------------------
 // Arguments
@@ -118,22 +119,12 @@ const FALLBACK_MODELS = [
 ];
 
 /**
- * Context windows from the MiniMax model table. Only consulted for models the
- * upstream returned that we have no entry for; anything unknown keeps the
- * schema default rather than being guessed, because a wrong number here feeds
- * straight into token accounting.
+ * Context windows live in `src/lib/providers/known-models.ts`, shared with the
+ * assistant's provider tools. Two copies of this table would eventually
+ * disagree, and the loser of that race is a model advertised with the wrong
+ * window. See that file for why an unknown model keeps a conservative default
+ * instead of being guessed.
  */
-const KNOWN_CONTEXT: Record<string, { context: number; output: number }> = {
-  "MiniMax-M3": { context: 1_000_000, output: 131_072 },
-  "MiniMax-M2.7": { context: 204_800, output: 131_072 },
-  "MiniMax-M2.7-highspeed": { context: 204_800, output: 131_072 },
-  "MiniMax-M2.5": { context: 204_800, output: 131_072 },
-  "MiniMax-M2.5-highspeed": { context: 204_800, output: 131_072 },
-  "MiniMax-M2.1": { context: 204_800, output: 131_072 },
-  "MiniMax-M2.1-highspeed": { context: 204_800, output: 131_072 },
-  "MiniMax-M2": { context: 204_800, output: 131_072 },
-  "M2-her": { context: 64_000, output: 8_192 },
-};
 
 // ---------------------------------------------------------------------------
 // Output helpers
@@ -317,13 +308,13 @@ async function resolveUpstreamModels(p: Provider): Promise<string[]> {
 }
 
 function buildModelConfig(id: string): ModelConfig {
-  const known = KNOWN_CONTEXT[id];
+  const known = knownModelOrDefault(id);
   return {
     upstreamId: id,
     clientId: id,
     displayName: id,
-    contextLength: known?.context ?? 128_000,
-    maxOutputTokens: known?.output ?? 8_192,
+    contextLength: known.context,
+    maxOutputTokens: known.output,
     // Free until an operator sets real prices; the billing docs are explicit
     // that 0 means "not priced", not "free to charge anyone".
     inputCost: 0,
@@ -401,7 +392,7 @@ async function configureChat(): Promise<boolean> {
   write(`anthropic = ${updated.anthropicBaseUrl}`);
   write(`模型映射  = ${Object.keys(updated.modelMapping).length} 条`);
   for (const [client, upstream] of Object.entries(updated.modelMapping)) {
-    const ctx = KNOWN_CONTEXT[client];
+    const ctx = lookupKnownModel(client);
     console.log(`      ${client} → ${upstream}${ctx ? `  (${ctx.context.toLocaleString()} ctx)` : ""}`);
   }
   return true;

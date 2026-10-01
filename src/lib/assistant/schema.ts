@@ -1,0 +1,194 @@
+/**
+ * src/lib/assistant/schema.ts
+ *
+ * Entities for the AI assistant: the per-user upstream configuration, the
+ * conversation, and the pending-change queue.
+ *
+ * These live here rather than in `db/types.ts` because the proxy/billing core
+ * and the assistant are separate bounded contexts — nothing in the request path
+ * imports an assistant type, and the tables are only ever touched by the
+ * assistant's own modules. The row↔entity mapping convention is the same one
+ * `db/types.ts` uses: one Zod schema, read straight through on every load.
+ */
+import { z } from "zod";
+
+/**
+ * How the user's own upstream speaks. Only OpenAI-compatible chat completions
+ * is supported today; `protocol` exists so an Anthropic-style upstream can be
+ * added without a second settings table, and so a stored row from a future
+ * version fails validation loudly instead of being silently mis-routed.
+ */
+export const AssistantProtocolSchema = z.enum(["openai"]);
+export type AssistantProtocol = z.infer<typeof AssistantProtocolSchema>;
+
+export const AssistantSettingsSchema = z.object({
+  userId: z.string().min(1),
+  baseUrl: z.string().min(1),
+  encryptedApiKey: z.string().min(1),
+  model: z.string().min(1),
+  protocol: AssistantProtocolSchema.default("openai"),
+  /** Extra headers some gateways require (e.g. an OpenAI org id). Never the key. */
+  extraHeaders: z.record(z.string(), z.string()).default({}),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type AssistantSettings = z.infer<typeof AssistantSettingsSchema>;
+
+/** Settings as the API returns them: the key is never echoed back. */
+export const PublicAssistantSettingsSchema = AssistantSettingsSchema.omit({
+  encryptedApiKey: true,
+}).extend({
+  /** Whether a key is stored, so the UI can show "configured" without the value. */
+  hasApiKey: z.boolean(),
+});
+export type PublicAssistantSettings = z.infer<typeof PublicAssistantSettingsSchema>;
+
+export const AssistantThreadSchema = z.object({
+  id: z.string().min(1),
+  userId: z.string().min(1),
+  title: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type AssistantThread = z.infer<typeof AssistantThreadSchema>;
+
+export const AssistantRoleSchema = z.enum(["user", "assistant", "tool"]);
+export type AssistantRole = z.infer<typeof AssistantRoleSchema>;
+
+/**
+ * One OpenAI-shaped tool call, kept verbatim so the next request can replay the
+ * exact call the model made. Re-serialising it from a narrower shape would lose
+ * provider-specific fields and break the protocol on the following turn.
+ */
+export const ToolCallSchema = z.object({
+  id: z.string(),
+  type: z.string().default("function"),
+  function: z.object({
+    name: z.string(),
+    arguments: z.string(),
+  }),
+});
+export type ToolCall = z.infer<typeof ToolCallSchema>;
+
+export const AssistantMessageSchema = z.object({
+  id: z.string().min(1),
+  threadId: z.string().min(1),
+  role: AssistantRoleSchema,
+  content: z.string(),
+  toolCalls: z.array(ToolCallSchema).default([]),
+  toolCallId: z.string().nullable().default(null),
+  toolName: z.string().nullable().default(null),
+  createdAt: z.string(),
+});
+export type AssistantMessage = z.infer<typeof AssistantMessageSchema>;
+
+/**
+ * What the assistant is allowed to *propose*. It can never write provider
+ * configuration itself — every one of these lands in `assistant_actions` and
+ * waits for a human.
+ */
+export const AssistantActionKindSchema = z.enum([
+  "provider.update",
+  "provider.create",
+  "media_provider.update",
+  "media_provider.create",
+]);
+export type AssistantActionKind = z.infer<typeof AssistantActionKindSchema>;
+
+export const AssistantActionStatusSchema = z.enum([
+  "pending",
+  "applied",
+  "rejected",
+  "failed",
+]);
+export type AssistantActionStatus = z.infer<typeof AssistantActionStatusSchema>;
+
+export const AssistantActionSchema = z.object({
+  id: z.string().min(1),
+  userId: z.string().min(1),
+  kind: AssistantActionKindSchema,
+  targetId: z.string().nullable().default(null),
+  summary: z.string(),
+  /** Exactly what will be handed to the provider layer on approval. */
+  args: z.string(),
+  /** Rendered before/after preview. Stored so the decision outlives the page. */
+  diff: z.string(),
+  status: AssistantActionStatusSchema.default("pending"),
+  result: z.string().nullable().default(null),
+  createdAt: z.string(),
+  resolvedAt: z.string().nullable().default(null),
+});
+export type AssistantAction = z.infer<typeof AssistantActionSchema>;
+
+// ---------------------------------------------------------------------------
+// Row mapping
+// ---------------------------------------------------------------------------
+
+function parseJson<T>(raw: unknown, fallback: T): T {
+  if (typeof raw !== "string" || !raw) return fallback;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    // A corrupt column must not take down the read; the schema's defaults and
+    // the caller's own validation take over.
+    return fallback;
+  }
+}
+
+export function rowToAssistantSettings(row: Record<string, unknown>): AssistantSettings {
+  return AssistantSettingsSchema.parse({
+    userId: row.user_id,
+    baseUrl: row.base_url,
+    encryptedApiKey: row.encrypted_api_key,
+    model: row.model,
+    protocol: row.protocol,
+    extraHeaders: parseJson(row.extra_headers, {}),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  });
+}
+
+export function toPublicAssistantSettings(s: AssistantSettings): PublicAssistantSettings {
+  const { encryptedApiKey, ...rest } = s;
+  void encryptedApiKey;
+  return { ...rest, hasApiKey: Boolean(s.encryptedApiKey) };
+}
+
+export function rowToAssistantThread(row: Record<string, unknown>): AssistantThread {
+  return AssistantThreadSchema.parse({
+    id: row.id,
+    userId: row.user_id,
+    title: row.title,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  });
+}
+
+export function rowToAssistantMessage(row: Record<string, unknown>): AssistantMessage {
+  return AssistantMessageSchema.parse({
+    id: row.id,
+    threadId: row.thread_id,
+    role: row.role,
+    content: row.content,
+    toolCalls: parseJson(row.tool_calls, []),
+    toolCallId: row.tool_call_id ?? null,
+    toolName: row.tool_name ?? null,
+    createdAt: row.created_at,
+  });
+}
+
+export function rowToAssistantAction(row: Record<string, unknown>): AssistantAction {
+  return AssistantActionSchema.parse({
+    id: row.id,
+    userId: row.user_id,
+    kind: row.kind,
+    targetId: row.target_id ?? null,
+    summary: row.summary,
+    args: row.args,
+    diff: row.diff,
+    status: row.status,
+    result: row.result ?? null,
+    createdAt: row.created_at,
+    resolvedAt: row.resolved_at ?? null,
+  });
+}
