@@ -8,8 +8,7 @@
  * exactly one usage row.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { __resetRedisForTest, __setRedisForTest } from "@/lib/db/redis";
-import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
+import { __resetDbForTest } from "@/lib/db/sqlite";
 import { createApiKey } from "@/lib/db/keys";
 import { createUser, getUserById } from "@/lib/db/users";
 import { createProvider } from "@/lib/db/providers";
@@ -108,8 +107,7 @@ async function waitForLogs(keyId: string, timeoutMs = 2000) {
 
 describe("streaming: settlement on abrupt endings", () => {
   beforeEach(() => {
-    __resetRedisForTest();
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
   });
 
   it("bills once on normal completion", async () => {

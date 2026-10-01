@@ -1,7 +1,7 @@
 /**
  * tests/integration/repos.test.ts
  *
- * Exercises every repository against the in-memory Redis mock.
+ * Exercises every repository against the in-memory SQLite database.
  *
  * What's covered:
  * - users:    create / get / list / update / reset / disable / delete
@@ -11,11 +11,7 @@
  * - cascade:  deleting a user removes their api keys
  */
 import { describe, it, expect, beforeEach } from "vitest";
-import {
-  __resetRedisForTest,
-  __setRedisForTest,
-} from "@/lib/db/redis";
-import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
+import { __resetDbForTest } from "@/lib/db/sqlite";
 import {
   createUser,
   getUserById,
@@ -55,8 +51,7 @@ import {
 import { generateApiKey as _makeKey } from "@/lib/crypto/hashing";
 
 beforeEach(() => {
-  __resetRedisForTest();
-  __setRedisForTest(createMemoryRedis());
+  __resetDbForTest();
 });
 
 // ---------------------------------------------------------------------------

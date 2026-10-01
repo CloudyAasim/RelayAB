@@ -12,14 +12,14 @@
  * Design notes:
  * - Only failures count, so a busy-but-legitimate user is never throttled by
  *   their own successful logins.
- * - Fails open: if Redis is unreachable we allow the attempt. Locking every
- *   user out of their own relay because the database blipped is worse than the
- *   brute-force window we would otherwise close.
+ * - Fails open: if the database is unreachable we allow the attempt. Locking
+ *   every user out of their own relay because the store blipped is worse than
+ *   the brute-force window we would otherwise close.
  * - `x-forwarded-for` is only trusted as far as the platform proxy in front of
  *   us. A spoofed value can evade the per-IP counter but never the per-username
  *   one, which is the limit that actually protects an account.
  */
-import { getRedis, KEY_PREFIX } from "../db/redis";
+import { getDb, run, withTransaction } from "../db/sqlite";
 
 /** Rolling window for failed attempts. */
 export const LOGIN_THROTTLE_WINDOW_SECONDS = 5 * 60;
@@ -40,22 +40,43 @@ function clientIp(headers: Headers): string {
 function throttleKeys(headers: Headers, username: string): [ipKey: string, userKey: string] {
   const ip = clientIp(headers);
   const user = username.trim().toLowerCase();
-  return [`${KEY_PREFIX}login:ip:${ip}`, `${KEY_PREFIX}login:user:${user}`];
+  return [`login:ip:${ip}`, `login:user:${user}`];
 }
 
 async function readCount(key: string): Promise<number> {
-  const raw = await getRedis().get<number | string>(key);
-  const n = typeof raw === "number" ? raw : Number(raw ?? 0);
+  const row = getDb()
+    .prepare("SELECT count, expires_at FROM login_throttle WHERE key = ?")
+    .get(key) as { count?: number; expires_at?: number } | undefined;
+  if (!row) return 0;
+  // Expired rows read as zero rather than being deleted here, so the read
+  // path stays side-effect free; the write path overwrites them.
+  if ((row.expires_at ?? 0) * 1000 <= Date.now()) return 0;
+  const n = Number(row.count ?? 0);
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
 async function bump(key: string): Promise<void> {
-  const redis = getRedis();
-  const next = await redis.incr(key);
-  // The first failure starts the rolling window. A process crash between the
-  // two calls can leave a counter without a TTL, which at worst over-throttles
-  // until it is cleared; successful logins delete the key.
-  if (next === 1) await redis.expire(key, LOGIN_THROTTLE_WINDOW_SECONDS);
+  // Read-then-write inside one transaction, so two simultaneous failed
+  // logins for the same username cannot both read the same count and lose an
+  // increment between them.
+  await withTransaction(() => {
+    const db = getDb();
+    const row = db
+      .prepare("SELECT count, expires_at FROM login_throttle WHERE key = ?")
+      .get(key) as { count?: number; expires_at?: number } | undefined;
+
+    const expired = !row || (row.expires_at ?? 0) * 1000 <= Date.now();
+    if (expired) {
+      // First failure in this window: reset to 1 and (re)arm the expiry.
+      run(
+        `INSERT INTO login_throttle (key, count, expires_at) VALUES (?, 1, ?)
+         ON CONFLICT(key) DO UPDATE SET count = 1, expires_at = excluded.expires_at`,
+        [key, Math.floor(Date.now() / 1000) + LOGIN_THROTTLE_WINDOW_SECONDS],
+      );
+      return;
+    }
+    run("UPDATE login_throttle SET count = count + 1 WHERE key = ?", [key]);
+  });
 }
 
 export interface LoginThrottleState {
@@ -88,7 +109,7 @@ export async function recordLoginFailure(headers: Headers, username: string): Pr
     const [ipKey, userKey] = throttleKeys(headers, username);
     await Promise.all([bump(ipKey), bump(userKey)]);
   } catch {
-    // Fail open — never let a throttle bookkeeping error break a login attempt.
+    // Fail open -never let a throttle bookkeeping error break a login attempt.
   }
 }
 
@@ -96,7 +117,7 @@ export async function recordLoginFailure(headers: Headers, username: string): Pr
 export async function clearLoginFailures(headers: Headers, username: string): Promise<void> {
   try {
     const [ipKey, userKey] = throttleKeys(headers, username);
-    await getRedis().del(ipKey, userKey);
+    run("DELETE FROM login_throttle WHERE key IN (?, ?)", [ipKey, userKey]);
   } catch {
     // Ignore.
   }

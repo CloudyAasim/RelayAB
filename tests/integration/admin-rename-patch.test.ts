@@ -5,8 +5,8 @@
  *   PATCH /api/admin/users/[id]   (displayName)
  *   PATCH /api/admin/keys/[id]    (label)
  *
- * Follows the same vi.mock("next/headers") + __setRedisForTest(createMemoryRedis())
- * pattern as admin-user-form-routes.test.ts and admin-provider-patch.test.ts.
+ * Follows the same vi.mock("next/headers") + __resetDbForTest() pattern as
+ * admin-user-form-routes.test.ts and admin-provider-patch.test.ts.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
@@ -15,8 +15,7 @@ vi.mock("next/headers", () => ({
   cookies: async () => currentStore,
 }));
 
-import { __resetRedisForTest, __setRedisForTest } from "@/lib/db/redis";
-import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
+import { __resetDbForTest } from "@/lib/db/sqlite";
 import { InMemoryCookieStore, getSessionFromStore } from "@/lib/auth/session";
 import { createUser, getUserById } from "@/lib/db/users";
 import { createApiKey, getApiKeyById } from "@/lib/db/keys";
@@ -35,8 +34,7 @@ async function loginAs(
 }
 
 beforeEach(() => {
-  __resetRedisForTest();
-  __setRedisForTest(createMemoryRedis());
+  __resetDbForTest();
   currentStore = null;
 });
 

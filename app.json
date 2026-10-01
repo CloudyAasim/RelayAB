@@ -1,0 +1,25 @@
+{
+  "name": "relayab",
+  "description": "Self-hosted AI API relay: proxies OpenAI / Anthropic requests with per-key quota, expiry and usage accounting. Data lives in a local SQLite file — no external database service required.",
+  "keywords": ["ai", "gateway", "proxy", "openai", "anthropic", "self-hosted", "sqlite"],
+  "website": "https://github.com/CloudyAasim/RelayAB",
+  "repository": "https://github.com/CloudyAasim/RelayAB",
+  "env": {
+    "RELAY_AUTH": {
+      "description": "Master secret: admin login password, session key and upstream-key encryption seed. Losing it makes every stored upstream key undecryptable.",
+      "generator": "secret"
+    },
+    "NODE_ENV": {
+      "description": "Must be production. Leaving it unset puts the app on the in-memory store and every record is lost on restart.",
+      "value": "production"
+    },
+    "RELAY_DB_PATH": {
+      "description": "Path to the SQLite file. Defaults to ./data/relayab.db inside the app directory; set it to keep the database outside the release so a rebuild cannot touch it.",
+      "value": "/home/dokku/apps/relayab/data/relayab.db"
+    },
+    "RELAY_DEFAULT_LOCALE": {
+      "description": "Default UI locale: zh-CN or en.",
+      "value": "zh-CN"
+    }
+  }
+}

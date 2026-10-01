@@ -15,8 +15,7 @@
  * `Authorization: Bearer`).
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { __resetRedisForTest, __setRedisForTest } from "@/lib/db/redis";
-import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
+import { __resetDbForTest } from "@/lib/db/sqlite";
 import { createApiKey } from "@/lib/db/keys";
 import { createUser } from "@/lib/db/users";
 import { createProvider } from "@/lib/db/providers";
@@ -96,8 +95,7 @@ function stubUpstream(): void {
 
 describe("Anthropic surface", () => {
   beforeEach(() => {
-    __resetRedisForTest();
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
   });
 
   afterEach(() => {

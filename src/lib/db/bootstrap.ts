@@ -5,8 +5,7 @@
  * hooks to seed the system with sensible defaults.
  *
  * What this module does on every invocation:
- *   1. If no admin user exists, create one using `RELAY_AUTH` (or generate
- *      a random one and log it to stderr).
+ *   1. If no admin user exists, create one using `RELAY_AUTH`.
  *   2. If `OPENAI_KEYS` env var is set and no OpenAI provider exists,
  *      create one provider per key (so multiple keys enable rotation).
  *   3. If `ANTHROPIC_KEYS` env var is set and no Anthropic provider exists,
@@ -14,9 +13,16 @@
  *
  * The bootstrap is idempotent: running it 100 times = running it once.
  * Existing users / providers are never overwritten.
+ *
+ * Concurrency note: the Redis version needed a SETNX sentinel, a 20×50ms
+ * polling loop for the lock holder, and a manual lock release on the error
+ * path — all to stop concurrent cold-starts from racing to create "admin".
+ * Here a single `withTransaction()` (BEGIN IMMEDIATE) is the whole lock: the
+ * second caller blocks on the write lock, then re-reads and finds the admin
+ * already there. The lock is also released for free on rollback.
  */
 import { listUsers, createUser, verifyUserCredentials, UsernameConflictError } from "./users";
-import { k as redisKeys, getRedis } from "./redis";
+import { getOne, run, withTransaction } from "./sqlite";
 import { listProviders, createProvider, findProvidersForModel } from "./providers";
 import {
   getOpenAIKeys,
@@ -58,6 +64,8 @@ const ANTHROPIC_DEFAULT_MAPPING: Record<string, string> = {
   "claude-3-opus": "claude-3-opus-20240229",
   "claude-3-haiku": "claude-3-haiku-20240307",
 };
+
+const META_INITIALIZED = "initialized";
 
 // ---------------------------------------------------------------------------
 // Main bootstrap
@@ -103,103 +111,71 @@ export async function runBootstrap(): Promise<BootstrapResult> {
 
 async function bootstrapAdmin(): Promise<{ created: boolean; passwordGenerated: boolean }> {
   const cfg = loadConfig();
-  const redis = getRedis();
-  const metaKey = redisKeys.metaInitialized();
 
-  // ----- Atomically claim the bootstrap slot via SETNX --------------------
-  // On a fresh deploy many concurrent cold-starts all hit this code path
-  // at once. Without a lock they all see "no users exist", all race to
-  // createUser("admin", ...), and the losers explode with
-  // "Username already exists: admin" — taking down the request that hit
-  // them. SETNX on a sentinel key gives us a single winner; losers
-  // short-circuit (or wait briefly for the winner to finish).
-  const claimed = await redis.set(metaKey, "bootstrapping", { nx: true });
-  if (claimed !== "OK") {
-    // Someone else is (or just was) bootstrapping. The fastest path is:
-    // if a user already exists, we're done.
-    const existing = await listUsers({ limit: 1 });
-    if (existing.users.length > 0) {
-      // Mark fully initialised so the next request skips even the SETNX round-trip.
-      await redis.set(metaKey, "1");
-      const admin = existing.users.find((u) => u.role === "admin");
+  // ----- Single-writer section -------------------------------------------
+  // BEGIN IMMEDIATE takes SQLite's write lock before the first read, so the
+  // "is there already a user?" check and the insert that follows are one
+  // indivisible step. A concurrent cold-start blocks here until this commits,
+  // then observes the admin and returns. No sentinel key, no polling loop, no
+  // manual unlock on the error path — rollback handles it.
+  //
+  // Cost: createUser() hashes the password with bcrypt inside this section, so
+  // the write lock is held for ~250ms on first boot. That is deliberate and
+  // bounded — it happens once in the database's lifetime, and it is precisely
+  // the serialization the bootstrap needs. Steady-state requests are unaffected.
+  return withTransaction(async () => {
+    const already = getOne<{ value: string }>(
+      "SELECT value FROM meta WHERE key = ?",
+      [META_INITIALIZED],
+    );
+    if (already) return { created: false, passwordGenerated: false };
+
+    // Possible if a previous bootstrap wrote the meta flag but crashed before
+    // completing — re-creating an admin over an existing one would 409.
+    const { users } = await listUsers({ limit: 1 });
+    if (users.length > 0) {
+      run("INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)", [META_INITIALIZED, "1"]);
+      const admin = users.find((u) => u.role === "admin");
       if (admin) await sanityWarnIfPasswordDrifted(admin.username);
       return { created: false, passwordGenerated: false };
     }
-    // The lock is held but no user yet. Wait briefly for the holder to
-    // finish; fall through to retry on timeout.
-    for (let i = 0; i < 20; i++) {
-      await new Promise((r) => setTimeout(r, 50));
-      const after = await listUsers({ limit: 1 });
-      if (after.users.length > 0) {
-        await redis.set(metaKey, "1");
-        const admin = after.users.find((u) => u.role === "admin");
-        if (admin) await sanityWarnIfPasswordDrifted(admin.username);
+
+    // ----- Create the admin ------------------------------------------------
+    const generatedPassword = generateInitialPassword();
+    try {
+      await createUser({
+        username: cfg.RELAY_ADMIN_USERNAME,
+        password: cfg.RELAY_AUTH,
+        role: "admin",
+        displayName: "Admin",
+      });
+      run("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", [META_INITIALIZED, "1"]);
+      console.log(
+        `[relayab] Admin '${cfg.RELAY_ADMIN_USERNAME}' created. Login at /login ` +
+          `using your RELAY_AUTH value as the password.`,
+      );
+      void generatedPassword;
+      return { created: true, passwordGenerated: false };
+    } catch (err) {
+      // ---- UsernameConflictError is NOT a failure -------------------------
+      // Belt and braces: the transaction already guarantees a single winner, so
+      // this should be unreachable. But if a future code path adds another
+      // createUser() outside the lock, a conflict still means "an admin
+      // already exists", and treating that as an error would surface as an
+      // HTTP 500 on a perfectly healthy system.
+      if (err instanceof UsernameConflictError) {
+        run("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", [META_INITIALIZED, "1"]);
+        console.log(
+          `[relayab] Admin '${cfg.RELAY_ADMIN_USERNAME}' was created by a ` +
+            `concurrent bootstrap; this request won the race as a no-op.`,
+        );
         return { created: false, passwordGenerated: false };
       }
+      // Anything else: let it propagate. The transaction rolls back, so the
+      // meta flag is not left half-written and the next request retries clean.
+      throw err;
     }
-    // Holder is taking too long (or crashed). Drop the lock and try ourselves.
-    // This is safe because createUser's own username-index check would still
-    // surface a conflict as a UsernameConflictError to the caller.
-    return { created: false, passwordGenerated: false };
-  }
-
-  // ----- We hold the lock; double-check no admin already exists ------------
-  // (Possible if a previous bootstrap set the meta flag but then crashed
-  // before completing — re-creating an admin over an existing one would 409.)
-  const { users } = await listUsers({ limit: 1 });
-  if (users.length > 0) {
-    const admin = users.find((u) => u.role === "admin");
-    await redis.set(metaKey, "1");
-    if (admin) await sanityWarnIfPasswordDrifted(admin.username);
-    return { created: false, passwordGenerated: false };
-  }
-
-  // ----- Create the admin ---------------------------------------------------
-  const generatedPassword = generateInitialPassword();
-  try {
-    await createUser({
-      username: cfg.RELAY_ADMIN_USERNAME,
-      password: cfg.RELAY_AUTH,
-      role: "admin",
-      displayName: "Admin",
-    });
-    await redis.set(metaKey, "1");
-    console.log(
-      `[relayab] Admin '${cfg.RELAY_ADMIN_USERNAME}' created. Login at /login ` +
-        `using your RELAY_AUTH value as the password.`,
-    );
-    void generatedPassword;
-    return { created: true, passwordGenerated: false };
-  } catch (err) {
-    // ---- UsernameConflictError is NOT a failure -----------------------------
-    // On a fresh deploy, several concurrent cold-start Lambdas all race
-    // here. The SETNX lock in `bootstrapAdmin()` AND the SETNX on the
-    // by-username index in `createUser()` together guarantee that only
-    // one call wins. The losers receive UsernameConflictError. That is
-    // the CORRECT outcome — there is already an admin — and must NOT be
-    // treated as an error:
-    //
-    //   - Re-throwing here triggers
-    //     "[relayab] Bootstrap failed; the next request will retry: ..."
-    //     and surfaces as HTTP 500 to the user, even though the system is
-    //     perfectly healthy and ready to serve traffic.
-    //   - Operators see alarming logs during normal cold-start behaviour.
-    //
-    // We swallow it as a no-op and mark the system as fully initialized.
-    if (err instanceof UsernameConflictError) {
-      await redis.set(metaKey, "1");
-      console.log(
-        `[relayab] Admin '${cfg.RELAY_ADMIN_USERNAME}' was created by a ` +
-          `concurrent bootstrap; this request won the race as a no-op.`,
-      );
-      return { created: false, passwordGenerated: false };
-    }
-    // ---- Anything else: release lock so the next request can retry ---------
-    // bcrypt hiccup, Redis blip, …: don't leave the lock held; the next
-    // request will SETNX-claim it again and try fresh.
-    await redis.del(metaKey);
-    throw err;
-  }
+  });
 }
 
 async function sanityWarnIfPasswordDrifted(username: string): Promise<void> {
@@ -304,8 +280,9 @@ void getMasterKey;
 
 /**
  * In-flight / completed bootstrap for the current server instance.
+ *
  * Next.js serves many requests per instance; the bootstrap work is idempotent
- * but not free (a few Redis reads + a bcrypt hash on first run), so we run it
+ * but not free (a few reads + a bcrypt hash on first run), so we run it
  * at most once per instance.
  */
 let bootstrapPromise: Promise<BootstrapResult> | null = null;
@@ -318,9 +295,9 @@ let bootstrapPromise: Promise<BootstrapResult> | null = null;
  * admin user is created from `RELAY_AUTH` and providers are seeded from
  * `OPENAI_KEYS` / `ANTHROPIC_KEYS`.
  *
- * Errors are rethrown and the memo is cleared, so a transient failure (e.g.
- * Redis hiccup during a cold start) is retried by the next request instead of
- * being cached forever.
+ * Errors are rethrown and the memo is cleared, so a transient failure (e.g. a
+ * database file that is momentarily locked) is retried by the next request
+ * instead of being cached forever.
  */
 export async function ensureBootstrapped(): Promise<BootstrapResult> {
   if (!bootstrapPromise) {

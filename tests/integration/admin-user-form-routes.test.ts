@@ -9,8 +9,7 @@ vi.mock("next/headers", () => ({
   cookies: async () => currentStore,
 }));
 
-import { __resetRedisForTest, __setRedisForTest } from "@/lib/db/redis";
-import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
+import { __resetDbForTest } from "@/lib/db/sqlite";
 import { createUser, getUserById } from "@/lib/db/users";
 import { InMemoryCookieStore, getSessionFromStore } from "@/lib/auth/session";
 
@@ -45,8 +44,7 @@ function readFlashCookie(res: Response): { kind: string; message: string } | nul
 
 describe("admin user form-POST endpoints", () => {
   beforeEach(() => {
-    __resetRedisForTest();
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
     currentStore = null;
   });
 

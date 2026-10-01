@@ -11,11 +11,11 @@
  *   RELAY_AUTH                  - master password (admin login + key derivation seed)
  *   RELAY_PUBLIC_URL            - public base URL shown to users (e.g. https://relay.example.com)
  *
- * Database — exactly one of:
- *   REDIS_URL                   - self-hosted Redis/Valkey, spoken over TCP by ioredis
- *                                 (the normal choice on a self-hosted Debian box)
- *   UPSTASH_REDIS_REST_URL      - Upstash REST endpoint (hosted alternative)
- *   UPSTASH_REDIS_REST_TOKEN    - Upstash REST token
+ * Database — SQLite by default, so nothing needs configuring:
+ *   RELAY_DB_PATH                - path to the database file (optional; defaults
+ *                                 to ./data/relayab.db under the working dir)
+ *   RELAY_DB_PATH                - path to the SQLite database file (optional;
+ *                                 defaults to ./data/relayab.db)
  *
  * Optional:
  *   RELAY_MASTER_KEY_HEX        - explicit master key (otherwise derived from RELAY_AUTH)
@@ -24,10 +24,11 @@
  *   ANTHROPIC_KEYS               - "sk-ant-1,sk-ant-2" — auto-create Anthropic provider
  *   OPENAI_BASE_URL              - override OpenAI endpoint (for Azure, proxies, etc.)
  *   ANTHROPIC_BASE_URL           - override Anthropic endpoint
- *   EMULATE_VERCEL_LOCAL         - "1" to use the in-memory store (development only)
  */
 import { z } from "zod";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -54,6 +55,60 @@ function deriveHex(authSecret: string, label: string): string {
  */
 function emptyToUndefined(value: string | undefined): string | undefined {
   return value === "" ? undefined : value;
+}
+
+// ---------------------------------------------------------------------------
+// Mounted secrets
+// ---------------------------------------------------------------------------
+
+/**
+ * Where mounted secret files live. `/run/secrets` is the Docker and Kubernetes
+ * convention; override it only for local testing.
+ */
+const SECRETS_DIR = process.env.RELAY_SECRETS_DIR ?? "/run/secrets";
+
+/** Env vars that may be supplied as a mounted file instead of an env var. */
+const FILE_CAPABLE_SECRETS = new Set([
+  "RELAY_AUTH",
+  "RELAY_MASTER_KEY_HEX",
+  "OPENAI_KEYS",
+  "ANTHROPIC_KEYS",
+]);
+
+/**
+ * Read a secret from the environment, falling back to a mounted file.
+ *
+ * Why: a value set with `dokku config:set` lands in the process environment,
+ * where it is visible to `docker inspect`, to `dokku config:show`, and to any
+ * code path that dumps the environment. A value mounted at
+ * `/run/secrets/<name>` is visible to neither — it is just a file, readable
+ * only by the UID that owns the app process.
+ *
+ * The env var always wins, so existing deployments are unaffected and local
+ * development keeps working with plain `.env.local` / `.env` files.
+ *
+ * The file's name is the lowercased variable name (`RELAY_AUTH` →
+ * `/run/secrets/relay_auth`), matching the Docker secrets convention. A single
+ * trailing newline is stripped, since that is what `echo` leaves behind.
+ *
+ * Read failures are not errors: a missing secret directory simply means this
+ * deployment does not use mounted secrets, and the caller's validation
+ * produces the actionable error message instead.
+ */
+function readSecret(name: string, env: NodeJS.ProcessEnv): string | undefined {
+  const fromEnv = env[name];
+  if (fromEnv && fromEnv.trim()) return fromEnv;
+
+  if (!FILE_CAPABLE_SECRETS.has(name)) return undefined;
+
+  try {
+    const raw = readFileSync(join(SECRETS_DIR, name.toLowerCase()), "utf8");
+    const trimmed = raw.replace(/\r?\n$/, "").trim();
+    return trimmed === "" ? undefined : trimmed;
+  } catch {
+    // ENOENT (no secrets dir), EACCES, EISDIR … all mean "not available here".
+    return undefined;
+  }
 }
 
 
@@ -89,42 +144,22 @@ const schema = z.object({
     })
     .optional(),
 
-  // Optional at startup — at least one Redis connection must resolve before
-  // any /api or /admin route can work. /healthz reports which one is present.
+  // Optional at startup — the database must be reachable before any /api or
+  // /admin route can work. /healthz reports what is present.
   //
-  // Two transports are supported, and they are mutually independent:
-  //   1. REDIS_URL          — standard connection string, spoken over TCP by
-  //                           ioredis. This is the path for a self-hosted
-  //                           deployment (Valkey/Redis on 127.0.0.1).
-  //   2. UPSTASH_REDIS_REST_* — Upstash's HTTP/REST API, kept for hosted
-  //                           deployments that do not expose a TCP port.
-  // REDIS_URL wins when both are present.
-  UPSTASH_REDIS_REST_URL: z
-    .string()
-    .url()
-    .refine((v) => v.startsWith("https://") || v.startsWith("http://localhost"), {
-      message: "UPSTASH_REDIS_REST_URL must be a valid URL.",
-    })
-    .optional(),
-  UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
+  // The store is a local SQLite file managed by Node's built-in
+  // `node:sqlite` (see lib/db/sqlite.ts) — no service, no port, no password.
 
   /**
-   * Standard Redis connection string for a self-hosted server.
+   * Where the SQLite database file lives.
    *
-   * When set, RelayAB connects over a normal TCP socket with ioredis instead
-   * of the Upstash REST API. This is the intended configuration off Vercel,
-   * where a local Valkey/Redis listens on 127.0.0.1: a TCP connection is one
-   * hop shorter and does not pay HTTP-request overhead per command.
+   * Unset defaults to `./data/relayab.db` under the working directory. Set it
+   * explicitly in production so a `git pull` or a rebuild can never touch the
+   * file, and so the service unit can put it on a dedicated volume.
    *
-   * Use `rediss://` for a TLS-terminated endpoint. The password, if any, goes
-   * inline: `redis://:<password>@127.0.0.1:6379`.
+   * `:memory:` is honoured, and is what the test suite uses.
    */
-  REDIS_URL: z
-    .string()
-    .regex(/^rediss?:\/\/.+/, {
-      message: "REDIS_URL must start with redis:// or rediss://",
-    })
-    .optional(),
+  RELAY_DB_PATH: z.string().min(1).optional(),
 
   // Optional with safe defaults
   RELAY_MASTER_KEY_HEX: z.string().optional(),
@@ -141,11 +176,6 @@ const schema = z.object({
   OPENAI_BASE_URL: z.string().optional(),
   ANTHROPIC_KEYS: z.string().optional(),
   ANTHROPIC_BASE_URL: z.string().optional(),
-  EMULATE_VERCEL_LOCAL: z
-    .enum(["0", "1"])
-    .optional()
-    .default("0")
-    .transform((v) => v === "1"),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 });
 
@@ -168,35 +198,32 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): z.infer<typeof
   const isProd = env.NODE_ENV === "production";
 
   // Provide safe defaults for tests.
+  //
+  // Sensitive values go through readSecret(), which prefers the environment
+  // and falls back to a file under /run/secrets. That lets a self-hosted
+  // deployment keep RELAY_AUTH and the database URL out of the process
+  // environment entirely (see readSecret for why that matters).
   const enriched: Record<string, string | undefined> = {
     RELAY_AUTH:
-      env.RELAY_AUTH ??
+      readSecret("RELAY_AUTH", env) ??
       (isTest ? "test-relay-auth-must-be-8-chars-long-padding" : undefined),
     // Left undefined when unset; `resolvePublicUrl()` derives a sensible
     // value from VERCEL_URL or the incoming request at render time.
     RELAY_PUBLIC_URL: emptyToUndefined(env.RELAY_PUBLIC_URL),
-    // Vercel Upstash Marketplace injects KV_REST_API_* (legacy Vercel KV
-    // naming). The Upstash SDK docs use UPSTASH_REDIS_REST_*. Accept either.
-    UPSTASH_REDIS_REST_URL: emptyToUndefined(
-      env.UPSTASH_REDIS_REST_URL ?? env.KV_REST_API_URL ?? env.KV_URL) ??
-      (isTest ? "http://localhost:13700" : undefined),
-    UPSTASH_REDIS_REST_TOKEN: emptyToUndefined(
-      env.UPSTASH_REDIS_REST_TOKEN ?? env.KV_REST_API_TOKEN ?? env.KV_REST_API_READ_ONLY_TOKEN) ??
-      (isTest ? "test-token" : undefined),
-    // Self-hosted path. Empty string disables it so a stray blank value in an
-    // env file cannot make the schema fall back to the REST branch silently.
-    REDIS_URL: emptyToUndefined(env.REDIS_URL),
-    RELAY_MASTER_KEY_HEX: env.RELAY_MASTER_KEY_HEX,
+    // SQLite file path. Unset means "use the default next to the app", so the
+    // database works with zero configuration; set it in production to keep the
+    // file off the release directory.
+    RELAY_DB_PATH: emptyToUndefined(env.RELAY_DB_PATH),
+    RELAY_MASTER_KEY_HEX: readSecret("RELAY_MASTER_KEY_HEX", env),
     RELAY_ADMIN_USERNAME: emptyToUndefined(env.RELAY_ADMIN_USERNAME) ?? "admin",
     // Passed through explicitly: zod's `.default()` only fires when the key
     // is absent, so omitting it here would silently ignore the env var and
     // pin every deployment to zh-CN.
     RELAY_DEFAULT_LOCALE: emptyToUndefined(env.RELAY_DEFAULT_LOCALE),
-    OPENAI_KEYS: env.OPENAI_KEYS,
+    OPENAI_KEYS: readSecret("OPENAI_KEYS", env),
     OPENAI_BASE_URL: env.OPENAI_BASE_URL,
-    ANTHROPIC_KEYS: env.ANTHROPIC_KEYS,
+    ANTHROPIC_KEYS: readSecret("ANTHROPIC_KEYS", env),
     ANTHROPIC_BASE_URL: env.ANTHROPIC_BASE_URL,
-    EMULATE_VERCEL_LOCAL: env.EMULATE_VERCEL_LOCAL ?? (isProd ? "0" : "1"),
     NODE_ENV: env.NODE_ENV ?? "development",
   };
 
@@ -208,11 +235,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): z.infer<typeof
     throw new Error(
       `[relayab] Invalid configuration. Fix the following env vars:\n${issues}\n\n` +
         `Only RELAY_AUTH is strictly required.\n` +
-        `Note: the app also needs a Redis connection. Either set REDIS_URL\n` +
-        `(e.g. redis://:password@127.0.0.1:6379 for a self-hosted Valkey/Redis),\n` +
-        `or provide UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN for a\n` +
-        `hosted Upstash database. Without one, the app starts but all data routes\n` +
-        `fail; /healthz reports the state.\n` +
+        `The database needs nothing either: RelayAB stores data in SQLite, a\n` +
+        `file managed by Node's built-in module — no service, no port, no\n` +
+        `password. Set RELAY_DB_PATH to place it outside the app directory\n` +
+        `(recommended in production, so a rebuild cannot touch it).\n` +
  +
         `See .env.example for the full list.`,
     );
@@ -238,9 +264,14 @@ export function isProduction(): boolean {
   return loadConfig().NODE_ENV === "production";
 }
 
-export function isEmulatorEnabled(): boolean {
-  const cfg = loadConfig();
-  return cfg.EMULATE_VERCEL_LOCAL && cfg.NODE_ENV !== "production";
+/**
+ * Where the SQLite file lives, or `:memory:` for a throwaway store.
+ *
+ * Exposed so tests and diagnostics can report the resolved path without
+ * reaching into `db/sqlite.ts` internals.
+ */
+export function getDbPath(): string {
+  return loadConfig().RELAY_DB_PATH ?? ":memory:";
 }
 
 /**

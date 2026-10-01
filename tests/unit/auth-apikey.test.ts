@@ -4,7 +4,7 @@
  * Validates customer API key authentication:
  * - parseBearer handles all common Authorization header shapes
  * - checkKeyStatus correctly handles every failure reason
- * - authenticateBearer end-to-end with the in-memory Redis mock
+ * - authenticateBearer end-to-end against the in-memory SQLite database
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import {
@@ -14,7 +14,7 @@ import {
   reasonToHttp,
   resolveAuthHeader,
 } from "@/lib/auth/apikey";
-import { getRedis, k, __resetRedisForTest } from "@/lib/db/redis";
+import { __resetDbForTest, run, toDbBool } from "@/lib/db/sqlite";
 import { generateApiKey, sha256Hex } from "@/lib/crypto/hashing";
 import type { ApiKey, User } from "@/lib/db/types";
 
@@ -62,42 +62,53 @@ function makeUser(overrides: Partial<User> = {}): User {
 }
 
 async function seedKey(key: ApiKey, user: User = makeUser()): Promise<string> {
-  const redis = getRedis();
-  await redis.hset(k.apiKey(key.id), {
-    id: key.id,
-    userId: key.userId,
-    label: key.label,
-    keyHash: key.keyHash,
-    keyPrefix: key.keyPrefix,
-    expiresAt: key.expiresAt ?? "",
-    enabled: key.enabled ? "1" : "0",
-    allowedModels: key.allowedModels.join(","),
-    createdAt: key.createdAt,
-    lastUsedAt: key.lastUsedAt ?? "",
-  });
-  await redis.set(k.apiKeyByHash(key.keyHash), key.id);
   await seedUser(user);
+  run(
+    `INSERT INTO api_keys
+       (id, user_id, label, key_hash, key_prefix, expires_at,
+        force_disabled, enabled, allowed_models, created_at, last_used_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+    [
+      key.id,
+      key.userId,
+      key.label,
+      key.keyHash,
+      key.keyPrefix,
+      key.expiresAt ?? null,
+      toDbBool(key.forceDisabled),
+      toDbBool(key.enabled),
+      JSON.stringify(key.allowedModels),
+      key.createdAt,
+      key.lastUsedAt ?? null,
+    ],
+  );
   return key.id;
 }
 
 async function seedUser(user: User): Promise<void> {
-  const redis = getRedis();
-  await redis.hset(k.user(user.id), {
-    id: user.id,
-    username: user.username,
-    passwordHash: user.passwordHash,
-    role: user.role,
-    displayName: user.displayName,
-    createdAt: user.createdAt,
-    updatedAt: user.updatedAt,
-    lastLoginAt: user.lastLoginAt ?? "",
-    quotaType: user.quotaType,
-    quotaLimit: String(user.quotaLimit),
-    quotaUsed: String(user.quotaUsed),
-    maxActiveKeys: String(user.maxActiveKeys),
-    allowedModels: user.allowedModels.join(","),
-  });
-  await redis.set(k.userByUsername(user.username), user.id);
+  run(
+    `INSERT INTO users
+       (id, username, password_hash, role, display_name, timezone,
+        created_at, updated_at, last_login_at, quota_type, quota_limit,
+        quota_used, max_active_keys, allowed_models)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [
+      user.id,
+      user.username,
+      user.passwordHash,
+      user.role,
+      user.displayName,
+      null,
+      user.createdAt,
+      user.updatedAt,
+      user.lastLoginAt ?? null,
+      user.quotaType,
+      user.quotaLimit,
+      user.quotaUsed,
+      user.maxActiveKeys,
+      JSON.stringify(user.allowedModels),
+    ],
+  );
 }
 
 describe("parseBearer", () => {
@@ -355,9 +366,9 @@ describe("reasonToHttp", () => {
   });
 });
 
-describe("authenticateBearer (end-to-end with in-memory Redis)", () => {
+describe("authenticateBearer (end-to-end with the in-memory SQLite database)", () => {
   beforeEach(() => {
-    __resetRedisForTest();
+    __resetDbForTest();
   });
 
   it("returns missing_key when header is absent", async () => {

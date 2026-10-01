@@ -7,8 +7,7 @@
  * 200 with only that key's allowed models.
  */
 import { describe, it, expect, beforeEach } from "vitest";
-import { __resetRedisForTest, __setRedisForTest } from "@/lib/db/redis";
-import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
+import { __resetDbForTest } from "@/lib/db/sqlite";
 import { createApiKey } from "@/lib/db/keys";
 import { createUser } from "@/lib/db/users";
 import { createProvider } from "@/lib/db/providers";
@@ -58,8 +57,7 @@ async function seed(): Promise<{ key: string; restrictedKey: string }> {
 
 describe("GET /v1/models", () => {
   beforeEach(() => {
-    __resetRedisForTest();
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
   });
 
   it("rejects a request with no Authorization header", async () => {

@@ -10,7 +10,7 @@ import {
   loadConfig,
   __resetConfigForTest,
   isProduction,
-  isEmulatorEnabled,
+  getDbPath,
   getMasterKey,
   getSessionPassword,
   getOpenAIKeys,
@@ -37,43 +37,36 @@ describe("config", () => {
 
   it("loads without Upstash creds when only RELAY_AUTH is set", () => {
     // Realistic Vercel scenario: Deploy Button deployed with RELAY_AUTH only,
-    // Upstash Marketplace not yet installed. loadConfig() must succeed so the
-    // app can boot and /healthz can report the missing state.
+    // Only RELAY_AUTH is required; the database needs no configuration at all.
     const cfg = loadConfig({
       RELAY_AUTH: "long-enough-password-here",
       RELAY_PUBLIC_URL: "https://relay.example.com",
     } as unknown as NodeJS.ProcessEnv);
     expect(cfg.RELAY_AUTH).toBe("long-enough-password-here");
-    expect(cfg.UPSTASH_REDIS_REST_URL).toBeUndefined();
-    expect(cfg.UPSTASH_REDIS_REST_TOKEN).toBeUndefined();
+    expect(cfg.RELAY_DB_PATH).toBeUndefined();
   });
 
   it("throws helpful error when RELAY_AUTH is missing", () => {
     expect(() =>
       loadConfig({
         NODE_ENV: "production",
-        UPSTASH_REDIS_REST_URL: "http://localhost:3000",
-        UPSTASH_REDIS_REST_TOKEN: "x",
+        RELAY_DB_PATH: ":memory:",
         RELAY_PUBLIC_URL: "https://relay.example.com",
       } as unknown as NodeJS.ProcessEnv),
     ).toThrow(/RELAY_AUTH/);
   });
 
-  it("EMULATE_VERCEL_LOCAL is coerced to boolean", () => {
-    (process.env as Record<string, string>).EMULATE_VERCEL_LOCAL = "1";
+  it("RELAY_DB_PATH resolves, defaulting to the in-memory store", () => {
+    // No database configuration is required — an unset path means SQLite
+    // `:memory:`, which is what makes local dev and the test suite work with
+    // zero setup.
+    delete (process.env as Record<string, string>).RELAY_DB_PATH;
     __resetConfigForTest();
-    expect(isEmulatorEnabled()).toBe(true);
+    expect(getDbPath()).toBe(":memory:");
 
-    (process.env as Record<string, string>).EMULATE_VERCEL_LOCAL = "0";
+    (process.env as Record<string, string>).RELAY_DB_PATH = "/var/lib/relayab/relayab.db";
     __resetConfigForTest();
-    expect(isEmulatorEnabled()).toBe(false);
-  });
-
-  it("isEmulatorEnabled returns false in production even when flag is on", () => {
-    (process.env as Record<string, string>).NODE_ENV = "production";
-    (process.env as Record<string, string>).EMULATE_VERCEL_LOCAL = "1";
-    __resetConfigForTest();
-    expect(isEmulatorEnabled()).toBe(false);
+    expect(getDbPath()).toBe("/var/lib/relayab/relayab.db");
   });
 
   it("isProduction reflects NODE_ENV", () => {
@@ -163,13 +156,16 @@ describe("config", () => {
     });
   });
 
-  it("rejects malformed UPSTASH_REDIS_REST_URL", () => {
-    expect(() =>
-      loadConfig({
-        ...process.env,
-        UPSTASH_REDIS_REST_URL: "not-a-url",
-      } as NodeJS.ProcessEnv),
-    ).toThrow();
+  it("treats an empty RELAY_DB_PATH as unset rather than as a path", () => {
+    // An env file ending in `RELAY_DB_PATH=` should not be read as "open the
+    // database at the empty relative path" — it has to fall back to the
+    // default, which is how every other optional variable behaves.
+    const cfg = loadConfig({
+      ...process.env,
+      RELAY_DB_PATH: "",
+    } as NodeJS.ProcessEnv);
+    expect(cfg.RELAY_DB_PATH).toBeUndefined();
+    expect(cfg.RELAY_AUTH).toBeDefined();
   });
 
   it("rejects too-short RELAY_AUTH", () => {

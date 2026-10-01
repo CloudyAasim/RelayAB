@@ -3,7 +3,7 @@
 # scripts/smoke-local.sh
 #
 # End-to-end smoke test with zero external dependencies:
-#   - in-memory Redis (EMULATE_VERCEL_LOCAL=1)
+#   - a throwaway SQLite file under the system temp dir (removed on exit)
 #   - a mock OpenAI-compatible upstream served from a tiny local Node server
 #
 # It starts `next dev` on a free port and walks the real request path:
@@ -38,9 +38,12 @@ UPSTREAM_LOG="${TMP_DIR}/upstream.log"
 NEXT_LOG="$(mktemp)"
 
 export RELAY_AUTH="smoke-local-relay-auth-0123456789abcdef"
-export UPSTASH_REDIS_REST_URL="http://localhost:13700"
-export UPSTASH_REDIS_REST_TOKEN="smoke-token"
-export EMULATE_VERCEL_LOCAL="1"
+# A throwaway SQLite file under the system temp dir, removed on exit. It has to
+# be a fresh file every run: the app persists the bootstrap admin's password
+# hash, so a leftover database from a previous run would reject the login and
+# fail the very first assertion.
+SMOKE_DB="${TMP_DIR}/smoke.db"
+export RELAY_DB_PATH="$SMOKE_DB"
 export OPENAI_KEYS="sk-mock-upstream-key"
 export OPENAI_BASE_URL="http://127.0.0.1:${UPSTREAM_PORT}/v1"
 unset NODE_ENV

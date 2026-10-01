@@ -17,7 +17,8 @@
  *                code that maps to a specific HTTP error.
  */
 import { sha256Hex } from "../crypto/hashing";
-import { getRedis, k } from "../db/redis";
+import { getApiKeyByPlaintext } from "../db/keys";
+import { getUserById } from "../db/users";
 import { ensureBootstrapped } from "../db/bootstrap";
 import {
   ApiKeySchema,
@@ -113,18 +114,10 @@ export async function lookupApiKey(
 ): Promise<ApiKey | null> {
   if (!plaintext || !plaintext.startsWith("sk-relay-")) return null;
 
-  const hash = sha256Hex(plaintext);
-  const redis = getRedis();
-
-  const keyId = await redis.get<string>(k.apiKeyByHash(hash));
-  if (!keyId) return null;
-
-  const raw = await redis.hgetall<Record<string, string>>(k.apiKey(keyId));
-  if (!raw) return null;
-
-  // Convert Redis hash to typed record. The repository layer in M4 will
-  // own this; for now we inline the parsing here to keep M3 self-contained.
-  return parseApiKeyFromHash(raw);
+  // Goes through the repository rather than hitting the store directly: the
+  // SQLite version has a UNIQUE index on `key_hash`, so this is one indexed
+  // lookup instead of "resolve hash → id, then fetch the record".
+  return getApiKeyByPlaintext(plaintext);
 }
 
 /**
@@ -132,10 +125,7 @@ export async function lookupApiKey(
  */
 export async function lookupUserById(userId: string): Promise<User | null> {
   if (!userId) return null;
-  const redis = getRedis();
-  const raw = await redis.hgetall<Record<string, string>>(k.user(userId));
-  if (!raw) return null;
-  return parseUserFromHash(raw);
+  return getUserById(userId);
 }
 
 // ---------------------------------------------------------------------------

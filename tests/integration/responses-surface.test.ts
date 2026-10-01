@@ -15,8 +15,7 @@
  * receives) and response replay (what the client receives).
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { __resetRedisForTest, __setRedisForTest } from "@/lib/db/redis";
-import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
+import { __resetDbForTest } from "@/lib/db/sqlite";
 import { createApiKey } from "@/lib/db/keys";
 import { createUser } from "@/lib/db/users";
 import { createProvider } from "@/lib/db/providers";
@@ -112,8 +111,7 @@ function responsesRequest(body: unknown): Request {
 
 describe("POST /v1/responses via a chat-only provider", () => {
   beforeEach(() => {
-    __resetRedisForTest();
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
   });
 
   afterEach(() => {

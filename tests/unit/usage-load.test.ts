@@ -7,12 +7,11 @@
  * Key properties:
  *  - `range=all` reports lifetime totals from the running counters, so it stays
  *    correct even after the per-key log window has been trimmed.
- *  - a ranged read stops once the list (newest-first) crosses the lower bound,
- *    instead of always hydrating all 1000 rows.
+ *  - a ranged read is bounded by the window in SQL, instead of always
+ *    hydrating all 1000 rows.
  */
 import { describe, it, expect, beforeEach } from "vitest";
-import { __resetRedisForTest, __setRedisForTest, getRedis, k } from "@/lib/db/redis";
-import { createMemoryRedis, type RedisLike } from "@/lib/db/__mocks__/memory-redis";
+import { __resetDbForTest, getDb, getOne, run } from "@/lib/db/sqlite";
 import { listUsageWithin, recordUsage } from "@/lib/db/usage";
 import { resolveRange } from "@/lib/usage/report";
 import { loadUsageReport } from "@/lib/usage/load";
@@ -36,8 +35,7 @@ const ALL = resolveRange({ key: "all", tzOffsetMinutes: 480 });
 
 describe("loadUsageReport", () => {
   beforeEach(() => {
-    __resetRedisForTest();
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
   });
 
   it("summarizes successful requests and groups by key and model", async () => {
@@ -65,7 +63,7 @@ describe("loadUsageReport", () => {
     await recordUsage(usage({ apiKeyId: "k1", creditsUsed: 6 }));
 
     // Simulate the per-key log window being trimmed while the counter survives.
-    await getRedis().del(k.usageLogsByKey("k1"));
+    run("DELETE FROM usage_logs WHERE api_key_id = ?", ["k1"]);
 
     const report = await loadUsageReport({
       keyIds: ["k1"],
@@ -117,61 +115,55 @@ describe("loadUsageReport", () => {
 
 describe("listUsageWithin (bounded read)", () => {
   beforeEach(() => {
-    __resetRedisForTest();
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
   });
 
-  /** Seed `count` newest-first logs, one minute apart, into the active client. */
+  /** Seed `count` logs, one minute apart, newest at `baseMs`. */
   async function seed(apiKeyId: string, count: number, baseMs: number) {
-    const redis = getRedis();
+    const stmt = getDb().prepare(
+      `INSERT INTO usage_logs
+         (id, api_key_id, user_id, provider_id, model, upstream_model,
+          prompt_tokens, completion_tokens, total_tokens, credits_used,
+          images, capability, status, error_message, billing_mode, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    );
     for (let i = count - 1; i >= 0; i--) {
-      const id = `l${i}`;
-      const createdAt = new Date(baseMs - i * 60_000).toISOString();
-      await redis.hset(k.usageLog(apiKeyId, id), {
-        id,
+      stmt.run(
+        `l${i}`,
         apiKeyId,
-        userId: "u1",
-        providerId: "p1",
-        model: "m",
-        upstreamModel: "m",
-        promptTokens: "1",
-        completionTokens: "1",
-        totalTokens: "2",
-        creditsUsed: "1",
-        status: "success",
-        errorMessage: "",
-        billingMode: "usage",
-        createdAt,
-      });
-      await redis.lpush(k.usageLogsByKey(apiKeyId), id);
+        "u1",
+        "p1",
+        "m",
+        "m",
+        1,
+        1,
+        2,
+        1,
+        0,
+        null,
+        "success",
+        null,
+        "usage",
+        new Date(baseMs - i * 60_000).toISOString(),
+      );
     }
   }
 
-  it("stops walking once the page crosses the lower bound", async () => {
+  it("returns only the rows inside the window, without reading the whole history", async () => {
     const baseMs = Date.UTC(2026, 8, 27, 12, 0, 0);
-
-    // A counting client so we can observe how many list reads happen.
-    const redis = createMemoryRedis();
-    let lrangeCalls = 0;
-    const original = redis.lrange.bind(redis);
-    (redis as unknown as { lrange: RedisLike["lrange"] }).lrange = ((...args: Parameters<
-      RedisLike["lrange"]
-    >) => {
-      lrangeCalls += 1;
-      return original(...args);
-    }) as RedisLike["lrange"];
-    __setRedisForTest(redis);
-
     await seed("k1", 600, baseMs);
-    // Log #250 (0-based) is the oldest row still inside the window.
+
+    // Log #249 (0-based) is the oldest row still inside the window.
     const fromIso = new Date(baseMs - 249 * 60_000).toISOString();
 
     const logs = await listUsageWithin("k1", { fromIso });
 
-    // Two pages (0–199, 200–399) is enough: the second page's oldest row is
-    // already older than the window, so page three is never requested.
-    expect(lrangeCalls).toBe(2);
-    expect(logs.length).toBe(400);
+    // The bound is applied by the query, not by walking pages and stopping:
+    // an unbounded read would have returned all 600 rows.
+    expect(getOne<{ n: number }>("SELECT COUNT(*) AS n FROM usage_logs")).toEqual({ n: 600 });
+    expect(logs.length).toBe(250);
+    // Newest first, and the boundary row is included (`>= fromIso`).
     expect(logs[0].createdAt).toBe(new Date(baseMs).toISOString());
+    expect(logs[249].createdAt).toBe(fromIso);
   });
 });

@@ -6,9 +6,13 @@
  * Sets the minimum env vars RelayAB needs to boot in test mode.
  * In test mode, config.ts auto-fills sensible defaults for anything
  * missing, so this file only sets the truly required ones.
+ *
+ * The database is SQLite, and `:memory:` is the whole configuration surface:
+ * there is no server to start, no port to bind and no password to set. Each
+ * test file gets its own in-memory database, created on first use and torn
+ * down by the reset helpers in `__resetDbForTest` / `__resetRedisForTest`.
  */
 (process.env as Record<string, string>).NODE_ENV = "test";
 process.env.RELAY_AUTH = "test-relay-auth-must-be-8-chars-long-padding";
 process.env.RELAY_PUBLIC_URL = "http://localhost:3000";
-process.env.UPSTASH_REDIS_REST_URL = "http://localhost:13700";
-process.env.UPSTASH_REDIS_REST_TOKEN = "test-token";
+process.env.RELAY_DB_PATH = ":memory:";

@@ -51,9 +51,9 @@
                                 │                  │                  │
                                 │                  ▼                  │
                                 │  ┌────────────────────────────────┐ │
-                                │  │  Valkey 8.1  127.0.0.1:6379    │ │
+                                │  │  relayab.db (SQLite)            │ │
                                 │  │  users / api_keys / providers  │ │
-                                │  │  usage_logs / sessions         │ │
+                                │  │  usage_logs / settings / meta  │ │
                                 │  └────────────────────────────────┘ │
                                 │                  │                  │
                                 │                  ▼                  │
@@ -70,7 +70,7 @@
 |---|---|---|
 | 部署方式 | 自己的 Debian 服务器（systemd + nginx） | 零平台月费、无请求数上限；nginx 必须关缓冲以保住 SSE 流式 |
 | 框架 | Next.js 15 App Router | Server Actions / Route Handlers 同源；SSR 友好 |
-| 数据存储 | **本机 Valkey**（`REDIS_URL` + ioredis 走 TCP）；也支持 Upstash | 自托管零外部依赖；连接可复用，无需每条命令一次 HTTP |
+| 数据存储 | **本机 SQLite 文件**（Node 24 内置 `node:sqlite`）；托管环境可切 Upstash REST | 自托管零外部依赖：没有服务要装、没有端口、没有密码，备份就是复制文件；唯一约束与外键改由数据库保证 |
 | 认证 | iron-session + bcryptjs | 轻量、Edge 兼容、无外部依赖；bcryptjs 纯 JS |
 | 上游 Key 加密 | AES-256-GCM，主密钥从 env | 标准做法；与 TokenPlan 思路一致 |
 | AI 代理 | 自写代理层（`src/lib/proxy/*`） | 直接控制 SSE 分帧、协议转换与 baseURL；不依赖第三方 SDK |
@@ -98,9 +98,9 @@
 - **客户端路由缓存**：`experimental.staleTimes.dynamic = 30`，否则动态页面每次
   切换都会重新请求 serverless 函数；写操作走 Server Action / `router.refresh()`，
   不受该窗口影响。
-- **数据访问**：每条 Redis 命令在 REST 后端就是一次 HTTP 请求，因此读多行记录一律
-  走 `hgetallMany()`（MULTI 管线，每 100 条一个请求）；同一请求内重复读取当前用户
-  由 React `cache()` 去重。
+- **数据访问**：SQLite 走进程内调用，没有网络往返；读多行记录用一条 `IN (…)` 查询，
+  `usage_logs` 上按 `(api_key_id, created_at)` 等维度建了索引来支撑聚合。同一请求内
+  重复读取当前用户由 React `cache()` 去重。
 
 ---
 
@@ -108,19 +108,23 @@
 
 详细定义见 [`data-model.md`](./data-model.md)。概要：
 
-| 表/键 | 用途 | 主键 |
+| 表 | 用途 | 主键 |
 |---|---|---|
-| `user:{id}` | 用户档案 + 角色 + 密码散列 + **积分池** (`quotaType`/`quotaLimit`/`quotaUsed`) + 模型白名单 | `id` |
-| `user:by-username:{username}` | 用户名 → id 反查 | `username` |
-| `apikey:{id}` | 客户 Key 凭证（散列 / 启用 / 过期 / 模型收窄）。**不含额度字段** | `id` |
-| `apikey:hash:{hash}` | API Key 哈希 → id（用于 Bearer 校验） | `sha256(key)` |
-| `apikey:by-user:{userId}` | 用户的 Key 列表（Set） | `userId` |
-| `provider:{id}` | 上游 Provider 配置 + 加密的 API Key | `id` |
-| `usage:{apikeyId}:{yyyymm}` | 月度用量（tokens + creditsUsed） | `apikeyId + 月份` |
-| `log:{apikeyId}:{ulid}` | 单次请求日志 | `ulid` |
-| `session:{sid}` | iron-session 内部 | `sid` |
+| `users` | 用户档案 + 角色 + 密码散列 + **积分池** (`quota_type`/`quota_limit`/`quota_used`) + 模型白名单。`username` 带 UNIQUE | `id` |
+| `api_keys` | 客户 Key 凭证（散列 / 启用 / 过期 / 模型收窄）。**不含额度字段**。`key_hash` 带 UNIQUE，外键指向 `users(id)` | `id` |
+| `providers` | 上游 Provider 配置 + 加密的 API Key | `id` |
+| `media_providers` | 媒体供应商配置 + 声明式 spec 数组 | `id` |
+| `usage_logs` | 单次请求日志（只增） | `id` (ULID) |
+| `usage_totals` | 每把 Key 的滚动累计值，代理路径每次调用都读 | `api_key_id` |
+| `settings` | 键值袋（当前只有 `publicUrl`） | `key` |
+| `meta` | 记录一次性 bootstrap 是否已跑过 | `key` |
 
-所有 Redis 键使用前缀 `relay:` 避免与其它业务冲突。
+Session 由 iron-session 放在 cookie 里，**不落库**。
+
+> **表与实体的边界**：每张表与一个 Zod schema 一一对应，列名是实体字段名的
+> `snake_case`，每行读出后都再走一遍同一个 schema。布尔存 `INTEGER` 0/1，
+> `allowed_models` / `model_mapping` / `headers` / `specs` 等存 JSON 文本，
+> 时间戳存 ISO 字符串。明细见 [data-model.md 存储约定](data-model.md#存储约定)。
 
 ---
 
@@ -172,7 +176,7 @@
 媒体能力不走聊天协议面，而是**声明式 spec + 通用引擎**：
 
 ```
-供应商行（Redis relay:media-provider:*）= baseUrl + 密钥 + models + specs[]
+供应商行（`media_providers` 表）= baseUrl + 密钥 + models + specs[]
 引擎（src/lib/media/engine.ts）解释 spec：构造上游请求 → 解析响应 → 错误映射 → 异步轮询
 ```
 
@@ -204,7 +208,8 @@
   - `keyHash = sha256(key)`（用于 Bearer 校验反查）。
   - `keyPrefix = key.slice(0, 12)` + `...` + `key.slice(-4)`（仅用于列表展示）。
   - **明文仅在创建时返回一次**，之后不再可读。
-- 校验：客户端传 `Authorization: Bearer <key>` → 服务端 `sha256` → 反查 Redis → 命中则拉取完整记录。
+- 校验：客户端传 `Authorization: Bearer <key>` → 服务端 `sha256` → 查 `api_keys.key_hash`
+  （自带 UNIQUE 索引）→ 命中则拉取完整记录。
 
 ### 5.3 上游 Provider API Key（最重要的安全点）
 - 算法：**AES-256-GCM**。
@@ -273,14 +278,18 @@
 2. 转发到上游（流式）
 3. 流结束后聚合 token 数
 4. 计算本次消耗的积分
-5. HINCRBY relay:user:{userId} quotaUsed <delta>   ← 记在账号上
-6. HSET  relay:apikey:{keyId} lastUsedAt <now>      ← 只是时间戳
-7. 写入 relay:log:* 用量日志（保留逐请求明细）
+5. UPDATE users SET quota_used = quota_used + <delta>   ← 记在账号上
+6. UPDATE api_keys SET last_used_at = <now>              ← 只是时间戳
+7. INSERT INTO usage_logs 写用量日志（保留逐请求明细）
+8. UPDATE usage_totals 累加该 Key 的滚动汇总（代理路径每次调用都读它）
 ```
 
 ### 6.6 并发安全
-- `quotaUsed` 的累加走 `HINCRBY`，天然原子，多个并发请求不会丢更新。
-- 归属校验（用户名唯一）走 `SET NX`，见 [data-model.md §1](./data-model.md#1-用户user) 的冷启动竞态说明。
+- `quota_used` 的累加走 `SET x = x + ?`（SQL 表达式在事务内原子求值），多个并发请求
+  不会丢更新；这些更新包在 `withTransaction()`（`BEGIN IMMEDIATE`）里。
+- 归属校验（用户名唯一）由 `users.username` 上的 `UNIQUE` 约束保证，冷启动的
+  "并发建 admin" 竞态则由 bootstrap 的 `BEGIN IMMEDIATE` 事务 + `meta` 表主键冲突
+  拦下，见 [data-model.md §1](./data-model.md#1-用户user) 与 §6。
 - 或在流开始前预扣（悲观），流结束后多退少补。
 
 ---
@@ -368,7 +377,7 @@
 | 层级 | 工具 | 覆盖 |
 |---|---|---|
 | 单元 | Vitest | 加密、散列、额度计算、积分标准、过期判断 |
-| 集成 | Vitest + Next.js test handler | 路由 + 真实 Redis（mock 或 testcontainers） |
+| 集成 | Vitest + Next.js test handler | 路由 + 真实 SQLite（`RELAY_DB_PATH=":memory:"`，无需任何服务） |
 | E2E | Playwright | 登录、建 Key、看用量、调 OpenAI 兼容接口 |
 
 ### 8.2 CI / 本地一键脚本
@@ -376,7 +385,7 @@
 ```bash
 pnpm install
 pnpm test:unit          # 纯函数，秒级
-pnpm test:integration   # 集成，需要本地 Redis（测试用 mock）
+pnpm test:integration   # 集成，数据库是进程内 :memory:，零外部依赖
 pnpm test:e2e           # 需要 Next dev server
 ```
 
@@ -385,17 +394,20 @@ pnpm test:e2e           # 需要 Next dev server
 ## 9. 部署
 
 ### 9.1 服务器配置
-- Node.js 24 + pnpm 10（`corepack enable` 即可）
-- Valkey 8.1，监听 `127.0.0.1:6379`，`maxmemory-policy noeviction`
+- Node.js 24 + pnpm 10（`corepack enable` 即可）—— `node:sqlite` 是内置模块，
+  版本不够会直接报模块找不到
+- 一个可写的数据库目录（建议 `/var/lib/relayab`，属主 `relayab`）——**没有数据库
+  服务要装，没有端口要开**
 - systemd 常驻，`WorkingDirectory` 指向仓库根
 - nginx 反代 + Let's Encrypt 证书，**必须关闭响应缓冲**（否则 SSE 失效）
 
 现成配置在 [`deploy/`](../../deploy/README.md)：
-`relayab.service` / `nginx.conf` / `valkey.conf.example` / `env.production.example`。
+`relayab.service` / `nginx.conf` / `env.production.example`。
 
 ### 9.2 环境变量
 见 [`deploy/env.production.example`](../../deploy/env.production.example)。
-必填 `RELAY_AUTH`、`REDIS_URL`、`RELAY_BUILD_ID`。
+必填只有 `RELAY_AUTH`；生产建议显式设 `RELAY_DB_PATH`（放在发布目录之外）、
+`RELAY_BUILD_ID` 与 `RELAY_PUBLIC_URL`。
 
 ### 9.3 首次启动
 - 第一次有请求命中应用时（登录页提交登录、页面读取 session、或代理接口校验 Key），
@@ -438,7 +450,7 @@ RelayAB/
 │   ├── lib/
 │   │   ├── auth/         (session.ts, password.ts)
 │   │   ├── crypto/       (secrets.ts, hashing.ts)
-│   │   ├── db/           (redis.ts, repositories)
+│   │   ├── db/           (sqlite.ts, users.ts, keys.ts, providers.ts, usage.ts)
 │   │   ├── proxy/        (openai.ts, anthropic.ts, stream.ts)
 │   │   ├── quota/        (credits.ts, rates.ts, calculator.ts)
 │   │   └── config.ts
@@ -469,9 +481,9 @@ RelayAB/
 | 风险 | 影响 | 缓解 |
 |---|---|---|
 | 主密钥泄漏 | 攻击者可解密所有上游 Key | 主密钥仅放 `.env.production`（`chmod 600`）；不写入日志；定期轮换脚本 |
-| Redis 误删 | 所有用户/Key 丢失 | 启用 AOF（`appendfsync everysec`）；加日备 cron（`valkey-cli --rdb`） |
+| 数据库文件误删 / 磁盘损坏 | 所有用户/Key/用量流水丢失 | `RELAY_DB_PATH` 放在发布目录之外；加日备 cron（`sqlite3 … ".backup …"` 或停服复制）；`chmod 600` |
 | nginx 响应缓冲 | 流式长请求被卡住后一次性吐出 | 站点配置关闭 `proxy_buffering` 并加 `X-Accel-Buffering no` |
-| 单机故障 | 服务与数据库同时不可用 | Valkey 与应用在同一台机器上，需自行规划备份与故障恢复 |
+| 单机故障 | 服务与数据库同时不可用 | 应用与 `.db` 文件在同一台机器上，需自行规划备份与故障恢复 |
 | 速率限制 | 共享上游 Key 易触发 OpenAI/Anthropic 限流 | 额度引擎天然限速；v2 加 per-Provider 速率 |
 
 ---

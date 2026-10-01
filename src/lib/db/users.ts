@@ -5,17 +5,16 @@
  * more API keys and may have role=admin or role=user.
  *
  * Schema (mirrors `docs/data-model.md` §1):
- *   HASH relay:user:{userId}       → User fields
- *   STRING relay:user:by-username:{username} → userId
+ *   TABLE users → one row per user, `username` carries a UNIQUE index.
  *
- * All write operations that affect secondary indexes must be atomic
- * with respect to the primary record. We use Redis MULTI (transactions)
- * to ensure both writes succeed or both fail.
+ * The secondary index that used to be a separate `relay:user:by-username:*`
+ * STRING key is now the UNIQUE constraint on the `username` column, so the
+ * conflict check and the insert are one statement and cannot race.
  */
 import { hashPassword } from "../crypto/password";
 import { generateId } from "../crypto/hashing";
 import { UserSchema, DEFAULT_USER_ALLOCATION, DEFAULT_TIMEZONE, type User, type Timezone } from "./types";
-import { getRedis, hgetallMany, k } from "./redis";
+import { getAll, getDb, getOne, rowToUser, run } from "./sqlite";
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -33,6 +32,18 @@ export class UserNotFoundError extends Error {
     super(`User not found: ${userId}`);
     this.name = "UserNotFoundError";
   }
+}
+
+/**
+ * True when SQLite rejected a write because a UNIQUE index was violated.
+ *
+ * `node:sqlite` surfaces constraint failures as a plain Error whose message
+ * carries the constraint name, so the check is on the message rather than on a
+ * typed error code. Used to turn a raw driver error back into the domain error
+ * callers already handle.
+ */
+function isUniqueViolation(err: unknown): boolean {
+  return err instanceof Error && /UNIQUE constraint failed/i.test(err.message);
 }
 
 // ---------------------------------------------------------------------------
@@ -100,56 +111,44 @@ export async function createUser(input: CreateUserInput): Promise<User> {
     allowedModels: input.allowedModels ?? [],
   });
 
-  const redis = getRedis();
-
-  // ATOMIC CONFLICT CHECK + RESERVATION.
+  // ATOMIC CONFLICT CHECK + INSERT.
   //
-  // The classic implementation does GET-then-SET, which has a TOCTOU race:
-  // two concurrent createUser() calls both observe "no existing user" and
-  // both proceed to write, ending up with a duplicated username and an
-  // orphaned user record. The fix is to use SETNX on the secondary index:
-  // if the SETNX returns "OK" we have atomically reserved the username; if
-  // it returns null the username is already taken.
-  //
-  // Why this matters in production: Vercel cold-starts spin up multiple
-  // concurrent Lambda containers, and `bootstrapAdmin()` is invoked from
-  // every page-load's `getCurrentUser()`. Without atomic reservation the
-  // losing Lambda explodes with "Username already exists: admin" and
-  // surfaces as an HTTP 500 to the user.
-  const usernameKey = k.userByUsername(user.username);
-  const claimed = await redis.set(usernameKey, user.id, { nx: true });
-  if (claimed !== "OK") {
-    throw new UsernameConflictError(user.username);
-  }
-
-  // From here on the username is reserved in the secondary index. If the
-  // user hash write that follows fails, we MUST release the reservation
-  // (otherwise the username is "stuck taken" forever).
+  // The Redis version needed SETNX on a secondary index to avoid a TOCTOU
+  // race between two concurrent createUser() calls. Here the UNIQUE index on
+  // `username` makes the check and the write a single statement, so the race
+  // cannot exist — and the secondary index can no longer drift out of sync
+  // with the record it points at.
   try {
-    await redis.hset(k.user(user.id), {
-      id: user.id,
-      username: user.username,
-      passwordHash: user.passwordHash,
-      role: user.role,
-      displayName: user.displayName,
-      timezone: user.timezone ?? DEFAULT_TIMEZONE,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-      lastLoginAt: user.lastLoginAt ?? "",
-      quotaType: user.quotaType,
-      quotaLimit: String(user.quotaLimit),
-      quotaUsed: String(user.quotaUsed),
-      maxActiveKeys: String(user.maxActiveKeys),
-      allowedModels: user.allowedModels.join(","),
-    });
+    run(
+      `INSERT INTO users
+         (id, username, password_hash, role, display_name, timezone,
+          created_at, updated_at, last_login_at, quota_type, quota_limit,
+          quota_used, max_active_keys, allowed_models)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [
+        user.id,
+        user.username,
+        user.passwordHash,
+        user.role,
+        user.displayName,
+        user.timezone ?? DEFAULT_TIMEZONE,
+        user.createdAt,
+        user.updatedAt,
+        null,
+        user.quotaType,
+        user.quotaLimit,
+        user.quotaUsed,
+        user.maxActiveKeys,
+        JSON.stringify(user.allowedModels),
+      ],
+    );
   } catch (err) {
-    // Best-effort cleanup. If this DEL also fails (e.g. transient Redis
-    // outage), the operator can clear relay:user:by-username:{username}
-    // by hand. The error that caused us to land here is the meaningful
-    // one — surface it.
-    await redis.del(usernameKey).catch(() => {});
+    if (isUniqueViolation(err)) {
+      throw new UsernameConflictError(user.username);
+    }
     throw err;
   }
+
   return user;
 }
 
@@ -160,53 +159,43 @@ export async function createUser(input: CreateUserInput): Promise<User> {
 /** Look up a user by id. Returns null if not found. */
 export async function getUserById(userId: string): Promise<User | null> {
   if (!userId) return null;
-  return hashToUser(await getRedis().hgetall<Record<string, string>>(k.user(userId)));
+  return getOne("SELECT * FROM users WHERE id = ?", [userId], rowToUser);
 }
 
 /** Look up a user by username. Returns null if not found. */
 export async function getUserByUsername(username: string): Promise<User | null> {
   if (!username) return null;
-  const userId = await getRedis().get<string>(k.userByUsername(username));
-  if (!userId) return null;
-  return getUserById(userId);
+  return getOne("SELECT * FROM users WHERE username = ?", [username], rowToUser);
 }
 
-/** List users (paginated). Cursor is currently `last_user.username` for simplicity. */
+/**
+ * List users (paginated). Cursor is `last_user.username` for simplicity.
+ *
+ * The Redis version SCANned the whole keyspace and filtered out the secondary
+ * index before reading each record, because a blind HGETALL on an index key
+ * throws WRONGTYPE. Here it is one indexed query, and pagination is a real
+ * `LIMIT`/`WHERE` instead of "read everything, then slice".
+ */
 export async function listUsers(opts: { limit?: number; cursor?: string } = {}): Promise<{
   users: User[];
   nextCursor: string | null;
 }> {
   const limit = Math.max(1, Math.min(opts.limit ?? 50, 200));
-  const redis = getRedis();
-  // Schema reminder:
-  //   HASH     relay:user:{userId}            → record
-  //   STRING   relay:user:by-username:{u}    → userId  (secondary index)
-  // SCAN `relay:user:*` would match BOTH; we filter out the secondary
-  // index so we never call HGETALL on a STRING key (which throws
-  // WRONGTYPE in real Upstash).
-  const [, matched] = await redis.scan(0, { match: `${k.user("")}*`, count: 500 });
-  const userKeys = matched.filter(
-    (key) => key.startsWith(k.user("")) && !key.startsWith(k.userByUsername("")),
+
+  // Fetch one extra row to learn whether another page exists without a
+  // second COUNT query.
+  const rows = getAll(
+    opts.cursor
+      ? "SELECT * FROM users WHERE username > ? ORDER BY username ASC LIMIT ?"
+      : "SELECT * FROM users ORDER BY username ASC LIMIT ?",
+    opts.cursor ? [opts.cursor, limit + 1] : [limit + 1],
+    rowToUser,
   );
 
-  const users: User[] = [];
-  // One pipelined read instead of one round-trip per user record.
-  const rows = await hgetallMany(redis, userKeys);
-  const parsed = await Promise.all(rows.map((raw) => hashToUser(raw)));
-  for (const user of parsed) {
-    if (user) users.push(user);
-  }
-  users.sort((a, b) => a.username.localeCompare(b.username));
-
-  // Apply cursor (skip usernames <= cursor).
-  let startIdx = 0;
-  if (opts.cursor) {
-    const idx = users.findIndex((u) => u.username > opts.cursor!);
-    startIdx = idx >= 0 ? idx : users.length;
-  }
-  const slice = users.slice(startIdx, startIdx + limit);
-  const nextCursor = startIdx + limit < users.length ? slice[slice.length - 1].username : null;
-  return { users: slice, nextCursor };
+  const hasMore = rows.length > limit;
+  const users = hasMore ? rows.slice(0, limit) : rows;
+  const nextCursor = hasMore ? (users[users.length - 1]?.username ?? null) : null;
+  return { users, nextCursor };
 }
 
 /** Verify a password against the stored hash. Returns the user on match, null otherwise. */
@@ -249,17 +238,25 @@ export async function updateUser(
   // Re-validate.
   const validated = UserSchema.parse(merged);
 
-  await getRedis().hset(k.user(userId), {
-    displayName: validated.displayName,
-    timezone: validated.timezone ?? DEFAULT_TIMEZONE,
-    role: validated.role,
-    quotaType: validated.quotaType,
-    quotaLimit: String(validated.quotaLimit),
-    quotaUsed: String(validated.quotaUsed),
-    maxActiveKeys: String(validated.maxActiveKeys),
-    allowedModels: validated.allowedModels.join(","),
-    updatedAt: validated.updatedAt,
-  });
+  run(
+    `UPDATE users SET
+       display_name = ?, timezone = ?, role = ?, quota_type = ?,
+       quota_limit = ?, quota_used = ?, max_active_keys = ?,
+       allowed_models = ?, updated_at = ?
+     WHERE id = ?`,
+    [
+      validated.displayName,
+      validated.timezone ?? DEFAULT_TIMEZONE,
+      validated.role,
+      validated.quotaType,
+      validated.quotaLimit,
+      validated.quotaUsed,
+      validated.maxActiveKeys,
+      JSON.stringify(validated.allowedModels),
+      validated.updatedAt,
+      userId,
+    ],
+  );
 
   return validated;
 }
@@ -274,17 +271,18 @@ export async function resetUserPassword(
 
   const passwordHash = await hashPassword(newPassword);
   const now = new Date().toISOString();
-  await getRedis().hset(k.user(userId), {
+  run("UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?", [
     passwordHash,
-    updatedAt: now,
-  });
+    now,
+    userId,
+  ]);
   return { ...existing, passwordHash, updatedAt: now };
 }
 
 /** Record a successful login (updates lastLoginAt timestamp). */
 export async function touchLastLogin(userId: string): Promise<void> {
   const now = new Date().toISOString();
-  await getRedis().hset(k.user(userId), { lastLoginAt: now });
+  run("UPDATE users SET last_login_at = ? WHERE id = ?", [now, userId]);
 }
 
 /**
@@ -292,8 +290,9 @@ export async function touchLastLogin(userId: string): Promise<void> {
  *
  * This is the write half of the "quota lives on the user" model: every
  * successful proxied request — no matter which of the user's keys carried
- * it — decrements the same pool. `HINCRBY` keeps concurrent requests from
- * losing updates the way a read-modify-write would.
+ * it — decrements the same pool. Doing the arithmetic in the UPDATE statement
+ * keeps concurrent requests from losing updates the way a read-modify-write
+ * would.
  *
  * Returns the fresh user record so callers can render remaining balance
  * without a second round trip. Returns null if the user vanished mid-flight.
@@ -307,7 +306,7 @@ export async function incrementUserQuotaUsed(
   }
   if (delta === 0) return getUserById(userId);
 
-  await getRedis().hincrby(k.user(userId), "quotaUsed", delta);
+  run("UPDATE users SET quota_used = quota_used + ? WHERE id = ?", [delta, userId]);
   return getUserById(userId);
 }
 
@@ -320,17 +319,9 @@ export function remainingQuota(user: Pick<User, "quotaLimit" | "quotaUsed">): nu
   return Math.max(0, user.quotaLimit - user.quotaUsed);
 }
 
-/** Hard-delete: remove user + all secondary indexes. */
+/** Hard-delete: remove the user. Cascades to their API keys via the FK. */
 export async function deleteUser(userId: string): Promise<boolean> {
-  const existing = await getUserById(userId);
-  if (!existing) return false;
-
-  const redis = getRedis();
-  const tx = redis.multi();
-  tx.del(k.user(userId));
-  tx.del(k.userByUsername(existing.username));
-  await tx.exec();
-  return true;
+  return run("DELETE FROM users WHERE id = ?", [userId]) > 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -345,14 +336,18 @@ export async function bootstrapAdminIfNeeded(args: {
   username: string;
   password: string;
 }): Promise<User | null> {
-  const metaKey = k.metaInitialized();
-  const redis = getRedis();
-  const already = await redis.get(metaKey);
+  // The Redis version set a `meta:initialized` flag with SETNX. Here the
+  // PRIMARY KEY on `meta.key` gives the same once-only guarantee: a second
+  // concurrent insert violates it and is ignored.
+  const already = getOne<{ value: string }>(
+    "SELECT value FROM meta WHERE key = ?",
+    ["initialized"],
+  );
   if (already) return null;
 
   const existing = await getUserByUsername(args.username);
   if (existing) {
-    await redis.set(metaKey, "1");
+    run("INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)", ["initialized", "1"]);
     return null;
   }
 
@@ -362,61 +357,10 @@ export async function bootstrapAdminIfNeeded(args: {
     role: "admin",
     displayName: "Initial Admin",
   });
-  await redis.set(metaKey, "1");
+  run("INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)", ["initialized", "1"]);
   return user;
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-async function hashToUser(raw: Record<string, string> | null): Promise<User | null> {
-  if (!raw) return null;
-  try {
-    // Allocation fields default if missing (back-compat with records written
-    // before the user-allocation feature shipped).
-    // Back-compat: records written before quota moved from the key onto the
-    // user stored `quotaTypePerKey` / `quotaLimitPerKey`. Read those as the
-    // pool so an existing deployment keeps whatever it had granted.
-    const quotaType =
-      (raw.quotaType as "credits" | "tokens" | undefined) ??
-      (raw.quotaTypePerKey as "credits" | "tokens" | undefined) ??
-      DEFAULT_USER_ALLOCATION.quotaType;
-    const quotaLimit =
-      raw.quotaLimit && raw.quotaLimit !== ""
-        ? Number(raw.quotaLimit)
-        : raw.quotaLimitPerKey && raw.quotaLimitPerKey !== ""
-          ? Number(raw.quotaLimitPerKey)
-          : DEFAULT_USER_ALLOCATION.quotaLimit;
-    const quotaUsed =
-      raw.quotaUsed && raw.quotaUsed !== "" ? Number(raw.quotaUsed) : 0;
-    const maxActiveKeys =
-      raw.maxActiveKeys && raw.maxActiveKeys !== ""
-        ? Number(raw.maxActiveKeys)
-        : DEFAULT_USER_ALLOCATION.maxActiveKeys;
-    const allowedModels = raw.allowedModels
-      ? raw.allowedModels.split(",").filter(Boolean)
-      : [];
-    return UserSchema.parse({
-      id: raw.id,
-      username: raw.username,
-      passwordHash: raw.passwordHash,
-      role: raw.role,
-      displayName: raw.displayName,
-      timezone:
-        raw.timezone === "utc" || raw.timezone === "shanghai"
-          ? raw.timezone
-          : undefined,
-      createdAt: raw.createdAt,
-      updatedAt: raw.updatedAt,
-      lastLoginAt: raw.lastLoginAt && raw.lastLoginAt !== "" ? raw.lastLoginAt : null,
-      quotaType,
-      quotaLimit,
-      quotaUsed,
-      maxActiveKeys,
-      allowedModels,
-    });
-  } catch {
-    return null;
-  }
-}
+// Keep the connection import referenced for type-checkers that prune unused
+// imports differently across bundlers; getDb is used by the transaction paths.
+void getDb;

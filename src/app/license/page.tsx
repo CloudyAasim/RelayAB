@@ -55,10 +55,8 @@ interface Dep {
 }
 
 const RUNTIME_DEPS: Dep[] = [
-  { name: "@upstash/redis", version: "1.38.4", license: "MIT", repo: "https://github.com/upstash/redis-js", copyright: "Upstash Inc." },
   { name: "bcryptjs", version: "2.4.3", license: "MIT", repo: "https://github.com/dcodeIO/bcrypt.js", copyright: "Dawid Ciężarkiewicz" },
   { name: "clsx", version: "2.1.1", license: "MIT", repo: "https://github.com/lukeed/clsx", copyright: "Luke Edwards" },
-  { name: "ioredis", version: "5.11.1", license: "MIT", repo: "https://github.com/redis/ioredis", copyright: "Redis Inc." },
   { name: "iron-session", version: "8.0.4", license: "MIT", repo: "https://github.com/vvo/iron-session", copyright: "Vercel Inc." },
   { name: "jose", version: "5.10.0", license: "MIT", repo: "https://github.com/panva/jose", copyright: "Filip Skokan" },
   { name: "lucide-react", version: "0.460.0", license: "ISC", repo: "https://github.com/lucide-icons/lucide", copyright: "Lucide Contributors" },

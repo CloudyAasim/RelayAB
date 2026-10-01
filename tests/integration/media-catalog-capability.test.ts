@@ -8,8 +8,7 @@
  * video spec's `modes`/`async` metadata entirely.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { __resetRedisForTest, __setRedisForTest } from "@/lib/db/redis";
-import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
+import { __resetDbForTest } from "@/lib/db/sqlite";
 import { createMediaProvider } from "@/lib/db/media-providers";
 import { createUser } from "@/lib/db/users";
 import { createApiKey } from "@/lib/db/keys";
@@ -54,8 +53,7 @@ async function asJson(res: Response): Promise<{ body: any }> {
 
 describe("media catalogue capability per model", () => {
   beforeEach(async () => {
-    __resetRedisForTest();
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
     vi.stubGlobal("fetch", async () =>
       new Response(JSON.stringify({}), { status: 200, headers: { "content-type": "application/json" } }));
     await createMediaProvider({

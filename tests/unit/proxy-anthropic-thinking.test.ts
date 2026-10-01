@@ -14,8 +14,7 @@
  *   - billing still uses the upstream usage numbers
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { __resetRedisForTest, __setRedisForTest } from "@/lib/db/redis";
-import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
+import { __resetDbForTest } from "@/lib/db/sqlite";
 import { createApiKey } from "@/lib/db/keys";
 import { createUser, getUserById } from "@/lib/db/users";
 import { createProvider } from "@/lib/db/providers";
@@ -136,8 +135,7 @@ describe("stripUnrequestedThinking", () => {
 
 describe("proxyAnthropicMessage reasoning blocks", () => {
   beforeEach(() => {
-    __resetRedisForTest();
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
   });
 
   it("drops a leading thinking block when the client did not ask for it", async () => {

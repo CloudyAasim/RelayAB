@@ -9,29 +9,32 @@
  *   → the losers explode with UsernameConflictError → the request that
  *   was unlucky enough to hit that Lambda fails.
  *
- * The fix: bootstrapAdmin() acquires `relay:meta:initialized` via SETNX
- * (atomic); only the winner proceeds to createUser. Losers short-circuit.
+ * The fix: bootstrapAdmin() runs inside a single BEGIN IMMEDIATE
+ * transaction, and claims the `meta.initialized` row with a primary-key
+ * INSERT. Only the winner proceeds to createUser. Losers short-circuit.
  */
 import { describe, it, expect, beforeEach } from "vitest";
-import {
-  __resetRedisForTest,
-  __setRedisForTest,
-} from "@/lib/db/redis";
-import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
+import { __resetDbForTest, getOne } from "@/lib/db/sqlite";
 import {
   ensureBootstrapped,
   __resetBootstrapForTest,
   runBootstrap,
 } from "@/lib/db/bootstrap";
 import { listUsers } from "@/lib/db/users";
-import { k as redisKeys } from "@/lib/db/redis";
+
+/** The bootstrap sentinel. Redis held it as a string key; now it is a row. */
+const META_INITIALIZED = "initialized";
+
+function readBootstrapFlag(): string | null {
+  return getOne<{ value: string }>("SELECT value FROM meta WHERE key = ?", [
+    META_INITIALIZED,
+  ])?.value ?? null;
+}
 
 describe("bootstrap race protection", () => {
   beforeEach(() => {
-    // Fresh in-memory Redis per test.
-    __setRedisForTest(createMemoryRedis());
-    __resetRedisForTest();
-    __setRedisForTest(createMemoryRedis());
+    // Fresh in-memory SQLite database per test.
+    __resetDbForTest();
     __resetBootstrapForTest();
   });
 
@@ -51,13 +54,11 @@ describe("bootstrap race protection", () => {
     expect(admins).toHaveLength(1);
     expect(admins[0]!.username).toBe("admin");
 
-    // The meta:initialized flag was set to a non-empty value (either
-    // "bootstrapping" momentarily, then "1" — or just "1" if the winner
-    // ran fast).
-    const flag = await (
-      await import("@/lib/db/redis")
-    ).getRedis().get<string>(redisKeys.metaInitialized());
-    expect(flag).toBeTruthy();
+    // The meta:initialized flag was written. Redis needed a "bootstrapping"
+    // sentinel that briefly held a different value while the winner worked;
+    // here it is a single INSERT inside the transaction, so the committed
+    // value is always "1".
+    expect(readBootstrapFlag()).toBe("1");
   });
 
   it("ensureBootstrapped is safe under repeated concurrent calls", async () => {
@@ -89,16 +90,13 @@ describe("bootstrap race protection", () => {
   it("releases the lock on createUser failure so a retry can succeed", async () => {
     // Pre-create a user named "admin" with role=user. When bootstrapAdmin()
     // runs, listUsers({limit:1}) sees the existing user, takes the early
-    // return path (no SETNX claim), and warns about the password drift.
-    // The SETNX path itself is only triggered when no users exist, so we
-    // can't easily simulate "createUser throws" without mocking it — but
-    // we can at least prove the lock is taken & released on the success
+    // return path (no sentinel claim), and warns about the password drift.
+    // The single-writer path itself is only entered when no users exist, so
+    // we can't easily simulate "createUser throws" without mocking it — but
+    // we can at least prove the flag is taken on the success
     // path, which is the more important contract.
     await runBootstrap();
-    const flag = await (
-      await import("@/lib/db/redis")
-    ).getRedis().get<string>(redisKeys.metaInitialized());
-    expect(flag).toBe("1");
+    expect(readBootstrapFlag()).toBe("1");
     // Subsequent bootstrap is a no-op (lock is held-as-flag, not as mutex).
     const second = await runBootstrap();
     expect(second.adminCreated).toBe(false);

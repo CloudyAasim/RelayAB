@@ -7,8 +7,7 @@
  * charges per produced image and records the usage row.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { __resetRedisForTest, __setRedisForTest } from "@/lib/db/redis";
-import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
+import { __resetDbForTest } from "@/lib/db/sqlite";
 import { createUser, getUserById } from "@/lib/db/users";
 import { createApiKey, getApiKeyByPlaintext } from "@/lib/db/keys";
 import { listUsageByKey } from "@/lib/db/usage";
@@ -38,8 +37,7 @@ describe("media image endpoints", () => {
   let calls: Array<{ url: string; body: string }> = [];
 
   beforeEach(async () => {
-    __resetRedisForTest();
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
     calls = [];
 
     vi.stubGlobal("fetch", async (url: string | URL | Request, init?: RequestInit) => {

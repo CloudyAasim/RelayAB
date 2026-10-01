@@ -11,7 +11,7 @@ RelayAB 是一个自托管 AI API 网关（API 中转站）。
 | 你想…… | 读 |
 | --- | --- |
 | 搞清整体怎么拼起来的 | [architecture.md](architecture.md) |
-| 查某个 Redis key 或字段什么意思 | [data-model.md](data-model.md) |
+| 查某张表、某个字段或索引什么意思 | [data-model.md](data-model.md) |
 | 调用某个接口，或新增一个 | [api-routes.md](api-routes.md) |
 | 部署到自己的服务器 | [deployment.md](deployment.md) |
 | 管理用户、Key、供应商 | [admin.md](admin.md) |
@@ -23,9 +23,9 @@ RelayAB 是一个自托管 AI API 网关（API 中转站）。
 | 文档 | 内容 |
 | --- | --- |
 | [architecture.md](architecture.md) | 目标与非目标、顶层架构、背后的设计决策、加密与安全 |
-| [data-model.md](data-model.md) | Redis 键命名、每个实体的字段、各键的 TTL |
+| [data-model.md](data-model.md) | 表结构与列名、每个实体的字段、索引与唯一约束 |
 | [api-routes.md](api-routes.md) | 全部公开代理端点、全部管理 API、中间件行为 |
-| [deployment.md](deployment.md) | 一键部署、Upstash、首次启动、绕过部署保护、冒烟测试清单 |
+| [deployment.md](deployment.md) | 自托管架构、SQLite 与备份、首次启动、绕过部署保护、冒烟测试清单 |
 | [admin.md](admin.md) | 管理后台全流程：用户、Key、供应商、错误码、排查 |
 | [testing.md](testing.md) | 测试金字塔、工具、各层怎么跑 |
 | [../模型适配协议/README.md](../模型适配协议/README.md) | 媒体供应商协议：spec 格式、全部原语、离线校验器（判官）、完整示例 |

@@ -15,6 +15,18 @@ import type { NextConfig } from "next";
 const baseConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  /**
+   * `node:sqlite` is a Node builtin (>= 22.5), but this webpack major predates
+   * it and tries to resolve it from npm, which fails the production build.
+   * Externalising it hands the specifier to Node's own resolver untouched.
+   * The same exclusion is declared in vitest.config.ts for the test runner.
+   */
+  webpack: (config, { isServer }) => {
+    if (isServer) {
+      config.externals = [...(config.externals ?? []), "node:sqlite"];
+    }
+    return config;
+  },
   experimental: {
     serverActions: {
       bodySizeLimit: "2mb",

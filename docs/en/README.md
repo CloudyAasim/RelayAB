@@ -18,7 +18,7 @@ Technical documentation for RelayAB, a self-hosted AI API gateway.
 | If you want to… | Read |
 | --- | --- |
 | Understand how the whole thing fits together | [architecture.md](architecture.md) |
-| Know what a Redis key or a field means | [data-model.md](data-model.md) |
+| Know what a table, a field or an index means | [data-model.md](data-model.md) |
 | Call an endpoint, or add one | [api-routes.md](api-routes.md) |
 | Deploy it to your own server | [deployment.md](deployment.md) |
 | Manage users, keys, and providers | [admin.md](admin.md) |
@@ -30,7 +30,7 @@ Technical documentation for RelayAB, a self-hosted AI API gateway.
 | Document | Contents |
 | --- | --- |
 | [architecture.md](architecture.md) | Goals and non-goals, top-level architecture, the design decisions behind them, encryption and security |
-| [data-model.md](data-model.md) | Redis key naming, every entity and its fields, per-key TTLs |
+| [data-model.md](data-model.md) | Tables and column names, every entity and its fields, indexes and unique constraints |
 | [api-routes.md](api-routes.md) | Every public proxy endpoint, every admin API, middleware behaviour |
 | [deployment.md](deployment.md) | Self-hosted architecture, database choice, first run, the smoke-test checklist, troubleshooting |
 | [admin.md](admin.md) | The admin panel, end to end: users, keys, providers, error codes, debugging |

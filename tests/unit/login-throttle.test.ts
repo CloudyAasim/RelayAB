@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { __resetRedisForTest } from "@/lib/db/redis";
+import { __resetDbForTest } from "@/lib/db/sqlite";
 import {
   checkLoginThrottle,
   recordLoginFailure,
@@ -18,7 +18,7 @@ function headersFor(ip: string): Headers {
 
 describe("login throttle", () => {
   beforeEach(() => {
-    __resetRedisForTest();
+    __resetDbForTest();
   });
 
   it("allows attempts below the per-username budget", async () => {

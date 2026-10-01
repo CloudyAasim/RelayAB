@@ -5,9 +5,20 @@
  *
  * The repositories used to read records one at a time (`for … await`), which
  * cost one HTTP round-trip per record and dominated page load time on a
- * REST-backed Redis. Firing everything at once fixes that but is unbounded —
- * a key with `MAX_LOGS_PER_KEY` entries would open 1000 sockets. This keeps a
- * fixed number of requests in flight.
+ * REST-backed Redis. Firing everything at once fixes that but is unbounded, so
+ * this keeps a fixed width of tasks in flight.
+ *
+ * No storage changes were needed here: this is a pure function over its inputs
+ * and never touched Redis. The original reason for it — 1000 sockets from a key
+ * with `MAX_LOGS_PER_KEY` entries — is gone with the REST client, but the callers
+ * (`usage.ts` per-key aggregation) still rely on the same three guarantees, so
+ * it stays:
+ * - bounded work, so a long key list does not become one uninterruptible burst
+ *   of synchronous SQLite reads on the shared connection;
+ * - results in input order, so callers can zip them back onto their key list
+ *   without re-sorting;
+ * - fail-fast — the first error stops new work being scheduled, so one bad key
+ *   does not fan out the remaining reads before the error surfaces.
  */
 export async function mapWithConcurrency<T, R>(
   items: readonly T[],

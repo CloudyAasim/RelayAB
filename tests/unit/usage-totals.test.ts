@@ -8,8 +8,7 @@
  * read that instead. Date-ranged queries still scan the logs.
  */
 import { describe, it, expect, beforeEach } from "vitest";
-import { __resetRedisForTest, __setRedisForTest, getRedis, k } from "@/lib/db/redis";
-import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
+import { __resetDbForTest, getDb, getOne, run } from "@/lib/db/sqlite";
 import {
   MAX_LOGS_PER_KEY,
   aggregateByKey,
@@ -36,8 +35,7 @@ function usage(over: Partial<Parameters<typeof recordUsage>[0]> = {}) {
 
 describe("usage running totals", () => {
   beforeEach(() => {
-    __resetRedisForTest();
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
   });
 
   it("keeps the per-key counter in sync with recorded usage", async () => {
@@ -67,8 +65,8 @@ describe("usage running totals", () => {
 
   it("answers all-time totals without touching the log list", async () => {
     await recordUsage(usage());
-    // Remove the log list: only the running counter can answer from here.
-    await getRedis().del(k.usageLogsByKey("k1"));
+    // Remove the log rows: only the running counter can answer from here.
+    run("DELETE FROM usage_logs WHERE api_key_id = ?", ["k1"]);
     expect(await listUsageByKey("k1")).toHaveLength(0);
 
     expect((await aggregateByKey("k1")).totalTokens).toBe(30);
@@ -89,33 +87,52 @@ describe("usage running totals", () => {
     expect(agg.requestCount).toBe(2);
   });
 
-  it("backfills the counter from pre-existing logs on first read", async () => {
-    // Simulate a key whose usage was recorded before counters existed.
-    const redis = getRedis();
+  it("aggregates a key whose usage predates the counter, without caching it", async () => {
+    // Simulate a key whose usage was recorded before counters existed: a log
+    // row with no `usage_totals` sibling.
+    //
+    // The Redis version wrote a backfilled counter on the first read, so the
+    // answer survived the logs being deleted. SQLite recomputes the same
+    // answer from the same indexed rows on every call (one SUM, no
+    // round-trip), so there is nothing to backfill and nothing to cache —
+    // the assertion below pins that contract instead: no counter row is
+    // created, and the aggregate always reflects the rows that are present.
     const logId = "01LEGACYLOG";
-    await redis.hset(k.usageLog("k1", logId), {
-      id: logId,
-      apiKeyId: "k1",
-      userId: "u1",
-      providerId: "p1",
-      model: "MiniMax-M3",
-      upstreamModel: "MiniMax-M3",
-      promptTokens: "7",
-      completionTokens: "8",
-      totalTokens: "15",
-      creditsUsed: "2",
-      status: "success",
-      errorMessage: "",
-      createdAt: new Date().toISOString(),
-    });
-    await redis.lpush(k.usageLogsByKey("k1"), logId);
+    getDb()
+      .prepare(
+        `INSERT INTO usage_logs
+           (id, api_key_id, user_id, provider_id, model, upstream_model,
+            prompt_tokens, completion_tokens, total_tokens, credits_used,
+            images, capability, status, error_message, billing_mode, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      )
+      .run(
+        logId,
+        "k1",
+        "u1",
+        "p1",
+        "MiniMax-M3",
+        "MiniMax-M3",
+        7,
+        8,
+        15,
+        2,
+        0,
+        null,
+        "success",
+        null,
+        "usage",
+        new Date().toISOString(),
+      );
 
-    // First read has no counter, so it scans and backfills.
+    // No counter row, so the aggregate is computed from the logs.
+    expect(getOne("SELECT api_key_id FROM usage_totals WHERE api_key_id = ?", ["k1"])).toBeNull();
     expect((await aggregateByKey("k1")).totalTokens).toBe(15);
+    expect((await aggregateByKey("k1")).creditsUsed).toBe(2);
 
-    // Counter is now authoritative: removing the logs must not change it.
-    await redis.del(k.usageLogsByKey("k1"));
-    expect((await aggregateByKey("k1")).totalTokens).toBe(15);
+    // Still nothing cached: removing the logs changes the answer.
+    run("DELETE FROM usage_logs WHERE api_key_id = ?", ["k1"]);
+    expect((await aggregateByKey("k1")).totalTokens).toBe(0);
   });
 
   it("L1: aggregateByKeyMany stays accurate beyond MAX_LOGS_PER_KEY", async () => {

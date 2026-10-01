@@ -20,11 +20,7 @@
  *   - The user sees a normal login page.
  */
 import { describe, it, expect, beforeEach } from "vitest";
-import {
-  __resetRedisForTest,
-  __setRedisForTest,
-} from "@/lib/db/redis";
-import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
+import { __resetDbForTest } from "@/lib/db/sqlite";
 import {
   ensureBootstrapped,
   __resetBootstrapForTest,
@@ -36,9 +32,8 @@ const STRESS_TIMEOUT_MS = 30_000;
 
 describe("bootstrap never throws on UsernameConflictError", () => {
   beforeEach(() => {
-    __setRedisForTest(createMemoryRedis());
-    __resetRedisForTest();
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
+    __resetDbForTest();
     __resetBootstrapForTest();
   });
 

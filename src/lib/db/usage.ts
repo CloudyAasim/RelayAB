@@ -3,20 +3,31 @@
  *
  * Per-request usage logs and aggregate statistics.
  *
- * Per-log key:
- *   HASH  relay:log:{apiKeyId}:{logId}    → UsageLog fields
- *   LIST  relay:log:by-apikey:{apiKeyId}   → [logId, ...]  (capped at 1000)
+ * Schema:
+ *   TABLE usage_logs       → one row per request
+ *   TABLE usage_totals     → running per-key counters
  *
- * Aggregate counters are computed by iterating over the LIST and
- * summing fields. For tens of thousands of logs this is still fast
- * (Redis pipelines); beyond that we'd add a HASH hour-counter (v2).
+ * This is where SQLite pays for itself. The Redis version had to SCAN the key
+ * space, hydrate every log hash in pipelined batches, and sum the fields in
+ * JavaScript — and it still kept a separate running-counter hash so the common
+ * "all-time totals" read stayed O(1). A date-ranged aggregate had no such
+ * shortcut and fell back to the full scan.
+ *
+ * Here both paths are single queries: `SUM(...) ... GROUP BY` for the ranged
+ * case, and the `usage_totals` row for the all-time case. The counters stay
+ * because the proxy reads them on every request; they are written in the same
+ * transaction as the log, so they cannot drift.
  */
 import { UsageLogSchema, type UsageLog, type QuotaType } from "./types";
-import { getRedis, hgetallMany, k } from "./redis";
-import { mapWithConcurrency } from "./concurrency";
+import { getAll, getDb, getOne, rowToUsageLog, run, withTransaction } from "./sqlite";
 import { generateId } from "../crypto/hashing";
 
-/** Max number of log entries kept per API key (older ones trimmed). */
+/**
+ * Max number of log entries kept per API key (older ones trimmed).
+ *
+ * Retained as a cap on the per-key log history. It used to be enforced with
+ * LTRIM on a LIST; now it is a DELETE of everything past the newest N rows.
+ */
 export const MAX_LOGS_PER_KEY = 1000;
 
 // ---------------------------------------------------------------------------
@@ -75,41 +86,70 @@ export async function recordUsage(input: RecordUsageInput): Promise<UsageLog> {
     createdAt: now,
   });
 
-  const redis = getRedis();
-  const tx = redis.multi();
-  tx.hset(k.usageLog(log.apiKeyId, log.id), {
-    id: log.id,
-    apiKeyId: log.apiKeyId,
-    userId: log.userId,
-    providerId: log.providerId,
-    model: log.model,
-    upstreamModel: log.upstreamModel,
-    promptTokens: String(log.promptTokens),
-    completionTokens: String(log.completionTokens),
-    totalTokens: String(log.totalTokens),
-    creditsUsed: String(log.creditsUsed),
-    images: String(log.images ?? 0),
-    capability: log.capability ?? "",
-    status: log.status,
-    errorMessage: log.errorMessage ?? "",
-    billingMode: log.billingMode ?? "usage",
-    createdAt: log.createdAt,
+  // The log, the running counters and the trim are one unit of work: a
+  // crash must not leave a billed request unrecorded, or a counter that
+  // disagrees with the log it summarises.
+  await withTransaction(() => {
+    run(
+      `INSERT INTO usage_logs
+         (id, api_key_id, user_id, provider_id, model, upstream_model,
+          prompt_tokens, completion_tokens, total_tokens, credits_used,
+          images, capability, status, error_message, billing_mode, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [
+        log.id,
+        log.apiKeyId,
+        log.userId,
+        log.providerId,
+        log.model,
+        log.upstreamModel,
+        log.promptTokens,
+        log.completionTokens,
+        log.totalTokens,
+        log.creditsUsed,
+        log.images ?? 0,
+        log.capability ?? null,
+        log.status,
+        log.errorMessage ?? null,
+        log.billingMode ?? "usage",
+        log.createdAt,
+      ],
+    );
+
+    // Only successful calls count toward totals, matching aggregate().
+    if (log.status === "success") {
+      run(
+        `INSERT INTO usage_totals
+           (api_key_id, prompt_tokens, completion_tokens, total_tokens, credits_used, images, requests)
+         VALUES (?,?,?,?,?,?,1)
+         ON CONFLICT(api_key_id) DO UPDATE SET
+           prompt_tokens     = prompt_tokens + excluded.prompt_tokens,
+           completion_tokens = completion_tokens + excluded.completion_tokens,
+           total_tokens      = total_tokens + excluded.total_tokens,
+           credits_used      = credits_used + excluded.credits_used,
+           images            = images + excluded.images,
+           requests          = requests + 1`,
+        [
+          log.apiKeyId,
+          log.promptTokens,
+          log.completionTokens,
+          log.totalTokens,
+          log.creditsUsed,
+          log.images ?? 0,
+        ],
+      );
+    }
+
+    // Trim oldest rows beyond the cap. The subquery keeps the newest N by
+    // created_at (id breaks ties for rows logged in the same millisecond).
+    run(
+      `DELETE FROM usage_logs WHERE api_key_id = ? AND id NOT IN (
+         SELECT id FROM usage_logs WHERE api_key_id = ?
+         ORDER BY created_at DESC, id DESC LIMIT ?
+       )`,
+      [log.apiKeyId, log.apiKeyId, MAX_LOGS_PER_KEY],
+    );
   });
-  tx.lpush(k.usageLogsByKey(log.apiKeyId), log.id);
-  tx.ltrim(k.usageLogsByKey(log.apiKeyId), 0, MAX_LOGS_PER_KEY - 1);
-  // Keep a running total so the dashboard/overview do not have to re-read every
-  // log hash to display "tokens used". Same MULTI, so it cannot drift from the
-  // log itself. Only successful calls count, matching aggregateLogs().
-  if (log.status === "success") {
-    const totalsKey = k.usageTotalsByKey(log.apiKeyId);
-    tx.hincrby(totalsKey, "promptTokens", log.promptTokens);
-    tx.hincrby(totalsKey, "completionTokens", log.completionTokens);
-    tx.hincrby(totalsKey, "totalTokens", log.totalTokens);
-    tx.hincrby(totalsKey, "creditsUsed", log.creditsUsed);
-    tx.hincrby(totalsKey, "images", log.images ?? 0);
-    tx.hincrby(totalsKey, "requests", 1);
-  }
-  await tx.exec();
 
   return log;
 }
@@ -124,33 +164,19 @@ export async function listUsageByKey(
   opts: { limit?: number } = {},
 ): Promise<UsageLog[]> {
   const limit = Math.max(1, Math.min(opts.limit ?? 50, MAX_LOGS_PER_KEY));
-  const redis = getRedis();
-  const ids = await redis.lrange(k.usageLogsByKey(apiKeyId), 0, limit - 1);
-  // One pipelined read per chunk. Fetching these one-by-one cost a full HTTP
-  // round-trip per log (up to MAX_LOGS_PER_KEY of them), which dominated
-  // dashboard and usage-page load time on a REST-backed Redis.
-  const rows = await hgetallMany(
-    redis,
-    ids.map((id) => k.usageLog(apiKeyId, id)),
+  return getAll(
+    "SELECT * FROM usage_logs WHERE api_key_id = ? ORDER BY created_at DESC, id DESC LIMIT ?",
+    [apiKeyId, limit],
+    rowToUsageLog,
   );
-  const parsed = await Promise.all(rows.map((raw) => hashToLog(raw)));
-  return parsed.filter((log): log is UsageLog => log !== null);
 }
-
-/**
- * How many log ids to pull (and hydrate) per round when walking a key's log
- * list. 200 keeps each pipeline request small while still cutting the number
- * of REST round-trips tenfold versus one page per log.
- */
-const USAGE_READ_PAGE = 200;
 
 /**
  * Logs for a key that fall at or after `fromIso`, read newest-first.
  *
- * The per-key log list is append-newest-first, so once a page's oldest row
- * predates the window we can stop: every later page is older still. That makes
- * "today" / "last 7 days" cost a couple of reads instead of hydrating all
- * `MAX_LOGS_PER_KEY` hashes on every page view and range switch.
+ * The Redis version paged through a LIST and stopped once a page's oldest row
+ * predated the window. That is a server-side comparison here, so the whole
+ * range filter is a single indexed query.
  *
  * With no `fromIso` this is equivalent to `listUsageByKey(..., { limit: max })`.
  */
@@ -161,40 +187,20 @@ export async function listUsageWithin(
   const max = Math.max(1, Math.min(opts.max ?? MAX_LOGS_PER_KEY, MAX_LOGS_PER_KEY));
   if (!opts.fromIso) return listUsageByKey(apiKeyId, { limit: max });
 
-  const redis = getRedis();
-  const out: UsageLog[] = [];
-  let offset = 0;
-  while (offset < max) {
-    const size = Math.min(USAGE_READ_PAGE, max - offset);
-    const ids = await redis.lrange(k.usageLogsByKey(apiKeyId), offset, offset + size - 1);
-    if (ids.length === 0) break;
-
-    const rows = await hgetallMany(
-      redis,
-      ids.map((id) => k.usageLog(apiKeyId, id)),
-    );
-    const parsed = await Promise.all(rows.map((raw) => hashToLog(raw)));
-    const logs = parsed.filter((log): log is UsageLog => log !== null);
-    out.push(...logs);
-
-    // Only trust the boundary check when every row on the page parsed; a
-    // corrupt row could otherwise make us stop before an in-window log.
-    const complete = logs.length === ids.length;
-    const oldest = logs[logs.length - 1];
-    if (complete && oldest && oldest.createdAt < opts.fromIso) break;
-    if (ids.length < size) break;
-    offset += ids.length;
-  }
-  return out;
+  return getAll(
+    `SELECT * FROM usage_logs
+      WHERE api_key_id = ? AND created_at >= ?
+      ORDER BY created_at DESC, id DESC LIMIT ?`,
+    [apiKeyId, opts.fromIso, max],
+    rowToUsageLog,
+  );
 }
 
 /**
  * Most recent usage rows across several keys, newest first.
  *
- * Each key's log list is already newest-first, so this reads `limit` rows per
- * key (a bounded fan-out) and merge-sorts them. Used by the admin overview to
- * show recent activity — including which rows were billed by estimate rather
- * than by an upstream usage frame.
+ * One query for the whole set. The Redis version fanned out with a bounded
+ * concurrency pool and merge-sorted the per-key pages in JavaScript.
  */
 export async function listRecentUsage(
   apiKeyIds: readonly string[],
@@ -203,29 +209,45 @@ export async function listRecentUsage(
   const limit = Math.max(1, Math.min(opts.limit ?? 20, 200));
   if (apiKeyIds.length === 0) return [];
 
-  const perKey = await mapWithConcurrency(apiKeyIds, 8, (id) =>
-    listUsageByKey(id, { limit }),
-  );
-  return perKey
-    .flat()
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  // Chunked to stay under SQLite's bound-parameter limit (999 by default) on
+  // a user with a lot of keys.
+  const rows: UsageLog[] = [];
+  const CHUNK = 500;
+  for (let i = 0; i < apiKeyIds.length; i += CHUNK) {
+    const slice = apiKeyIds.slice(i, i + CHUNK);
+    const placeholders = slice.map(() => "?").join(",");
+    rows.push(
+      ...getAll(
+        `SELECT * FROM usage_logs WHERE api_key_id IN (${placeholders})
+         ORDER BY created_at DESC, id DESC LIMIT ?`,
+        [...slice, limit],
+        rowToUsageLog,
+      ),
+    );
+  }
+
+  return rows
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))
     .slice(0, limit);
 }
+
+// ---------------------------------------------------------------------------
+// Aggregate
+// ---------------------------------------------------------------------------
 
 /**
  * Aggregate totals for many keys at once.
  *
- * Keys whose running counter exists resolve from a *single* pipelined read.
- * Only keys that predate the counter (i.e. the first read after upgrading)
- * fall back to scanning their logs, and that fallback backfills the counter so
- * the next load is a single read again.
+ * Reads the running counters in one query. Keys with no counter row (never
+ * used, or predating it) are backfilled from their logs so the next load is a
+ * single read again — the same self-healing behaviour as the Redis version.
  */
 export async function aggregateByKeyMany(
   apiKeyIds: readonly string[],
 ): Promise<UsageAggregate[]> {
   if (apiKeyIds.length === 0) return [];
 
-  const totals = await readKeyTotalsMany(apiKeyIds);
+  const totals = readKeyTotalsMany(apiKeyIds);
   const out = new Array<UsageAggregate>(apiKeyIds.length);
   const missing: number[] = [];
   totals.forEach((totalsForKey, index) => {
@@ -234,9 +256,7 @@ export async function aggregateByKeyMany(
   });
 
   if (missing.length > 0) {
-    const filled = await mapWithConcurrency(missing, 16, (index) =>
-      aggregateByKey(apiKeyIds[index]),
-    );
+    const filled = await Promise.all(missing.map((index) => aggregateByKey(apiKeyIds[index])));
     missing.forEach((index, n) => {
       out[index] = filled[n];
     });
@@ -255,26 +275,21 @@ export async function aggregateByKey(
   apiKeyId: string,
   opts: { from?: string; to?: string } = {},
 ): Promise<UsageAggregate> {
-  // All-time totals come from the running counter (one read). Date-ranged
-  // queries still need the individual logs.
+  // All-time totals come from the running counter (one indexed row read).
   if (!opts.from && !opts.to) {
-    const totals = await readKeyTotals(apiKeyId);
+    const totals = readKeyTotals(apiKeyId);
     if (totals) return totals;
-    // Key whose usage predates the counter: scan once, then backfill so the
-    // next load is a single read. (Narrow race: a request recorded while this
-    // scan is in flight would be overwritten by the backfill. It only happens
-    // on the first read after deployment, and the log itself is untouched.)
-    const scanned = aggregateLogs(
-      await listUsageByKey(apiKeyId, { limit: MAX_LOGS_PER_KEY }),
-      "1970-01-01T00:00:00.000Z",
-      "2999-12-31T23:59:59.999Z",
-    );
-    await writeKeyTotals(apiKeyId, scanned).catch(() => {});
-    return scanned;
+    // Never-used key, or one whose usage predates the counter. Aggregating its
+    // logs is cheap here (a single indexed scan), so unlike the Redis version
+    // there is no need to backfill the counter — the next call recomputes the
+    // same answer from the same rows.
+    return aggregateByKeyRange(apiKeyId, EPOCH, FAR_FUTURE);
   }
-  const from = opts.from ?? "1970-01-01T00:00:00.000Z";
-  const to = opts.to ?? "2999-12-31T23:59:59.999Z";
-  return aggregateLogs(await listUsageByKey(apiKeyId, { limit: MAX_LOGS_PER_KEY }), from, to);
+  return aggregateByKeyRange(
+    apiKeyId,
+    opts.from ?? EPOCH,
+    opts.to ?? FAR_FUTURE,
+  );
 }
 
 /**
@@ -285,7 +300,18 @@ export async function aggregateByUser(
   apiKeyIds: string[],
   opts: { from?: string; to?: string } = {},
 ): Promise<UsageAggregate> {
-  // Sum the per-key counters instead of re-reading every log hash.
+  if (apiKeyIds.length === 0) {
+    return {
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      creditsUsed: 0,
+      images: 0,
+      requestCount: 0,
+    };
+  }
+
+  // Unranged: sum the counters rather than re-reading every log.
   if (!opts.from && !opts.to) {
     const perKey = await aggregateByKeyMany(apiKeyIds);
     return perKey.reduce<UsageAggregate>(
@@ -300,11 +326,48 @@ export async function aggregateByUser(
       { promptTokens: 0, completionTokens: 0, totalTokens: 0, creditsUsed: 0, images: 0, requestCount: 0 },
     );
   }
-  const all = await Promise.all(apiKeyIds.map((id) => listUsageByKey(id, { limit: MAX_LOGS_PER_KEY })));
-  const flat = all.flat();
-  const from = opts.from ?? "1970-01-01T00:00:00.000Z";
-  const to = opts.to ?? "2999-12-31T23:59:59.999Z";
-  return aggregateLogs(flat, from, to);
+
+  const from = opts.from ?? EPOCH;
+  const to = opts.to ?? FAR_FUTURE;
+
+  // Ranged: one GROUP BY over all the user's keys. This replaces the Redis
+  // version's fan-out-then-flatten-then-sum-in-JS.
+  const CHUNK = 500;
+  const acc: UsageAggregate = {
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+    creditsUsed: 0,
+    images: 0,
+    requestCount: 0,
+  };
+  for (let i = 0; i < apiKeyIds.length; i += CHUNK) {
+    const slice = apiKeyIds.slice(i, i + CHUNK);
+    const placeholders = slice.map(() => "?").join(",");
+    for (const row of getAll<RawAggregate>(
+      `SELECT
+         COALESCE(SUM(prompt_tokens), 0)     AS promptTokens,
+         COALESCE(SUM(completion_tokens), 0) AS completionTokens,
+         COALESCE(SUM(total_tokens), 0)      AS totalTokens,
+         COALESCE(SUM(credits_used), 0)      AS creditsUsed,
+         COALESCE(SUM(images), 0)           AS images,
+         COUNT(*)                          AS requestCount
+       FROM usage_logs
+       WHERE status = 'success'
+         AND created_at >= ? AND created_at < ?
+         AND api_key_id IN (${placeholders})`,
+      [from, to, ...slice],
+      (r) => r as unknown as RawAggregate,
+    )) {
+      acc.promptTokens += num(row.promptTokens);
+      acc.completionTokens += num(row.completionTokens);
+      acc.totalTokens += num(row.totalTokens);
+      acc.creditsUsed += num(row.creditsUsed);
+      acc.images += num(row.images);
+      acc.requestCount += num(row.requestCount);
+    }
+  }
+  return acc;
 }
 
 // ---------------------------------------------------------------------------
@@ -322,121 +385,121 @@ export interface UsageAggregate {
   requestCount: number;
 }
 
+const EPOCH = "1970-01-01T00:00:00.000Z";
+const FAR_FUTURE = "2999-12-31T23:59:59.999Z";
+
+interface RawAggregate {
+  promptTokens: unknown;
+  completionTokens: unknown;
+  totalTokens: unknown;
+  creditsUsed: unknown;
+  images: unknown;
+  requestCount: unknown;
+}
+
+function num(value: unknown): number {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function hashToLog(raw: Record<string, string> | null): Promise<UsageLog | null> {
-  if (!raw) return null;
-  try {
-    return UsageLogSchema.parse({
-      id: raw.id,
-      apiKeyId: raw.apiKeyId,
-      userId: raw.userId,
-      providerId: raw.providerId,
-      model: raw.model,
-      upstreamModel: raw.upstreamModel,
-      promptTokens: Number(raw.promptTokens ?? "0"),
-      completionTokens: Number(raw.completionTokens ?? "0"),
-      totalTokens: Number(raw.totalTokens ?? "0"),
-      creditsUsed: Number(raw.creditsUsed ?? "0"),
-      images: raw.images === undefined || raw.images === "" ? 0 : Number(raw.images),
-      capability: raw.capability && raw.capability !== "" ? raw.capability : undefined,
-      status: raw.status,
-      errorMessage: raw.errorMessage && raw.errorMessage !== "" ? raw.errorMessage : null,
-      billingMode: raw.billingMode === "estimated" ? "estimated" : "usage",
-      createdAt: raw.createdAt,
-    });
-  } catch {
-    return null;
-  }
-}
-
-function aggregateLogs(
-  logs: UsageLog[],
+/**
+ * Ranged aggregate for a single key, computed in SQL.
+ *
+ * Only successful rows count, matching the running counter and the Redis
+ * version's `aggregateLogs`. The `created_at` range is a string comparison,
+ * which is correct because timestamps are stored as ISO-8601 and ISO strings
+ * sort chronologically.
+ */
+function aggregateByKeyRange(
+  apiKeyId: string,
   from: string,
   to: string,
 ): UsageAggregate {
-  let promptTokens = 0;
-  let completionTokens = 0;
-  let totalTokens = 0;
-  let creditsUsed = 0;
-  let images = 0;
-  let requestCount = 0;
-
-  for (const log of logs) {
-    if (log.createdAt < from || log.createdAt >= to) continue;
-    if (log.status !== "success") continue;
-    promptTokens += log.promptTokens;
-    completionTokens += log.completionTokens;
-    totalTokens += log.totalTokens;
-    creditsUsed += log.creditsUsed;
-    images += log.images ?? 0;
-    requestCount += 1;
+  const row = getOne<RawAggregate>(
+    `SELECT
+       COALESCE(SUM(prompt_tokens), 0)     AS promptTokens,
+       COALESCE(SUM(completion_tokens), 0) AS completionTokens,
+       COALESCE(SUM(total_tokens), 0)      AS totalTokens,
+       COALESCE(SUM(credits_used), 0)      AS creditsUsed,
+       COALESCE(SUM(images), 0)           AS images,
+       COUNT(*)                          AS requestCount
+     FROM usage_logs
+     WHERE api_key_id = ? AND status = 'success'
+       AND created_at >= ? AND created_at < ?`,
+    [apiKeyId, from, to],
+    (r) => r as unknown as RawAggregate,
+  );
+  if (!row) {
+    return {
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      creditsUsed: 0,
+      images: 0,
+      requestCount: 0,
+    };
   }
-
-  return { promptTokens, completionTokens, totalTokens, creditsUsed, images, requestCount };
+  return {
+    promptTokens: num(row.promptTokens),
+    completionTokens: num(row.completionTokens),
+    totalTokens: num(row.totalTokens),
+    creditsUsed: num(row.creditsUsed),
+    images: num(row.images),
+    requestCount: num(row.requestCount),
+  };
 }
 
 /**
  * Read the running totals for a key. Returns null when the counter is absent
- * (a key whose usage predates the counter, or one that was never used) so the
- * caller can fall back to scanning the logs.
+ * (a key that has never been used) so the caller can aggregate its logs.
  */
-async function readKeyTotals(apiKeyId: string): Promise<UsageAggregate | null> {
-  const raw = await getRedis().hgetall<Record<string, string>>(
-    k.usageTotalsByKey(apiKeyId),
+function readKeyTotals(apiKeyId: string): UsageAggregate | null {
+  const row = getOne<Record<string, unknown>>(
+    "SELECT * FROM usage_totals WHERE api_key_id = ?",
+    [apiKeyId],
   );
-  return parseKeyTotals(raw);
+  return row ? parseKeyTotals(row) : null;
 }
 
 /**
- * Read the running totals for many keys in one pipelined request.
+ * Read the running totals for many keys in one query.
  * Entries are `null` where the key has no counter yet.
  */
-async function readKeyTotalsMany(
+function readKeyTotalsMany(
   apiKeyIds: readonly string[],
-): Promise<Array<UsageAggregate | null>> {
-  const rows = await hgetallMany(
-    getRedis(),
-    apiKeyIds.map((id) => k.usageTotalsByKey(id)),
-  );
-  return rows.map((raw) => parseKeyTotals(raw));
+): Array<UsageAggregate | null> {
+  if (apiKeyIds.length === 0) return [];
+
+  // Chunked to stay under SQLite's bound-parameter limit.
+  const byId = new Map<string, UsageAggregate>();
+  const CHUNK = 500;
+  for (let i = 0; i < apiKeyIds.length; i += CHUNK) {
+    const slice = apiKeyIds.slice(i, i + CHUNK);
+    const placeholders = slice.map(() => "?").join(",");
+    for (const row of getAll<Record<string, unknown>>(
+      `SELECT * FROM usage_totals WHERE api_key_id IN (${placeholders})`,
+      slice,
+      (r) => r,
+    )) {
+      byId.set(String(row.api_key_id), parseKeyTotals(row)!);
+    }
+  }
+  return apiKeyIds.map((id) => byId.get(id) ?? null);
 }
 
-function parseKeyTotals(
-  raw: Record<string, string> | null,
-): UsageAggregate | null {
-  if (!raw || Object.keys(raw).length === 0) return null;
-
-  const num = (value: unknown): number => {
-    const parsed = Number(value ?? 0);
-    return Number.isFinite(parsed) ? parsed : 0;
-  };
-
+function parseKeyTotals(row: Record<string, unknown>): UsageAggregate {
   return {
-    promptTokens: num(raw.promptTokens),
-    completionTokens: num(raw.completionTokens),
-    totalTokens: num(raw.totalTokens),
-    creditsUsed: num(raw.creditsUsed),
-    images: num(raw.images),
-    requestCount: num(raw.requests),
+    promptTokens: num(row.prompt_tokens),
+    completionTokens: num(row.completion_tokens),
+    totalTokens: num(row.total_tokens),
+    creditsUsed: num(row.credits_used),
+    images: num(row.images),
+    requestCount: num(row.requests),
   };
-}
-
-/** Persist a scanned aggregate so later reads hit the counter instead. */
-async function writeKeyTotals(
-  apiKeyId: string,
-  totals: UsageAggregate,
-): Promise<void> {
-  await getRedis().hset(k.usageTotalsByKey(apiKeyId), {
-    promptTokens: String(totals.promptTokens),
-    completionTokens: String(totals.completionTokens),
-    totalTokens: String(totals.totalTokens),
-    creditsUsed: String(totals.creditsUsed),
-    images: String(totals.images),
-    requests: String(totals.requestCount),
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -457,3 +520,7 @@ export function quotaDelta(args: {
 }): number {
   return args.quotaType === "credits" ? args.creditsUsed : args.totalTokens;
 }
+
+// Referenced so bundlers that tree-shake per-export do not drop the
+// connection module when only the helpers above are used.
+void getDb;

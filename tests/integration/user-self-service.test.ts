@@ -16,11 +16,7 @@ vi.mock("next/headers", () => ({
   cookies: async () => currentStore,
 }));
 
-import {
-  __resetRedisForTest,
-  __setRedisForTest,
-} from "@/lib/db/redis";
-import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
+import { __resetDbForTest } from "@/lib/db/sqlite";
 import { createUser, getUserById } from "@/lib/db/users";
 import { createApiKey, getApiKeyById, updateApiKey } from "@/lib/db/keys";
 import { getPublicUrl } from "@/lib/config";
@@ -56,7 +52,7 @@ async function asJson(res: Response): Promise<{ status: number; body: any }> {
 
 describe("change-password endpoint", () => {
   beforeEach(() => {
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
   });
 
   it("requires a session", async () => {
@@ -136,7 +132,7 @@ describe("change-password endpoint", () => {
 
 describe("user self-service API key endpoints", () => {
   beforeEach(() => {
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
   });
 
   it("user creates a key; quota stays on the account, not the key", async () => {
@@ -281,7 +277,7 @@ describe("user self-service API key endpoints", () => {
 
 describe("admin force-disable on an API key", () => {
   beforeEach(() => {
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
   });
 
   async function adminToggle(keyId: string, body: unknown) {
@@ -333,7 +329,7 @@ describe("admin force-disable on an API key", () => {
 
 describe("profile endpoint", () => {
   beforeEach(() => {
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
   });
 
   async function patchProfile(body: unknown): Promise<{ status: number; body: any }> {
@@ -439,7 +435,7 @@ describe("profile endpoint", () => {
 
 describe("/api/config public endpoint", () => {
   beforeEach(() => {
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
   });
 
   it("returns the configured public URL and the standard endpoints", async () => {

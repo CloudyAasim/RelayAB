@@ -3,8 +3,7 @@
  * the only place where the billing mode (measured vs estimated) is visible.
  */
 import { describe, it, expect, beforeEach } from "vitest";
-import { __resetRedisForTest, __setRedisForTest } from "@/lib/db/redis";
-import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
+import { __resetDbForTest } from "@/lib/db/sqlite";
 import { listRecentUsage, recordUsage } from "@/lib/db/usage";
 
 function row(over: Partial<Parameters<typeof recordUsage>[0]> = {}) {
@@ -24,8 +23,7 @@ function row(over: Partial<Parameters<typeof recordUsage>[0]> = {}) {
 
 describe("listRecentUsage", () => {
   beforeEach(() => {
-    __resetRedisForTest();
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
   });
 
   it("returns nothing when there are no keys", async () => {

@@ -14,8 +14,7 @@
  *      another protocol: one protocol per request, chosen by configuration.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { __resetRedisForTest, __setRedisForTest } from "@/lib/db/redis";
-import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
+import { __resetDbForTest, run } from "@/lib/db/sqlite";
 import { createApiKey } from "@/lib/db/keys";
 import { createUser } from "@/lib/db/users";
 import { createProvider, getProviderById } from "@/lib/db/providers";
@@ -120,14 +119,17 @@ function messagesRequest(): Request {
 
 describe("providerFaces", () => {
   beforeEach(() => {
-    __resetRedisForTest();
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
   });
 
-  it("reads face flags that Upstash deserialized into numbers", async () => {
-    // `@upstash/redis` parses hash values, so a stored "1" comes back as the
-    // *number* 1. A strict `=== "1"` comparison reads every flag back as false,
+  it("reads face flags that were stored as raw numbers", async () => {
+    // `@upstash/redis` parsed hash values, so a stored "1" came back as the
+    // *number* 1. A strict `=== "1"` comparison read every flag back as false,
     // which silently switched off every provider in production (v134).
+    // The columns are INTEGER 0/1 in SQLite and `node:sqlite` has no boolean
+    // binding, so the same regression is now guarded by writing the raw
+    // numbers straight into the row and reading them back through
+    // `fromDbBool`.
     const created = await createProvider({
       name: "Agnes CN",
       kind: "openai",
@@ -139,10 +141,9 @@ describe("providerFaces", () => {
       anthropicBaseUrl: "https://api.agnes-ai.cn",
       modelMapping: { "client-m": "up-model" },
     });
-    const { getRedis, k } = await import("@/lib/db/redis");
-    await (getRedis() as unknown as {
-      hset: (key: string, values: Record<string, unknown>) => Promise<unknown>;
-    }).hset(k.provider(created.id), { openaiEnabled: 1, anthropicEnabled: 1 });
+    run("UPDATE providers SET openai_enabled = 1, anthropic_enabled = 1 WHERE id = ?", [
+      created.id,
+    ]);
 
     const reloaded = await getProviderById(created.id);
     expect(reloaded?.openaiEnabled).toBe(true);
@@ -224,8 +225,7 @@ describe("providerFaces", () => {
 
 describe("one provider serving both surfaces", () => {
   beforeEach(() => {
-    __resetRedisForTest();
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
   });
 
   afterEach(() => {

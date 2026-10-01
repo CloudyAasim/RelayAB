@@ -54,3 +54,14 @@ next-env.d.ts
 # tooling caches (defense in depth)
 .cache/
 .turbo/
+
+# local SQLite database (the default RELAY_DB_PATH lives here).
+# Users, keys, balances and usage logs are in this file — it must never be
+# committed. Back it up, don't track it.
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# scratch dirs used by the test suite
+node_modules/.tmp-relayab-test/

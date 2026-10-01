@@ -2,8 +2,7 @@
  * tests/unit/proxy-anthropic.test.ts
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { __resetRedisForTest, __setRedisForTest } from "@/lib/db/redis";
-import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
+import { __resetDbForTest } from "@/lib/db/sqlite";
 import { createApiKey, getApiKeyById } from "@/lib/db/keys";
 import { createUser, getUserById } from "@/lib/db/users";
 import { createProvider } from "@/lib/db/providers";
@@ -52,8 +51,7 @@ async function setupAnthropicProvider(): Promise<string> {
 
 describe("proxyAnthropicMessage", () => {
   beforeEach(() => {
-    __resetRedisForTest();
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
   });
 
   it("forwards request with x-api-key header", async () => {

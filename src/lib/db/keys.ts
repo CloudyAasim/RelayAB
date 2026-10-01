@@ -4,9 +4,9 @@
  * Repository for customer `ApiKey` entities.
  *
  * Schema (mirrors `docs/data-model.md` §2):
- *   HASH    relay:apikey:{keyId}               → ApiKey fields
- *   STRING  relay:apikey:hash:{sha256(key)}    → keyId  (Bearer lookup)
- *   SET     relay:apikey:by-user:{userId}      → [keyId, ...]
+ *   TABLE api_keys → one row per key. `key_hash` carries a UNIQUE index and
+ *                    is the Bearer-auth lookup; `user_id` is a foreign key
+ *                    onto `users(id)` with ON DELETE CASCADE.
  *
  * A key is a CREDENTIAL, not a wallet. It carries identity (who is calling)
  * and light policy (enabled / expiry / optional model narrowing); the quota
@@ -15,11 +15,19 @@
  *
  * Plaintext keys are NEVER stored: only the sha256 is kept. The plaintext
  * is returned ONCE from createApiKey and is unrecoverable afterwards.
+ *
+ * What the move off Redis actually bought us: the previous version had to keep
+ * three structures in step — the record HASH, the `hash:{sha256}` → id lookup
+ * STRING, and the `by-user:{id}` SET. Every create and delete therefore needed
+ * MULTI plus an "unwind the secondary indexes" path, and any interruption
+ * between the two left a key that existed but could not be found, or a
+ * dangling index entry pointing at nothing. All three invariants are now
+ * expressed as an index, a foreign key and a column, so a write is one
+ * statement and there is no second structure left to drift.
  */
-import { sha256Hex, generateApiKey, maskApiKey } from "../crypto/hashing";
+import { sha256Hex, generateApiKey, maskApiKey, generateId } from "../crypto/hashing";
 import { ApiKeySchema, type ApiKey } from "./types";
-import { getRedis, hgetallMany, k } from "./redis";
-import { generateId } from "../crypto/hashing";
+import { getAll, getOne, rowToApiKey, run, toDbBool, withTransaction } from "./sqlite";
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -30,6 +38,49 @@ export class ApiKeyNotFoundError extends Error {
     super(`API key not found: ${keyId}`);
     this.name = "ApiKeyNotFoundError";
   }
+}
+
+/**
+ * The freshly generated plaintext hashed to a value some existing key already
+ * owns. Cryptographically near-impossible (sha256 over ~256 bits of entropy),
+ * so it means the generator misbehaved — surfaced rather than retried, because
+ * silently minting a second key with the same secret would be worse.
+ */
+export class ApiKeyHashConflictError extends Error {
+  constructor() {
+    super("Generated API key hash collides with an existing key");
+    this.name = "ApiKeyHashConflictError";
+  }
+}
+
+/**
+ * The requested owner does not exist.
+ *
+ * Redis had no referential integrity, so a key minted against a mistyped or
+ * already-deleted user id simply stored an unownable record. `foreign_keys` is
+ * ON (see ./sqlite.ts), so the INSERT is rejected; this turns that into a
+ * domain error instead of a raw driver failure leaking out of the repository.
+ */
+export class ApiKeyOwnerNotFoundError extends Error {
+  constructor(public readonly userId: string) {
+    super(`Cannot create an API key for a user that does not exist: ${userId}`);
+    this.name = "ApiKeyOwnerNotFoundError";
+  }
+}
+
+/**
+ * `node:sqlite` reports constraint failures as a plain Error carrying the
+ * constraint name in the message (there is no typed error code to match on),
+ * so both checks are message probes that turn a raw driver error back into the
+ * domain error callers already handle. Same approach as `isUniqueViolation` in
+ * ./users.ts.
+ */
+function isUniqueViolation(err: unknown): boolean {
+  return err instanceof Error && /UNIQUE constraint failed/i.test(err.message);
+}
+
+function isForeignKeyViolation(err: unknown): boolean {
+  return err instanceof Error && /FOREIGN KEY constraint failed/i.test(err.message);
 }
 
 // ---------------------------------------------------------------------------
@@ -88,24 +139,40 @@ export async function createApiKey(input: CreateApiKeyInput): Promise<ApiKeyWith
     lastUsedAt: null,
   });
 
-  const redis = getRedis();
-  const tx = redis.multi();
-  tx.hset(k.apiKey(id), {
-    id: apiKey.id,
-    userId: apiKey.userId,
-    label: apiKey.label,
-    keyHash: apiKey.keyHash,
-    keyPrefix: apiKey.keyPrefix,
-    expiresAt: apiKey.expiresAt ?? "",
-    forceDisabled: apiKey.forceDisabled ? "1" : "0",
-    enabled: apiKey.enabled ? "1" : "0",
-    allowedModels: apiKey.allowedModels.join(","),
-    createdAt: apiKey.createdAt,
-    lastUsedAt: apiKey.lastUsedAt ?? "",
-  });
-  tx.set(k.apiKeyByHash(keyHash), id);
-  tx.sadd(k.apiKeyByUser(input.userId), id);
-  await tx.exec();
+  // ONE STATEMENT, AND DELIBERATELY NO TRANSACTION.
+  //
+  // The Redis version wrote the record HASH, the hash→id lookup and the
+  // per-user SET, so MULTI was the only way to keep them consistent — and it
+  // still had no real duplicate protection, because a plain SET on the lookup
+  // index silently overwrote the previous owner and orphaned the older key,
+  // which then could never authenticate again. The UNIQUE index on
+  // `key_hash` rejects that atomically, and a lone INSERT cannot half-apply,
+  // so there is nothing left for a transaction to buy.
+  try {
+    run(
+      `INSERT INTO api_keys
+         (id, user_id, label, key_hash, key_prefix, expires_at,
+          force_disabled, enabled, allowed_models, created_at, last_used_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+      [
+        apiKey.id,
+        apiKey.userId,
+        apiKey.label,
+        apiKey.keyHash,
+        apiKey.keyPrefix,
+        apiKey.expiresAt,
+        toDbBool(apiKey.forceDisabled),
+        toDbBool(apiKey.enabled),
+        JSON.stringify(apiKey.allowedModels),
+        apiKey.createdAt,
+        apiKey.lastUsedAt,
+      ],
+    );
+  } catch (err) {
+    if (isUniqueViolation(err)) throw new ApiKeyHashConflictError();
+    if (isForeignKeyViolation(err)) throw new ApiKeyOwnerNotFoundError(apiKey.userId);
+    throw err;
+  }
 
   return { key: apiKey, plainKey: plain };
 }
@@ -114,118 +181,161 @@ export async function createApiKey(input: CreateApiKeyInput): Promise<ApiKeyWith
 // Read
 // ---------------------------------------------------------------------------
 
+/** Look up a key by id. Returns null if not found. */
 export async function getApiKeyById(keyId: string): Promise<ApiKey | null> {
   if (!keyId) return null;
-  return hashToKey(await getRedis().hgetall<Record<string, string>>(k.apiKey(keyId)));
+  return getOne("SELECT * FROM api_keys WHERE id = ?", [keyId], rowToApiKey);
 }
 
 /**
  * Look up an API key by the plaintext.
  * This is the hot path during Bearer authentication.
+ *
+ * Was two Redis round trips — read the `hash:{sha256}` → id pointer, then
+ * HGETALL the record. It is now one lookup on the UNIQUE index of `key_hash`
+ * that returns the row itself, so the hot path halves its round trips and
+ * cannot observe a pointer whose target has since been deleted.
  */
 export async function getApiKeyByPlaintext(plaintext: string): Promise<ApiKey | null> {
   if (!plaintext) return null;
-  const hash = sha256Hex(plaintext);
-  const id = await getRedis().get<string>(k.apiKeyByHash(hash));
-  if (!id) return null;
-  return getApiKeyById(id);
+  return getOne("SELECT * FROM api_keys WHERE key_hash = ?", [sha256Hex(plaintext)], rowToApiKey);
 }
 
-/** List all keys for a user (paginated). */
+/**
+ * List all keys for a user (paginated). Cursor is the last `id` of a page.
+ *
+ * `user_id` is indexed (`idx_api_keys_user`), so this replaces the SMEMBERS
+ * of the per-user SET plus a pipelined HGETALL of every member — and, because
+ * the page is cut by SQL, memory use no longer scales with the user's key
+ * count.
+ *
+ * The cursor is `id` and the sort key is `id`. The Redis version sorted by
+ * `createdAt` but then sought the cursor with `keys.findIndex(k => k.id >
+ * cursor)` — an id comparison against a createdAt-ordered array, so a cursor
+ * could skip rows or replay them. `generateId()` is time-sortable, so ordering
+ * by `id` is still creation order, just coherent with the cursor this time.
+ */
 export async function listApiKeysByUser(
   userId: string,
   opts: { limit?: number; cursor?: string } = {},
 ): Promise<{ keys: ApiKey[]; nextCursor: string | null }> {
   const limit = Math.max(1, Math.min(opts.limit ?? 50, 200));
-  const redis = getRedis();
-  const allIds = await redis.smembers(k.apiKeyByUser(userId));
 
-  // Resolve every key record in one pipelined request.
-  const rows = await hgetallMany(redis, allIds.map((id) => k.apiKey(id)));
-  const parsed = await Promise.all(rows.map((raw) => hashToKey(raw)));
-  const keys = parsed.filter((key): key is ApiKey => key !== null);
-  keys.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  // Fetch one extra row to learn whether another page exists without a second
+  // COUNT query.
+  const rows = getAll(
+    opts.cursor
+      ? "SELECT * FROM api_keys WHERE user_id = ? AND id > ? ORDER BY id ASC LIMIT ?"
+      : "SELECT * FROM api_keys WHERE user_id = ? ORDER BY id ASC LIMIT ?",
+    opts.cursor ? [userId, opts.cursor, limit + 1] : [userId, limit + 1],
+    rowToApiKey,
+  );
 
-  let startIdx = 0;
-  if (opts.cursor) {
-    const idx = keys.findIndex((k) => k.id > opts.cursor!);
-    startIdx = idx >= 0 ? idx : keys.length;
-  }
-  const slice = keys.slice(startIdx, startIdx + limit);
-  const nextCursor = startIdx + limit < keys.length ? slice[slice.length - 1].id : null;
-  return { keys: slice, nextCursor };
+  const hasMore = rows.length > limit;
+  const keys = hasMore ? rows.slice(0, limit) : rows;
+  const nextCursor = hasMore ? (keys[keys.length - 1]?.id ?? null) : null;
+  return { keys, nextCursor };
 }
 
-/** List all keys (admin view). */
+/**
+ * List all keys (admin view). Newest first.
+ *
+ * The Redis version SCANned the keyspace and had to filter its own index keys
+ * back out of the results before reading the survivors, because
+ * `relay:apikey:*` matched the hash and by-user prefixes too and a blind
+ * HGETALL on one of those throws WRONGTYPE. The filters are now `WHERE`
+ * clauses, so the prefix bookkeeping — and the class of bug it invited — is
+ * gone. Note there is deliberately no default cap: the admin dashboards call
+ * this with no options and expect every key.
+ */
 export async function listAllApiKeys(opts: {
   limit?: number;
   userId?: string;
   enabledOnly?: boolean;
 } = {}): Promise<ApiKey[]> {
-  const redis = getRedis();
-  // Schema reminder:
-  //   HASH   relay:apikey:{keyId}            → record
-  //   STRING relay:apikey:hash:{hash}        → keyId  (lookup index)
-  //   STRING relay:apikey:by-user:{userId}   → set of keyIds (per-user index)
-  // SCAN `relay:apikey:*` would match all of these; we only want the
-  // HASH records here. Calling HGETALL on the STRING indexes would
-  // throw WRONGTYPE in real Upstash.
-  const [, matched] = await redis.scan(0, {
-    match: `${k.apiKey("")}*`,
-    count: 500,
-  });
-  const keyIds = matched.filter(
-    (key) =>
-      key.startsWith(k.apiKey("")) &&
-      !key.startsWith(k.apiKeyByHash("")) &&
-      !key.startsWith(k.apiKeyByUser("")),
-  );
+  const where: string[] = [];
+  const params: unknown[] = [];
 
-  const out: ApiKey[] = [];
-  // One pipelined read instead of one round-trip per key record.
-  const rows = await hgetallMany(redis, keyIds);
-  const parsed = await Promise.all(rows.map((raw) => hashToKey(raw)));
-  for (const key of parsed) {
-    if (!key) continue;
-    if (opts.userId && key.userId !== opts.userId) continue;
-    if (opts.enabledOnly && !key.enabled) continue;
-    out.push(key);
+  if (opts.userId) {
+    where.push("user_id = ?");
+    params.push(opts.userId);
   }
-  out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  return opts.limit ? out.slice(0, opts.limit) : out;
+  if (opts.enabledOnly) {
+    // Stated as a literal rather than a parameter: `enabled` is an INTEGER
+    // column, so there is no boolean binding to normalise here.
+    where.push("enabled = 1");
+  }
+
+  const hasLimit = typeof opts.limit === "number" && opts.limit > 0;
+  if (hasLimit) params.push(opts.limit);
+
+  return getAll(
+    `SELECT * FROM api_keys` +
+      (where.length ? ` WHERE ${where.join(" AND ")}` : "") +
+      ` ORDER BY created_at DESC` +
+      (hasLimit ? ` LIMIT ?` : ""),
+    params,
+    rowToApiKey,
+  );
 }
 
 // ---------------------------------------------------------------------------
 // Update
 // ---------------------------------------------------------------------------
 
-
+/**
+ * Apply a partial update to a key. Returns the updated key, or null if the
+ * key does not exist.
+ *
+ * Runs inside a transaction because the merge is a read-modify-write:
+ * `withTransaction` opens with BEGIN IMMEDIATE, so the write lock is held
+ * before the read and a concurrent update to the same key cannot land in
+ * between and be silently overwritten. The Redis version left that window
+ * open, since HGETALL-then-HSET was never atomic. The FK means a key can also
+ * no longer vanish between the two statements in a way that leaves a partial
+ * write.
+ */
 export async function updateApiKey(
   keyId: string,
   patch: UpdateApiKeyInput,
 ): Promise<ApiKey | null> {
-  const existing = await getApiKeyById(keyId);
-  if (!existing) return null;
+  return withTransaction(async () => {
+    const existing = await getApiKeyById(keyId);
+    if (!existing) return null;
 
-  const merged: ApiKey = ApiKeySchema.parse({
-    ...existing,
-    label: patch.label ?? existing.label,
-    expiresAt: patch.expiresAt === undefined ? existing.expiresAt : patch.expiresAt,
-    allowedModels: patch.allowedModels ?? existing.allowedModels,
-    enabled: patch.enabled === undefined ? existing.enabled : patch.enabled,
-    forceDisabled: patch.forceDisabled === undefined ? existing.forceDisabled : patch.forceDisabled,
+    const merged: ApiKey = ApiKeySchema.parse({
+      ...existing,
+      label: patch.label ?? existing.label,
+      expiresAt: patch.expiresAt === undefined ? existing.expiresAt : patch.expiresAt,
+      allowedModels: patch.allowedModels ?? existing.allowedModels,
+      enabled: patch.enabled === undefined ? existing.enabled : patch.enabled,
+      forceDisabled:
+        patch.forceDisabled === undefined ? existing.forceDisabled : patch.forceDisabled,
+    });
+
+    // Re-validate via ApiKeySchema above, then persist every mutable column in
+    // one statement. Fields outside the patch (key_hash, key_prefix,
+    // createdAt, lastUsedAt) are deliberately not written: a partial HSET had
+    // to enumerate them just to avoid clobbering them.
+    run(
+      `UPDATE api_keys
+          SET label = ?, expires_at = ?, allowed_models = ?,
+              enabled = ?, force_disabled = ?
+        WHERE id = ?`,
+      [
+        merged.label,
+        merged.expiresAt,
+        JSON.stringify(merged.allowedModels),
+        toDbBool(merged.enabled),
+        toDbBool(merged.forceDisabled),
+        keyId,
+      ],
+    );
+
+    return merged;
   });
-
-  await getRedis().hset(k.apiKey(keyId), {
-    label: merged.label,
-    expiresAt: merged.expiresAt ?? "",
-    allowedModels: merged.allowedModels.join(","),
-    enabled: merged.enabled ? "1" : "0",
-    forceDisabled: merged.forceDisabled ? "1" : "0",
-  });
-
-  return merged;
 }
+
 export async function setApiKeyEnabled(
   keyId: string,
   enabled: boolean,
@@ -242,58 +352,40 @@ export async function setApiKeyEnabled(
  */
 export async function touchApiKeyLastUsed(keyId: string): Promise<void> {
   const now = new Date().toISOString();
-  await getRedis().hset(k.apiKey(keyId), { lastUsedAt: now });
+  run("UPDATE api_keys SET last_used_at = ? WHERE id = ?", [now, keyId]);
 }
 
 // ---------------------------------------------------------------------------
 // Delete
 // ---------------------------------------------------------------------------
 
+/**
+ * Hard-delete one key. Returns true if a row was removed.
+ *
+ * The Redis version read the record, then used MULTI to drop the HASH, the
+ * hash→id pointer and the SET membership — three writes that could disagree
+ * with each other, and whose failure modes were exactly "key still
+ * authenticates" or "index entry outlives its key". All of that is now the
+ * one row, so `changes` is both the delete and the existence check.
+ */
 export async function deleteApiKey(keyId: string): Promise<boolean> {
-  const existing = await getApiKeyById(keyId);
-  if (!existing) return false;
-
-  const redis = getRedis();
-  const tx = redis.multi();
-  tx.del(k.apiKey(keyId));
-  tx.del(k.apiKeyByHash(existing.keyHash));
-  tx.srem(k.apiKeyByUser(existing.userId), keyId);
-  await tx.exec();
-  return true;
+  return run("DELETE FROM api_keys WHERE id = ?", [keyId]) > 0;
 }
 
-/** Cascade-delete all keys for a user. Returns the count removed. */
+/**
+ * Delete all keys for a user. Returns the count removed.
+ *
+ * One statement, and `changes` is an exact count. The Redis version walked
+ * the per-user SET and deleted members one at a time, so the number it
+ * returned silently excluded any key whose SET entry had drifted away from
+ * its record — a user could be told 3 keys were removed when 5 existed.
+ *
+ * Callers still invoke this before `deleteUser()`, and the result is the
+ * number they report, so the behaviour is unchanged for them. Note the FK's
+ * ON DELETE CASCADE now covers the same ground: deleting the user alone would
+ * already remove these rows, which closes the window between the two
+ * statements in a route handler.
+ */
 export async function deleteApiKeysByUser(userId: string): Promise<number> {
-  const ids = await getRedis().smembers(k.apiKeyByUser(userId));
-  let count = 0;
-  for (const id of ids) {
-    if (await deleteApiKey(id)) count++;
-  }
-  return count;
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-async function hashToKey(raw: Record<string, string> | null): Promise<ApiKey | null> {
-  if (!raw) return null;
-  try {
-    const strVal = (v: unknown): string => String(v ?? "");
-    return ApiKeySchema.parse({
-      id: raw.id,
-      userId: raw.userId,
-      label: raw.label,
-      keyHash: raw.keyHash,
-      keyPrefix: raw.keyPrefix,
-      expiresAt: raw.expiresAt && raw.expiresAt !== "" ? raw.expiresAt : null,
-      forceDisabled: strVal(raw.forceDisabled) === "1",
-      enabled: strVal(raw.enabled) === "1",
-      allowedModels: raw.allowedModels ? raw.allowedModels.split(",").filter(Boolean) : [],
-      createdAt: raw.createdAt,
-      lastUsedAt: raw.lastUsedAt && raw.lastUsedAt !== "" ? raw.lastUsedAt : null,
-    });
-  } catch {
-    return null;
-  }
+  return run("DELETE FROM api_keys WHERE user_id = ?", [userId]);
 }

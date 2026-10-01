@@ -16,8 +16,7 @@
  * "give Alice 1000 credits" means to anyone operating this thing.
  */
 import { describe, it, expect, beforeEach } from "vitest";
-import { __resetRedisForTest, __setRedisForTest } from "@/lib/db/redis";
-import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
+import { __resetDbForTest } from "@/lib/db/sqlite";
 import { createUser, getUserById, updateUser, incrementUserQuotaUsed } from "@/lib/db/users";
 import { createApiKey, listApiKeysByUser } from "@/lib/db/keys";
 import { checkKeyStatus } from "@/lib/auth/apikey";
@@ -27,7 +26,7 @@ const NOW = new Date("2026-09-21T10:00:00Z").getTime();
 
 describe("credit pool defaults", () => {
   beforeEach(() => {
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
   });
 
   it("DEFAULT_USER_ALLOCATION grants nothing and caps nothing", () => {
@@ -66,7 +65,7 @@ describe("credit pool defaults", () => {
 
 describe("granting credits", () => {
   beforeEach(() => {
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
   });
 
   it("admin grants a pool at creation time", async () => {
@@ -104,7 +103,7 @@ describe("granting credits", () => {
     expect(reset!.quotaLimit).toBe(1000);
   });
 
-  it("persists the pool through Redis", async () => {
+  it("persists the pool through the database", async () => {
     const u = await createUser({
       username: "erin",
       password: "longenoughpw",
@@ -123,7 +122,7 @@ describe("granting credits", () => {
 
 describe("multiple keys share one pool", () => {
   beforeEach(() => {
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
   });
 
   it("a key carries no balance of its own", async () => {
@@ -198,7 +197,7 @@ describe("multiple keys share one pool", () => {
 
 describe("model access is owned by the account", () => {
   beforeEach(() => {
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
   });
 
   it("a key cannot reach a model the account lacks", async () => {

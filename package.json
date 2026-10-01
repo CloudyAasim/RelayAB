@@ -14,11 +14,9 @@
     "@radix-ui/react-tabs": "^1.1.21",
     "@radix-ui/react-toast": "^1.2.23",
     "@radix-ui/react-tooltip": "^1.2.16",
-    "@upstash/redis": "^1.34.0",
     "bcryptjs": "^2.4.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "ioredis": "^5.4.1",
     "iron-session": "^8.0.0",
     "jose": "^5.9.0",
     "lucide-react": "^0.460.0",
@@ -31,7 +29,9 @@
     "zod": "^3.23.0"
   },
   "description": "RelayAB - A self-hosted AI API relay/gateway for sharing upstream provider keys with quota and permission control.",
-  "devDependencies": {
+  "engines": {
+    "node": ">=24 <25"
+  },  "devDependencies": {
     "@playwright/test": "^1.48.0",
     "@tailwindcss/forms": "^0.5.9",
     "@tailwindcss/typography": "^0.5.15",

@@ -10,9 +10,11 @@
  * Returns the NAMES of missing variables (never their values) so an operator
  * can curl this right after a deploy and know exactly what to fix.
  *
- * `data.storage` reports whether the app is on a real Upstash database or the
- * in-process mock, and `env.required` follows from that. In development the
- * mock is the default, so `required` is 1 (just RELAY_AUTH) rather than 3.
+ * `data.storage` reports which store is live — the local SQLite file (the
+ * default), the Upstash REST API (only when explicitly configured), or the
+ * in-process mock. `data.env.required` follows from it: SQLite and the mock
+ * need only RELAY_AUTH, while the hosted Redis path needs the URL and token
+ * pair on top of that.
  *
  * The decision logic lives in `lib/health.ts` so the tests exercise the real
  * implementation instead of a copy of it.

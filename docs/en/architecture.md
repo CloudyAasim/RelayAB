@@ -52,9 +52,9 @@
                                  │                  │                  │
                                  │                  ▼                  │
                                  │  ┌────────────────────────────────┐ │
-                                 │  │  Valkey 8.1  127.0.0.1:6379    │ │
+                                 │  │  relayab.db (SQLite)            │ │
                                  │  │  users / api_keys / providers  │ │
-                                 │  │  usage_logs / sessions         │ │
+                                 │  │  usage_logs / settings / meta  │ │
                                  │  └────────────────────────────────┘ │
                                  │                  │                  │
                                  │                  ▼                  │
@@ -71,7 +71,7 @@
 |---|---|---|
 | Deployment | Own Debian server (systemd + nginx) | No platform fee, no request ceiling; nginx must disable buffering or SSE streaming breaks |
 | Framework | Next.js 15 App Router | Server Actions / Route Handlers from one source; SSR-friendly |
-| Data store | **Local Valkey** (`REDIS_URL` + ioredis over TCP); Upstash also supported | Self-hosted, no external dependency; connections are reused instead of one HTTP request per command |
+| Data store | **A local SQLite file** (Node 24's built-in `node:sqlite`); hosted environments can switch to Upstash REST | Zero external dependency when self-hosting: nothing to install, no port, no password, and backup is copying the file; unique constraints and foreign keys are now the database's job |
 | Authentication | iron-session + bcryptjs | Lightweight, Edge-compatible, no external dependency; bcryptjs is pure JS |
 | Upstream key encryption | AES-256-GCM, master key from env | Standard practice; consistent with the TokenPlan approach |
 | AI proxy | Hand-written proxy layer (`src/lib/proxy/*`) | Direct control of SSE framing, protocol conversion, and baseURL; no third-party SDK |
@@ -89,7 +89,7 @@ Router behaviour:
 - **The skeleton screen should replace only the content column.** When the shell lived in the page, the segment's `loading.tsx` swapped the entire screen (navigation included) for a skeleton. In testing against a slow server, the result was a **blank full screen with no loading indicator at all** first — that is exactly where the "it feels like the network dropped" impression came from. After moving the shell into a layout, the skeleton renders inside `<main>` and the navigation stays visible.
 - **Navigation feedback**: the App Router dispatches no route-change event, so `NavigationLoadingBar` now detects changes itself (same-origin link clicks + `popstate`, ending as soon as the path changes), and sidebar links use `useLinkStatus` to show a spinner at the click point.
 - **Client-side route cache**: `experimental.staleTimes.dynamic = 30`, otherwise every navigation on a dynamic page re-requests the serverless function; writes go through a Server Action / `router.refresh()` and are not affected by that window.
-- **Data access**: with a REST backend, every Redis command is one HTTP request, so all multi-row reads go through `hgetallMany()` (MULTI pipeline, one request per 100 records); repeated reads of the current user within one request are deduplicated by React `cache()`.
+- **Data access**: SQLite is an in-process call with no network round trip, so multi-row reads use a single `IN (…)` query and `usage_logs` carries indexes on `(api_key_id, created_at)` and friends to support aggregation. Repeated reads of the current user within one request are deduplicated by React `cache()`.
 
 ---
 
@@ -97,19 +97,25 @@ Router behaviour:
 
 See [`data-model.md`](./data-model.md) for the full definition. Summary:
 
-| Table / Key | Purpose | Primary key |
+| Table | Purpose | Primary key |
 |---|---|---|
-| `user:{id}` | User profile + role + password hash + **credit pool** (`quotaType`/`quotaLimit`/`quotaUsed`) + model allowlist | `id` |
-| `user:by-username:{username}` | Reverse lookup from username to id | `username` |
-| `apikey:{id}` | Customer key credential (hash / enabled / expiry / narrowed models). **No quota fields** | `id` |
-| `apikey:hash:{hash}` | API key hash → id (used for Bearer verification) | `sha256(key)` |
-| `apikey:by-user:{userId}` | A user's key list (Set) | `userId` |
-| `provider:{id}` | Upstream provider configuration + encrypted API key | `id` |
-| `usage:{apikeyId}:{yyyymm}` | Monthly usage (tokens + creditsUsed) | `apikeyId + month` |
-| `log:{apikeyId}:{ulid}` | Per-request log | `ulid` |
-| `session:{sid}` | iron-session internal | `sid` |
+| `users` | User profile + role + password hash + **credit pool** (`quota_type`/`quota_limit`/`quota_used`) + model allowlist. `username` is UNIQUE | `id` |
+| `api_keys` | Customer key credential (hash / enabled / expiry / narrowed models). **No quota fields**. `key_hash` is UNIQUE, with a foreign key onto `users(id)` | `id` |
+| `providers` | Upstream provider configuration + encrypted API key | `id` |
+| `media_providers` | Media provider configuration + declarative spec array | `id` |
+| `usage_logs` | Per-request log (append-only) | `id` (ULID) |
+| `usage_totals` | Running totals per key, read on every proxied call | `api_key_id` |
+| `settings` | Key/value bag (currently just `publicUrl`) | `key` |
+| `meta` | Records whether the one-time bootstrap has run | `key` |
 
-All Redis keys use the `relay:` prefix to avoid collisions with other workloads.
+Sessions live in an iron-session cookie, **not in the database**.
+
+> **The table/entity boundary**: each table maps one-to-one onto a Zod schema,
+> column names are the entity field names in `snake_case`, and every row is run
+> back through that same schema on read. Booleans are `INTEGER` 0/1,
+> `allowed_models` / `model_mapping` / `headers` / `specs` are stored as JSON
+> text, and timestamps are ISO strings. See
+> [data-model.md storage conventions](data-model.md#storage-conventions).
 
 ---
 
@@ -162,7 +168,7 @@ Media capabilities do not go through the chat protocol surface. Instead they use
 **declarative spec + a generic engine**:
 
 ```
-Provider row (Redis relay:media-provider:*) = baseUrl + key + models + specs[]
+Provider row (`media_providers` table) = baseUrl + key + models + specs[]
 Engine (src/lib/media/engine.ts) interprets the spec: build upstream request → parse response → map errors → async polling
 ```
 
@@ -199,7 +205,7 @@ billing unit are all different (media is billed per item).
   - `keyHash = sha256(key)` (used for the reverse lookup during Bearer verification).
   - `keyPrefix = key.slice(0, 12)` + `...` + `key.slice(-4)` (list display only).
   - **The plaintext is returned exactly once, at creation**, and is unreadable afterwards.
-- Verification: the client sends `Authorization: Bearer <key>` → the server `sha256`s it → reverse-looks-up Redis → on a hit, the full record is loaded.
+- Verification: the client sends `Authorization: Bearer <key>` → the server `sha256`s it → looks up `api_keys.key_hash` (which carries a UNIQUE index) → on a hit, the full record is loaded.
 
 ### 5.3 Upstream Provider API Keys (the most important security point)
 - Algorithm: **AES-256-GCM**.
@@ -269,15 +275,20 @@ admin sees when granting access must be exactly the ceiling the user can consume
 2. Forward to the upstream (streaming)
 3. Aggregate the token count once the stream ends
 4. Compute the credits consumed by this call
-5. HINCRBY relay:user:{userId} quotaUsed <delta>   ← recorded on the account
-6. HSET  relay:apikey:{keyId} lastUsedAt <now>      ← just a timestamp
-7. Write a usage log to relay:log:* (per-request detail is kept)
+5. UPDATE users SET quota_used = quota_used + <delta>   ← recorded on the account
+6. UPDATE api_keys SET last_used_at = <now>              ← just a timestamp
+7. INSERT INTO usage_logs (per-request detail is kept)
+8. UPDATE usage_totals to advance that key's running totals (the proxy path reads it on every call)
 ```
 
 ### 6.6 Concurrency Safety
-- `quotaUsed` is accumulated with `HINCRBY`, which is inherently atomic, so concurrent requests cannot lose updates.
-- Ownership verification (username uniqueness) uses `SET NX`; see the cold-start
-  race discussion in [data-model.md §1](data-model.md#1-user).
+- `quota_used` is accumulated with `SET x = x + ?` (the SQL expression is evaluated
+  atomically inside the transaction), so concurrent requests cannot lose updates.
+  Those updates are wrapped in `withTransaction()` (`BEGIN IMMEDIATE`).
+- Ownership verification (username uniqueness) is guaranteed by the `UNIQUE`
+  constraint on `users.username`; the cold-start "two concurrent admins" race is
+  caught by the bootstrap's `BEGIN IMMEDIATE` transaction plus the `meta` primary
+  key conflict — see [data-model.md §1](data-model.md#1-user) and §6.
 - Alternatively, pre-deduct pessimistically before the stream starts, then settle the difference when the stream ends.
 
 ---
@@ -373,7 +384,7 @@ common configuration mistake:
 | Level | Tool | Coverage |
 |---|---|---|
 | Unit | Vitest | Encryption, hashing, quota calculation, credit rates, expiry checks |
-| Integration | Vitest + Next.js test handler | Routes + real Redis (mock or testcontainers) |
+| Integration | Vitest + Next.js test handler | Routes + real SQLite (`RELAY_DB_PATH=":memory:"`, no service required) |
 | E2E | Playwright | Login, creating a key, viewing usage, calling the OpenAI-compatible endpoint |
 
 ### 8.2 CI / Local One-Command Scripts
@@ -381,7 +392,7 @@ common configuration mistake:
 ```bash
 pnpm install
 pnpm test:unit          # pure functions, seconds
-pnpm test:integration   # integration, needs a local Redis (a test mock is used)
+pnpm test:integration   # integration, in-process :memory: database, zero external dependencies
 pnpm test:e2e           # needs the Next dev server
 ```
 
@@ -390,17 +401,20 @@ pnpm test:e2e           # needs the Next dev server
 ## 9. Deployment
 
 ### 9.1 Server Setup
-- Node.js 24 + pnpm 10 (`corepack enable` is enough)
-- Valkey 8.1 on `127.0.0.1:6379` with `maxmemory-policy noeviction`
+- Node.js 24 + pnpm 10 (`corepack enable` is enough) — `node:sqlite` is built in,
+  so an older Node fails immediately with "module not found"
+- One writable database directory (e.g. `/var/lib/relayab`, owned by `relayab`) —
+  **no database service to install and no port to open**
 - systemd service, with `WorkingDirectory` pinned to the repository root
 - nginx reverse proxy + Let's Encrypt, **with response buffering disabled** (otherwise SSE breaks)
 
 Ready-made configs live in [`deploy/`](../../deploy/README.md):
-`relayab.service` / `nginx.conf` / `valkey.conf.example` / `env.production.example`.
+`relayab.service` / `nginx.conf` / `env.production.example`.
 
 ### 9.2 Environment Variables
 See [`deploy/env.production.example`](../../deploy/env.production.example).
-`RELAY_AUTH`, `REDIS_URL` and `RELAY_BUILD_ID` are required.
+`RELAY_AUTH` is the only required one; in production set `RELAY_DB_PATH` explicitly
+(outside the release directory), plus `RELAY_BUILD_ID` and `RELAY_PUBLIC_URL`.
 
 ### 9.3 First Startup
 - The first time a request hits the app (submitting the login form, reading the session on a page, or a proxy endpoint verifying a key), a bootstrap runs once, lazily: if the database is empty → create the `RELAY_ADMIN_USERNAME` (default `admin`) admin using `RELAY_AUTH` as the password; if `OPENAI_KEYS` / `ANTHROPIC_KEYS` are set → create the corresponding providers automatically.
@@ -438,7 +452,7 @@ RelayAB/
 │   ├── lib/
 │   │   ├── auth/         (session.ts, password.ts)
 │   │   ├── crypto/       (secrets.ts, hashing.ts)
-│   │   ├── db/           (redis.ts, repositories)
+│   │   ├── db/           (sqlite.ts, users.ts, keys.ts, providers.ts, usage.ts)
 │   │   ├── proxy/        (openai.ts, anthropic.ts, stream.ts)
 │   │   ├── quota/        (credits.ts, rates.ts, calculator.ts)
 │   │   └── config.ts
@@ -469,9 +483,9 @@ RelayAB/
 | Risk | Impact | Mitigation |
 |---|---|---|
 | Master key leak | An attacker can decrypt every upstream key | Keep the master key only in `.env.production` (`chmod 600`); never log it; rotate with a script periodically |
-| Accidental Redis deletion | All users/keys lost | Enable AOF (`appendfsync everysec`); add a daily backup cron (`valkey-cli --rdb`) |
+| Accidental deletion / disk loss of the database file | All users/keys/usage logs lost | Keep `RELAY_DB_PATH` outside the release directory; add a daily backup cron (`sqlite3 … ".backup …"` or copy with the service stopped); `chmod 600` |
 | nginx response buffering | Long streaming requests hang, then dump at once | Disable `proxy_buffering` in the site config and send `X-Accel-Buffering no` |
-| Single-machine failure | App and database go down together | Valkey and the app share one host; plan backups and recovery yourself |
+| Single-machine failure | App and database go down together | The app and the `.db` file share one host; plan backups and recovery yourself |
 | Rate limits | A shared upstream key easily triggers OpenAI/Anthropic throttling | The quota engine throttles inherently; v2 adds a per-provider rate |
 
 ---

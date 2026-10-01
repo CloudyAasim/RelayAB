@@ -13,8 +13,7 @@ vi.mock("next/headers", () => ({
   cookies: async () => currentStore,
 }));
 
-import { __resetRedisForTest, __setRedisForTest } from "@/lib/db/redis";
-import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
+import { __resetDbForTest } from "@/lib/db/sqlite";
 import { createUser } from "@/lib/db/users";
 import { createProvider, getProviderById } from "@/lib/db/providers";
 import { InMemoryCookieStore, getSessionFromStore } from "@/lib/auth/session";
@@ -45,8 +44,7 @@ const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
 
 describe("PATCH /api/admin/providers/:id", () => {
   beforeEach(() => {
-    __resetRedisForTest();
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
     currentStore = null;
   });
 

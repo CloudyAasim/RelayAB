@@ -2,11 +2,31 @@
  * Full end-to-end smoke test for all session changes.
  * Run with: ./node_modules/.bin/vitest run tests/e2e/_full_e2e_full.test.ts
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { loadConfig, __resetConfigForTest } from "@/lib/config";
 import { computeHealth } from "@/lib/health";
-import { __resetRedisForTest, getRedis } from "@/lib/db/redis";
+import { __resetDbForTest, getDb, run } from "@/lib/db/sqlite";
+import { listUsers, createUser } from "@/lib/db/users";
+import { createApiKey, listAllApiKeys } from "@/lib/db/keys";
+import { updateSettings } from "@/lib/db/settings";
 import * as fs from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
+
+/**
+ * Scratch directory for the tests that need a real file on disk.
+ *
+ * Deliberately inside the repo rather than os.tmpdir(): under Vitest's node
+ * environment `tmpdir()` does not resolve to a usable path on every platform,
+ * and a repo-local directory is also easier to reason about when debugging a
+ * failed run. It sits under node_modules/ so it is ignored by git and by
+ * Next.js's build trace.
+ */
+const SCRATCH_ROOT = join(process.cwd(), "node_modules", ".tmp-relayab-test");
+const scratchDir = (prefix: string): string => {
+  mkdirSync(SCRATCH_ROOT, { recursive: true });
+  return mkdtempSync(join(SCRATCH_ROOT, prefix));
+};
 
 const setEnv = (env: Record<string, string | undefined>): void => {
   for (const k of Object.keys(process.env)) {
@@ -19,6 +39,17 @@ const setEnv = (env: Record<string, string | undefined>): void => {
   __resetConfigForTest();
 };
 
+// The in-memory store lives for the whole file, so every test that writes has
+// to start from an empty one. Without this, an earlier test's "alice" is still
+// there and the next one fails on UsernameConflictError rather than on what it
+// is actually trying to assert.
+beforeEach(() => {
+  __resetConfigForTest();
+  __resetDbForTest();
+  process.env.RELAY_DB_PATH = ":memory:";
+  process.env.RELAY_AUTH = "ok-password-12345678";
+});
+
 describe("Test 1 · config.ts: schema accepts Deploy-Button flow", () => {
   it("RELAY_AUTH alone is enough; RELAY_PUBLIC_URL is optional", () => {
     setEnv({
@@ -30,204 +61,194 @@ describe("Test 1 · config.ts: schema accepts Deploy-Button flow", () => {
     expect(cfg.RELAY_AUTH).toBe("deploy-button-only-12345678");
     // Not set — the public URL is derived at render time instead.
     expect(cfg.RELAY_PUBLIC_URL).toBeUndefined();
-    expect(cfg.UPSTASH_REDIS_REST_URL).toBeUndefined();
-    expect(cfg.UPSTASH_REDIS_REST_TOKEN).toBeUndefined();
+    // The database needs no configuration; leaving the path unset is normal.
+    expect(cfg.RELAY_DB_PATH).toBeUndefined();
   });
 });
 
 describe("Test 2 · config.ts: rejects missing RELAY_AUTH", () => {
-  it("throws when RELAY_AUTH missing even with KV_* set", () => {
+  it("throws when RELAY_AUTH is missing", () => {
     setEnv({
       NODE_ENV: "production",
-      KV_REST_API_URL: "https://x.upstash.io",
-      KV_REST_API_TOKEN: "tok",
+      RELAY_DB_PATH: ":memory:",
       RELAY_PUBLIC_URL: "https://relay.example.com",
     });
     expect(() => loadConfig()).toThrow(/RELAY_AUTH/);
   });
 });
 
-describe("Test 3 · config.ts: KV_REST_API_* fallback", () => {
-  it("KV_REST_API_URL → cfg.UPSTASH_REDIS_REST_URL", () => {
+describe("Test 3 · config.ts: RELAY_DB_PATH is optional", () => {
+  it("is honoured when set, and absent otherwise", () => {
     setEnv({
       RELAY_AUTH: "ok-password-12345678",
-      KV_REST_API_URL: "https://kv-relay.upstash.io",
-      KV_REST_API_TOKEN: "kv-token-abc",
+      RELAY_DB_PATH: "/var/lib/relayab/relayab.db",
       RELAY_PUBLIC_URL: "https://relay.example.com",
       NODE_ENV: "production",
     });
-    const cfg = loadConfig();
-    expect(cfg.UPSTASH_REDIS_REST_URL).toBe("https://kv-relay.upstash.io");
-    expect(cfg.UPSTASH_REDIS_REST_TOKEN).toBe("kv-token-abc");
-  });
-});
+    expect(loadConfig().RELAY_DB_PATH).toBe("/var/lib/relayab/relayab.db");
 
-describe("Test 4 · config.ts: UPSTASH_* wins over KV_*", () => {
-  it("UPSTASH_* preferred when both set", () => {
     setEnv({
       RELAY_AUTH: "ok-password-12345678",
-      UPSTASH_REDIS_REST_URL: "https://upstash-relay.upstash.io",
-      UPSTASH_REDIS_REST_TOKEN: "upstash-token-xyz",
-      KV_REST_API_URL: "https://kv-relay.upstash.io",
-      KV_REST_API_TOKEN: "kv-token-abc",
       RELAY_PUBLIC_URL: "https://relay.example.com",
       NODE_ENV: "production",
     });
-    const cfg = loadConfig();
-    expect(cfg.UPSTASH_REDIS_REST_URL).toBe("https://upstash-relay.upstash.io");
-    expect(cfg.UPSTASH_REDIS_REST_TOKEN).toBe("upstash-token-xyz");
+    // Unset means "default next to the app" — not a misconfiguration.
+    expect(loadConfig().RELAY_DB_PATH).toBeUndefined();
   });
 });
 
-describe("Test 5 · /healthz logic", () => {
+describe("Test 5 /healthz logic", () => {
   // Exercises the REAL implementation from lib/health.ts. This block used to
   // carry its own copy of the rules, which meant a change to /healthz left the
   // test asserting stale behaviour.
+  //
+  // The store is a local SQLite file, so the only variable that can be missing
+  // is RELAY_AUTH. The database itself needs no configuration — that is the
+  // point of the migration away from Redis.
 
-  it("production with nothing set → unconfigured", () => {
-    const r = computeHealth({ NODE_ENV: "production" });
-    expect(r.status).toBe("unconfigured");
-    expect(r.required).toBe(3);
-    expect(r.configured).toBe(0);
-    expect(r.storage).toBe("upstash");
-  });
-
-  it("production with only RELAY_AUTH → degraded", () => {
+  it("production with RELAY_AUTH set is ok (1/1)", () => {
     const r = computeHealth({ NODE_ENV: "production", RELAY_AUTH: "x" });
-    expect(r.status).toBe("degraded");
-    expect(r.configured).toBe(1);
-    expect(r.required).toBe(3);
-  });
-
-  it("production, Upstash via KV_* (Marketplace-injected) → ok (3/3)", () => {
-    const r = computeHealth({
-      NODE_ENV: "production",
-      RELAY_AUTH: "x",
-      KV_REST_API_URL: "https://x.upstash.io",
-      KV_REST_API_TOKEN: "t",
-    });
     expect(r.status).toBe("ok");
-    expect(r.configured).toBe(3);
+    expect(r.storage).toBe("sqlite");
+    expect(r.required).toBe(1);
+    expect(r.configured).toBe(1);
     expect(r.missing).toBeUndefined();
   });
 
-  it("production, Upstash via UPSTASH_* (manually set) → ok (3/3)", () => {
-    const r = computeHealth({
-      NODE_ENV: "production",
-      RELAY_AUTH: "x",
-      UPSTASH_REDIS_REST_URL: "https://x.upstash.io",
-      UPSTASH_REDIS_REST_TOKEN: "t",
-    });
-    expect(r.status).toBe("ok");
-    expect(r.configured).toBe(3);
-  });
-
-  it("production, RELAY_AUTH + URL but no token → degraded", () => {
-    const r = computeHealth({
-      NODE_ENV: "production",
-      RELAY_AUTH: "x",
-      UPSTASH_REDIS_REST_URL: "https://x.upstash.io",
-    });
-    expect(r.status).toBe("degraded");
-    expect(r.configured).toBe(2);
-    expect(r.missing?.some((m) => m.includes("TOKEN"))).toBe(true);
-  });
-
-  it("development with only RELAY_AUTH → ok, because storage is the in-memory mock", () => {
-    // This is the case that used to be reported as "degraded" even though the
-    // app was fully functional.
-    const r = computeHealth({ NODE_ENV: "development", RELAY_AUTH: "x" });
-    expect(r.status).toBe("ok");
-    expect(r.storage).toBe("memory");
-    expect(r.required).toBe(1);
-    expect(r.configured).toBe(1);
-  });
-
-  it("development with RELAY_AUTH unset → unconfigured (still needs the secret)", () => {
-    const r = computeHealth({ NODE_ENV: "development" });
+  it("production with nothing set is unconfigured", () => {
+    const r = computeHealth({ NODE_ENV: "production" });
     expect(r.status).toBe("unconfigured");
     expect(r.required).toBe(1);
+    expect(r.configured).toBe(0);
+    expect(r.missing).toEqual(["RELAY_AUTH"]);
   });
 
-  it("production only uses the mock when explicitly opted in", () => {
-    expect(computeHealth({ NODE_ENV: "production", RELAY_AUTH: "x" }).storage).toBe("upstash");
-    expect(
-      computeHealth({
-        NODE_ENV: "production",
-        RELAY_AUTH: "x",
-        EMULATE_VERCEL_LOCAL: "1",
-      }).storage,
-    ).toBe("memory");
+  it("development behaves the same — SQLite is configured out of the box", () => {
+    // There used to be an in-memory mock that only existed outside production,
+    // so development reported "ok" with 1/1 while production demanded 3/3. With
+    // a file-backed store there is nothing to differ on.
+    const r = computeHealth({ NODE_ENV: "development", RELAY_AUTH: "x" });
+    expect(r.status).toBe("ok");
+    expect(r.storage).toBe("sqlite");
+    expect(r.required).toBe(1);
+  });
+
+  it("an unset RELAY_DB_PATH is not a missing variable", () => {
+    // The file path defaults to ./data/relayab.db; reporting its absence would
+    // make a correctly configured deployment look broken.
+    const r = computeHealth({ NODE_ENV: "production", RELAY_AUTH: "x" });
+    expect(r.missing).toBeUndefined();
+  });
+
+  it("an explicit RELAY_DB_PATH is accepted and not reported", () => {
+    const r = computeHealth({
+      NODE_ENV: "production",
+      RELAY_AUTH: "x",
+      RELAY_DB_PATH: "/var/lib/relayab/relayab.db",
+    });
+    expect(r.status).toBe("ok");
+    expect(r.missing).toBeUndefined();
+  });
+
+  it("an empty RELAY_AUTH counts as missing", () => {
+    const r = computeHealth({ NODE_ENV: "production", RELAY_AUTH: "   " });
+    expect(r.status).toBe("unconfigured");
+    expect(r.missing).toEqual(["RELAY_AUTH"]);
   });
 });
+describe("Test 6 · sqlite.ts: storage needs no service configuration", () => {
+  // The Redis version had an "actionable error when no database is configured"
+  // test here, because an operator had to supply a host, port and password
+  // (REDIS_URL or UPSTASH_REDIS_REST_URL) before anything worked. SQLite has no
+  // such surface: one path is the whole configuration. The equivalent contract
+  // is that the path is honoured, the schema is created on first open, and a
+  // bad path fails loudly instead of silently using some other store.
 
-describe("Test 6 · redis.ts: actionable error when no database is configured", () => {
-  it("throws with helpful message", () => {
-    __resetRedisForTest();
+  it("opens and initialises the schema from a bare path, with no credentials", () => {
     setEnv({
       RELAY_AUTH: "ok-password-12345678",
       RELAY_PUBLIC_URL: "https://relay.example.com",
       NODE_ENV: "production",
     });
-    expect(() => getRedis()).toThrow(/Redis is not configured/);
-    // The message has to name both supported transports, otherwise an operator
-    // on a self-hosted box is sent to set up an Upstash account they do not need.
-    expect(() => getRedis()).toThrow(/REDIS_URL/);
-    expect(() => getRedis()).toThrow(/UPSTASH_REDIS_REST_URL/);
-    expect(() => getRedis()).toThrow(/\/healthz/);
-    __resetRedisForTest();
+    const dir = scratchDir("relayab-db-");
+    const file = join(dir, "nested", "relayab.db");
+    process.env.RELAY_DB_PATH = file;
+    __resetDbForTest();
+
+    try {
+      const db = getDb();
+      const tables = (
+        db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as {
+          name: string;
+        }[]
+      ).map((r) => r.name);
+      expect(tables).toEqual(expect.arrayContaining(["users", "api_keys", "providers"]));
+      // The parent directory did not exist; it is created rather than failing
+      // with an opaque ENOENT on the first query.
+      expect(fs.existsSync(file)).toBe(true);
+    } finally {
+      process.env.RELAY_DB_PATH = ":memory:";
+      __resetDbForTest();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("reports an unusable RELAY_DB_PATH instead of falling back silently", () => {
+    const dir = scratchDir("relayab-blocked-");
+    // A directory is not a database, so SQLite refuses it.
+    process.env.RELAY_DB_PATH = dir;
+    __resetDbForTest();
+
+    try {
+      expect(() => getDb()).toThrow(/unable to open database file/i);
+    } finally {
+      process.env.RELAY_DB_PATH = ":memory:";
+      __resetDbForTest();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
-describe("Test 7 · users.ts listUsers SCAN filter", () => {
-  it("excludes by-username keys and keeps records", () => {
-    const userKey = (id: string) => `relay:user:${id}`;
-    const userByUsernameKey = (u: string) => `relay:user:by-username:${u}`;
-    const fakeScan = [
-      userKey("user-001"),
-      userKey("user-002"),
-      userByUsernameKey("admin"),
-      userByUsernameKey("alice"),
-      "relay:meta:initialized",
-    ];
-    const filtered = fakeScan.filter(
-      (key) => key.startsWith(userKey("")) && !key.startsWith(userByUsernameKey(""))
-    );
-    expect(filtered).toHaveLength(2);
-    expect(filtered).toContain(userKey("user-001"));
-    expect(filtered).toContain(userKey("user-002"));
-    expect(filtered).not.toContain(userByUsernameKey("admin"));
-    expect(filtered).not.toContain(userByUsernameKey("alice"));
-    expect(filtered).not.toContain("relay:meta:initialized");
+describe("Test 7 · users.ts listUsers reads users only", () => {
+  // The Redis version had to SCAN the key space and filter out the
+  // `by-username` alias keys and the `relay:meta:initialized` sentinel. SQLite
+  // has one table per entity, so the equivalent risk is a list query that
+  // picks up the meta/settings rows sharing the same file.
+  it("returns only the users table's rows", async () => {
+    __resetDbForTest();
+    const alice = await createUser({ username: "alice", password: "longenoughpw" });
+    const bob = await createUser({ username: "bob", password: "longenoughpw" });
+    run("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", ["initialized", "1"]);
+    await updateSettings({ publicUrl: "https://relay.example.com" });
+
+    const { users } = await listUsers({ limit: 100 });
+    expect(users).toHaveLength(2);
+    expect(users.map((u) => u.username).sort()).toEqual(["alice", "bob"]);
+    expect(users.map((u) => u.id).sort()).toEqual([alice.id, bob.id].sort());
   });
 });
 
-describe("Test 8 · keys.ts listAllApiKeys SCAN filter", () => {
-  it("excludes by-hash + by-user keys and keeps records", () => {
-    const apiKeyKey = (id: string) => `relay:apikey:${id}`;
-    const apiKeyByHashKey = (h: string) => `relay:apikey:hash:${h}`;
-    const apiKeyByUserKey = (u: string) => `relay:apikey:by-user:${u}`;
-    const fakeScan = [
-      apiKeyKey("key-001"),
-      apiKeyByHashKey("sha256-abc"),
-      apiKeyByUserKey("user-001"),
-      "relay:meta:initialized",
-    ];
-    const filtered = fakeScan.filter(
-      (key) =>
-        key.startsWith(apiKeyKey("")) &&
-        !key.startsWith(apiKeyByHashKey("")) &&
-        !key.startsWith(apiKeyByUserKey(""))
-    );
-    expect(filtered).toHaveLength(1);
-    expect(filtered).toContain(apiKeyKey("key-001"));
-    expect(filtered).not.toContain(apiKeyByHashKey("sha256-abc"));
-    expect(filtered).not.toContain(apiKeyByUserKey("user-001"));
+describe("Test 8 · keys.ts listAllApiKeys reads api_keys only", () => {
+  // Same story as Test 7: the Redis version filtered `hash:` and `by-user:`
+  // index keys out of a SCAN; here the equivalent is that the list query does
+  // not pick up rows from the other tables in the same database.
+  it("returns only the api_keys table's rows", async () => {
+    __resetDbForTest();
+    const owner = await createUser({ username: "owner", password: "longenoughpw" });
+    const first = await createApiKey({ userId: owner.id, label: "k-001" });
+    const second = await createApiKey({ userId: owner.id, label: "k-002" });
+    run("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", ["initialized", "1"]);
+    await updateSettings({ publicUrl: "https://relay.example.com" });
+
+    const all = await listAllApiKeys();
+    expect(all).toHaveLength(2);
+    expect(all.map((k) => k.id).sort()).toEqual([first.key.id, second.key.id].sort());
+    expect(all.every((k) => k.userId === owner.id)).toBe(true);
   });
 });
 
-describe("Test 9 · 自托管部署配置自洽", () => {
-  it("nginx 关闭了响应缓冲并转发了 X-Forwarded-*", () => {
+describe("Test 9 · 自托管部署配置自检", () => {
+  it("nginx 关闭了响应缓冲并转发 X-Forwarded-*", () => {
     // The single highest-risk misconfiguration on a self-hosted box: nginx
     // buffering turns every streamed completion into "hang, then dump".
     const nginx = fs.readFileSync("./deploy/nginx.conf", "utf-8");
@@ -255,13 +276,30 @@ describe("Test 9 · 自托管部署配置自洽", () => {
   it("部署文件齐全", () => {
     for (const f of [
       "./deploy/README.md",
+      "./deploy/dokku.md",
       "./deploy/relayab.service",
       "./deploy/nginx.conf",
-      "./deploy/valkey.conf.example",
       "./deploy/env.production.example",
     ]) {
       expect(fs.existsSync(f), `${f} must exist`).toBe(true);
     }
+  });
+
+  it("没有为已移除的数据库服务留下配置", () => {
+    // SQLite replaced Redis/Valkey, so shipping a Valkey config template would
+    // tell operators to install a service the app never talks to.
+    expect(fs.existsSync("./deploy/valkey.conf.example")).toBe(false);
+  });
+
+  it("app.json 不再要求数据库连接串", () => {
+    // The one value Dokku must not prompt for: SQLite needs no connection.
+    const app = JSON.parse(fs.readFileSync("./app.json", "utf-8"));
+    const env = app.env ?? {};
+    expect(env.REDIS_URL).toBeUndefined();
+    expect(env.UPSTASH_REDIS_REST_URL).toBeUndefined();
+    // The master secret is still platform-generated.
+    expect(env.RELAY_AUTH?.generator).toBe("secret");
+    expect(env.NODE_ENV?.value).toBe("production");
   });
 });
 
@@ -301,35 +339,60 @@ describe("Test 11 · .gitignore coverage", () => {
 });
 
 describe("Test 12 · package.json sanity", () => {
-  it("no prebuild, packageManager set, no engines", () => {
+  it("no prebuild, packageManager pinned, engines targets Node 24", () => {
     const p = JSON.parse(fs.readFileSync("./package.json", "utf-8"));
     expect(p.scripts.prebuild).toBeUndefined();
     expect(p.packageManager).toBe("pnpm@10.28.0");
-    expect(p.engines).toBeUndefined();
+
+    // This used to assert `engines` was ABSENT, so Vercel could pick its own
+    // Node version. The deployment target is now Dokku, whose buildpack reads
+    // engines.node to choose the build/runtime Node — without it the build
+    // silently lands on whatever the pinned buildpack defaults to. Pin it to
+    // the major the test suite and smoke run are verified against.
+    expect(p.engines).toBeDefined();
+    expect(p.engines.node).toBe(">=24 <25");
+  });
+
+  it("has a Procfile for the Dokku scheduler", () => {
+    // Dokku starts the app from a Procfile; without a `web` process type the
+    // deploy succeeds but no container is ever started.
+    const procfile = fs.readFileSync("./Procfile", "utf-8");
+    expect(procfile).toMatch(/^web:\s*\S/m);
+    // Must go through pnpm, not bare `next start` — the buildpack only puts
+    // the toolchain selected by `packageManager` on PATH.
+    expect(procfile).toContain("pnpm start");
   });
 });
 
 describe("Test 13 · README structure", () => {
   it("has all key sections", () => {
     const r = fs.readFileSync("./README.md", "utf-8");
-    // The three variables a self-hosted deployment cannot boot without.
+    // A self-hosted deployment needs no database service, so the only required
+    // variable is RELAY_AUTH; RELAY_DB_PATH is optional (it defaults next to
+    // the app). RELAY_BUILD_ID is what makes "which build is live" answerable.
     expect(r).toContain("RELAY_AUTH");
-    expect(r).toContain("REDIS_URL");
+    expect(r).toContain("RELAY_DB_PATH");
     expect(r).toContain("RELAY_BUILD_ID");
     expect(r).toContain("/healthz");
     expect(r).toContain("## 许可证");
+    // The README must not still send people to install a database service.
+    expect(r).not.toContain("REDIS_URL");
+    expect(r).not.toContain("UPSTASH_REDIS_REST_URL");
     expect((r.match(/^## /gm) || []).length).toBeGreaterThanOrEqual(5);
   });
 
-  it("中英文 README 对同一套部署方式保持一致", () => {
+  it("中英 README 对同一套部署方式保持一致", () => {
     const zh = fs.readFileSync("./README.md", "utf-8");
     const en = fs.readFileSync("./README.en.md", "utf-8");
     for (const r of [zh, en]) {
       expect(r).toContain("deploy/README.md");
-      expect(r).toContain("valkey-server");
-      expect(r).toContain("maxmemory-policy noeviction");
-      expect(r).toContain("proxy_buffering off");
+      // The deployment steps must not still tell readers to install a database
+      // service the app no longer uses.
+      expect(r).not.toContain("valkey-server");
+      expect(r).not.toContain("redis://");
       expect(r).not.toContain("vercel.com/button");
+      // SSE still depends on the proxy not buffering, so that one stays.
+      expect(r).toContain("proxy_buffering off");
     }
   });
 });

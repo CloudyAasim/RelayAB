@@ -3,7 +3,21 @@
  *
  * Repository for upstream `Provider` entities.
  *
- * Uses Redis SCAN for enumeration - compatible with both Upstash Redis and Vercel KV.
+ * Backed by the single SQLite file managed in `sqlite.ts`. The Redis version
+ * enumerated providers with a cursor SCAN over `relay:provider:*` and then
+ * issued one pipelined HGETALL per matched key; the same "read them all" need
+ * here is a single SELECT, so the whole provider set costs one statement
+ * instead of a round trip per provider.
+ *
+ *   TABLE providers → one row per upstream vendor.
+ *
+ * Structured columns (`model_mapping`, `model_configs`, `headers`) hold JSON
+ * text and are re-parsed by the shared `rowToProvider`, which also runs the
+ * row through `ProviderSchema`. That replaces the hand-written
+ * `hashToProvider` deserialiser the Redis version needed — every hash field
+ * came back as a string, so booleans had to be sniffed as "1"/"true"/"on" and
+ * empty strings had to be re-mapped to null. Typed columns make that class of
+ * bug unrepresentable.
  */
 import {
   ProviderSchema,
@@ -14,7 +28,7 @@ import {
   type ModelConfig,
 } from "./types";
 import { revalidateTag, unstable_cache } from "next/cache";
-import { getRedis, hgetallMany, k, readStoredFlag } from "./redis";
+import { getAll, getOne, rowToProvider, run, toDbBool, withTransaction } from "./sqlite";
 import { encryptSecret } from "../crypto/secrets";
 import { generateId } from "../crypto/hashing";
 
@@ -117,27 +131,36 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
     updatedAt: now,
   });
 
-  const redis = getRedis();
-  
-  // Save the provider hash
-  await redis.hset(k.provider(id), {
-    id: provider.id,
-    name: provider.name,
-    kind: provider.kind,
-    baseUrl: provider.baseUrl ?? "",
-    encryptedApiKey: provider.encryptedApiKey,
-    modelMapping: JSON.stringify(provider.modelMapping),
-    modelConfigs: JSON.stringify(provider.modelConfigs ?? {}),
-    enabled: provider.enabled ? "1" : "0",
-    priority: String(provider.priority),
-    headers: JSON.stringify(provider.headers ?? {}),
-    upstreamFormat: provider.upstreamFormat,
-    openaiEnabled: provider.openaiEnabled ? "1" : "0",
-    anthropicEnabled: provider.anthropicEnabled ? "1" : "0",
-    anthropicBaseUrl: provider.anthropicBaseUrl ?? "",
-    createdAt: provider.createdAt,
-    updatedAt: provider.updatedAt,
-  });
+  // NULL is now a real value rather than a stand-in for "empty string": the
+  // Redis hash stored `baseUrl: ""` and `anthropicBaseUrl: ""` and the reader
+  // translated "" back to null, so an intentionally blank URL and an absent
+  // one were indistinguishable in the store.
+  run(
+    `INSERT INTO providers
+       (id, name, kind, base_url, encrypted_api_key, model_mapping,
+        model_configs, enabled, priority, headers, upstream_format,
+        openai_enabled, anthropic_enabled, anthropic_base_url,
+        created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [
+      provider.id,
+      provider.name,
+      provider.kind,
+      provider.baseUrl,
+      provider.encryptedApiKey,
+      JSON.stringify(provider.modelMapping),
+      JSON.stringify(provider.modelConfigs ?? {}),
+      toDbBool(provider.enabled),
+      provider.priority,
+      JSON.stringify(provider.headers ?? {}),
+      provider.upstreamFormat,
+      toDbBool(provider.openaiEnabled),
+      toDbBool(provider.anthropicEnabled),
+      provider.anthropicBaseUrl,
+      provider.createdAt,
+      provider.updatedAt,
+    ],
+  );
 
   // Revalidate the providers cache
   revalidateTag("providers");
@@ -149,44 +172,41 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
 // Read
 // ---------------------------------------------------------------------------
 
+/** Look up a provider by id. Returns null if not found. */
 export async function getProviderById(id: string): Promise<Provider | null> {
   if (!id) return null;
-  return hashToProvider(await getRedis().hgetall<Record<string, string>>(k.provider(id)));
+  return getOne("SELECT * FROM providers WHERE id = ?", [id], rowToProvider);
 }
 
 /**
- * Un-cached provider read: one SCAN, then one pipelined HGETALL wave.
+ * Un-cached provider read: one indexed SELECT.
+ *
+ * Ordering is the same contract the Redis version had to build in JS after
+ * collecting SCAN results — priority ascending, then name — because callers
+ * pick the first match when routing a model. Only the tiebreak between equal
+ * priorities differs: SQLite compares `name` by code point where the old code
+ * used `localeCompare`, so non-ASCII display names may order differently.
+ * `priority` still decides which provider actually serves a request.
  */
-async function readProviders(enabledOnly: boolean): Promise<Provider[]> {
-  const redis = getRedis();
-
-  // Use SCAN to find all provider keys - works with both Upstash Redis and Vercel KV
-  const providerIds = await scanProviderIds(redis);
-
-  const rows = await hgetallMany(redis, providerIds.map((id) => k.provider(id)));
-  const parsed = await Promise.all(rows.map((raw) => hashToProvider(raw)));
-
-  const out: Provider[] = [];
-  for (const p of parsed) {
-    if (!p) continue;
-    if (enabledOnly && !p.enabled) continue;
-    out.push(p);
-  }
-  out.sort((a, b) => {
-    if (a.priority !== b.priority) return a.priority - b.priority;
-    return a.name.localeCompare(b.name);
-  });
-  return out;
+function readProviders(enabledOnly: boolean): Provider[] {
+  return getAll(
+    enabledOnly
+      ? "SELECT * FROM providers WHERE enabled = 1 ORDER BY priority ASC, name ASC"
+      : "SELECT * FROM providers ORDER BY priority ASC, name ASC",
+    [],
+    rowToProvider,
+  );
 }
 
 /**
  * `listProviders` sits on the hot path of every proxied request (it resolves
- * which upstream serves a model) and costs a SCAN plus one read per provider.
- * Provider config changes rarely, so cache it and invalidate through the
- * `providers` tag that create/update/delete already fire.
+ * which upstream serves a model). Provider config changes rarely, so the
+ * `unstable_cache` wrapper and the `providers` tag that create/update/delete
+ * already fire are kept as they are — they cost nothing over a local file and
+ * still absorb the repeated calls made while picking a failover target.
  */
 const listProvidersCached = unstable_cache(
-  readProviders,
+  async (enabledOnly: boolean) => readProviders(enabledOnly),
   ["relayab:listProviders"],
   { tags: ["providers"], revalidate: 60 },
 );
@@ -199,41 +219,14 @@ export async function listProviders(opts: {
 }
 
 /**
- * SCAN through all provider keys. Handles cursor iteration properly.
- * Compatible with both Upstash Redis and Vercel KV.
- */
-async function scanProviderIds(redis: { scan: (cursor: any, opts: any) => Promise<[any, string[]]> }): Promise<string[]> {
-  const ids: string[] = [];
-  const prefix = k.provider(""); // "relay:provider:"
-  let cursor = 0;
-  
-  do {
-    const [nextCursor, matched] = await redis.scan(cursor, {
-      match: `${prefix}*`,
-      count: 100,
-    });
-    
-    for (const key of matched) {
-      // Extract ID: "relay:provider:abc123" -> "abc123"
-      // Skip "relay:provider:index" which is a SET, not a HASH
-      if (key === 'relay:provider:index') continue;
-      if (key.startsWith(prefix)) {
-        const id = key.slice(prefix.length);
-        // Skip non-ID keys (shouldn't happen but be safe)
-        if (id && id !== 'index') {
-          ids.push(id);
-        }
-      }
-    }
-    
-    cursor = typeof nextCursor === "number" ? nextCursor : Number(nextCursor);
-  } while (cursor !== 0);
-  
-  return ids;
-}
-
-/**
  * Find providers that can serve the given client-visible model.
+ *
+ * The Redis version SCANned every provider and then tested `clientModel in
+ * modelMapping` row by row. There is no index to make that selective — the
+ * mapping is a JSON object read whole and written whole — so the same
+ * "load the enabled set, filter it" shape is kept deliberately: provider
+ * count is small, and routing already needs the full row to build the
+ * upstream request. Row order is the priority order from `listProviders`.
  */
 export async function findProvidersForModel(clientModel: string): Promise<Provider[]> {
   const all = await listProviders({ enabledOnly: true });
@@ -274,158 +267,110 @@ export async function findProvidersByKind(kind: ProviderKind): Promise<Provider[
 // Update
 // ---------------------------------------------------------------------------
 
+/**
+ * Apply a partial patch to a provider. Returns the updated provider, or null
+ * if not found.
+ *
+ * The merge is a read-modify-write, so it runs inside one IMMEDIATE
+ * transaction: the Redis version did HGETALL → HSET with nothing holding a
+ * lock between the two, and two concurrent admin edits could drop one of the
+ * changes. Nested callers join the surrounding transaction instead of failing.
+ */
 export async function updateProvider(
   id: string,
   patch: UpdateProviderInput,
 ): Promise<Provider | null> {
-  const existing = await getProviderById(id);
-  if (!existing) return null;
+  return withTransaction(async () => {
+    const existing = await getProviderById(id);
+    if (!existing) return null;
 
-  const encryptedApiKey = patch.apiKey
-    ? encryptSecret(patch.apiKey)
-    : existing.encryptedApiKey;
+    const encryptedApiKey = patch.apiKey
+      ? encryptSecret(patch.apiKey)
+      : existing.encryptedApiKey;
 
-  const merged: Provider = ProviderSchema.parse({
-    ...existing,
-    name: patch.name ?? existing.name,
-    kind: patch.kind ?? existing.kind,
-    baseUrl: patch.baseUrl === undefined ? existing.baseUrl : patch.baseUrl,
-    encryptedApiKey,
-    modelMapping: patch.modelMapping ?? existing.modelMapping,
-    modelConfigs: patch.modelConfigs ?? existing.modelConfigs,
-    enabled: patch.enabled === undefined ? existing.enabled : patch.enabled,
-    priority: patch.priority ?? existing.priority,
-    headers: patch.headers ?? existing.headers,
-    upstreamFormat: patch.upstreamFormat ?? existing.upstreamFormat,
-    openaiEnabled: patch.openaiEnabled ?? existing.openaiEnabled,
-    anthropicEnabled: patch.anthropicEnabled ?? existing.anthropicEnabled,
-    anthropicBaseUrl:
-      patch.anthropicBaseUrl === undefined
-        ? existing.anthropicBaseUrl
-        : patch.anthropicBaseUrl,
-    updatedAt: new Date().toISOString(),
+    const merged: Provider = ProviderSchema.parse({
+      ...existing,
+      name: patch.name ?? existing.name,
+      kind: patch.kind ?? existing.kind,
+      baseUrl: patch.baseUrl === undefined ? existing.baseUrl : patch.baseUrl,
+      encryptedApiKey,
+      modelMapping: patch.modelMapping ?? existing.modelMapping,
+      modelConfigs: patch.modelConfigs ?? existing.modelConfigs,
+      enabled: patch.enabled === undefined ? existing.enabled : patch.enabled,
+      priority: patch.priority ?? existing.priority,
+      headers: patch.headers ?? existing.headers,
+      upstreamFormat: patch.upstreamFormat ?? existing.upstreamFormat,
+      openaiEnabled: patch.openaiEnabled ?? existing.openaiEnabled,
+      anthropicEnabled: patch.anthropicEnabled ?? existing.anthropicEnabled,
+      anthropicBaseUrl:
+        patch.anthropicBaseUrl === undefined
+          ? existing.anthropicBaseUrl
+          : patch.anthropicBaseUrl,
+      updatedAt: new Date().toISOString(),
+    });
+
+    // Every column is written, not just the patched ones: the entity is the
+    // authority on the merged state, and one whole-row UPDATE is atomic in SQL
+    // whereas a partial HSET in Redis could interleave with another writer.
+    run(
+      `UPDATE providers SET
+         name = ?, kind = ?, base_url = ?, encrypted_api_key = ?,
+         model_mapping = ?, model_configs = ?, enabled = ?, priority = ?,
+         headers = ?, upstream_format = ?, openai_enabled = ?,
+         anthropic_enabled = ?, anthropic_base_url = ?, updated_at = ?
+       WHERE id = ?`,
+      [
+        merged.name,
+        merged.kind,
+        merged.baseUrl,
+        merged.encryptedApiKey,
+        JSON.stringify(merged.modelMapping),
+        JSON.stringify(merged.modelConfigs ?? {}),
+        toDbBool(merged.enabled),
+        merged.priority,
+        JSON.stringify(merged.headers ?? {}),
+        merged.upstreamFormat,
+        toDbBool(merged.openaiEnabled),
+        toDbBool(merged.anthropicEnabled),
+        merged.anthropicBaseUrl,
+        merged.updatedAt,
+        id,
+      ],
+    );
+
+    // Revalidate the providers cache
+    revalidateTag("providers");
+
+    return merged;
   });
-
-  const redis = getRedis();
-  await redis.hset(k.provider(id), {
-    name: merged.name,
-    kind: merged.kind,
-    baseUrl: merged.baseUrl ?? "",
-    encryptedApiKey: merged.encryptedApiKey,
-    modelMapping: JSON.stringify(merged.modelMapping),
-    modelConfigs: JSON.stringify(merged.modelConfigs ?? {}),
-    enabled: merged.enabled ? "1" : "0",
-    priority: String(merged.priority),
-    headers: JSON.stringify(merged.headers ?? {}),
-    upstreamFormat: merged.upstreamFormat,
-    openaiEnabled: merged.openaiEnabled ? "1" : "0",
-    anthropicEnabled: merged.anthropicEnabled ? "1" : "0",
-    anthropicBaseUrl: merged.anthropicBaseUrl ?? "",
-    updatedAt: merged.updatedAt,
-  });
-
-  // Revalidate the providers cache
-  revalidateTag("providers");
-
-  return merged;
 }
 
 // ---------------------------------------------------------------------------
 // Delete
 // ---------------------------------------------------------------------------
 
+/** Hard-delete a provider. Returns false if it did not exist. */
 export async function deleteProvider(id: string): Promise<boolean> {
-  const existing = await getProviderById(id);
-  if (!existing) return false;
-  await getRedis().del(k.provider(id));
-  
+  // The row count of the DELETE is the existence check the Redis version got
+  // from a separate HGETALL, so a miss neither writes nor revalidates.
+  const removed = run("DELETE FROM providers WHERE id = ?", [id]);
+  if (removed === 0) return false;
+
   // Revalidate the providers cache
   revalidateTag("providers");
-  
+
   return true;
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function safeJsonParse(val: unknown): Record<string, unknown> {
-  if (!val) return {};
-  if (typeof val === 'object') return val as Record<string, unknown>;
-  if (typeof val === 'string') {
-    try { return JSON.parse(val); } catch { return {}; }
-  }
-  return {};
-}
-
-/**
- * Face flags for a Redis row.
- *
- * Rows written before the two-face model exist without either flag; falling
- * back to the schema defaults would turn an Anthropic-only row
- * (`kind: "anthropic"` / `upstreamFormat: "anthropic"`) into an OpenAI-only one.
- */
-function legacyFaceFlags(raw: Record<string, string>): {
-  openaiEnabled: boolean;
-  anthropicEnabled: boolean;
-} {
-  if (raw.openaiEnabled !== undefined || raw.anthropicEnabled !== undefined) {
-    return {
-      openaiEnabled: readStoredFlag(raw.openaiEnabled, true),
-      anthropicEnabled: readStoredFlag(raw.anthropicEnabled, false),
-    };
-  }
-  return defaultFaceFlags(
-    raw.kind as ProviderKind,
-    (raw.upstreamFormat as "responses" | "chat" | "anthropic") || "responses",
-  );
-}
-
-
-async function hashToProvider(raw: Record<string, string> | null): Promise<Provider | null> {
-  if (!raw || Object.keys(raw).length === 0) return null;
-  
-  try {
-    // Safely parse enabled - handle various formats that might be stored in Redis
-    const enabledRaw = raw.enabled;
-    let enabled = false;
-    if (enabledRaw !== undefined && enabledRaw !== null && enabledRaw !== "") {
-      // Handle "1", "true" (case-insensitive), "on" as true
-      const normalized = String(enabledRaw).toLowerCase();
-      enabled = normalized === "1" || normalized === "true" || normalized === "on";
-    }
-    
-    return ProviderSchema.parse({
-      id: raw.id,
-      name: raw.name,
-      kind: raw.kind,
-      baseUrl: raw.baseUrl && raw.baseUrl !== "" ? raw.baseUrl : null,
-      encryptedApiKey: raw.encryptedApiKey,
-      modelMapping: safeJsonParse(raw.modelMapping),
-      modelConfigs: safeJsonParse(raw.modelConfigs),
-      enabled,
-      priority: Number(raw.priority ?? "1"),
-      headers: safeJsonParse(raw.headers),
-      upstreamFormat: (raw.upstreamFormat as "responses" | "chat" | "anthropic") || "responses",
-      // Absent on rows written before protocol faces existed. Derive from the
-      // legacy shape rather than letting the schema default both to
-      // "OpenAI-only", which would strip the Anthropic face off every row the
-      // old admin UI created via the "Anthropic Messages" format.
-      ...legacyFaceFlags(raw),
-      anthropicBaseUrl:
-        raw.anthropicBaseUrl && raw.anthropicBaseUrl !== "" ? raw.anthropicBaseUrl : null,
-      createdAt: raw.createdAt,
-      updatedAt: raw.updatedAt,
-    });
-  } catch (err) {
-    console.error("[hashToProvider] Failed to parse provider:", err, "Raw keys:", Object.keys(raw), "Raw enabled:", raw?.enabled);
-    return null;
-  }
 }
 
 // ---------------------------------------------------------------------------
 // Model Config helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * These read from the entity the caller already holds, not from the database:
+ * the proxy resolves a provider, reads its config, and uses it to build the
+ * upstream call — a second query would be a pure round trip.
+ */
 
 export function getModelConfig(
   provider: Provider,

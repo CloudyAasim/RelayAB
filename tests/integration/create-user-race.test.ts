@@ -11,11 +11,7 @@
  * atomic reservation. The losing caller gets UsernameConflictError.
  */
 import { describe, it, expect, beforeEach } from "vitest";
-import {
-  __resetRedisForTest,
-  __setRedisForTest,
-} from "@/lib/db/redis";
-import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
+import { __resetDbForTest } from "@/lib/db/sqlite";
 import {
   createUser,
   getUserByUsername,
@@ -29,7 +25,7 @@ const STRESS_TIMEOUT_MS = 30_000;
 
 describe("createUser race protection", () => {
   beforeEach(() => {
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
   });
 
   it(
@@ -52,7 +48,7 @@ describe("createUser race protection", () => {
       expect(successes).toHaveLength(1);
       expect(conflicts).toHaveLength(19);
 
-      // Exactly one user record exists in Redis.
+      // Exactly one user record exists in the database.
       const fetched = await getUserByUsername("admin");
       expect(fetched).not.toBeNull();
       expect(fetched!.id).toBe(successes[0]!.user.id);

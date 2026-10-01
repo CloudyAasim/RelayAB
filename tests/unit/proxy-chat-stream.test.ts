@@ -6,8 +6,7 @@
  * frame, bill by estimate (per project policy).
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { __resetRedisForTest, __setRedisForTest } from "@/lib/db/redis";
-import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
+import { __resetDbForTest } from "@/lib/db/sqlite";
 import { createApiKey } from "@/lib/db/keys";
 import { createUser, getUserById } from "@/lib/db/users";
 import { createProvider } from "@/lib/db/providers";
@@ -55,8 +54,7 @@ const SSE_NO_USAGE = [
 
 describe("Batch 3: chat streaming", () => {
   beforeEach(() => {
-    __resetRedisForTest();
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
   });
 
   it("passes stream:true and stream_options.include_usage to upstream", async () => {

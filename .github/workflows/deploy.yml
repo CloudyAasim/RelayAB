@@ -1,0 +1,35 @@
+name: Deploy to Dokku
+
+# 触发分支是 server 而不是 main。
+# 仓库里 main 与 server 目前是两个独立项目：
+#   main  = 原 Vercel 版本（v178，冻结待恢复）
+#   server = Debian / Dokku 自托管版本
+# 部署 server 上的改动时不要触发 main 的构建。
+on:
+  push:
+    branches:
+      - server
+  workflow_dispatch:
+
+# Dokku 的同一个 app 不能并发构建，否则会互相覆盖 slug。
+concurrency:
+  group: dokku-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 必须：浅克隆会让 Dokku 构建失败
+
+      - name: Deploy to Dokku
+        uses: dokku/github-action@master
+        with:
+          git_remote_url: ${{ secrets.GIT_REMOTE_URL }}
+          ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY }}

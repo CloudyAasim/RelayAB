@@ -9,9 +9,10 @@
  * - Skips already-existing providers
  */
 import { describe, it, expect, beforeEach } from "vitest";
-import { __resetRedisForTest, __setRedisForTest } from "@/lib/db/redis";
+import { __resetDbForTest } from "@/lib/db/sqlite";
 import { __resetConfigForTest } from "@/lib/config";
-import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import {
   runBootstrap,
   ensureBootstrapped,
@@ -19,15 +20,13 @@ import {
   OPENAI_DEFAULT_MAPPING,
   ANTHROPIC_DEFAULT_MAPPING,
 } from "@/lib/db/bootstrap";
-import type { RedisLike } from "@/lib/db/__mocks__/memory-redis";
 import { listUsers, verifyUserCredentials } from "@/lib/db/users";
 import { listProviders } from "@/lib/db/providers";
 import { getOpenAIKeys, getAnthropicKeys } from "@/lib/config";
 
 describe("bootstrap - first run", () => {
   beforeEach(() => {
-    __resetRedisForTest();
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
     delete process.env.OPENAI_KEYS;
     delete process.env.ANTHROPIC_KEYS;
     __resetConfigForTest();
@@ -46,7 +45,7 @@ describe("bootstrap - first run", () => {
     expect(valid).not.toBeNull();
   });
 
-  it("is idempotent — running twice doesn't create duplicates", async () => {
+  it("is idempotent -running twice doesn't create duplicates", async () => {
     const r1 = await runBootstrap();
     expect(r1.adminCreated).toBe(true);
 
@@ -68,8 +67,7 @@ describe("bootstrap - first run", () => {
 
 describe("bootstrap - provider seeding", () => {
   beforeEach(() => {
-    __resetRedisForTest();
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
     delete process.env.OPENAI_KEYS;
     delete process.env.ANTHROPIC_KEYS;
     __resetConfigForTest();
@@ -112,7 +110,7 @@ describe("bootstrap - provider seeding", () => {
     const r1 = await runBootstrap();
     expect(r1.openaiProvidersCreated).toBe(1);
 
-    // Run again — should NOT add a duplicate.
+    // Run again -should NOT add a duplicate.
     (process.env as Record<string, string>).OPENAI_KEYS = "sk-2,sk-3";
     const r2 = await runBootstrap();
     expect(r2.openaiProvidersCreated).toBe(0);
@@ -133,8 +131,7 @@ describe("bootstrap - provider seeding", () => {
 
 describe("bootstrap - master key warning", () => {
   beforeEach(() => {
-    __resetRedisForTest();
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
     __resetConfigForTest();
   });
 
@@ -153,8 +150,7 @@ describe("bootstrap - master key warning", () => {
 
 describe("ensureBootstrapped - memoized runtime entry point", () => {
   beforeEach(() => {
-    __resetRedisForTest();
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
     __resetBootstrapForTest();
     delete process.env.OPENAI_KEYS;
     delete process.env.ANTHROPIC_KEYS;
@@ -166,7 +162,7 @@ describe("ensureBootstrapped - memoized runtime entry point", () => {
     expect(first.adminCreated).toBe(true);
 
     const second = await ensureBootstrapped();
-    expect(second).toBe(first); // same memoized object → runBootstrap ran once
+    expect(second).toBe(first); // same memoized object -runBootstrap ran once
 
     const { users } = await listUsers({ limit: 10 });
     expect(users).toHaveLength(1);
@@ -185,16 +181,30 @@ describe("ensureBootstrapped - memoized runtime entry point", () => {
   });
 
   it("retries after a transient failure instead of caching the error", async () => {
-    const broken: RedisLike = new Proxy({} as RedisLike, {
-      get: () => () => {
-        throw new Error("redis unavailable");
-      },
-    });
-    __setRedisForTest(broken);
+    // The Redis version injected a client whose every command threw. There is
+    // no client to stub any more -the storage layer is a file -so the
+    // equivalent transient failure is an unopenable database path. A
+    // directory is not a database, so SQLite refuses it with "unable to open
+    // database file"; pointing RELAY_DB_PATH back at :memory: afterwards
+    // stands in for the server coming back.
+    // Scratch dir under node_modules: os.tmpdir() is not reliably usable inside
+    // Vitest's node environment, and node_modules/ is already ignored by both
+    // git and the Next.js build trace.
+    mkdirSync(join(process.cwd(), "node_modules", ".tmp-relayab-test"), { recursive: true });
+    const blocked = mkdtempSync(
+      join(process.cwd(), "node_modules", ".tmp-relayab-test", "relayab-blocked-"),
+    );
+    process.env.RELAY_DB_PATH = blocked;
+    __resetDbForTest();
 
-    await expect(ensureBootstrapped()).rejects.toThrow("redis unavailable");
+    try {
+      await expect(ensureBootstrapped()).rejects.toThrow(/unable to open database file/i);
+    } finally {
+      process.env.RELAY_DB_PATH = ":memory:";
+      __resetDbForTest();
+      rmSync(blocked, { recursive: true, force: true });
+    }
 
-    __setRedisForTest(createMemoryRedis());
     const retry = await ensureBootstrapped();
     expect(retry.adminCreated).toBe(true);
   });

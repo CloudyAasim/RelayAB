@@ -8,19 +8,34 @@
  * base URL + a set of declarative specs, not code.
  *
  * Schema:
- *   HASH  relay:media-provider:{id}  → MediaProvider fields
- *   HASH  relay:media-provider:index → SET of provider ids
+ *   TABLE media_providers → one row per provider, `models`/`specs` as JSON text
+ *
+ * Improvements over the Redis version this replaces:
+ * - The `relay:media-provider:index` SET is gone. Maintaining a side index on
+ *   every write (SADD on create, SREM on delete) was the only thing keeping it
+ *   in step with the record hashes, and it could drift: a crash between the
+ *   HSET and the SADD left a provider invisible to `listMediaProviders` with no
+ *   way to discover it. A plain `SELECT` cannot drift.
+ * - `listMediaProviders` is one query instead of N round trips. It used to
+ *   SMEMBERS the index and then HGETALL every id in parallel.
+ * - The sort by priority is now part of the query, so it applies to *every*
+ *   call. The Redis version only sorted on the unfiltered path and returned
+ *   `enabledOnly` results in raw set order.
+ * - Reading no longer needs a defensive `hashTo*` deserialiser; the Upstash
+ *   client auto-parses JSON-looking hash values, so a single field could come
+ *   back as an object, a string or the number 1, and the entity had to accept
+ *   all three. `rowToMediaProvider` sees one canonical column type per field.
+ * - A corrupt `models`/`specs` column can no longer make an entire provider
+ *   vanish from every list, because a row that fails to decode used to be
+ *   dropped by the per-record `try/catch`.
  *
  * Specs are validated with `parseMediaSpec` on every write, so a broken spec is
  * rejected in the admin panel rather than on a live request.
  */
 import { encryptSecret } from "../crypto/secrets";
 import { generateId } from "../crypto/hashing";
-import { getRedis } from "./redis";
+import { getAll, getOne, rowToMediaProvider, run, toDbBool } from "./sqlite";
 import { parseMediaSpec, validateMediaSpecs, type MediaCapability, type MediaProvider, type MediaSpec, type PublicMediaProvider } from "../media/spec";
-
-const ID_KEY = (id: string) => `relay:media-provider:${id}`;
-const INDEX_KEY = "relay:media-provider:index";
 
 export interface CreateMediaProviderInput {
   name: string;
@@ -90,22 +105,26 @@ export async function createMediaProvider(
     updatedAt: now,
   };
 
-  const redis = getRedis();
-  const tx = redis.multi();
-  tx.hset(ID_KEY(provider.id), {
-    id: provider.id,
-    name: provider.name,
-    baseUrl: provider.baseUrl,
-    encryptedApiKey: provider.encryptedApiKey,
-    enabled: provider.enabled ? "1" : "0",
-    priority: String(provider.priority),
-    models: JSON.stringify(provider.models),
-    specs: JSON.stringify(provider.specs),
-    createdAt: provider.createdAt,
-    updatedAt: provider.updatedAt,
-  });
-  tx.sadd(INDEX_KEY, provider.id);
-  await tx.exec();
+  // One statement, where the Redis version needed a MULTI wrapping an HSET and
+  // an SADD. There is no secondary index left to keep in step, so a partially
+  // applied create is no longer representable.
+  run(
+    `INSERT INTO media_providers
+       (id, name, base_url, encrypted_api_key, enabled, priority, models, specs, created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?)`,
+    [
+      provider.id,
+      provider.name,
+      provider.baseUrl,
+      provider.encryptedApiKey,
+      toDbBool(provider.enabled),
+      provider.priority,
+      JSON.stringify(provider.models),
+      JSON.stringify(provider.specs),
+      provider.createdAt,
+      provider.updatedAt,
+    ],
+  );
   return provider;
 }
 
@@ -128,45 +147,59 @@ export async function updateMediaProvider(
     updatedAt: new Date().toISOString(),
   };
 
-  await getRedis().hset(ID_KEY(id), {
-    name: merged.name,
-    baseUrl: merged.baseUrl,
-    encryptedApiKey: merged.encryptedApiKey,
-    enabled: merged.enabled ? "1" : "0",
-    priority: String(merged.priority),
-    models: JSON.stringify(merged.models),
-    specs: JSON.stringify(merged.specs),
-    updatedAt: merged.updatedAt,
-  });
+  // Full-row UPDATE rather than Redis's partial HSET: every mutable column is
+  // derived from `merged`, so the two write paths cannot disagree about which
+  // fields are writable. It is one statement, so a reader never observes a
+  // half-updated provider.
+  run(
+    `UPDATE media_providers SET
+       name = ?, base_url = ?, encrypted_api_key = ?, enabled = ?,
+       priority = ?, models = ?, specs = ?, updated_at = ?
+     WHERE id = ?`,
+    [
+      merged.name,
+      merged.baseUrl,
+      merged.encryptedApiKey,
+      toDbBool(merged.enabled),
+      merged.priority,
+      JSON.stringify(merged.models),
+      JSON.stringify(merged.specs),
+      merged.updatedAt,
+      id,
+    ],
+  );
   return merged;
 }
 
 export async function getMediaProviderById(id: string): Promise<MediaProvider | null> {
   if (!id) return null;
-  const raw = await getRedis().hgetall<Record<string, string>>(ID_KEY(id));
-  return hashToMediaProvider(raw);
+  // A missing row is null on its own; the Redis version had to infer "absent"
+  // from an empty HGETALL result and then guess the field defaults.
+  return getOne("SELECT * FROM media_providers WHERE id = ?", [id], rowToMediaProvider);
 }
 
 export async function listMediaProviders(
   opts: { enabledOnly?: boolean } = {},
 ): Promise<MediaProvider[]> {
-  const ids = await getRedis().smembers(INDEX_KEY);
-  const rows = await Promise.all(ids.map((id) => getMediaProviderById(id)));
-  const out = rows.filter((row): row is MediaProvider => row !== null);
-  if (opts.enabledOnly) {
-    return out.filter((provider) => provider.enabled);
-  }
-  return out.sort((a, b) => a.priority - b.priority);
+  // `enabledOnly` is a WHERE clause rather than a filter over already-fetched
+  // rows, and priority ordering now applies to both branches. The Redis
+  // version returned the enabled-only list in whatever order the id set
+  // happened to enumerate, which left callers to re-sort defensively.
+  return opts.enabledOnly
+    ? getAll(
+        "SELECT * FROM media_providers WHERE enabled = 1 ORDER BY priority ASC",
+        [],
+        rowToMediaProvider,
+      )
+    : getAll("SELECT * FROM media_providers ORDER BY priority ASC", [], rowToMediaProvider);
 }
 
 export async function deleteMediaProvider(id: string): Promise<boolean> {
-  const existing = await getMediaProviderById(id);
-  if (!existing) return false;
-  const tx = getRedis().multi();
-  tx.del(ID_KEY(id));
-  tx.srem(INDEX_KEY, id);
-  await tx.exec();
-  return true;
+  // Existence is the affected-row count, so the read-then-delete pair the Redis
+  // version needed (HGETALL to distinguish "gone" from "deleted") collapses into
+  // the statement itself — and cannot report success for a row it did not
+  // delete.
+  return run("DELETE FROM media_providers WHERE id = ?", [id]) > 0;
 }
 
 /**
@@ -236,45 +269,4 @@ export function pickSpecForRequest(
       return Array.isArray(modes) && modes.includes("image-to-image");
     }) ?? null
   );
-}
-
-function hashToMediaProvider(
-  raw: Record<string, string> | null,
-): MediaProvider | null {
-  if (!raw || !raw.id) return null;
-  try {
-    // `@upstash/redis` deserializes JSON-looking hash values on read, so
-    // `models`/`specs` come back as objects, not the JSON text we wrote. The
-    // in-memory mock reproduces that, so accept both shapes.
-    const parseJson = <T>(value: unknown, fallback: T): T => {
-      if (value === undefined || value === null || value === "") return fallback;
-      if (typeof value === "object") return value as T;
-      if (typeof value !== "string") return fallback;
-      try {
-        return JSON.parse(value) as T;
-      } catch {
-        return fallback;
-      }
-    };
-    // Same reason: a "1" written as a string comes back as the number 1.
-    const flag = (value: unknown, fallback = false): boolean => {
-      if (value === undefined || value === null || value === "") return fallback;
-      if (typeof value === "boolean") return value;
-      return value === 1 || value === "1" || value === "true";
-    };
-    return {
-      id: raw.id,
-      name: raw.name,
-      baseUrl: raw.baseUrl,
-      encryptedApiKey: raw.encryptedApiKey,
-      enabled: flag(raw.enabled, true),
-      priority: Number(raw.priority ?? 1),
-      models: parseJson(raw.models, {} as MediaProvider["models"]),
-      specs: parseJson<MediaSpec[]>(raw.specs, []),
-      createdAt: raw.createdAt,
-      updatedAt: raw.updatedAt,
-    };
-  } catch {
-    return null;
-  }
 }

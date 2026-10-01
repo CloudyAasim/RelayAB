@@ -5,7 +5,12 @@
  * 
  * Functions here are deduplicated within a single request/render cycle,
  * so multiple components can call the same data fetch without triggering
- * redundant Redis calls.
+ * redundant repository queries.
+ *
+ * No storage changes were needed here: it wraps the repositories through
+ * React's `cache()` and never touched Redis itself. Worth knowing now that the
+ * data is local — `cache()` is scoped to one render, so it dedupes components
+ * in the same pass, not concurrent requests hitting the database separately.
  * 
  * Usage:
  *   import { cachedGetUserById, cachedListApiKeysByUser } from "@/lib/db/data-cache";

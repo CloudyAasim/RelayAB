@@ -24,16 +24,17 @@
                  │   next start，WorkingDirectory=仓库根      │
                  │   /v1/*  /anthropic/*  /api/*  管理台      │
                  └────────────────┬─────────────────────────┘
-                                  │  TCP (ioredis)
+                                  │  node:sqlite（进程内）
                  ┌────────────────▼─────────────────────────┐
-                 │  Valkey 8.1  127.0.0.1:6379               │
-                 │   用户 / 密钥 / 余额 / 用量流水            │
+                 │  /var/lib/relayab/relayab.db              │
+                 │   users / api_keys / providers            │
+                 │   usage_logs / settings / meta            │
                  └──────────────────────────────────────────┘
 ```
 
 三个要点：
 
-1. **Valkey 只监听 `127.0.0.1`**，不对外暴露。防火墙也不用开 6379。
+1. **数据库是一个文件，没有监听端口、没有密码、没有服务要守护。** 防火墙不需要为它开任何东西。
 2. **nginx 必须关掉响应缓冲**，否则 SSE 流式输出会变成「卡住然后一次性全吐」。
 3. **RelayAB 必须从仓库根目录启动**，管理台有两个页面在运行时读仓库里的文件。
 
@@ -41,21 +42,20 @@
 
 ## 2. 环境变量
 
-**必填 3 个：**
+**必填 1 个：**
 
 | 名称 | 来源 | 备注 |
 |---|---|---|
 | `RELAY_AUTH` | 手动：`openssl rand -hex 32` | 主密码，同时承担管理员登录密码 + 会话密钥派生种子 |
-| `REDIS_URL` | 手动：`redis://:<密码>@127.0.0.1:6379` | 自建 Valkey 的连接串 |
-| `RELAY_BUILD_ID` | 手动：版本号或 commit sha | 显示在 `/healthz` 的 `revision` 字段 |
 
 **强烈建议：**
 
 | 名称 | 备注 |
 |---|---|
+| `RELAY_DB_PATH` | 数据库文件路径。不设则默认 `./data/relayab.db`（在工作目录下）。**生产环境应显式指定**，放在发布目录之外，这样 `git pull` 和重新构建都碰不到它 |
+| `RELAY_BUILD_ID` | 手动：版本号或 commit sha。显示在 `/healthz` 的 `revision` 字段。不设就没有它（见下方说明） |
 | `RELAY_PUBLIC_URL` | 设为 `https://你的域名`。不设时依赖 nginx 转发的 `X-Forwarded-*` 头，能工作但多一层隐式依赖 |
 | `NODE_ENV` | `production` |
-| `EMULATE_VERCEL_LOCAL` | 必须为 `0`（或留空），否则数据不落盘 |
 
 **自动派生**（无需设置）：
 - 会话密钥 — 从 `RELAY_AUTH` 派生（HMAC-SHA256）
@@ -80,36 +80,41 @@
 
 ## 3. 数据库选型
 
-### 3.1 Valkey（推荐，自托管默认）
+### 3.1 SQLite（自托管默认）
 
-Debian 13 (trixie) 官方源直接内置 `valkey-server`：
+存储就是**一个文件**，由 Node 24 内置的 `node:sqlite` 驱动，没有任何 npm 依赖：
 
 ```bash
-sudo apt install -y valkey-server valkey-tools
+# 建目录并把数据库放出去（发布目录之外）
+sudo mkdir -p /var/lib/relayab
+sudo chown relayab:relayab /var/lib/relayab
+echo 'RELAY_DB_PATH="/var/lib/relayab/relayab.db"' >> /opt/relayab/.env.production
 ```
 
-Valkey 是 Redis 7.2.4 的社区分支（Linux 基金会，BSD 许可），**协议与命令完全兼容**，
-ioredis 无需任何改动。Debian 官方源里 `redis-server 8.x` 也可选，许可证差异对自建自用
-无实际影响（AGPL 的网络条款只在「修改后作为服务对外提供」时触发）。
+**为什么这样最省事：**
 
-配置要点见 [`deploy/valkey.conf.example`](../../deploy/valkey.conf.example)。其中最关键的一条：
+- **没有服务要装。** 不需要 `apt install valkey-server`、不需要 systemd unit、
+  不需要端口、不需要密码。少一个监听端口、少一个密码、少一个失败模式。
+- **备份就是复制文件**（见 §7），恢复就是复制回去。
+- **约束由数据库保证。** 用户名唯一、Key 唯一、删用户连带删 Key，这些以前要在
+  应用层小心维护，现在是 `UNIQUE` 和 `ON DELETE CASCADE`。
+- 写并发用 WAL + `BEGIN IMMEDIATE` 串行化，`busy_timeout = 5000` 让锁冲突变成短暂
+  等待而不是立刻抛 `SQLITE_BUSY`。
 
-```conf
-maxmemory-policy noeviction
-```
-
-**为什么必须是 noeviction：** RelayAB 用 Redis 存的是**权威数据**——用户、API 密钥、
-余额、用量流水、配额。Valkey 是内存库，一旦 `maxmemory` 触顶，`allkeys-lru` 之类
-的策略会**静默淘汰**这些记录：不报错、接口照常返回，但配额和流水凭空消失。
-`noeviction` 的行为是「写不进去就明确报错」，这比悄悄丢数据安全得多。
+代价是单机单文件：没有内置的高可用，也没有网络可访问性——**这是自托管单机的合理
+取舍**，但也意味着备份要靠自己（见 §7 和 §10 风险表）。
 
 ### 3.2 继续用 Upstash 托管版
 
 代码仍然支持：设置 `UPSTASH_REDIS_REST_URL` 和 `UPSTASH_REDIS_REST_TOKEN` 即可，
-走 HTTP REST 通道。`REDIS_URL` 存在时优先走 TCP。
+走 HTTP REST 通道。
 
-适合暂时不想自己运维、或应用与数据库要分开部署的场景。代价是每个 Redis 命令都是一次
-HTTP 请求（代码里已用 pipeline 做了批量合并，见 `hgetallMany`）。
+适合应用与数据库要分开部署、或不想让状态留在本机磁盘的场景。代价是每个 Redis 命令
+都是一次 HTTP 请求。**两个变量必须成对设置**——只设一个不会静默回落到本地文件，
+`/healthz` 会报 `degraded` 并点名缺哪个。
+
+> 本机 TCP（`REDIS_URL` / `ioredis`）通道**已经随这次迁移一并移除**。旧文档里
+> `REDIS_URL` 优先于 Upstash 的说法不再成立，配置它不会有任何效果。
 
 ---
 
@@ -147,15 +152,24 @@ pnpm bootstrap-admin --username admin --password <your-password>
 curl -s https://你的域名/healthz | jq
 ```
 
-期望看到 `{"ok":true,"status":"ok","storage":"redis",...}`。
+期望看到：
 
-`storage` 字段是这次迁移新增的，用来确认走的是哪条通道：
+```json
+{"ok":true,"data":{"status":"ok","storage":"sqlite","env":{"required":1,"configured":1},"revision":"v179"}}
+```
+
+注意字段是**嵌套在 `data` 下的**，`required` / `configured` 再嵌一层在 `data.env` 里。
+
+`storage` 字段是这次迁移后新增的，用来确认走的是哪条通道：
 
 | 值 | 含义 |
 |---|---|
-| `redis` | 走 `REDIS_URL` 的 TCP 通道（自托管正常情况） |
-| `upstash` | 走 REST 通道——如果你本意是自建 Valkey，说明 `REDIS_URL` 没被读到 |
-| `memory` | 内存模式，**生产环境不应出现**，说明 `EMULATE_VERCEL_LOCAL` 配错了 |
+| `sqlite` | 本地 SQLite 文件（自托管正常情况）。不需要任何配置 |
+| `upstash` | 走 REST 通道——**只在你显式设置了 `UPSTASH_REDIS_REST_*` 时才会出现**。没打算用托管版却看到它，说明环境变量被读到了 |
+| `memory` | 非生产环境下的默认内存模式，**生产环境不应出现** |
+
+`required` 会跟着 `storage` 走：SQLite 只需要 `RELAY_AUTH`（1 个），Upstash 通道
+还需要 URL + token 一对（3 个）。
 
 ---
 
@@ -169,7 +183,7 @@ curl -s https://你的域名/healthz | jq
    - Model Mapping：`{ "gpt-4o-mini": "gpt-4o-mini-2024-07-18" }`
 3. Save。
 
-明文 Key **不会持久化**——RelayAB 用 `RELAY_MASTER_KEY_HEX` 即时加密后存入 Redis。
+明文 Key **不会持久化**——RelayAB 用 `RELAY_MASTER_KEY_HEX` 即时加密后写入数据库。
 
 ### 走网关型上游
 
@@ -182,7 +196,7 @@ curl -s https://你的域名/healthz | jq
 ## 6. 冒烟测试清单（部署后请逐项打勾）
 
 ### 6.1 基础
-- [ ] `curl https://你的域名/healthz` 返回 `{"ok":true,...}`，且 `storage` 是 `redis`
+- [ ] `curl https://你的域名/healthz` 返回 `{"ok":true,...}`，且 `storage` 是 `sqlite`
 - [ ] `revision` 字段显示你设置的 `RELAY_BUILD_ID`（不是 `null`）
 - [ ] 访问 `/login` 页面正常渲染
 - [ ] 用引导 admin 账号登录成功
@@ -228,27 +242,51 @@ curl -s https://你的域名/healthz | jq
 - [ ] 用 disabled 的 Key 调 `/v1/chat/completions` → 403 `key_disabled`
 - [ ] 用过期的 Key 调 → 403 `key_expired`
 - [ ] 用额度耗尽的 Key 调 → 403 `quota_exceeded_credits`
-- [ ] 确认 6379 没有暴露到公网：`ss -tlnp | grep 6379` 应只显示 `127.0.0.1:6379`
-- [ ] 用 `valkey-cli -a '<密码>' hgetall relay:user:<某用户id>` 确认 `passwordHash` 是 bcrypt 散列
-- [ ] 用 `valkey-cli -a '<密码>' hgetall relay:provider:<某id>` 确认 `encryptedApiKey` 是 base64 密文
+- [ ] 确认数据库文件存在且在发布目录之外：`ls -l /var/lib/relayab/relayab.db`
+- [ ] 数据库文件权限收紧（只有服务用户可读）：`chmod 600 /var/lib/relayab/relayab.db`
+- [ ] 用 `sqlite3 /var/lib/relayab/relayab.db "SELECT password_hash FROM users LIMIT 1;"` 确认是 bcrypt 散列
+- [ ] 用 `sqlite3 /var/lib/relayab/relayab.db "SELECT encrypted_api_key FROM providers LIMIT 1;"` 确认是 base64 密文
 
 ---
 
 ## 7. 数据备份
 
-RelayAB 的全部状态都在标准 `relay:*` 键的命名空间里，所以备份就是备份 Redis 本身：
+全部状态都在一个文件里，所以备份就是复制文件：
 
 ```bash
-valkey-cli -a '<密码>' --rdb /var/backups/relayab-$(date +%F).rdb
+sudo cp /var/lib/relayab/relayab.db /var/backups/relayab-$(date +%F).db
+```
+
+WAL 模式下另有 `-wal` / `-shm` 两个附属文件。**运行中直接 `cp` 可能拿到不一致的
+快照**，两种稳妥做法：
+
+```bash
+# 方案 A：用 sqlite3 的在线备份 API（服务不用停）
+sudo -u relayab sqlite3 /var/lib/relayab/relayab.db \
+  ".backup /var/backups/relayab-$(date +%F).db"
+
+# 方案 B：停服务再复制
+sudo systemctl stop relayab
+sudo cp /var/lib/relayab/relayab.db /var/backups/relayab-$(date +%F).db
+sudo systemctl start relayab
 ```
 
 建议加一条日备 cron。用量流水属于业务账目，值得单独留档。
 
-从旧的 Upstash 实例迁移时，用同样方式导出 RDB 再导入即可——**无需任何转换**。
-存进 Redis 的本来就是普通字符串，Upstash 那个自动 `JSON.parse` 是客户端行为而非数据行为。
-
 > **不存在导出/导入脚本。** 早先版本的文档让你运行 `scripts/export-data.ts` 和
-> `scripts/import-data.ts`；这两个文件都不存在。
+> `scripts/import-data.ts`；这两个文件都不存在。库文件本身就是完整备份。
+
+### 从旧的 Redis 部署迁移过来
+
+旧版 RelayAB 的数据存在 Redis 键里（`relay:user:*` 那种）。**仓库里没有自动迁移工具**，
+两个实用路线：
+
+- **数据量不大、且在意干净起点**：全新启动，在管理台重新添加上游 Provider，用户与
+  余额从零开始。
+- **必须保留历史数据**：从旧 Redis 实例导出 dump，在一台装了 Redis/Valkey 的机器上
+  读出来，按 [data-model.md §1–§4](data-model.md) 的列名逐表写入新的 `.db`。
+  注意两侧的形态差异：布尔是 `0/1` 还是 `1/2`、`allowed_models` 是 CSV 还是 JSON 文本、
+  时间戳是 epoch 还是 ISO 字符串，都要按目标表的类型转换。这一步没有捷径。
 
 ---
 
@@ -274,16 +312,26 @@ systemd 的 `WorkingDirectory` 不在仓库根，或部署时只拷了 `.next`�
 用 `process.cwd()` 读仓库里的文件，必须保留完整检出。
 
 ### 8.4 `/healthz` 报 ok 但接口 500
-先看 `storage` 字段。`unconfigured` 说明 `REDIS_URL` 没被读到——检查是不是写成了
-`http://` 开头（只有 `redis://` / `rediss://` 才走 TCP），或 `.env.production` 没有被
-systemd 加载（`journalctl -u relayab | grep -i env`）。
+先看 `storage` 字段。
 
-### 8.5 接口 500，日志里是 Redis 连接错误
+- 报 `sqlite` 却 500 → 多半是**数据库文件不可写**：`ls -l` 看权限和属主是不是
+  `relayab`，目录 `/var/lib/relayab` 是否存在。
+- 报 `upstash` 而你本意是本地文件 → 查环境变量里有没有残留的
+  `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`。
+- `missing` 数组点名了变量 → `.env.production` 没被 systemd 加载
+  （`journalctl -u relayab | grep -i env`）。
+
+### 8.5 日志里是 SQLite 错误
 ```bash
-valkey-cli -a '<密码>' ping          # 密码对不对
-sudo systemctl status valkey-server  # 服务起来没
+sudo -u relayab sqlite3 /var/lib/relayab/relayab.db "PRAGMA integrity_check;"  # 文件损坏？
+df -h /var/lib                                          # 磁盘满会报 SQLITE_FULL
+sudo journalctl -u relayab -n 100 --no-pager | grep -i sqlite
 ```
-ioredis 配了 `maxRetriesPerRequest: 3`，Valkey 重启期间的请求会快速失败而不是挂住。
+
+最常见的是 `SQLITE_CANTOPEN`（目录不存在或属主不对）和 `SQLITE_READONLY`
+（文件权限没给到服务用户）。`SQLITE_BUSY` 说明有另一个进程占着写锁——
+WAL 下 `busy_timeout` 会等 5 秒再报错，所以偶发一次可以先忽略，持续出现要查
+是不是跑了两个实例。
 
 ### 8.6 启动即退出
 ```bash
@@ -313,11 +361,14 @@ sudo systemctl restart relayab
 升级后**务必更新 `RELAY_BUILD_ID`**，否则 `/healthz` 的 revision 还是旧值，
 你会误以为没升级成功。
 
+只要 `RELAY_DB_PATH` 指向 `/opt/relayab` **之外**，`git pull` 和重新构建就碰不到
+你的数据——这正是 §3.1 里强调要显式设置它的原因。
+
 ### 9.2 主密钥轮换（重要）
 1. 生成新主密钥：`openssl rand -hex 32`
 2. 运行 `pnpm rotate-key`（把旧密钥以 `OLD_RELAY_MASTER_KEY_HEX` 提供，
    新密钥以 `RELAY_MASTER_KEY_HEX` 提供）
-3. 用新主密钥重新加密每个 `relay:provider:*` 的 `encryptedApiKey`
+3. 用新主密钥重新加密 `providers` 表里每一行的 `encrypted_api_key`
 4. 更新 `.env.production` 里的 `RELAY_MASTER_KEY_HEX`
 5. `sudo systemctl restart relayab`
 

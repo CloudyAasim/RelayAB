@@ -11,8 +11,7 @@
  * the deferred usage accounting that replaced it.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { __resetRedisForTest, __setRedisForTest } from "@/lib/db/redis";
-import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
+import { __resetDbForTest } from "@/lib/db/sqlite";
 import { createApiKey } from "@/lib/db/keys";
 import { createUser, getUserById } from "@/lib/db/users";
 import { createProvider } from "@/lib/db/providers";
@@ -64,8 +63,7 @@ function sseResponse(): Response {
 
 describe("proxyOpenAIResponse streaming", () => {
   beforeEach(() => {
-    __resetRedisForTest();
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
   });
 
   it("passes the upstream SSE body through unchanged", async () => {

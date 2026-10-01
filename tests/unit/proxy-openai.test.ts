@@ -2,11 +2,10 @@
  * tests/unit/proxy-openai.test.ts
  *
  * Mocks the upstream fetch with a fake that returns canned responses.
- * Uses the in-memory Redis mock for usage recording.
+ * Uses the in-memory SQLite database for usage recording.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { __resetRedisForTest, __setRedisForTest } from "@/lib/db/redis";
-import { createMemoryRedis } from "@/lib/db/__mocks__/memory-redis";
+import { __resetDbForTest } from "@/lib/db/sqlite";
 import { createApiKey, getApiKeyById } from "@/lib/db/keys";
 import { createUser, getUserById } from "@/lib/db/users";
 import { createProvider, updateProvider } from "@/lib/db/providers";
@@ -65,8 +64,7 @@ async function setupProvider(): Promise<string> {
 
 describe("proxyChatCompletion", () => {
   beforeEach(() => {
-    __resetRedisForTest();
-    __setRedisForTest(createMemoryRedis());
+    __resetDbForTest();
   });
 
   it("forwards request and records usage", async () => {

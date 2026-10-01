@@ -47,6 +47,15 @@ export default defineConfig({
       // `revalidateTag()` requires a Next.js request context and throws in
       // tests; see tests/mocks/next-cache.ts.
       "next/cache": resolve(__dirname, "./tests/mocks/next-cache.ts"),
+      // `node:sqlite` is a Node builtin (>= 22.5) that this Vite major predates:
+      // it strips the `node:` prefix and looks for an npm package called
+      // `sqlite`, failing every test file with "Failed to load url sqlite".
+      // Neither `ssr.external` nor `server.deps.external` helps — Vite resolves
+      // the specifier before those lists are consulted — so point it at a
+      // loader that fetches the builtin through createRequire at runtime.
+      // The production build externalises the module instead; see the webpack
+      // block in next.config.ts.
+      "node:sqlite": resolve(__dirname, "./tests/mocks/node-sqlite.ts"),
     },
   },
 });
