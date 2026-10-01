@@ -32,16 +32,14 @@ interface Labels {
   stop: string;
   empty: string;
   needsKey: string;
-  mediaHint: string;
 }
 
 interface Props {
   chatModels: string[];
-  mediaModels: string[];
   labels: Labels;
 }
 
-export function ModelTester({ chatModels, mediaModels, labels }: Props) {
+export function ModelTester({ chatModels, labels }: Props) {
   const [relayKey, setRelayKey] = useState("");
   const [model, setModel] = useState(chatModels[0] ?? "");
   const [prompt, setPrompt] = useState("");
@@ -151,10 +149,6 @@ export function ModelTester({ chatModels, mediaModels, labels }: Props) {
           value={relayKey}
           onChange={(e) => setRelayKey(e.target.value)}
         />
-
-        {mediaModels.length > 0 && (
-          <p className="text-xs text-muted-foreground">{labels.mediaHint}</p>
-        )}
 
         <div className="space-y-1.5">
           <label htmlFor="model-tester-model" className="block text-sm font-medium text-foreground">

@@ -295,6 +295,89 @@ describe("assistant: settings", () => {
   });
 });
 
+describe("assistant: media tools", () => {
+  const user = { id: "u-media", username: "media", role: "user" as const, timezone: "shanghai" as const };
+
+  it("refuses to call a media endpoint without the caller's gateway key", async () => {
+    __resetDbForTest();
+    for (const name of ["generate_image", "generate_speech", "generate_video"]) {
+      const result = await executeTool(
+        name,
+        JSON.stringify({ model: "image-01", prompt: "a cat", input: "hello" }),
+        { user },
+      );
+      // The tool would have to borrow someone else's key to work here, which
+      // would quietly bill the wrong account.
+      expect(result.ok).toBe(false);
+      expect(result.content).toContain("网关密钥");
+    }
+  });
+
+  it("are offered to regular users, not just admins", () => {
+    const names = toolDefinitions(false).map((t) => t.function.name);
+    expect(names).toContain("generate_image");
+    expect(names).toContain("generate_speech");
+    expect(names).toContain("generate_video");
+  });
+
+  it("go out through the public route, so a tool result proves the route works", async () => {
+    __resetDbForTest();
+    const previous = process.env.RELAY_PUBLIC_URL;
+    process.env.RELAY_PUBLIC_URL = "https://relay.example.com";
+    __resetConfigForTest();
+
+    const seen: Array<{ url: string; auth: string | null; body: unknown }> = [];
+    vi.stubGlobal("fetch", async (url: string | URL | Request, init?: RequestInit) => {
+      seen.push({
+        url: String(url),
+        auth: new Headers(init?.headers).get("authorization"),
+        body: init?.body ? JSON.parse(String(init.body)) : null,
+      });
+      return new Response(JSON.stringify({ data: [{ url: "https://cdn.example/a.png" }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    const result = await executeTool(
+      "generate_image",
+      JSON.stringify({ model: "image-01", prompt: "a red apple" }),
+      { user, relayKey: "sk-relay-x" },
+    );
+
+    expect(seen[0]?.url).toBe("https://relay.example.com/v1/images/generations");
+    expect(seen[0]?.auth).toBe("Bearer sk-relay-x");
+    expect((seen[0]?.body as { prompt?: string })?.prompt).toBe("a red apple");
+    expect(result.ok).toBe(true);
+    expect(result.content).toContain("https://cdn.example/a.png");
+
+    vi.unstubAllGlobals();
+    __resetConfigForTest();
+    if (previous === undefined) delete process.env.RELAY_PUBLIC_URL;
+    else process.env.RELAY_PUBLIC_URL = previous;
+  });
+
+  it("does not leak the key into a tool result", async () => {
+    __resetDbForTest();
+    const previous = process.env.RELAY_PUBLIC_URL;
+    process.env.RELAY_PUBLIC_URL = "https://relay.example.com";
+    __resetConfigForTest();
+    vi.stubGlobal("fetch", async () => new Response("{}", { status: 500 }));
+
+    const result = await executeTool(
+      "generate_image",
+      JSON.stringify({ model: "image-01", prompt: "x" }),
+      { user, relayKey: "sk-relay-secret-value" },
+    );
+    expect(result.content).not.toContain("sk-relay-secret-value");
+
+    vi.unstubAllGlobals();
+    __resetConfigForTest();
+    if (previous === undefined) delete process.env.RELAY_PUBLIC_URL;
+    else process.env.RELAY_PUBLIC_URL = previous;
+  });
+});
+
 describe("assistant: one-shot model probe", () => {
   it("reaches the gateway at its public URL, not localhost", async () => {
     // Regression: the tool used to resolve the gateway host from the

@@ -19,12 +19,12 @@
  */
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
-import { listProviders } from "@/lib/db/providers";
-import { listMediaProviders } from "@/lib/db/media-providers";
 import { getUserById } from "@/lib/db/users";
+import { buildModelCatalog } from "@/lib/docs/catalog";
 import { getT } from "@/lib/i18n/server";
 import { SectionPageLayout } from "@/components/layouts";
 import { ModelTester } from "./ModelTester";
+import { MediaTester } from "./MediaTester";
 import { CustomModelProbe } from "./CustomModelProbe";
 
 export const dynamic = "force-dynamic";
@@ -33,22 +33,22 @@ export default async function ModelsPage() {
   const sessionUser = await getCurrentUser();
   if (!sessionUser) redirect("/login");
 
-  const [{ t }, fullUser, providers, mediaProviders] = await Promise.all([
+  const [{ t }, fullUser, catalog] = await Promise.all([
     getT(),
     getUserById(sessionUser.id),
-    listProviders(),
-    listMediaProviders(),
+    buildModelCatalog(),
   ]);
 
-  // A key that is not enabled can never be used, so do not offer it. The
-  // whitelist is the user's own allocation, mirrored from the dashboard.
+  // One catalogue feeds both the docs page and this tester, so the two can
+  // never list different models.
   const allowed = fullUser?.allowedModels ?? [];
-  const chatModels = [...new Set(providers.filter((p) => p.enabled).flatMap((p) => Object.keys(p.modelMapping ?? {})))]
-    .filter((m) => allowed.length === 0 || allowed.includes(m))
-    .sort();
-  const mediaModels = [...new Set(mediaProviders.filter((p) => p.enabled).flatMap((p) => Object.keys(p.models ?? {})))]
-    .filter((m) => allowed.length === 0 || allowed.includes(m))
-    .sort();
+  const visible = (id: string) => allowed.length === 0 || allowed.includes(id);
+  const chatModels = catalog.models
+    .filter((m) => m.kind === "chat" && visible(m.id))
+    .map((m) => m.id);
+  const mediaModels = catalog.models
+    .filter((m) => m.kind === "media" && visible(m.id))
+    .map((m) => ({ id: m.id, capability: m.capability ?? "", provider: m.provider }));
 
   return (
     <SectionPageLayout>
@@ -61,7 +61,6 @@ export default async function ModelsPage() {
         <div className="space-y-4">
           <ModelTester
             chatModels={chatModels}
-            mediaModels={mediaModels}
             labels={{
               title: t("dashboard.models.gateway.title"),
               desc: t("dashboard.models.gateway.desc"),
@@ -73,7 +72,36 @@ export default async function ModelsPage() {
               stop: t("dashboard.models.gateway.stop"),
               empty: t("dashboard.models.gateway.empty"),
               needsKey: t("dashboard.models.gateway.needsKey"),
-              mediaHint: t("dashboard.models.gateway.mediaHint"),
+            }}
+          />
+
+          <MediaTester
+            models={mediaModels}
+            labels={{
+              title: t("dashboard.models.media.title"),
+              desc: t("dashboard.models.media.desc"),
+              keyLabel: t("dashboard.models.media.keyLabel"),
+              keyHint: t("dashboard.models.media.keyHint"),
+              keyPlaceholder: t("dashboard.models.gateway.keyPlaceholder"),
+              model: t("dashboard.models.media.model"),
+              prompt: t("dashboard.models.media.prompt"),
+              promptPlaceholder: t("dashboard.models.media.promptPlaceholder"),
+              size: t("dashboard.models.media.size"),
+              voice: t("dashboard.models.media.voice"),
+              language: t("dashboard.models.media.language"),
+              audioFile: t("dashboard.models.media.audioFile"),
+              run: t("dashboard.models.media.run"),
+              running: t("dashboard.models.media.running"),
+              needsKey: t("dashboard.models.media.needsKey"),
+              needsPrompt: t("dashboard.models.media.needsPrompt"),
+              needsFile: t("dashboard.models.media.needsFile"),
+              imageResult: t("dashboard.models.media.imageResult"),
+              audioResult: t("dashboard.models.media.audioResult"),
+              videoResult: t("dashboard.models.media.videoResult"),
+              textResult: t("dashboard.models.media.textResult"),
+              failed: t("dashboard.models.media.failed"),
+              empty: t("dashboard.models.media.empty"),
+              unsupported: t("dashboard.models.media.unsupported"),
             }}
           />
 

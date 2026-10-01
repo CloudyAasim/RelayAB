@@ -151,6 +151,64 @@ const USER_TOOLS: AssistantToolDef[] = [
       },
     },
   },
+
+  // Media generation needs nothing an ordinary account does not have, so these
+  // sit in the user tier: a gateway key and a model id. They were added to the
+  // admin list first by mistake, which would have meant a regular user could not
+  // generate an image with a key that already works.
+  {
+    type: "function",
+    function: {
+      name: "generate_image",
+      description:
+        "用一个媒体模型生成图片，返回图片 URL。走的是本系统的 /v1/images/generations 端点，消耗用户自己的配额。",
+      parameters: {
+        type: "object",
+        properties: {
+          model: { type: "string", description: "图片模型名，取自 list_gateway_models 的 mediaModels" },
+          prompt: { type: "string", description: "想生成什么画面" },
+          size: { type: "string", description: "如 1024x1024；不填则用服务商默认" },
+        },
+        required: ["model", "prompt"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "generate_speech",
+      description:
+        "用语音合成模型把文字读成音频，返回可播放的音频 URL。走 /v1/audio/speech，消耗用户自己的配额。",
+      parameters: {
+        type: "object",
+        properties: {
+          model: { type: "string", description: "语音模型名" },
+          input: { type: "string", description: "要读出来的文字" },
+          voice: { type: "string", description: "音色 id；不填则由上游选默认" },
+        },
+        required: ["model", "input"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "generate_video",
+      description:
+        "提交一个视频生成任务。视频是异步的：这里只返回任务 id 和当前状态，产物要稍后由上游查询，不要在这里反复重试。",
+      parameters: {
+        type: "object",
+        properties: {
+          model: { type: "string", description: "视频模型名" },
+          prompt: { type: "string", description: "想生成什么画面" },
+        },
+        required: ["model", "prompt"],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 
 const ADMIN_TOOLS: AssistantToolDef[] = [
@@ -277,6 +335,12 @@ export async function executeTool(
       return getMyUsage(ctx);
     case "get_deployment_notes":
       return ok(DEPLOYMENT_NOTES(args.topic));
+    case "generate_image":
+      return mediaGenerate(args, ctx, "image");
+    case "generate_speech":
+      return mediaGenerate(args, ctx, "speech");
+    case "generate_video":
+      return mediaGenerate(args, ctx, "video");
 
     // ---- admin only ----------------------------------------------------
     case "list_providers":
@@ -380,6 +444,104 @@ async function testGatewayModel(
       totalTokens: parsed.usage?.total_tokens ?? null,
       answer: answer.slice(0, 1200),
     });
+  } catch (err) {
+    return fail(`调用失败：${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/**
+ * Generate a media artefact through the gateway, with the caller's own key.
+ *
+ * Goes out over the same public routes a client would use rather than calling
+ * the media engine directly, so a tool result is evidence that the route
+ * works — not just that the spec maps. It also means the user's own quota and
+ * model permissions apply, which is the point of routing through the gateway
+ * at all.
+ */
+async function mediaGenerate(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+  kind: "image" | "speech" | "video",
+): Promise<ToolResult> {
+  const model = z.string().min(1).safeParse(args.model);
+  if (!model.success) return fail("缺少 model 参数。");
+  if (!ctx.relayKey) {
+    return fail(
+      "没有拿到用户的网关密钥，无法调用媒体接口。请让用户在模型测试页填入自己的 API 密钥后再试。",
+    );
+  }
+
+  const prompt = typeof args.prompt === "string" ? args.prompt : typeof args.input === "string" ? args.input : "";
+  if (!prompt.trim()) return fail("缺少提示词 / 输入文本。");
+
+  const path =
+    kind === "image" ? "/v1/images/generations" : kind === "speech" ? "/v1/audio/speech" : "/v1/videos/generations";
+  const payload: Record<string, unknown> =
+    kind === "speech"
+      ? {
+          model: model.data,
+          input: prompt,
+          response_format: "mp3",
+          ...(typeof args.voice === "string" && args.voice.trim() ? { voice: args.voice.trim() } : {}),
+        }
+      : kind === "image"
+        ? {
+            model: model.data,
+            prompt,
+            n: 1,
+            ...(typeof args.size === "string" && args.size.trim() ? { size: args.size.trim() } : {}),
+          }
+        : { model: model.data, prompt, n: 1 };
+
+  const started = Date.now();
+  try {
+    const res = await fetch(`${gatewayBase(ctx)}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${ctx.relayKey}` },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(240_000),
+    });
+    const latencyMs = Date.now() - started;
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      return ok({
+        ok: false,
+        httpStatus: res.status,
+        latencyMs,
+        response: text.slice(0, 1000),
+        hint:
+          res.status === 401 || res.status === 403
+            ? "密钥无效，或该账号没有这个媒体能力的权限。"
+            : res.status === 404
+              ? "模型名不对，或该媒体服务商没有为这个模型配置 spec。"
+              : undefined,
+      });
+    }
+
+    if (kind === "speech") {
+      // The endpoint answers with bytes; the tool result is text, so report the
+      // size and the content type rather than pretending to have a link.
+      const bytes = (await res.arrayBuffer()).byteLength;
+      return ok({
+        ok: true,
+        httpStatus: res.status,
+        latencyMs,
+        audioBytes: bytes,
+        contentType: res.headers.get("content-type"),
+        note: "音频已生成并计费。要拿到可播放的文件，请让用户到 /v1/audio/speech 自行取。",
+      });
+    }
+
+    const json: unknown = await res.json().catch(() => null);
+    if (kind === "image") {
+      const data = (json as { data?: Array<Record<string, unknown>> })?.data ?? [];
+      const urls = data.map((d) => d?.url).filter((u): u is string => typeof u === "string");
+      const b64 = data.filter((d) => typeof d?.b64_json === "string").length;
+      return ok({ ok: urls.length > 0 || b64 > 0, httpStatus: res.status, latencyMs, urls, b64Images: b64 });
+    }
+
+    return ok({ ok: true, httpStatus: res.status, latencyMs, task: json, note: "视频是异步任务，这里只有任务 id。" });
   } catch (err) {
     return fail(`调用失败：${err instanceof Error ? err.message : String(err)}`);
   }
