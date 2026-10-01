@@ -201,17 +201,23 @@ export function AssistantChat({ configured }: { configured: boolean }) {
 
   return (
     <div className="grid gap-4 lg:grid-cols-[220px_1fr]">
-      <div className="space-y-2">
+      {/*
+        Wide: a column of conversations beside the chat.
+        Narrow: the same list as a horizontal strip. Left as a stacked
+        column it pushed the conversation itself off the bottom of a phone
+        screen, which is the one thing the page exists to show.
+      */}
+      <div className="space-y-2 lg:max-h-[calc(100vh-16rem)] lg:overflow-y-auto">
         <Button onClick={newThread} className="w-full" variant="outline">
           {t("assistant.newThread")}
         </Button>
-        <div className="space-y-1">
+        <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 lg:mx-0 lg:block lg:space-y-1 lg:overflow-visible lg:px-0 lg:pb-0">
           {threads.map((th) => (
             <button
               key={th.id}
               type="button"
               onClick={() => setThreadId(th.id)}
-              className={`block w-full truncate rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent ${
+              className={`block max-w-[16rem] shrink-0 truncate rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent lg:w-full lg:max-w-none ${
                 th.id === threadId ? "bg-accent font-medium" : ""
               }`}
               title={th.title}

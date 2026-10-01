@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
-import { getSettings } from "@/lib/db/settings";
-import { buildModelCatalog } from "@/lib/docs/catalog";
+import { cachedGetSettings, cachedBuildModelCatalog } from "@/lib/db/data-cache";
+
 import { loadConfig } from "@/lib/config";
 import { Card } from "@/components/ui/Card";
 import { SectionPageLayout } from "@/components/layouts";
@@ -30,7 +30,7 @@ export default async function SettingsPage() {
   let catalogModels: Array<{ id: string; kind: "chat" | "media"; displayName: string }> = [];
 
   try {
-    const settings = await getSettings();
+    const settings = await cachedGetSettings();
     dbPublicUrl = settings.publicUrl;
     docsSettings = {
       ...(settings.siteName !== undefined && { siteName: settings.siteName }),
@@ -46,7 +46,7 @@ export default async function SettingsPage() {
   try {
     // The notes editor offers the ids that actually exist, so an operator
     // never has to type a model name from memory and get it silently wrong.
-    const catalog = await buildModelCatalog();
+    const catalog = await cachedBuildModelCatalog();
     catalogModels = catalog.models.map((m) => ({
       id: m.id,
       kind: m.kind,

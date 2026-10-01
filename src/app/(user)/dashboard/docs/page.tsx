@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getT } from "@/lib/i18n/server";
 import { resolvePublicUrl } from "@/lib/public-url";
-import { buildModelCatalog } from "@/lib/docs/catalog";
+import { cachedBuildModelCatalog } from "@/lib/db/data-cache";
 import { SectionPageLayout } from "@/components/layouts";
 import { IntegrationDocs } from "@/components/docs/IntegrationDocs";
 import { USER_DOC_DEFAULT } from "@/lib/docs/sections";
@@ -16,7 +16,7 @@ export default async function DocsPage() {
   if (!user) redirect("/login");
   const [{ t }, catalog, publicUrl] = await Promise.all([
     getT(),
-    buildModelCatalog(),
+    cachedBuildModelCatalog(),
     resolvePublicUrl(),
   ]);
 

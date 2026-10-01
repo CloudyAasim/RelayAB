@@ -20,7 +20,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getUserById } from "@/lib/db/users";
-import { buildModelCatalog } from "@/lib/docs/catalog";
+import { cachedBuildModelCatalog } from "@/lib/db/data-cache";
 import { getT } from "@/lib/i18n/server";
 import { SectionPageLayout } from "@/components/layouts";
 import { ModelTester } from "./ModelTester";
@@ -36,7 +36,7 @@ export default async function ModelsPage() {
   const [{ t }, fullUser, catalog] = await Promise.all([
     getT(),
     getUserById(sessionUser.id),
-    buildModelCatalog(),
+    cachedBuildModelCatalog(),
   ]);
 
   // One catalogue feeds both the docs page and this tester, so the two can

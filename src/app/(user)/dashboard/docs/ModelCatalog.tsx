@@ -110,7 +110,7 @@ export function ModelCatalog({ models, providers, site, publicUrl }: Props) {
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
-        <div className="flex gap-2" role="group" aria-label={t("docs.catalog.filter")}>
+        <div className="flex flex-wrap gap-2" role="group" aria-label={t("docs.catalog.filter")}>
           {(["all", "chat", "media"] as const).map((k) => (
             <button
               key={k}
