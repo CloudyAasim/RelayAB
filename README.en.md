@@ -1,34 +1,22 @@
 <div align="center">
 
-# ⏸ Development Paused · A Long Pause, Not a Farewell
+# RelayAB · Debian self-hosting branch
 
 </div>
 
-> **中文为原版声明，英文采用机器翻译，实际公告内容以中文版本为准，英文版本仅供参考。**
+> **The goal of this branch (`server`): port RelayAB off Vercel Serverless and onto a
+> Debian server.**
 >
-> **The Chinese text below is the original announcement. The English text is a
-> machine translation, provided for reference only — in case of any discrepancy,
-> the Chinese version prevails.**
-
-## 中文（原版）
-
-很遗憾，这个基于 Vercel 开发的开源项目，要停更很长、很长一段时间了。
-
-开发过程中，额度消耗远超预期；而我本人并没有一份正式工作。我所在的地区，大家普遍挣得少，平时花得也少。Vercel 的 Pro 月费按美元全球统一收取，就我所知，并没有针对不同地区的价格折扣；从我们这边的收入来看，它就像是按挣得多的地方来定价。超出免费额度后的用量费用虽然会因地区而异，但对我这样连每月 20 美元都难以承担的人来说，并无实质帮助。每月 20 美元，实在过于昂贵。
-
-所以，这个项目只能先搁置下来，停更很久、很久。这里并不是说它一定不再做了，也不是就此别过，只是眼下不得不按下暂停键，归期未定。感谢大家一直以来的关注和支持，后会有期。
-
-**免责声明**：上面说“我的地区这边挣得少，平时花得也少”，只是对我个人情况和感受的描述，并不是一个绝对结论，也不代表这个地区的所有人都收入低、消费低，更不是说这里所有东西都便宜。请不要把它当成对整个地区的概括或刻板印象。
-
-## English (machine translation, for reference only)
-
-It is with regret that I have to say this Vercel-based open-source project will be paused for a long, long time.
-
-During development, usage ran far beyond what I had expected. I do not have a full-time job. In my region, people generally earn little and spend little. Vercel's Pro plan, as far as I know, is billed at a flat $20 per month in USD, with no regional discount; against local incomes here, it feels priced for places where people earn much more. Usage fees beyond the free allowance may vary by region, but that is little comfort to someone who cannot afford the $20 base fee. Twenty dollars a month is simply too much for me.
-
-So the project has to be set aside for a long, long time. This is not to say it will never be developed again, nor that this is a final goodbye. It only means I must press pause, with no date set for its return. Thank you all for your past interest and support. Until then—see you down the road.
-
-**Disclaimer**: My statement that “people around here earn little and spend little” is only a description of my own situation and impressions. It is not an absolute conclusion, nor does it mean everyone in my region has low income or low spending, or that everything here is cheap. Please do not take it as a generalization or stereotype about the whole region.
+> What originally halted development was Vercel's flat $20/month Pro fee on top of the
+> Hobby fair-use ceiling. Self-hosting removes both: Valkey + systemd + nginx, with
+> **no platform fee and no request ceiling**.
+>
+> **Relationship to `main`:** the two are currently treated as **independent
+> projects**. `main` is the original Vercel build (parked at v178), held for a
+> later revival; this branch only carries the Debian self-hosting work, does not
+> depend on `main`, and is not being merged into it. The server branch is still
+> going through on-machine acceptance testing. Cloning this repository gets you
+> the server branch by default.
 
 ---
 
@@ -41,15 +29,10 @@ So the project has to be set aside for a long, long time. This is not to say it 
 >
 > **Language / 语言: English (this page) · [中文](README.md)** — the switch lives only here; pages never send you into the other language on their own
 
-> ⚠️ **This project is paused and is no longer maintained** (see the notice at the
-> top). You may still fork and deploy it yourself, but there will be no further
-> fixes, updates, or support.
-
 ## Deploy to a Debian server
 
-The one-click Vercel path has been removed — Vercel's $20/month Pro plan is
-exactly the cost called out in the notice at the top of this file. RelayAB now
-runs on a machine you control: no platform fee, no request ceiling.
+The one-click Vercel path has been removed. RelayAB now runs on a machine you
+control: no platform fee, no request ceiling.
 
 **Full step-by-step runbook: [deploy/README.md](deploy/README.md)** (Chinese).
 
