@@ -45,6 +45,7 @@ import {
 import { callUpstream, extractModelIds } from "../src/lib/providers/upstream";
 import { MEDIA_TEMPLATES } from "../src/lib/media/seeds";
 import { defaultFaceFlags, type ModelConfig } from "../src/lib/db/types";
+import { withTransaction } from "../src/lib/db/sqlite";
 
 // ---------------------------------------------------------------------------
 // Arguments
@@ -147,6 +148,36 @@ const c = {
 
 const write = (s: string) => console.log(DRY_RUN ? `  \x1b[90m[dry-run]\x1b[0m ${s}` : s);
 
+/** Sentinel used to abort the throwaway transaction that backs a dry run. */
+const ROLLED_BACK = Symbol("dry-run-rollback");
+
+/**
+ * Run the real write, then roll it back.
+ *
+ * A preview has to show what would actually be *stored*, which means running
+ * the actual merge — hand-rolling a "simulated" merge instead would drift the
+ * moment the real one changes, and a preview that lies is worse than none.
+ * So the write genuinely executes, inside a transaction that is always rolled
+ * back. The nested `updateProvider` / `updateMediaProvider` calls join the
+ * outer transaction rather than committing on their own.
+ */
+async function commit<T>(apply: () => Promise<T>): Promise<T> {
+  if (!DRY_RUN) return await apply();
+
+  let previewed: T;
+  try {
+    await withTransaction(async () => {
+      previewed = await apply();
+      throw ROLLED_BACK;
+    });
+  } catch (err) {
+    if (err === ROLLED_BACK) return previewed!;
+    throw err;
+  }
+  /* c8 ignore next */
+  throw new Error("dry-run transaction committed instead of rolling back");
+}
+
 // ---------------------------------------------------------------------------
 // Inspect current state
 // ---------------------------------------------------------------------------
@@ -181,26 +212,32 @@ interface RegionProbe {
 }
 
 /**
- * Ask one region for its model list using the stored key.
+ * Ask one region whether it accepts this key.
  *
- * A 401 here is the expected answer for the *wrong* region, not a broken key —
- * which is exactly why both are tried before concluding anything.
+ * `ok` means *authenticated*, and only that: 401/403 is what a wrong region
+ * (or a bad key) looks like, and every host answers an unauthenticated call
+ * with the same `authorized_error (1004)` envelope, so the status code is the
+ * only signal that separates the two.
+ *
+ * The model list is parsed when present but is deliberately NOT part of `ok`:
+ * the chat side needs one to build a mapping, while the media side only needs
+ * to learn which host this key belongs to and has no list endpoint to ask.
  */
 async function probeRegion(
   region: (typeof REGIONS)[number],
-  p: Provider,
+  encryptedApiKey: string,
 ): Promise<RegionProbe> {
   const baseUrl = `https://${region.host}${OPENAI_PATH}`;
   const res = await callUpstream({
     baseUrl,
-    encryptedApiKey: p.encryptedApiKey,
+    encryptedApiKey,
     path: "/models",
     timeoutMs: 15_000,
   });
   const models = res.ok ? extractModelIds(res.body) : [];
   return {
     region,
-    ok: res.ok && models.length > 0,
+    ok: res.ok,
     status: res.status,
     models,
     latencyMs: res.latencyMs,
@@ -221,17 +258,29 @@ function summarize(body: unknown): string {
  * (1004)` envelope. Probing them in turn and reporting which one authenticated
  * is the only reliable way to tell them apart, and it means the operator never
  * has to know which platform their key came from.
+ *
+ * `requireModels` separates the two callers: the chat side needs a list to
+ * build a mapping from, while the media side only needs the host and would be
+ * misled into "wrong region" by a provider that answers without a list.
  */
 async function resolveRegion(
-  p: Provider,
+  label: string,
+  encryptedApiKey: string,
+  requireModels: boolean,
 ): Promise<{ region: (typeof REGIONS)[number]; models: string[] } | null> {
-  c.head(`探测区域  （密钥属于 ${p.name}）`);
+  c.head(`探测区域  （密钥属于 ${label}）`);
 
   for (const region of REGIONS) {
-    const probe = await probeRegion(region, p);
+    const probe = await probeRegion(region, encryptedApiKey);
     if (probe.ok) {
+      if (requireModels && probe.models.length === 0) {
+        c.warn(`${region.host} 认证通过但没有返回模型列表，改试下一个`);
+        continue;
+      }
       c.ok(
-        `${region.host} 认证通过，${probe.models.length} 个模型（${probe.latencyMs}ms）` +
+        `${region.host} 认证通过` +
+          (probe.models.length > 0 ? `，${probe.models.length} 个模型` : "") +
+          `（${probe.latencyMs}ms）` +
           (region.documented ? "" : "  ← 旧域名，官方文档已不再列出"),
       );
       return { region, models: probe.models };
@@ -254,7 +303,7 @@ async function resolveUpstreamModels(p: Provider): Promise<string[]> {
     return FALLBACK_MODELS;
   }
 
-  const found = await resolveRegion(p);
+  const found = await resolveRegion(p.name, p.encryptedApiKey, true);
   if (found) {
     c.ok(`使用区域 ${found.region.host}`);
     c.ok(`模型：${found.models.join(", ")}`);
@@ -307,7 +356,7 @@ async function configureChat(): Promise<boolean> {
     return true;
   }
 
-  const region = SKIP_UPSTREAM ? null : await resolveRegion(target);
+  const region = SKIP_UPSTREAM ? null : await resolveRegion(target.name, target.encryptedApiKey, true);
   if (!SKIP_UPSTREAM && !region) {
     c.bad("无法确定密钥所属区域，未写入任何配置");
     return false;
@@ -327,28 +376,30 @@ async function configureChat(): Promise<boolean> {
 
   const faces = defaultFaceFlags(target.kind, target.upstreamFormat);
 
-  const updated = await updateProvider(target.id, {
-    baseUrl: `https://${host}${OPENAI_PATH}`,
-    modelMapping,
-    modelConfigs,
-    // MiniMax speaks both protocols; the Anthropic face needs its OWN base
-    // path — the two are not interchangeable, and mixing them is the most
-    // common MiniMax configuration mistake.
-    anthropicBaseUrl: `https://${host}${ANTHROPIC_PATH}`,
-    openaiEnabled: faces.openaiEnabled,
-    anthropicEnabled: true,
-    enabled: true,
-  } as Parameters<typeof updateProvider>[1]);
+  const updated = await commit(() =>
+    updateProvider(target.id, {
+      baseUrl: `https://${host}${OPENAI_PATH}`,
+      modelMapping,
+      modelConfigs,
+      // MiniMax speaks both protocols; the Anthropic face needs its OWN base
+      // path — the two are not interchangeable, and mixing them is the most
+      // common MiniMax configuration mistake.
+      anthropicBaseUrl: `https://${host}${ANTHROPIC_PATH}`,
+      openaiEnabled: faces.openaiEnabled,
+      anthropicEnabled: true,
+      enabled: true,
+    } as Parameters<typeof updateProvider>[1]),
+  );
 
   if (!updated) {
     c.bad("写入失败：找不到该 provider");
     return false;
   }
 
-  c.ok(`区域      = ${host}`);
-  c.ok(`baseUrl   = ${updated.baseUrl}`);
-  c.ok(`anthropic = ${updated.anthropicBaseUrl}`);
-  c.ok(`模型映射  = ${Object.keys(updated.modelMapping).length} 条`);
+  write(`区域      = ${host}`);
+  write(`baseUrl   = ${updated.baseUrl}`);
+  write(`anthropic = ${updated.anthropicBaseUrl}`);
+  write(`模型映射  = ${Object.keys(updated.modelMapping).length} 条`);
   for (const [client, upstream] of Object.entries(updated.modelMapping)) {
     const ctx = KNOWN_CONTEXT[client];
     console.log(`      ${client} → ${upstream}${ctx ? `  (${ctx.context.toLocaleString()} ctx)` : ""}`);
@@ -391,6 +442,25 @@ async function configureMedia(): Promise<boolean> {
     return true;
   }
 
+  // The media provider carries its OWN key, which is not necessarily the chat
+  // provider's key, so its region is resolved independently. Hardcoding the
+  // template's host here is what would quietly break every global (.io) key:
+  // the provider would look configured, report success, and 401 on first use.
+  // Media base URLs carry no path suffix — the specs already include /v1.
+  let mediaHost: string;
+  if (SKIP_UPSTREAM) {
+    c.warn("跳过上游探测，媒体 baseUrl 沿用模板默认值");
+    mediaHost = new URL(MEDIA_TEMPLATES[TEMPLATES[0]].baseUrl).host;
+  } else {
+    const found = await resolveRegion(target.name, target.encryptedApiKey, false);
+    if (!found) {
+      c.bad(`全部 ${REGIONS.length} 个主机都无法用这个媒体服务商的密钥认证`);
+      c.warn("不会写入任何 baseUrl —— 指向错误主机的媒体配置一次都用不了。");
+      return false;
+    }
+    mediaHost = found.region.host;
+  }
+
   // Merge the seeded templates: models accumulate, specs are keyed by
   // capability so two video API versions coexist (that is exactly what
   // `models` is for).
@@ -417,22 +487,24 @@ async function configureMedia(): Promise<boolean> {
     seen.add(cap0(specs));
   }
 
-  const updated = await updateMediaProvider(target.id, {
-    name: target.name || "MiniMax Media",
-    baseUrl: MEDIA_TEMPLATES[TEMPLATES[0]].baseUrl,
-    models: models as never,
-    specs: specs as never,
-    enabled: true,
-  } as Parameters<typeof updateMediaProvider>[1]);
+  const updated = await commit(() =>
+    updateMediaProvider(target.id, {
+      name: target.name || "MiniMax Media",
+      baseUrl: `https://${mediaHost}`,
+      models: models as never,
+      specs: specs as never,
+      enabled: true,
+    } as Parameters<typeof updateMediaProvider>[1]),
+  );
 
   if (!updated) {
     c.bad("写入失败：找不到该 media provider");
     return false;
   }
 
-  c.ok(`baseUrl = ${updated.baseUrl}`);
-  c.ok(`模型    = ${Object.keys(updated.models).length} 个: ${Object.keys(updated.models).join(", ")}`);
-  c.ok(`spec    = ${updated.specs.length} 个:`);
+  write(`baseUrl = ${updated.baseUrl}`);
+  write(`模型    = ${Object.keys(updated.models).length} 个: ${Object.keys(updated.models).join(", ")}`);
+  write(`spec    = ${updated.specs.length} 个:`);
   for (const s of updated.specs) {
     const sp = s as { capability?: string; transport?: { method?: string; path?: string }; displayName?: string };
     console.log(`      ${sp.capability}  ${sp.transport?.method} ${sp.transport?.path}  — ${sp.displayName ?? ""}`);
@@ -447,7 +519,7 @@ const cap0 = (arr: unknown[]): string =>
 // Verify
 // ---------------------------------------------------------------------------
 
-async function verify(): Promise<void> {
+async function verify(): Promise<boolean> {
   c.head("③ 复核");
 
   const chat = await listProviders();
@@ -479,17 +551,38 @@ async function verify(): Promise<void> {
   }
 
   const media = await listMediaProviders();
+  let mediaHealthy = true;
   for (const m of media) {
     if (!m.baseUrl) continue;
-    // Media providers have no universal "list models" endpoint, so the check is
-    // that the spec paths resolve against the base URL rather than a live call.
-    c.ok(`${m.name}: ${Object.keys(m.models).length} 个模型 / ${m.specs.length} 个 spec`);
+
+    // A live auth check, not a URL print. There is no cross-vendor "list
+    // models" for media, but a wrong-region host still answers 401 — which is
+    // exactly the failure this needs to catch, and the one a URL print would
+    // have waved through.
+    const res = await callUpstream({
+      baseUrl: m.baseUrl,
+      encryptedApiKey: m.encryptedApiKey,
+      path: "/v1/models",
+      timeoutMs: 15_000,
+    });
+    if (res.status === 401 || res.status === 403) {
+      c.bad(
+        `${m.name}: ${m.baseUrl} 拒绝这个密钥（${res.status}）—— baseUrl 与密钥区域不匹配，所有媒体调用都会失败。` +
+          ` 重跑一次本脚本可自动纠正。`,
+      );
+      mediaHealthy = false;
+    } else {
+      c.ok(
+        `${m.name}: ${m.baseUrl} 鉴权通过（HTTP ${res.status}），${Object.keys(m.models).length} 个模型 / ${m.specs.length} 个 spec`,
+      );
+    }
     for (const s of m.specs) {
       const sp = s as { capability?: string; transport?: { path?: string } };
       const url = `${m.baseUrl.replace(/\/$/, "")}${sp.transport?.path ?? ""}`;
       console.log(`      ${sp.capability} → ${url}`);
     }
   }
+  return mediaHealthy;
 }
 
 // ---------------------------------------------------------------------------
@@ -517,21 +610,27 @@ async function seedDemo(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  console.log(DRY_RUN ? "\x1b[33m[dry-run] 不会写入任何配置\x1b[0m" : "\x1b[33m[写入模式]\x1b[0m");
+  console.log(
+    DRY_RUN
+      ? "\x1b[33m[dry-run] 不会写入任何配置\x1b[0m（写入在事务中执行后回滚）"
+      : "\x1b[33m[写入模式]\x1b[0m",
+  );
 
   if (SEED_DEMO) await seedDemo();
 
   const chatOk = await configureChat();
   const mediaOk = await configureMedia();
-  if (!DRY_RUN) await verify();
+  // A media provider pointed at the wrong region still reports "configured" —
+  // the re-read is the only thing that catches it, so it gates the exit code.
+  const verifyOk = DRY_RUN ? true : await verify();
 
   c.head("结果");
   c[chatOk ? "ok" : "bad"](`聊天服务商 ${chatOk ? "已配置" : "未完成"}`);
   c[mediaOk ? "ok" : "bad"](`媒体服务商 ${mediaOk ? "已配置" : "未完成"}`);
-  if (!chatOk || !mediaOk) process.exitCode = 1;
+  c[verifyOk ? "ok" : "bad"](`回读复核 ${verifyOk ? "通过" : "未通过"}`);
+  if (!chatOk || !mediaOk || !verifyOk) process.exitCode = 1;
 }
 
-void write;
 main().catch((err) => {
   console.error("[configure-minimax] 失败:", err instanceof Error ? err.message : err);
   process.exitCode = 1;
