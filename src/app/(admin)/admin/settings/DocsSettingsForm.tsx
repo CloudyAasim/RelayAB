@@ -38,6 +38,7 @@ interface Props {
     siteDescription?: string;
     announcement?: string;
     supportContact?: string;
+    publicCatalog?: boolean;
     modelNotes?: Record<string, ModelNoteInput>;
   };
   models: DocSettingsModel[];
@@ -50,6 +51,7 @@ export function DocsSettingsForm({ initial, models }: Props) {
   const [siteDescription, setSiteDescription] = useState(initial.siteDescription ?? "");
   const [announcement, setAnnouncement] = useState(initial.announcement ?? "");
   const [supportContact, setSupportContact] = useState(initial.supportContact ?? "");
+  const [publicCatalog, setPublicCatalog] = useState(initial.publicCatalog ?? false);
   const [notes, setNotes] = useState<Record<string, ModelNoteInput>>(initial.modelNotes ?? {});
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -85,6 +87,7 @@ export function DocsSettingsForm({ initial, models }: Props) {
           siteDescription,
           announcement,
           supportContact,
+          publicCatalog,
           modelNotes: cleaned,
         }),
       });
@@ -141,6 +144,18 @@ export function DocsSettingsForm({ initial, models }: Props) {
             value={supportContact}
             onChange={(e) => setSupportContact(e.target.value)}
           />
+          <label className="flex items-start gap-2 text-sm text-muted-foreground">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={publicCatalog}
+              onChange={(e) => setPublicCatalog(e.target.checked)}
+            />
+            <span>
+              {t("admin.docsSettings.publicCatalog")}
+              <span className="mt-0.5 block text-xs">{t("admin.docsSettings.publicCatalogHint")}</span>
+            </span>
+          </label>
         </div>
       </Card>
 

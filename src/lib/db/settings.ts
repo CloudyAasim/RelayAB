@@ -31,6 +31,15 @@ export interface AppSettings {
   /** Where to send people with problems. */
   supportContact?: string;
   /**
+   * Show the model catalogue on the *public* docs page, before sign-in.
+   *
+   * A relay that publishes its catalogue is normal, and the public docs are
+   * where someone evaluating it looks first. But a self-hosted private relay
+   * may not want its vendor list readable by anyone, so this is the operator's
+   * call rather than a default.
+   */
+  publicCatalog?: boolean;
+  /**
    * Per-model documentation overrides, keyed by client-visible model id.
    *
    * The *facts* — which models exist, their context window, their price —
@@ -60,6 +69,7 @@ const SITE_NAME_KEY = "siteName";
 const SITE_DESCRIPTION_KEY = "siteDescription";
 const ANNOUNCEMENT_KEY = "announcement";
 const SUPPORT_CONTACT_KEY = "supportContact";
+const PUBLIC_CATALOG_KEY = "publicCatalog";
 const MODEL_NOTES_KEY = "modelNotes";
 
 /** Every scalar key, so a read is one query rather than one per field. */
@@ -104,6 +114,12 @@ export async function getSettings(): Promise<AppSettings> {
     undefined,
   );
   if (notes && Object.keys(notes).length > 0) out.modelNotes = notes;
+
+  // Stored as a string because the column is TEXT and everything else here is
+  // a string; parsed into a boolean at the boundary so callers get a real one.
+  const pub = byKey.get(PUBLIC_CATALOG_KEY)?.trim();
+  if (pub === "true") out.publicCatalog = true;
+
   return out;
 }
 
@@ -121,6 +137,9 @@ export async function updateSettings(settings: Partial<AppSettings>): Promise<Ap
     for (const key of SCALAR_KEYS) {
       const value = settings[key];
       if (value !== undefined) write(key, value.trim());
+    }
+    if (settings.publicCatalog !== undefined) {
+      write(PUBLIC_CATALOG_KEY, settings.publicCatalog ? "true" : "false");
     }
     if (settings.modelNotes !== undefined) {
       const notes = settings.modelNotes ?? {};

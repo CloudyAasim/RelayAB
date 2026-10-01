@@ -44,6 +44,7 @@ const UpdateSchema = z
     siteDescription: z.string().max(500).optional(),
     announcement: z.string().max(20_000).optional(),
     supportContact: z.string().max(500).optional(),
+    publicCatalog: z.boolean().optional(),
     modelNotes: z.record(z.string().min(1).max(200), ModelNoteSchema).optional(),
   })
   .strict();

@@ -6,7 +6,7 @@ import { cachedBuildModelCatalog } from "@/lib/db/data-cache";
 import { SectionPageLayout } from "@/components/layouts";
 import { IntegrationDocs } from "@/components/docs/IntegrationDocs";
 import { USER_DOC_DEFAULT } from "@/lib/docs/sections";
-import { ModelCatalog } from "./ModelCatalog";
+import { ModelCatalog } from "@/components/docs/ModelCatalog";
 
 export const metadata = { title: { absolute: "接入文档 - RelayAB" } };
 export const dynamic = "force-dynamic";

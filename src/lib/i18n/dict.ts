@@ -828,6 +828,9 @@ const zhCN: Dict = {
   "admin.docsSettings.announcement": "公告",
   "admin.docsSettings.supportContact": "问题反馈方式",
   "admin.docsSettings.supportContactHint": "邮箱、群链接等，会显示给用户",
+  "admin.docsSettings.publicCatalog": "在公开文档页展示模型目录",
+  "admin.docsSettings.publicCatalogHint": "未登录的人也能看到有哪些模型、上下文和价格。只包含模型名和供应商名称，不含上游地址与密钥。自建私有中转建议保持关闭。",
+
   "admin.docsSettings.modelsTitle": "模型说明",
   "admin.docsSettings.modelsDesc": "只能写说明文字。上下文窗口、价格、可用性一律实时从服务商配置读取，你改不了也无需改——这样文档不可能和网关对不上。",
   "admin.docsSettings.filter": "筛选模型",
@@ -1649,6 +1652,9 @@ const en: Dict = {
   "admin.docsSettings.announcement": "Announcement",
   "admin.docsSettings.supportContact": "Where to send problems",
   "admin.docsSettings.supportContactHint": "An address or a group link. Shown to users.",
+  "admin.docsSettings.publicCatalog": "Show the model catalogue on the public docs page",
+  "admin.docsSettings.publicCatalogHint": "Anyone can then see which models exist, with context and price. Model and provider names only, never an upstream URL or a key. Leave off for a private relay.",
+
   "admin.docsSettings.modelsTitle": "Model notes",
   "admin.docsSettings.modelsDesc": "Prose only. Context window, price and availability are read live from the provider table, so you cannot set them and never need to — which is exactly why the docs can never contradict the gateway.",
   "admin.docsSettings.filter": "Filter models",

@@ -25,6 +25,7 @@ export default async function SettingsPage() {
     siteDescription?: string;
     announcement?: string;
     supportContact?: string;
+    publicCatalog?: boolean;
     modelNotes?: Record<string, never>;
   } = {};
   let catalogModels: Array<{ id: string; kind: "chat" | "media"; displayName: string }> = [];
@@ -37,6 +38,7 @@ export default async function SettingsPage() {
       ...(settings.siteDescription !== undefined && { siteDescription: settings.siteDescription }),
       ...(settings.announcement !== undefined && { announcement: settings.announcement }),
       ...(settings.supportContact !== undefined && { supportContact: settings.supportContact }),
+      ...(settings.publicCatalog !== undefined && { publicCatalog: settings.publicCatalog }),
       ...(settings.modelNotes !== undefined && { modelNotes: settings.modelNotes }),
     } as typeof docsSettings;
   } catch (e) {
