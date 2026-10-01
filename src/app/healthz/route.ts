@@ -21,16 +21,33 @@
  */
 import { NextResponse } from "next/server";
 import { computeHealth } from "@/lib/health";
+import { getDb } from "@/lib/db/sqlite";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(): Promise<Response> {
   const report = computeHealth(process.env);
 
+  // Actually open the database.
+  //
+  // Checking that env vars are present only proves the file is *configured*,
+  // not that it is reachable. A RELAY_DB_PATH pointing at a host path instead
+  // of a mounted volume passes the env check and then fails every real request
+  // — which is exactly how the first Dokku deploy came up "ok" and served
+  // nothing but "Server is not ready". One cheap query closes that gap, and it
+  // is also the probe Dokku's zero-downtime deploys want.
+  let dbError: string | null = null;
+  try {
+    getDb().prepare("SELECT 1").get();
+  } catch (err) {
+    dbError = err instanceof Error ? err.message : String(err);
+  }
+
+  const ok = report.ok && dbError === null;
   const body = {
-    ok: report.ok,
+    ok,
     data: {
-      status: report.status,
+      status: !ok ? (dbError ? "degraded" : report.status) : report.status,
       storage: report.storage,
       env: {
         required: report.required,
@@ -38,10 +55,14 @@ export async function GET(): Promise<Response> {
         missing: report.missing,
       },
       revision: report.revision,
+      // Present only when the database could not be opened. The message names
+      // the path and what to do about it; the raw driver error alone ("unable
+      // to open database file") does not.
+      ...(dbError ? { error: dbError } : {}),
     },
   };
 
-  // 200 even when degraded/unconfigured, so uptime probes aren't confused by
-  // env-var misconfiguration. Operators read status from the JSON body.
+  // 200 even when degraded, so uptime probes aren't confused by a
+  // misconfiguration. Operators read status from the JSON body.
   return NextResponse.json(body);
 }

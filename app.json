@@ -1,5 +1,5 @@
 {
-  "name": "relayab",
+  "name": "relay-ab",
   "description": "Self-hosted AI API relay: proxies OpenAI / Anthropic requests with per-key quota, expiry and usage accounting. Data lives in a local SQLite file — no external database service required.",
   "keywords": ["ai", "gateway", "proxy", "openai", "anthropic", "self-hosted", "sqlite"],
   "website": "https://github.com/CloudyAasim/RelayAB",
@@ -14,8 +14,8 @@
       "value": "production"
     },
     "RELAY_DB_PATH": {
-      "description": "Path to the SQLite file. Defaults to ./data/relayab.db inside the app directory; set it to keep the database outside the release so a rebuild cannot touch it.",
-      "value": "/home/dokku/apps/relayab/data/relayab.db"
+      "description": "Path to the SQLite file INSIDE the container. Must be the storage mount point, otherwise the database lands in the container's ephemeral layer and is wiped on every rebuild. Create it with: dokku storage:ensure-directory relay-ab && dokku storage:mount relay-ab /home/dokku/data/relay-ab:/data",
+      "value": "/data/relayab.db"
     },
     "RELAY_DEFAULT_LOCALE": {
       "description": "Default UI locale: zh-CN or en.",

@@ -24,11 +24,11 @@ dokku domains:set-global aasim.l.cd
 ## 2. 建 app 并设定部署分支
 
 ```bash
-dokku apps:create relayab
+dokku apps:create relay-ab
 
 # 关键：仓库里 Debian 的改动在 server 分支上，不在 main。
 # 不设这一条，Dokku 会去找 master，构建的是错误的代码。
-dokku git:set relayab deploy-branch server
+dokku git:set relay-ab deploy-branch server
 ```
 
 ## 3. 准备数据库目录
@@ -36,10 +36,10 @@ dokku git:set relayab deploy-branch server
 容器里每次构建都会换一层，**数据库文件必须放在挂载卷上**，否则重建即丢：
 
 ```bash
-sudo mkdir -p /home/dokku/data/relayab
-sudo chown -R dokku:dokku /home/dokku/data/relayab
-dokku storage:ensure-directory relayab
-dokku storage:mount relayab /home/dokku/data/relayab:/data
+sudo mkdir -p /home/dokku/data/relay-ab
+sudo chown -R dokku:dokku /home/dokku/data/relay-ab
+dokku storage:ensure-directory relay-ab
+dokku storage:mount relay-ab /home/dokku/data/relay-ab:/data
 ```
 
 `app.json` 已经把 `RELAY_DB_PATH` 设成 `/data/relayab.db`，正好落在挂载点上。
@@ -60,25 +60,25 @@ Dokku 会在**首次部署时自动生成一个 64 字符的加密安全随机�
 - 不需要你手写，不会进 shell 历史
 - 不需要复制到密码管理器、备忘录、聊天窗口
 - 不需要放进 GitHub Secrets
-- 只有 Dokku 知道，落在 `$DOKKU_LIB_ROOT/config/relayab/ENV`，权限 `0600`
+- 只有 Dokku 知道，落在 `$DOKKU_LIB_ROOT/config/relay-ab/ENV`，权限 `0600`
 
 > ⚠️ **主密钥丢了 = 所有上游 Provider Key 永久无法解密。** 它们是以该密钥为种
 > 的 AES-256-GCM 密文存储的，没有恢复途径。部署完成后立刻把
-> `dokku config:get relayab RELAY_AUTH` 的值备份到安全的地方。
+> `dokku config:get relay-ab RELAY_AUTH` 的值备份到安全的地方。
 
 ## 5. 绑域名 + 签证书
 
 Dokku 全局域名只决定**子域名规则**，应用本身还要单独绑定：
 
 ```bash
-dokku domains:set relayab api.aasim.l.cd
+dokku domains:set relay-ab api.aasim.l.cd
 ```
 
 确保 DNS 的 A 记录已指向这台服务器。签 Let's Encrypt 证书：
 
 ```bash
 sudo dokku plugin:install https://github.com/dokku/dokku-letsencrypt.git
-sudo dokku letsencrypt:enable relayab api.aasim.l.cd you@email.com
+sudo dokku letsencrypt:enable relay-ab api.aasim.l.cd you@email.com
 sudo dokku letsencrypt:cron-job --add
 ```
 
@@ -95,9 +95,9 @@ Dokku 自带 nginx 有两个默认值**会直接打断这个应用的功能**，
 | `client-max-body-size` | **1m** | `/v1/images/edits` 收 base64 图片直接 413。应用侧允许 2MB，nginx 先拒 |
 
 ```bash
-dokku nginx:set relayab proxy-read-timeout 600s
-dokku nginx:set relayab client-max-body-size 10m
-dokku proxy:build-config relayab
+dokku nginx:set relay-ab proxy-read-timeout 600s
+dokku nginx:set relay-ab client-max-body-size 10m
+dokku proxy:build-config relay-ab
 ```
 
 **第三个问题：`proxy_buffering` 没有 `nginx:set` 选项**，nginx 默认是 `on`，
@@ -115,7 +115,7 @@ cat ~/.ssh/id_ed25519.pub
 
 | Secret | 内容 |
 |---|---|
-| `GIT_REMOTE_URL` | `dokku@<服务器IP>:relayab` |
+| `GIT_REMOTE_URL` | `dokku@<服务器IP>:relay-ab` |
 | `SSH_PRIVATE_KEY` | `~/.ssh/id_ed25519` **私钥全文**（含 `-----BEGIN...` 和 `-----END...`） |
 
 ```powershell
@@ -130,9 +130,9 @@ git push origin server
 ## 8. 看部署结果
 
 ```bash
-dokku ps:report relayab          # 容器跑起来了吗
-dokku logs relayab --tail 100    # 构建/运行日志
-ls -la /home/dokku/data/relayab  # 数据库文件生成了吗
+dokku ps:report relay-ab          # 容器跑起来了吗
+dokku logs relay-ab --tail 100    # 构建/运行日志
+ls -la /home/dokku/data/relay-ab  # 数据库文件生成了吗
 ```
 
 或本地用 GitHub CLI：
@@ -170,16 +170,16 @@ curl -N -X POST https://api.aasim.l.cd/v1/chat/completions \
 需要关掉 `proxy_buffering`：
 
 ```bash
-dokku nginx:show-config relayab > /tmp/relayab.sigil
+dokku nginx:show-config relay-ab > /tmp/relayab.sigil
 # 在 location 块内加：
 #   proxy_buffering off;
 #   proxy_cache off;
 #   proxy_set_header X-Accel-Buffering no;
 #   proxy_set_header Connection "";
 sed -i 's|proxy_pass |proxy_buffering off;\n        proxy_cache off;\n        proxy_set_header X-Accel-Buffering no;\n        proxy_set_header Connection "";\n        proxy_pass |' /tmp/relayab.sigil
-dokku nginx:set relayab /tmp/relayab.sigil
-dokku nginx:validate-config relayab     # 先验证，没写坏再继续
-dokku proxy:build-config relayab
+dokku nginx:set relay-ab /tmp/relayab.sigil
+dokku nginx:validate-config relay-ab     # 先验证，没写坏再继续
+dokku proxy:build-config relay-ab
 ```
 
 模板是 sigil 语法（`{{ }}` 插值），sed 时不要破坏原有的插值标记。
@@ -191,7 +191,7 @@ dokku proxy:build-config relayab
 ```bash
 sudo mkdir -p /home/dokku/backups
 # 用 sqlite3 的在线备份，不要直接 cp（正在写的时候 cp 可能拿到不一致的快照）
-sudo -u dokku sqlite3 /home/dokku/data/relayab/relayab.db \
+sudo -u dokku sqlite3 /home/dokku/data/relay-ab/relayab.db \
   ".backup '/home/dokku/backups/relayab-$(date +%F).db'"
 ```
 

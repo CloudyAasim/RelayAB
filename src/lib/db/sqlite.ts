@@ -235,7 +235,18 @@ export function getDb(): Database {
   if (path !== ":memory:") {
     // The directory may not exist on a fresh install; failing here with ENOENT
     // would surface as an opaque error on the first query.
-    mkdirSync(dirname(path), { recursive: true });
+    try {
+      mkdirSync(dirname(path), { recursive: true });
+    } catch (err) {
+      throw new Error(
+        `[relayab] Cannot create the directory for the database at ${dirname(path)}. ` +
+          `RELAY_DB_PATH is set to ${path}. Inside a container this must be a ` +
+          `mounted volume, not a host path — e.g. /data/relayab.db created by ` +
+          `\`dokku storage:mount <app> /home/dokku/data/<app>:/data\`. ` +
+          `A database left in the container's own filesystem is erased on every ` +
+          `rebuild. (underlying error: ${err instanceof Error ? err.message : err})`,
+      );
+    }
   }
 
   const conn = new DatabaseSync(path);
