@@ -229,9 +229,12 @@ export const MINIMAX_VIDEO_V2_SPEC: MediaSpec = {
 /**
  * MiniMax synchronous TTS (`POST /v1/t2a_v2`).
  *
- * `output_format: "url"` is not optional: the vendor defaults to `hex`, and
- * `encoding: "hex"` on the item is what lets the engine hand the client real
- * base64 either way.
+ * `output_format: "hex"` is deliberate. The vendor also accepts `"url"` and
+ * returns a link, but `/v1/audio/speech` has to answer with bytes, and
+ * `audioDelivery` only accepts a `base64` item or a binary body — a spec that
+ * maps the audio to a `url` item is discarded with `no_audio` even when the
+ * synthesis succeeded. Hex keeps the payload inline, and `encoding: "hex"`
+ * lets the engine turn it into real base64 for the client.
  */
 export const MINIMAX_TTS_SPEC: MediaSpec = {
   specVersion: 1,
@@ -262,10 +265,10 @@ export const MINIMAX_TTS_SPEC: MediaSpec = {
         },
       },
     },
-    output_format: { $const: "url" },
+    output_format: { $const: "hex" },
   },
   response: {
-    items: [{ kind: "url", value: "$.data.audio" }],
+    items: [{ kind: "base64", encoding: "hex", value: "$.data.audio" }],
     successCount: { $const: 1 },
     errorCode: "$.base_resp.status_code",
     errorMessage: "$.base_resp.status_msg",
