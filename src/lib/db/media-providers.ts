@@ -115,7 +115,11 @@ export async function createMediaProvider(
     [
       provider.id,
       provider.name,
-      provider.baseUrl,
+      // `node:sqlite` refuses to bind `undefined`, and a media provider is
+      // normally created with only a key pasted in — the base URL and specs
+      // are filled in afterwards. Empty string is this column's "not
+      // configured yet", matching the `baseUrl: string` field on the entity.
+      provider.baseUrl ?? "",
       provider.encryptedApiKey,
       toDbBool(provider.enabled),
       provider.priority,

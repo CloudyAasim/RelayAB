@@ -121,6 +121,17 @@ sudo dokku letsencrypt:cron-job --add
 没有证书的话 `/healthz` 会返回 http，`RELAY_PUBLIC_URL` 也会被推导成 http，
 ONLYOFFICE 那边可能拒绝连接。
 
+顺便打开部署追踪。`/healthz` 的 `revision` 字段默认拿不到值 —— Dokku 不主动
+注入 git SHA，得显式告诉它注入到哪个变量名：
+
+```bash
+dokku git:set relay-ab rev-env-var DOKKU_GIT_REV
+```
+
+`/healthz` 的回退链是 `VERCEL_GIT_COMMIT_SHA` → `DOKKU_GIT_REV` →
+`RELAY_BUILD_ID`。这条命令只对**之后的**部署生效，所以改完要再推一次。
+在那之前 `revision` 是 `null`，不影响功能，只影响「线上跑的是哪一版」的可追溯性。
+
 ## 6. 调 nginx 的两个默认值
 
 Dokku 自带 nginx 有两个默认值**会直接打断这个应用的功能**，装完就改：

@@ -146,7 +146,11 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
       provider.id,
       provider.name,
       provider.kind,
-      provider.baseUrl,
+      // `node:sqlite` refuses to bind `undefined` ("Provided value cannot be
+      // bound to SQLite parameter 4"), and a provider is legitimately created
+      // with only a key pasted in — the base URL is filled in afterwards from
+      // the admin panel. NULL is the column's "not configured yet".
+      provider.baseUrl ?? null,
       provider.encryptedApiKey,
       JSON.stringify(provider.modelMapping),
       JSON.stringify(provider.modelConfigs ?? {}),
@@ -156,7 +160,7 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
       provider.upstreamFormat,
       toDbBool(provider.openaiEnabled),
       toDbBool(provider.anthropicEnabled),
-      provider.anthropicBaseUrl,
+      provider.anthropicBaseUrl ?? null,
       provider.createdAt,
       provider.updatedAt,
     ],
