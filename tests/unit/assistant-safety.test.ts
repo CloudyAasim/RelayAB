@@ -14,7 +14,7 @@
  *  5. Saving settings without a key keeps the stored one.
  *  6. No tool result can carry an encrypted key back to the model.
  */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 let currentStore: import("@/lib/auth/session").InMemoryCookieStore | null = null;
 vi.mock("next/headers", () => ({
@@ -29,6 +29,13 @@ import { InMemoryCookieStore, getSessionFromStore } from "@/lib/auth/session";
 import { __resetConfigForTest } from "@/lib/config";
 import { toolDefinitions, executeTool } from "@/lib/assistant/tools";
 import { getAssistantSettings, saveAssistantSettings, AssistantSettingsError } from "@/lib/db/assistant";
+import { listAssistantThreads } from "@/lib/db/assistant";
+import {
+  consumeAssistantTurn,
+  __resetAssistantRateLimitForTest,
+  ASSISTANT_MAX_TURNS_PER_USER,
+  ASSISTANT_MAX_TURNS_TOTAL,
+} from "@/lib/assistant/rate-limit";
 import {
   createAssistantAction,
   claimAssistantAction,
@@ -549,5 +556,136 @@ describe("assistant: one-shot model probe", () => {
     // probe never wrote to it.
     expect(await getAssistantSettings(user.id)).toBeNull();
     vi.unstubAllGlobals();
+  });
+});
+
+/**
+ * The money question: an account with no assistant settings of its own must not
+ * be able to start a turn. This is the path that decides whether the deployment
+ * can be made to pay for somebody else's conversation, so it is pinned here
+ * rather than left to the route reading correctly.
+ */
+describe("assistant: an unconfigured account cannot start a turn", () => {
+  beforeEach(() => {
+    __resetDbForTest();
+    __resetAssistantRateLimitForTest();
+  });
+
+  function chatRequest(message: unknown): Request {
+    return new Request("http://localhost/api/assistant/chat", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message }),
+    });
+  }
+
+  it("is refused, and nothing is spent", async () => {
+    const user = await makeUser("user", "u7");
+    const dialled: string[] = [];
+    vi.stubGlobal("fetch", async (url: string | URL | Request) => {
+      dialled.push(String(url));
+      return new Response("{}", { status: 200 });
+    });
+
+    currentStore = new InMemoryCookieStore();
+    await loginAs(currentStore, user.id, user.username, "user");
+    const { POST } = await import("@/app/api/assistant/chat/route");
+    const res = await POST(chatRequest("你好"));
+    const body = (await res.json()) as { error?: { code?: string; message?: string } };
+
+    expect(res.status).toBe(409);
+    expect(body.error?.code).toBe("not_configured");
+    expect(body.error?.message).toMatch(/自己的/);
+
+    // The three things that would have cost something: an upstream call, a
+    // conversation row, and a message row.
+    expect(dialled).toEqual([]);
+    expect(await listAssistantThreads(user.id)).toEqual([]);
+    expect(await getAssistantSettings(user.id)).toBeNull();
+
+    vi.unstubAllGlobals();
+  });
+
+  it("refuses before the message is even looked at, so the two cannot be confused", async () => {
+    // Order matters for a different reason: the rate limiter has to sit ahead
+    // of the settings lookup, or an unconfigured account could still be made
+    // to do work by simply asking often enough.
+    const user = await makeUser("user", "u8");
+    currentStore = new InMemoryCookieStore();
+    await loginAs(currentStore, user.id, user.username, "user");
+    const { POST } = await import("@/app/api/assistant/chat/route");
+
+    for (let i = 0; i < ASSISTANT_MAX_TURNS_PER_USER; i++) {
+      expect((await POST(chatRequest("你好"))).status).toBe(409);
+    }
+    expect((await POST(chatRequest("你好"))).status).toBe(429);
+  });
+
+  it("a configured account is unaffected by another account running out", async () => {
+    const noisy = await makeUser("user", "u9");
+    const quiet = await makeUser("user", "u10");
+
+    currentStore = new InMemoryCookieStore();
+    await loginAs(currentStore, noisy.id, noisy.username, "user");
+    const { POST } = await import("@/app/api/assistant/chat/route");
+    for (let i = 0; i < ASSISTANT_MAX_TURNS_PER_USER; i++) {
+      await POST(chatRequest("你好"));
+    }
+    expect((await POST(chatRequest("你好"))).status).toBe(429);
+
+    currentStore = new InMemoryCookieStore();
+    await loginAs(currentStore, quiet.id, quiet.username, "user");
+    expect((await POST(chatRequest("你好"))).status).toBe(409);
+  });
+});
+
+describe("assistant: turn rate limit", () => {
+  beforeEach(() => {
+    __resetAssistantRateLimitForTest();
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("admits the budget and then refuses", () => {
+    for (let i = 0; i < ASSISTANT_MAX_TURNS_PER_USER; i++) {
+      expect(consumeAssistantTurn("u1").limited).toBe(false);
+    }
+    const refused = consumeAssistantTurn("u1");
+    expect(refused.limited).toBe(true);
+    expect(refused.retryAfterSeconds).toBeGreaterThan(0);
+    expect(refused.retryAfterSeconds).toBeLessThanOrEqual(60);
+  });
+
+  it("counts each account separately", () => {
+    for (let i = 0; i < ASSISTANT_MAX_TURNS_PER_USER; i++) consumeAssistantTurn("u1");
+    expect(consumeAssistantTurn("u1").limited).toBe(true);
+    expect(consumeAssistantTurn("u2").limited).toBe(false);
+  });
+
+  it("also caps everyone together, because per-account alone does not protect the box", () => {
+    let admitted = 0;
+    for (let i = 0; i < 20; i++) {
+      for (let j = 0; j < 10; j++) {
+        if (!consumeAssistantTurn(`u${i}`).limited) admitted++;
+      }
+    }
+    expect(admitted).toBe(ASSISTANT_MAX_TURNS_TOTAL);
+  });
+
+  it("does not push the unlock time back when a refused caller keeps hammering", () => {
+    for (let i = 0; i < ASSISTANT_MAX_TURNS_PER_USER; i++) consumeAssistantTurn("u1");
+    const first = consumeAssistantTurn("u1");
+    vi.advanceTimersByTime(5_000);
+    const later = consumeAssistantTurn("u1");
+    expect(later.retryAfterSeconds).toBeLessThanOrEqual(first.retryAfterSeconds);
+  });
+
+  it("lets the caller back in once the window rolls over", () => {
+    for (let i = 0; i < ASSISTANT_MAX_TURNS_PER_USER; i++) consumeAssistantTurn("u1");
+    expect(consumeAssistantTurn("u1").limited).toBe(true);
+    vi.advanceTimersByTime(61_000);
+    expect(consumeAssistantTurn("u1").limited).toBe(false);
   });
 });

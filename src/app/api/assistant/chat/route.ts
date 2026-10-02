@@ -23,6 +23,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { getAssistantSettings } from "@/lib/db/assistant";
 import { createAssistantThread, getAssistantThread } from "@/lib/db/assistant";
 import { runChat, type ChatEvent } from "@/lib/assistant/chat";
+import { consumeAssistantTurn } from "@/lib/assistant/rate-limit";
 import { resolvePublicUrl } from "@/lib/public-url";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +36,23 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json(
       { ok: false, error: { code: "unauthenticated", message: "Login required" } },
       { status: 401 },
+    );
+  }
+
+  // Before anything is parsed, created or dialled. A turn costs this server an
+  // open SSE connection and a SQLite write whatever the caller's own key pays
+  // for upstream, and that was unbounded until now.
+  const rate = consumeAssistantTurn(me.id);
+  if (rate.limited) {
+    return Response.json(
+      {
+        ok: false,
+        error: {
+          code: "rate_limited",
+          message: `助手请求太频繁了，${rate.retryAfterSeconds} 秒后再试。`,
+        },
+      },
+      { status: 429, headers: { "Retry-After": String(rate.retryAfterSeconds) } },
     );
   }
 
