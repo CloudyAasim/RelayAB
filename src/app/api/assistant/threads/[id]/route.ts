@@ -55,7 +55,10 @@ export async function PATCH(
       { status: 401 },
     );
   }
-  const parsed = z.object({ title: z.string().min(1).max(120) }).safeParse(await req.json().catch(() => null));
+  // Trim before the length check: the repository stores `title.trim().slice(0, 120)`
+  // and refuses an empty result, so a whitespace-only title used to fall through
+  // validation and come back as 404 "对话不存在" for a thread that was right there.
+  const parsed = z.object({ title: z.string().trim().min(1).max(120) }).safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json(
       { ok: false, error: { code: "bad_request", message: "标题不合法" } },

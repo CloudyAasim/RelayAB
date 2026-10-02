@@ -29,6 +29,8 @@ import {
   SheetDescription,
 } from "@/components/ui/Sheet";
 import { useT } from "@/components/i18n/I18nProvider";
+import { apiErrorMessage } from "@/lib/i18n/api-errors";
+import { Pencil, Trash2 } from "lucide-react";
 
 interface Thread {
   id: string;
@@ -75,9 +77,23 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pendingOpen, setPendingOpen] = useState(false);
 
+  // History management. A conversation belongs to the person reading it, so
+  // the drawer offers the two things every chat product offers: give it a name
+  // you can find later, and get rid of one you never want to see again.
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  /**
+   * Escape has to mean "cancel" and not "send PATCH". Unmounting the input
+   * while it holds focus can deliver a blur on the way out, so the cancel is
+   * recorded and the next commit reads it and does nothing.
+   */
+  const renameCancelledRef = useRef(false);
 
   const loadThreads = useCallback(async () => {
     const res = await fetch("/api/assistant/threads", { cache: "no-store" });
@@ -121,17 +137,92 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
     if (el.scrollHeight - el.scrollTop - el.clientHeight < 160) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
-  async function newThread() {
-    const res = await fetch("/api/assistant/threads", { method: "POST" });
+  /**
+   * "New chat" is a client-side state change; the server creates the thread
+   * with the first message (the chat route already does this when no threadId
+   * is sent). Creating the row up front instead meant every press of the button
+   * left another empty "新对话" in the history, which is exactly the clutter
+   * that makes a history list unmanageable.
+   *
+   * Blocked while a reply is streaming: the in-flight `send()` would still
+   * write its result into the thread it started on and stomp the empty state.
+   */
+  function newThread() {
+    if (busy) return;
+    setThreadId(null);
+    setMessages([]);
+    setError(null);
+    setHistoryOpen(false);
+  }
+
+  function startRename(target: Thread) {
+    renameCancelledRef.current = false;
+    setRenamingId(target.id);
+    setRenameDraft(target.title);
+    setHistoryError(null);
+  }
+
+  function cancelRename() {
+    renameCancelledRef.current = true;
+    setRenamingId(null);
+  }
+
+  /**
+   * The stored title comes back from the server, not from the input: the route
+   * trims and caps at 120 characters, so echoing what was typed would let the
+   * list and the database disagree.
+   */
+  async function commitRename(id: string) {
+    if (renameCancelledRef.current) {
+      renameCancelledRef.current = false;
+      return;
+    }
+    const next = renameDraft.trim();
+    setRenamingId(null);
+    if (!next) return; // an empty title is not a rename
+
+    const res = await fetch(`/api/assistant/threads/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: next }),
+    });
     const json = (await res.json().catch(() => null)) as
-      | { data?: { thread?: Thread } }
+      | { data?: { thread?: Thread }; error?: { code?: string; message?: string } }
       | null;
-    if (json?.data?.thread) {
-      setThreadId(json.data.thread.id);
-      setMessages([]);
-      setError(null);
-      setHistoryOpen(false);
-      void loadThreads();
+    if (!res.ok || !json?.data?.thread) {
+      setHistoryError(apiErrorMessage(t, json?.error?.code, json?.error?.message));
+      return;
+    }
+    const saved = json.data.thread.title;
+    setThreads((prev) => prev.map((th) => (th.id === id ? { ...th, title: saved } : th)));
+  }
+
+  async function removeThread(target: Thread) {
+    if (!confirm(t("assistant.confirmDeleteThread", { title: target.title }))) return;
+    setHistoryError(null);
+    setDeletingId(target.id);
+    try {
+      const res = await fetch(`/api/assistant/threads/${target.id}`, { method: "DELETE" });
+      const json = (await res.json().catch(() => null)) as
+        | { error?: { code?: string; message?: string } }
+        | null;
+      if (!res.ok) {
+        setHistoryError(apiErrorMessage(t, json?.error?.code, json?.error?.message));
+        return;
+      }
+      setThreads((prev) => prev.filter((th) => th.id !== target.id));
+      // Deleting the conversation on screen leaves nothing to show. Clearing
+      // the id here means the next message starts a new thread, instead of
+      // sending a stale id and earning a 404 the user did nothing to deserve.
+      if (threadId === target.id) {
+        setThreadId(null);
+        setMessages([]);
+        setError(null);
+      }
+    } catch (err) {
+      setHistoryError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -242,7 +333,13 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
     <div className="flex h-[calc(100dvh-8.5rem)] min-h-[28rem] flex-col">
       {/* ---- top bar: a new chat on the left, what is answering on the right ---- */}
       <div className="mx-auto flex w-full max-w-3xl shrink-0 items-center gap-2 border-b pb-2">
-        <Button variant="ghost" size="sm" onClick={newThread} title={t("assistant.newThread")}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={newThread}
+          disabled={busy}
+          title={t("assistant.newThread")}
+        >
           <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
             <path d="M12 5v14M5 12h14" />
           </svg>
@@ -429,27 +526,96 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
             <SheetDescription>{t("assistant.historyDesc")}</SheetDescription>
           </SheetHeader>
           <div className="mt-4 space-y-1">
-            <Button variant="outline" className="w-full justify-start" onClick={newThread}>
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              onClick={newThread}
+              disabled={busy}
+            >
               + {t("assistant.newThread")}
             </Button>
+            {historyError && (
+              <p className="rounded-md bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
+                {historyError}
+              </p>
+            )}
             {threads.length === 0 && (
               <p className="px-1 py-3 text-sm text-muted-foreground">{t("assistant.noHistory")}</p>
             )}
-            {threads.map((th) => (
-              <button
-                key={th.id}
-                type="button"
-                onClick={() => {
-                  setThreadId(th.id);
-                  setHistoryOpen(false);
-                }}
-                className={`block w-full truncate rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent ${
-                  th.id === threadId ? "bg-accent font-medium" : ""
-                }`}
-              >
-                {th.title}
-              </button>
-            ))}
+            {threads.map((th) => {
+              const renaming = renamingId === th.id;
+              return (
+                <div
+                  key={th.id}
+                  className={`group flex items-center rounded-md pr-1 focus-within:bg-accent ${
+                    th.id === threadId ? "bg-accent font-medium" : "hover:bg-accent"
+                  }`}
+                >
+                  {renaming ? (
+                    <input
+                      value={renameDraft}
+                      // eslint-disable-next-line jsx-a11y/no-autofocus -- the row it
+                      // replaces is one click away and the caret belongs in the title.
+                      autoFocus
+                      maxLength={120}
+                      aria-label={t("assistant.renameThread")}
+                      title={t("assistant.renameThreadHint")}
+                      onChange={(e) => setRenameDraft(e.target.value)}
+                      onBlur={() => void commitRename(th.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          void commitRename(th.id);
+                        } else if (e.key === "Escape") {
+                          // Escape means "cancel here", so it must not also close
+                          // the drawer the input lives in.
+                          e.preventDefault();
+                          e.stopPropagation();
+                          cancelRename();
+                        }
+                      }}
+                      className="min-w-0 flex-1 rounded bg-background px-2 py-1.5 text-sm outline-none ring-1 ring-ring"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setThreadId(th.id);
+                        setHistoryOpen(false);
+                      }}
+                      title={th.title}
+                      className="min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-left text-sm"
+                    >
+                      {th.title}
+                    </button>
+                  )}
+
+                  {!renaming && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => startRename(th)}
+                        aria-label={t("assistant.renameThread")}
+                        title={t("assistant.renameThreadHint")}
+                        className="shrink-0 rounded p-1.5 text-muted-foreground transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void removeThread(th)}
+                        disabled={deletingId === th.id}
+                        aria-label={t("assistant.deleteThread")}
+                        title={t("assistant.deleteThread")}
+                        className="shrink-0 rounded p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </SheetContent>
       </Sheet>
