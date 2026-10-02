@@ -3,30 +3,28 @@
 /**
  * src/lib/assistant/CredentialPanel.tsx
  *
- * The switch and the mode selector, shared by the assistant settings drawer and
- * the model test page so the two cannot drift apart.
+ * The switch, and the choice of which credential the next call uses. Shared by
+ * the assistant settings drawer and both testers on the model test page, so
+ * they cannot drift apart.
  *
- * What it shows, in order of how likely it is to matter to someone reading it:
- * the account switch first (it is the zero-friction path and the one that
- * decides whether anything works at all), then the key field for people who
- * would rather paste something they can revoke by deleting it.
+ * What it offers, in order of how likely it is to matter: the account switch
+ * first (it is the zero-friction path and it decides whether anything works at
+ * all), then the key field for people who would rather hold something they can
+ * revoke by deleting it.
  *
  * Deliberately not a "reveal secret" control. There is no secret: the
- * credential's plaintext is never generated, so the only thing this panel can
- * honestly offer is create / switch on / switch off / rebuild / remove.
+ * credential's plaintext is never generated, so the only honest thing to offer
+ * is create / switch on / switch off / rebuild / remove.
+ *
+ * State comes from credential-store rather than from here: the page mounts two
+ * of these, and creating a credential in one used to leave the other claiming
+ * none existed until a full reload.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef } from "react";
 import { Button } from "@/components/ui/Button";
 import { useT } from "@/components/i18n/I18nProvider";
-import { apiErrorMessage } from "@/lib/i18n/api-errors";
-
-export type CredentialState = {
-  created: boolean;
-  enabled: boolean;
-  keyPrefix: string | null;
-  createdAt: string | null;
-  usable: boolean;
-};
+import { useCredentialStore } from "./credential-store";
+import type { CredentialAction } from "./credential-store";
 
 export type Mode = "account" | "key";
 
@@ -63,7 +61,36 @@ export function reconcileMode(state: {
   return mode;
 }
 
-const EMPTY: CredentialState = { created: false, enabled: false, keyPrefix: null, createdAt: null, usable: false };
+/**
+ * How an option should look. Two states that used to be blended - "chosen" and
+ * "chosen but unavailable" - are now separate, because an option that is both
+ * reads as broken rather than as unavailable.
+ *
+ * `unavailable` never carries the selected colours. That is the bug: a dimmed
+ * blue border and a dimmed tint on an option that cannot be picked looks like a
+ * control that is on and broken.
+ */
+export function optionAppearance(state: {
+  selected: boolean;
+  available: boolean;
+}): { selected: boolean; unavailable: boolean; className: string } {
+  const { selected, available } = state;
+  if (selected && available) {
+    return {
+      selected: true,
+      unavailable: false,
+      className: "border-primary bg-primary/5 ring-1 ring-primary",
+    };
+  }
+  if (selected && !available) {
+    // Shown as "you are here but cannot stay here" — a plain, quiet outline.
+    return { selected: true, unavailable: true, className: "border-border bg-muted/40" };
+  }
+  if (!available) {
+    return { selected: false, unavailable: true, className: "border-border opacity-60" };
+  }
+  return { selected: false, unavailable: false, className: "border-border" };
+}
 
 interface Props {
   /** Current selection, and how to report a change to the parent. */
@@ -82,7 +109,7 @@ interface Props {
    * than one that says so.
    */
   accountBlockedReason?: string | null;
-  /** Fired after any change, so the parent can refresh whatever it caches. */
+  /** Called after any change, in addition to the shared store updating. */
   onChanged?: () => void;
 }
 
@@ -96,44 +123,19 @@ export function CredentialPanel({
   onChanged,
 }: Props) {
   const t = useT();
-  const [state, setState] = useState<CredentialState>(EMPTY);
-  const [loaded, setLoaded] = useState(false);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { data: state, loaded, busy, error, mutate, refreshServer } = useCredentialStore();
+  const keyFieldId = useId();
+  const modeGroup = "assistant-credential-mode";
+
   /**
    * Whether the account option has ever been picked on purpose. Until it has,
-   * the panel is allowed to move the selection itself - see the effect below.
+   * the panel is allowed to move the selection itself.
    */
   const userPickedRef = useRef(false);
-
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch("/api/assistant/credentials", { cache: "no-store" });
-      const json = (await res.json().catch(() => null)) as {
-        data?: CredentialState;
-        error?: { code?: string; message?: string };
-      } | null;
-      if (res.ok && json?.data) setState(json.data);
-      else setState(EMPTY);
-    } catch {
-      setState(EMPTY);
-    } finally {
-      setLoaded(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
 
   const blockedReason = accountBlockedReason ?? null;
   const canUseAccount = state.created && state.enabled && !blockedReason;
 
-  /**
-   * Never leave the page resting on an option that cannot be chosen. The rule
-   * itself lives in `reconcileMode`, which is a pure function so the decision
-   * can be tested without a browser.
-   */
   useEffect(() => {
     const next = reconcileMode({
       loaded,
@@ -153,34 +155,42 @@ export function CredentialPanel({
     [onModeChange],
   );
 
-  async function act(action: "create" | "enable" | "disable" | "rotate" | "remove") {
-    setBusy(action);
-    setError(null);
-    try {
-      const res = await fetch("/api/assistant/credentials", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
-      });
-      const json = (await res.json().catch(() => null)) as {
-        data?: CredentialState;
-        error?: { code?: string; message?: string };
-      } | null;
-      if (!res.ok || !json?.data) {
-        setError(apiErrorMessage(t, json?.error?.code, json?.error?.message));
-        return;
-      }
-      setState(json.data);
+  const act = useCallback(
+    async (action: CredentialAction) => {
+      const ok = await mutate(action);
+      if (!ok) return;
       // Turning it on is the moment the account path becomes usable, so the
       // selection follows rather than leaving the user on a dead option.
       if (action === "enable") choose("account");
+      // The admin's key list is a server component, so nothing it renders moves
+      // until the page is re-fetched.
+      refreshServer();
       onChanged?.();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(null);
-    }
-  }
+    },
+    [mutate, choose, refreshServer, onChanged],
+  );
+
+  const accountLook = optionAppearance({ selected: mode === "account", available: canUseAccount });
+  const keyLook = optionAppearance({ selected: mode === "key", available: true });
+
+  // The state of the switch in words, so it never has to be inferred from a
+  // checkbox - and so the difference between "not created" and "created but
+  // off" is visible before anyone touches anything.
+  const status = !loaded
+    ? t("assistant.credential.status.loading")
+    : !state.created
+      ? t("assistant.credential.status.none")
+      : state.enabled
+        ? t("assistant.credential.status.on")
+        : t("assistant.credential.status.off");
+
+  const statusTone = !loaded
+    ? "text-muted-foreground"
+    : !state.created
+      ? "text-muted-foreground"
+      : state.enabled
+        ? "text-primary"
+        : "text-muted-foreground";
 
   return (
     <div className="space-y-3">
@@ -188,22 +198,31 @@ export function CredentialPanel({
       <div className="rounded-lg border border-border p-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-foreground">{t("assistant.credential.switch")}</p>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <p className="text-sm font-medium text-foreground">{t("assistant.credential.switch")}</p>
+              <span className={`text-xs ${statusTone}`}>{status}</span>
+            </div>
             <p className="mt-0.5 text-xs text-muted-foreground">{t("assistant.credential.switchHint")}</p>
           </div>
           <input
             type="checkbox"
             role="switch"
             aria-label={t("assistant.credential.switch")}
+            aria-busy={busy !== null}
             checked={state.enabled}
             disabled={disabled || busy !== null || !state.created}
             onChange={(e) => void act(e.target.checked ? "enable" : "disable")}
-            className="mt-0.5 h-5 w-5 shrink-0 rounded border-input text-primary focus:ring-ring disabled:opacity-50"
+            className="mt-0.5 h-5 w-5 shrink-0 rounded border-input text-primary focus:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
           />
         </div>
 
-        {!loaded ? null : !state.created ? (
-          <div className="mt-3 space-y-2">
+        {/* Loading is a state, not an absence. The panel used to render
+            nothing here until the fetch answered, which read as a component
+            that had failed to render rather than one that was asking. */}
+        {!loaded ? (
+          <p className="mt-3 text-xs text-muted-foreground">{t("assistant.credential.status.loading")}</p>
+        ) : !state.created ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             <p className="text-xs text-muted-foreground">{t("assistant.credential.notCreated")}</p>
             <Button size="sm" disabled={disabled || busy !== null} onClick={() => void act("create")}>
               {busy === "create" ? t("assistant.credential.creating") : t("assistant.credential.create")}
@@ -226,10 +245,11 @@ export function CredentialPanel({
             <Button
               size="sm"
               variant="ghost"
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
               disabled={disabled || busy !== null}
               onClick={() => void act("remove")}
             >
-              {t("assistant.credential.remove")}
+              {busy === "remove" ? t("assistant.credential.removing") : t("assistant.credential.remove")}
             </Button>
           </div>
         )}
@@ -240,14 +260,14 @@ export function CredentialPanel({
         <legend className="text-sm font-medium text-foreground">{t("assistant.credential.which")}</legend>
 
         <label
-          className={`flex cursor-pointer items-start gap-2 rounded-md border px-2.5 py-2 text-sm ${
-            mode === "account" ? "border-primary bg-accent" : "border-border"
-          } ${canUseAccount ? "" : "opacity-50"}`}
+          className={`flex items-start gap-2 rounded-md border px-2.5 py-2 text-sm ${accountLook.className} ${
+            canUseAccount ? "cursor-pointer" : "cursor-not-allowed"
+          }`}
         >
           <input
             type="radio"
-            name="assistant-credential-mode"
-            className="mt-0.5"
+            name={modeGroup}
+            className="mt-0.5 accent-primary"
             checked={mode === "account"}
             disabled={!canUseAccount}
             onChange={() => choose("account")}
@@ -256,21 +276,21 @@ export function CredentialPanel({
             {t("assistant.credential.modeAccount")}
             {!canUseAccount && (
               <span className="block text-xs text-muted-foreground">
-                {blockedReason ?? t("assistant.credential.modeAccountLocked")}
+                {loaded
+                  ? (blockedReason ?? t("assistant.credential.modeAccountLocked"))
+                  : t("assistant.credential.status.loading")}
               </span>
             )}
           </span>
         </label>
 
         <label
-          className={`flex cursor-pointer items-start gap-2 rounded-md border px-2.5 py-2 text-sm ${
-            mode === "key" ? "border-primary bg-accent" : "border-border"
-          }`}
+          className={`flex cursor-pointer items-start gap-2 rounded-md border px-2.5 py-2 text-sm ${keyLook.className}`}
         >
           <input
             type="radio"
-            name="assistant-credential-mode"
-            className="mt-0.5"
+            name={modeGroup}
+            className="mt-0.5 accent-primary"
             checked={mode === "key"}
             onChange={() => choose("key")}
           />
@@ -280,11 +300,11 @@ export function CredentialPanel({
 
       {mode === "key" && (
         <div className="space-y-1.5">
-          <label htmlFor="assistant-relay-key" className="block text-sm font-medium text-foreground">
+          <label htmlFor={keyFieldId} className="block text-sm font-medium text-foreground">
             {t("assistant.credential.keyLabel")}
           </label>
           <input
-            id="assistant-relay-key"
+            id={keyFieldId}
             type="password"
             autoComplete="off"
             placeholder="sk-relay-..."
@@ -296,8 +316,15 @@ export function CredentialPanel({
         </div>
       )}
 
+      {/* Errors sit next to the thing that failed rather than at the bottom of
+          the panel, where they read as belonging to the key field below. */}
       {error && (
-        <p className="rounded-md bg-destructive/10 px-2 py-1.5 text-xs text-destructive">{error}</p>
+        <p
+          role="alert"
+          className="rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-xs text-destructive"
+        >
+          {error}
+        </p>
       )}
     </div>
   );

@@ -20,7 +20,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { reconcileMode } from "@/lib/assistant/CredentialPanel";
+import { reconcileMode, optionAppearance } from "@/lib/assistant/CredentialPanel";
 
 const SRC = join(process.cwd(), "src");
 const read = (relative: string): string => readFileSync(join(SRC, relative), "utf-8");
@@ -28,6 +28,7 @@ const read = (relative: string): string => readFileSync(join(SRC, relative), "ut
 const CHAT_TESTER = read("app/(user)/dashboard/models/ModelTester.tsx");
 const MEDIA_TESTER = read("app/(user)/dashboard/models/MediaTester.tsx");
 const PANEL = read("lib/assistant/CredentialPanel.tsx");
+const STORE = read("lib/assistant/credential-store.ts");
 
 describe("credential UI: one key field, owned by the panel", () => {
   it("neither tester keeps its own key input", () => {
@@ -125,6 +126,68 @@ describe("credential UI: the page never rests on an unusable option", () => {
 
   it("shows the key field only while the key path is selected", () => {
     expect(PANEL).toMatch(/\{mode === "key" && \(/);
+  });
+});
+
+/**
+ * An option that is both "chosen" and "cannot be picked" is the bug that started
+ * all of this. The two states are now separate, and the appearance is a pure
+ * function precisely so that "the selected colours never appear on an
+ * unavailable option" is a tested claim.
+ */
+describe("credential UI: option appearance", () => {
+  it("marks a chosen, available option with the selected treatment", () => {
+    const look = optionAppearance({ selected: true, available: true });
+    expect(look.selected).toBe(true);
+    expect(look.unavailable).toBe(false);
+    expect(look.className).toContain("border-primary");
+    expect(look.className).toContain("ring-primary");
+  });
+
+  it("never puts the selected treatment on an option that cannot be picked", () => {
+    const look = optionAppearance({ selected: true, available: false });
+    expect(look.unavailable).toBe(true);
+    expect(look.className).not.toContain("primary");
+    // And it is not merely dimmed: opacity was what made it read as "on and
+    // broken" rather than "unavailable".
+    expect(look.className).not.toContain("opacity-50");
+  });
+
+  it("dims an option that is neither selected nor available", () => {
+    const look = optionAppearance({ selected: false, available: false });
+    expect(look.className).toContain("opacity-60");
+    expect(look.className).not.toContain("primary");
+  });
+
+  it("leaves an available, unselected option plain", () => {
+    const look = optionAppearance({ selected: false, available: true });
+    expect(look.className).toBe("border-border");
+  });
+});
+
+describe("credential UI: one state for every panel", () => {
+  it("the panel reads the shared store instead of fetching its own copy", () => {
+    // Two panels on the tester page, each with its own copy of the state, is
+    // how creating a credential in one left the other claiming none existed.
+    // Match the call, not the import: an unused import still contains the name.
+    expect(PANEL).toMatch(/=\s*useCredentialStore\(\)/);
+    expect(PANEL).not.toMatch(/fetch\("\/api\/assistant\/credentials"/);
+  });
+
+  it("a change also re-renders the server components around it", () => {
+    // The admin's key list is a server component; nothing it renders moves
+    // until the page is re-fetched.
+    expect(PANEL).toContain("refreshServer()");
+  });
+
+  it("the store deduplicates the first load", () => {
+    expect(STORE).toContain("inFlight");
+    expect(STORE).toContain("useSyncExternalStore");
+  });
+
+  it("busy state is shared, so two panels cannot both be mid-request", () => {
+    expect(STORE).toMatch(/publish\(\{ busy: action, error: null \}\)/);
+    expect(STORE).toMatch(/publish\(\{ busy: null \}\)/);
   });
 });
 

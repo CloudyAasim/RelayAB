@@ -772,6 +772,10 @@ const zhCN: Dict = {
   "assistant.gatewayKeyHint": "助手实测模型、生成图片/语音时需要一把本部署的网关密钥。如果下面的 API 地址填的就是本部署，助手会自动用你配置助手时存下的那把，不用在这里重复填。",
 
   "assistant.credential.switch": "允许助手用我的账号调用",
+  "assistant.credential.status.loading": "读取中…",
+  "assistant.credential.status.none": "未创建",
+  "assistant.credential.status.off": "已创建 · 未开启",
+  "assistant.credential.status.on": "已开启",
   "assistant.credential.switchHint": "开启后，助手实测模型、生成图片/语音/视频时会以你的身份调用本部署，费用走你自己的额度。不需要也不会保存任何密钥。默认关闭。",
   "assistant.credential.notCreated": "你还没有助手凭据。创建之后还需要手动开启，创建本身不会让它生效。",
   "assistant.credential.create": "创建助手凭据",
@@ -780,6 +784,7 @@ const zhCN: Dict = {
   "assistant.credential.rotating": "重建中…",
   "assistant.credential.rotateHint": "换一把全新的。旧的用量记录保留，但旧凭据立即失效。",
   "assistant.credential.remove": "移除",
+  "assistant.credential.removing": "移除中…",
   "assistant.credential.which": "这次调用用哪把凭据",
   "assistant.credential.modeAccount": "用我的账号身份",
   "assistant.credential.modeAccountLocked": "需要先创建并开启助手凭据。",
@@ -1637,6 +1642,10 @@ const en: Dict = {
     "Actually testing a model, or generating an image or voice, needs a gateway key for this deployment. If the API base URL below is this deployment, the assistant reuses the key you already saved here and there is nothing to paste.",
 
   "assistant.credential.switch": "Let the assistant call as me",
+  "assistant.credential.status.loading": "Loading…",
+  "assistant.credential.status.none": "Not created",
+  "assistant.credential.status.off": "Created · off",
+  "assistant.credential.status.on": "On",
   "assistant.credential.switchHint":
     "When on, testing a model or generating an image, voice or video goes out as you against this deployment, charged to your own quota. No key is needed or stored. Off by default.",
   "assistant.credential.notCreated":
@@ -1648,6 +1657,7 @@ const en: Dict = {
   "assistant.credential.rotateHint":
     "Mint a different one. Usage history is kept; the old credential stops working immediately.",
   "assistant.credential.remove": "Remove",
+  "assistant.credential.removing": "Removing…",
   "assistant.credential.which": "Which credential this call uses",
   "assistant.credential.modeAccount": "As my signed-in account",
   "assistant.credential.modeAccountLocked": "Create an assistant credential and switch it on first.",
