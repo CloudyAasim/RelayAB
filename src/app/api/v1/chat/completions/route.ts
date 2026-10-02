@@ -12,6 +12,7 @@ import { NextResponse } from "next/server";
 import { authenticateBearer, reasonToHttp, resolveAuthHeader } from "@/lib/auth/apikey";
 import { proxyChatCompletion } from "@/lib/proxy/openai";
 import { proxyResultToResponse } from "@/lib/proxy/respond";
+import { validateChatBody } from "@/lib/proxy/validate";
 import type { ApiKey } from "@/lib/db/types";
 import { getUserById as lookupUserById } from "@/lib/db/users";
 
@@ -62,7 +63,17 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  // 3. Forward.
+  // 3. Shape check — after auth, before the upstream round trip.
+  //
+  // Auth deliberately goes first: a bad key is a bad key whatever the body
+  // says, and an unauthenticated caller has no business learning whether their
+  // JSON was well formed.
+  const shapeError = validateChatBody(body);
+  if (shapeError) {
+    return NextResponse.json({ ok: false, error: shapeError }, { status: shapeError.status });
+  }
+
+  // 4. Forward.
   const requestedStream =
     typeof body === "object" && body !== null && "stream" in body &&
     Boolean((body as Record<string, unknown>).stream);

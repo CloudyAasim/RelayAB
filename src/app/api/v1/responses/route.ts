@@ -12,6 +12,7 @@ import { NextResponse } from "next/server";
 import { authenticateBearer, reasonToHttp, resolveAuthHeader } from "@/lib/auth/apikey";
 import { proxyOpenAIResponse } from "@/lib/proxy/openai";
 import { proxyResultToResponse } from "@/lib/proxy/respond";
+import { validateResponsesBody } from "@/lib/proxy/validate";
 import type { ApiKey } from "@/lib/db/types";
 import { getUserById as lookupUserById } from "@/lib/db/users";
 
@@ -49,6 +50,13 @@ export async function POST(req: Request): Promise<Response> {
       { ok: false, error: { code: http.code, message: http.message } },
       { status: http.status },
     );
+  }
+
+  // 2b. Shape check - after auth, before the upstream round trip. Auth first:
+  // a bad key is a bad key whatever the body says.
+  const shapeError = validateResponsesBody(body);
+  if (shapeError) {
+    return NextResponse.json({ ok: false, error: shapeError }, { status: shapeError.status });
   }
 
   // 3. Get owner

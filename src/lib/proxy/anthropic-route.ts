@@ -21,6 +21,7 @@ import { NextResponse } from "next/server";
 import { authenticateBearer, reasonToHttp, resolveAuthHeader } from "@/lib/auth/apikey";
 import { proxyAnthropicMessage } from "@/lib/proxy/anthropic";
 import { proxyResultToResponse } from "@/lib/proxy/respond";
+import { validateAnthropicBody } from "@/lib/proxy/validate";
 import type { ApiKey } from "@/lib/db/types";
 import { getUserById as lookupUserById } from "@/lib/db/users";
 
@@ -34,6 +35,7 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
       { status: 400 },
     );
   }
+
 
   const requestedModel =
     typeof body === "object" && body !== null && "model" in body
@@ -55,6 +57,14 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
       { ok: false, error: { code: http.code, message: http.message } },
       { status: http.status },
     );
+  }
+
+  // Shape check - after auth, before the upstream round trip. Anthropic
+  // requires max_tokens, and a body without it would otherwise be forwarded
+  // and reported back as a 502 for the upstream 400.
+  const shapeError = validateAnthropicBody(body);
+  if (shapeError) {
+    return NextResponse.json({ ok: false, error: shapeError }, { status: shapeError.status });
   }
 
   // The owner record carries the quota pool and the model whitelist.
