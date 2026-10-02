@@ -55,6 +55,19 @@ export interface ToolResult {
   content: string;
 }
 
+/**
+ * Vendor-mandated values the caller must not be allowed to omit.
+ *
+ * Each was found by calling the endpoint rather than by reading the spec:
+ * MiniMax `t2a_v2` rejects a request with no `voice_id`, both video specs
+ * require a duration (V1 accepts only 6 and 10), and V2 also requires an
+ * explicit, non-adaptive ratio. A model told the argument was optional will
+ * leave it out, and the resulting error names a field it never touched.
+ */
+const DEFAULT_TTS_VOICE = "English_Trustworth_Man";
+const DEFAULT_VIDEO_DURATION = 6;
+const DEFAULT_VIDEO_RATIO = "16:9";
+
 // ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
@@ -179,13 +192,18 @@ const USER_TOOLS: AssistantToolDef[] = [
     function: {
       name: "generate_speech",
       description:
-        "用语音合成模型把文字读成音频，返回可播放的音频 URL。走 /v1/audio/speech，消耗用户自己的配额。",
+        "用语音合成模型把文字读成音频，返回实际生成的字节数与 content-type。走 /v1/audio/speech，消耗用户自己的配额。",
       parameters: {
         type: "object",
         properties: {
           model: { type: "string", description: "语音模型名" },
           input: { type: "string", description: "要读出来的文字" },
-          voice: { type: "string", description: "音色 id；不填则由上游选默认" },
+          voice: {
+            type: "string",
+            description:
+              "音色 id。留空则使用已验证可用的默认值 —— MiniMax 的 t2a_v2 缺少 voice_id 会直接拒绝，" +
+              "所以这不是真正可选的。",
+          },
         },
         required: ["model", "input"],
         additionalProperties: false,
@@ -203,6 +221,8 @@ const USER_TOOLS: AssistantToolDef[] = [
         properties: {
           model: { type: "string", description: "视频模型名" },
           prompt: { type: "string", description: "想生成什么画面" },
+          duration: { type: "number", description: "时长（秒）；留空用默认值" },
+          ratio: { type: "string", description: "画面比例，如 16:9；留空用默认值" },
         },
         required: ["model", "prompt"],
         additionalProperties: false,
@@ -474,16 +494,21 @@ async function mediaGenerate(
   const prompt = typeof args.prompt === "string" ? args.prompt : typeof args.input === "string" ? args.input : "";
   if (!prompt.trim()) return fail("缺少提示词 / 输入文本。");
 
+  // MiniMax's t2a_v2 rejects a request with no `voice_setting.voice_id`, so a
+  // model that omits the optional-looking `voice` argument gets a bare
+  // "missing required parameter" it cannot make sense of. Default it here
+  // rather than letting the failure reach the conversation.
+  const voice = typeof args.voice === "string" && args.voice.trim() ? args.voice.trim() : DEFAULT_TTS_VOICE;
+  // Same trap one level up: both video specs require a duration, and H3 also
+  // requires an explicit, non-adaptive ratio.
+  const duration = typeof args.duration === "number" && args.duration > 0 ? args.duration : DEFAULT_VIDEO_DURATION;
+  const ratio = typeof args.ratio === "string" && args.ratio.trim() ? args.ratio.trim() : DEFAULT_VIDEO_RATIO;
+
   const path =
     kind === "image" ? "/v1/images/generations" : kind === "speech" ? "/v1/audio/speech" : "/v1/videos/generations";
   const payload: Record<string, unknown> =
     kind === "speech"
-      ? {
-          model: model.data,
-          input: prompt,
-          response_format: "mp3",
-          ...(typeof args.voice === "string" && args.voice.trim() ? { voice: args.voice.trim() } : {}),
-        }
+      ? { model: model.data, input: prompt, response_format: "mp3", voice }
       : kind === "image"
         ? {
             model: model.data,
@@ -491,7 +516,7 @@ async function mediaGenerate(
             n: 1,
             ...(typeof args.size === "string" && args.size.trim() ? { size: args.size.trim() } : {}),
           }
-        : { model: model.data, prompt, n: 1 };
+        : { model: model.data, prompt, n: 1, duration, ratio };
 
   const started = Date.now();
   try {
@@ -513,9 +538,17 @@ async function mediaGenerate(
         hint:
           res.status === 401 || res.status === 403
             ? "密钥无效，或该账号没有这个媒体能力的权限。"
-            : res.status === 404
-              ? "模型名不对，或该媒体服务商没有为这个模型配置 spec。"
-              : undefined,
+            : res.status === 402
+              ? "上游额度用尽（不是权限问题）。原话在 response 里，照它解释。"
+              : res.status === 404
+                ? "模型名不对，或该媒体服务商没有为这个模型配置 spec。"
+                : res.status === 400
+                  ? // Observed: a model handed a bare upstream field-path error
+                    // and told the user the spec was broken. It had no way to
+                    // know that, and the `response` field already has the truth.
+                    "上游的参数校验没过。原话在 response 字段里 —— 照它转述给用户，" +
+                    "不要猜测原因（例如不要说「返回格式不匹配」，你看不到上游返回了什么）。"
+                  : undefined,
       });
     }
 

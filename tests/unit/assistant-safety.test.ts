@@ -376,6 +376,104 @@ describe("assistant: media tools", () => {
     if (previous === undefined) delete process.env.RELAY_PUBLIC_URL;
     else process.env.RELAY_PUBLIC_URL = previous;
   });
+  it("supplies the values the vendor requires when the model omits them", async () => {
+    // Observed live: the model left `voice` out because the schema called it
+    // optional, the upstream answered "missing required parameter
+    // voice_setting.voice_id", and the model then told the user the spec was
+    // returning the wrong format — which it had no way of knowing.
+    __resetDbForTest();
+    const previous = process.env.RELAY_PUBLIC_URL;
+    process.env.RELAY_PUBLIC_URL = "https://relay.example.com";
+    __resetConfigForTest();
+
+    const seen: Array<{ url: string; body: Record<string, unknown> }> = [];
+    vi.stubGlobal("fetch", async (url: string | URL | Request, init?: RequestInit) => {
+      seen.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : {} });
+      return new Response(JSON.stringify({ data: { audio: "x", status: 2 } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    // No `voice`, no `duration`, no `ratio` in the arguments at all.
+    await executeTool("generate_speech", JSON.stringify({ model: "speech-2.8-hd", input: "hi" }), {
+      user,
+      relayKey: "sk-relay-x",
+    });
+    expect(seen[0]?.url).toContain("/v1/audio/speech");
+    expect(seen[0]?.body.voice).toBe("English_Trustworth_Man");
+
+    await executeTool("generate_video", JSON.stringify({ model: "minimax-h3", prompt: "a cat" }), {
+      user,
+      relayKey: "sk-relay-x",
+    });
+    expect(seen[1]?.url).toContain("/v1/videos/generations");
+    expect(seen[1]?.body.duration).toBe(6);
+    expect(seen[1]?.body.ratio).toBe("16:9");
+
+    // An explicit value still wins.
+    await executeTool(
+      "generate_speech",
+      JSON.stringify({ model: "speech-2.8-hd", input: "hi", voice: "custom-voice" }),
+      { user, relayKey: "sk-relay-x" },
+    );
+    expect(seen[2]?.body.voice).toBe("custom-voice");
+
+    vi.unstubAllGlobals();
+    __resetConfigForTest();
+    if (previous === undefined) delete process.env.RELAY_PUBLIC_URL;
+    else process.env.RELAY_PUBLIC_URL = previous;
+  });
+
+  it("tells the model to quote a 400 rather than invent a reason", async () => {
+    __resetDbForTest();
+    const previous = process.env.RELAY_PUBLIC_URL;
+    process.env.RELAY_PUBLIC_URL = "https://relay.example.com";
+    __resetConfigForTest();
+    vi.stubGlobal("fetch", async () =>
+      new Response("invalid params, missing required parameter (2013)", {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    const result = await executeTool(
+      "generate_image",
+      JSON.stringify({ model: "image-01", prompt: "x" }),
+      { user, relayKey: "sk-relay-x" },
+    );
+    // Without this the model told the user the spec was returning the wrong
+    // shape, which it could not know.
+    expect(result.content).toContain("不要猜测原因");
+    expect(result.content).toContain("missing required parameter");
+
+    vi.unstubAllGlobals();
+    __resetConfigForTest();
+    if (previous === undefined) delete process.env.RELAY_PUBLIC_URL;
+    else process.env.RELAY_PUBLIC_URL = previous;
+  });
+
+  it("recognises a 402 as a quota ceiling, not a permission problem", async () => {
+    __resetDbForTest();
+    const previous = process.env.RELAY_PUBLIC_URL;
+    process.env.RELAY_PUBLIC_URL = "https://relay.example.com";
+    __resetConfigForTest();
+    vi.stubGlobal("fetch", async () =>
+      new Response("upstream_credit_exhausted", { status: 402, headers: { "content-type": "application/json" } }),
+    );
+
+    const result = await executeTool(
+      "generate_video",
+      JSON.stringify({ model: "minimax-h3", prompt: "a cat" }),
+      { user, relayKey: "sk-relay-x" },
+    );
+    expect(result.content).toContain("不是权限问题");
+
+    vi.unstubAllGlobals();
+    __resetConfigForTest();
+    if (previous === undefined) delete process.env.RELAY_PUBLIC_URL;
+    else process.env.RELAY_PUBLIC_URL = previous;
+  });
 });
 
 describe("assistant: one-shot model probe", () => {
