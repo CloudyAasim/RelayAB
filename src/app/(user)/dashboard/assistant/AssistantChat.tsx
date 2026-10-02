@@ -350,27 +350,31 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
 
   return (
     /**
-     * Full-bleed on all four sides. The `-mx-*` / `-mt-*` / `-mb-*` cancel the
-     * shell's own padding, so the conversation spans the whole column and the
-     * only thing between it and the viewport edge is the 56px app header. That
-     * is what a chat screen should look like, and the padding was costing 64px
-     * of height before the top bar even started.
+     * The height is the viewport minus the app header, and that is all: this
+     * route's page padding is dropped by the shell (see EDGE_TO_EDGE_ROUTES) so
+     * there is nothing else to subtract.
      *
-     * `100vh` first, then `100dvh`. The units mean different things: `vh` is
-     * the viewport with the browser chrome hidden, `dvh` is the one you can
-     * actually see. On a phone dvh is the right one - it follows the collapsing
-     * address bar and the on-screen keyboard. But a browser that does not know
-     * `dvh` discards the whole declaration, and a height-less flex column
-     * collapses to its content, which looks like a page that failed to render.
-     * Tailwind emits these in source order, so the second wins where it is
-     * understood and the first stands in where it is not.
+     * It is deliberately NOT cancelled here with `-mx-*`. The page body is
+     * rendered inside an `overflow-hidden` box, so a child reaching outside its
+     * parent gets clipped, and the chat's top bar and composer were being cut
+     * off at the edges. That hid on a desktop — the centred reading column left
+     * slack to absorb the overflow — and showed up the moment the column was the
+     * full width of a phone. Nothing should sit outside the box here.
+     *
+     * `100vh` first, then `100dvh`. They mean different things: `vh` is the
+     * viewport with the browser chrome hidden, `dvh` is the one you can
+     * actually see. On a phone dvh is right - it follows the collapsing address
+     * bar and the on-screen keyboard - but a browser that does not know `dvh`
+     * discards the whole declaration, and a height-less flex column collapses
+     * to its content, which looks like a page that failed to render. Tailwind
+     * emits these in source order, so the second wins where it is understood
+     * and the first stands in where it is not.
      *
      * No minimum height. A floor is a promise the viewport may not keep - a
      * phone in landscape is shorter than 384px - and honouring it means the
      * composer falls below the fold on exactly the devices with least room.
-     * A short chat beats one you have to scroll to find the input in.
      */
-    <div className="-mx-4 -mt-4 -mb-4 flex h-[calc(100vh-3.5rem)] h-[calc(100dvh-3.5rem)] flex-col sm:-mx-6 sm:-mt-6 sm:-mb-6 lg:-mx-8 lg:-mt-8 lg:-mb-8">
+    <div className="flex h-[calc(100vh-3.5rem)] h-[calc(100dvh-3.5rem)] flex-col">
       {/* ---- top bar: a new chat on the left, what is answering on the right ---- */}
       <div className="mx-auto flex w-full max-w-4xl shrink-0 items-center gap-2 border-b pb-2">
         <Button

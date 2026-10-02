@@ -13,6 +13,7 @@ import { join } from "node:path";
 const SRC = join(process.cwd(), "src");
 const CHAT = readFileSync(join(SRC, "app", "(user)", "dashboard", "assistant", "AssistantChat.tsx"), "utf-8");
 const ROOT_LAYOUT = readFileSync(join(SRC, "app", "layout.tsx"), "utf-8");
+const SHELL = readFileSync(join(SRC, "components", "layouts", "AuthenticatedLayout.tsx"), "utf-8");
 
 describe("assistant: the chat fits the viewport", () => {
   it("declares a vh height before the dvh one, so an older browser still gets a height", () => {
@@ -37,21 +38,24 @@ describe("assistant: the chat fits the viewport", () => {
     expect(match, `a rem minimum height crept back: ${match?.[0] ?? ""}`).toBeNull();
   });
 
-  it("cancels the shell's padding on every side, so the chat really is edge to edge", () => {
-    // `main` is p-4 / sm:p-6 / lg:p-8. Each breakpoint's padding has to be
-    // cancelled at that same breakpoint or the height arithmetic is off by it.
-    for (const [breakpoint, pad] of [
-      ["", "4"],
-      ["sm:", "6"],
-      ["lg:", "8"],
-    ] as const) {
-      for (const side of ["mx", "mt", "mb"] as const) {
-        expect(
-          CHAT,
-          `missing -${side}-${pad} at the ${breakpoint || "base"} breakpoint`,
-        ).toContain(`${breakpoint}-${side}-${pad}`);
-      }
-    }
+  it("never reaches outside the box that clips it", () => {
+    // The page body is rendered inside an `overflow-hidden` element, so a child
+    // that pokes out with negative margins is cut off at the edge. This is what
+    // trimmed the chat's top bar and composer: the `-mx-*`/-mt-*/-mb-* that
+    // looked like a way to get full-bleed. On a desktop the centred reading
+    // column left slack to absorb the overflow, so it hid there and only
+    // showed on a phone, where the column is the full width.
+    expect(CHAT, "the chat still uses negative margins to escape its container").not.toMatch(
+      /-\m[xtb]-\d/,
+    );
+  });
+
+  it("gets its edges from the shell instead", () => {
+    // Same edge-to-edge result, achieved by dropping the page padding on the
+    // route rather than by cancelling it from the inside out.
+    expect(SHELL).toContain("EDGE_TO_EDGE_ROUTES");
+    expect(SHELL).toMatch(/EDGE_TO_EDGE_ROUTES\.has\(pathname\)/);
+    expect(SHELL).toContain('"/dashboard/assistant"');
   });
 
   it("lets the message list scroll instead of the page", () => {

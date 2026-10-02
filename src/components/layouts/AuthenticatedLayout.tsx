@@ -46,6 +46,15 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+/**
+ * Pages whose content manages its own edges against the viewport.
+ *
+ * The assistant is the only one: it is a single full-height column with a
+ * composer pinned to the bottom, so the shell's padding is in the way and the
+ * height arithmetic has to account for the app header and nothing else.
+ */
+const EDGE_TO_EDGE_ROUTES = new Set(["/dashboard/assistant"]);
+
 interface NavItem {
   href: string;
   labelKey: string;
@@ -216,7 +225,26 @@ function SidebarShell({ role, username, displayName, children }: AuthenticatedLa
 
       <SidebarInset>
         <AppHeader username={username} displayName={displayName} role={role} pageTitle={pageTitle} />
-        <main className="flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
+        {/*
+          The assistant owns the whole viewport, and the padding has to go on
+          *this* element rather than be cancelled by the chat with negative
+          margins. A child that reaches outside its parent is clipped here —
+          SectionPageLayout renders the page body in an `overflow-hidden` box —
+          so pulling the chat outwards with `-mx-*` cut its top bar and composer
+          off at the edges. It looked fine on a desktop only because the centred
+          reading column left enough slack to absorb the overflow, and only
+          broke once the column was the full width of a phone.
+
+          Dropping the padding here achieves the same edge-to-edge result with
+          nothing outside the box, so there is nothing to clip.
+        */}
+        <main
+          className={
+            EDGE_TO_EDGE_ROUTES.has(pathname) ? "flex-1" : "flex-1 p-4 sm:p-6 lg:p-8"
+          }
+        >
+          {children}
+        </main>
       </SidebarInset>
     </div>
   );
