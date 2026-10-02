@@ -68,6 +68,16 @@ function isSafeUrl(url: string): boolean {
 
 const MARKDOWN_IMAGE = /!\[\s*([^\]]*)\s*\]\(\s*([^)\s]+)[^)]*\)/g;
 const BARE_URL = /https?:\/\/[^\s<>()]+[^\s<>().,;:!?]/gi;
+/**
+ * A root-relative path, which is how a model actually writes one of ours: it
+ * copies `/api/assistant/artifacts/…` straight out of the tool result. Treating
+ * only absolute addresses as links left it sitting in the prose as plain text,
+ * which is the same complaint as before with a smaller trigger.
+ *
+ * Requires a second slash and no whitespace, so ordinary punctuation and bare
+ * words are not mistaken for a path.
+ */
+const RELATIVE_PATH = /(?<![\w/])\/[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._~%/-]*)+/g;
 
 export function splitLinks(text: string): Segment[] {
   const segments: Segment[] = [];
@@ -89,6 +99,11 @@ export function splitLinks(text: string): Segment[] {
   });
 
   rest = rest.replace(BARE_URL, (url: string) => {
+    if (isSafeUrl(url)) push({ kind: "link", value: url, label: url });
+    return " ";
+  });
+
+  rest = rest.replace(RELATIVE_PATH, (url: string) => {
     if (isSafeUrl(url)) push({ kind: "link", value: url, label: url });
     return " ";
   });
@@ -125,6 +140,69 @@ export function AssistantBody({ text, thinkingLabel }: { text: string; thinkingL
           <span key={`t-${i}`}>{segment.value}</span>
         ),
       )}
+    </div>
+  );
+}
+
+/**
+ * The tool's JSON with the artefact references taken out.
+ *
+ * They are the one part the reader does not need: the picture is already on
+ * screen right above, and the raw array is the same link a second time, in a
+ * worse form. Everything else in the result is worth showing on demand.
+ */
+export function toolContentForDisplay(content: string): string {
+  try {
+    const parsed: unknown = JSON.parse(content);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return content;
+    const { artifacts: _dropped, ...rest } = parsed as Record<string, unknown>;
+    if (_dropped === undefined) return content;
+    return JSON.stringify(rest, null, 2);
+  } catch {
+    // A refusal is prose, not JSON. Show it as it is.
+    return content;
+  }
+}
+
+/**
+ * A tool result: the artefact it produced, and the rest of what it said.
+ *
+ * The collapsed row is labelled with the tool's own name and whether it
+ * succeeded, because a box that only says "⚙ generate_image" gives the reader
+ * nothing to go on until they open it.
+ */
+export function ToolResultCard({
+  toolName,
+  label,
+  content,
+}: {
+  toolName: string | null | undefined;
+  label: string;
+  content: string;
+}) {
+  const display = toolContentForDisplay(content);
+  const failed = /\n?\s*"ok":\s*false/.test(content) || /^工具执行失败/.test(content);
+
+  return (
+    <div className="space-y-2">
+      <MediaArtifacts artifacts={artifactsFromToolContent(content)} />
+      <details className="group rounded-lg border border-border bg-muted/30">
+        <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-xs text-muted-foreground transition-colors hover:text-foreground">
+          <span
+            aria-hidden
+            className={`h-1.5 w-1.5 shrink-0 rounded-full ${failed ? "bg-destructive" : "bg-primary"}`}
+          />
+          <span className="font-medium">{toolName ?? label}</span>
+          <span className="text-[11px] opacity-70 group-open:hidden">{label}</span>
+          <span className="ml-auto text-[11px] opacity-70 group-open:hidden">展开</span>
+          <span className="ml-auto hidden text-[11px] opacity-70 group-open:inline">收起</span>
+        </summary>
+        {display.trim() ? (
+          <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words border-t border-border px-3 py-2 text-xs">
+            {display}
+          </pre>
+        ) : null}
+      </details>
     </div>
   );
 }

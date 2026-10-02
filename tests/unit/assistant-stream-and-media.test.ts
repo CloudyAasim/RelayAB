@@ -12,7 +12,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { splitLinks } from "@/app/(user)/dashboard/assistant/MediaArtifacts";
+import { splitLinks, toolContentForDisplay } from "@/app/(user)/dashboard/assistant/MediaArtifacts";
 
 const SRC = join(process.cwd(), "src");
 const CHAT = readFileSync(join(SRC, "app", "(user)", "dashboard", "assistant", "AssistantChat.tsx"), "utf-8");
@@ -89,6 +89,29 @@ describe("assistant: prose carries links, never a second picture", () => {
     expect(links[0]).toMatchObject({ value: "https://example.com/a.png", label: "https://example.com/a.png" });
   });
 
+  it("makes a root-relative path clickable, which is how the model writes one", () => {
+    // Observed: the assistant narrating "URL 是 /api/assistant/artifacts/0000…"
+    // and it sitting in the prose as plain text, because only absolute
+    // addresses were being recognised.
+    const segments = splitLinks(
+      "成功生成了图片。URL 是 /api/assistant/artifacts/00001xCbuADbfhtSefPSROZ6ZM",
+    );
+    const links = segments.filter((s) => s.kind === "link");
+    expect(links).toHaveLength(1);
+    expect(links[0]).toMatchObject({
+      value: "/api/assistant/artifacts/00001xCbuADbfhtSefPSROZ6ZM",
+      label: "/api/assistant/artifacts/00001xCbuADbfhtSefPSROZ6ZM",
+    });
+  });
+
+  it("does not mistake ordinary prose for a path", () => {
+    // A lone slash, a date, and a fraction are not links.
+    for (const prose of ["用 image-01 生成的，耗时 17 秒", "3 / 4 完成", "没有路径"] ) {
+      const links = splitLinks(prose).filter((s) => s.kind === "link");
+      expect(links, `"${prose}" produced a link`).toEqual([]);
+    }
+  });
+
   it("leaves prose with no URL exactly as it was", () => {
     const segments = splitLinks("已经生成好了，提示词是「戴帽子的猫」。");
     expect(segments).toHaveLength(1);
@@ -125,5 +148,42 @@ describe("assistant: prose carries links, never a second picture", () => {
   it("renders the picture in exactly one place: the tool result", () => {
     const start = BODY.indexOf("export function MediaArtifacts");
     expect(BODY.slice(start)).toContain("<img");
+  });
+});
+
+describe("assistant: the tool row", () => {
+  it("drops the artefact array from the JSON it shows", () => {
+    // The picture is on screen directly above; the raw array is the same link
+    // a second time, in a worse form.
+    const shown = toolContentForDisplay(
+      JSON.stringify({
+        ok: true,
+        via: "account",
+        itemCount: 1,
+        artifacts: [{ id: "a1", kind: "image", url: "/api/assistant/artifacts/a1" }],
+      }),
+    );
+    expect(shown).not.toContain("artifacts");
+    expect(shown).toContain("itemCount");
+  });
+
+  it("leaves a result with nothing to hide untouched", () => {
+    expect(toolContentForDisplay('{"ok":true,"via":"account"}')).toContain("via");
+  });
+
+  it("shows a refusal as the prose it is", () => {
+    const refusal = "没有可用于本部署的凭据，无法发起真实调用。";
+    expect(toolContentForDisplay(refusal)).toBe(refusal);
+  });
+});
+
+describe("assistant: the history drawer", () => {
+  it("separates the new-chat action from the list below it", () => {
+    // space-y-1 made a 28px button and the first row read as one block.
+    expect(CHAT).toMatch(/<Button\s+variant="outline"\s+className="mb-2 w-full justify-start"/);
+  });
+
+  it("gives each row a tappable height", () => {
+    expect(CHAT).toContain("px-2 py-2 text-left text-sm leading-snug");
   });
 });

@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/Sheet";
 import { useT } from "@/components/i18n/I18nProvider";
 import { CredentialPanel, type Mode } from "@/lib/assistant/CredentialPanel";
-import { MediaArtifacts, artifactsFromToolContent, AssistantBody } from "./MediaArtifacts";
+import { MediaArtifacts, ToolResultCard, AssistantBody } from "./MediaArtifacts";
 import type { ArtifactRef } from "@/lib/db/assistant-artifacts";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";
 import { Pencil, Trash2 } from "lucide-react";
@@ -494,20 +494,12 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
           <div className="mx-auto w-full max-w-4xl space-y-5 px-1 py-6">
             {messages.map((m) =>
               m.role === "tool" ? (
-                <div key={m.id} className="space-y-2">
-                  {/* The artefact, then the raw tool output underneath it. The
-                      JSON is still there to expand, but it is no longer the only
-                      way to see what came back. */}
-                  <MediaArtifacts artifacts={artifactsFromToolContent(m.content)} />
-                  <details className="rounded-lg border border-border bg-muted/30 p-2">
-                    <summary className="cursor-pointer text-xs text-muted-foreground">
-                      ⚙ {m.toolName ?? t("assistant.toolResult")}
-                    </summary>
-                    <pre className="mt-1 max-h-56 overflow-auto whitespace-pre-wrap break-words text-xs">
-                      {m.content}
-                    </pre>
-                  </details>
-                </div>
+                <ToolResultCard
+                  key={m.id}
+                  toolName={m.toolName}
+                  label={t("assistant.toolResult")}
+                  content={m.content}
+                />
               ) : m.role === "user" ? (
                 <div key={m.id} className="flex justify-end">
                   <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl bg-muted px-4 py-2.5 text-sm">
@@ -611,10 +603,13 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
             <SheetTitle>{t("assistant.history")}</SheetTitle>
             <SheetDescription>{t("assistant.historyDesc")}</SheetDescription>
           </SheetHeader>
-          <div className="mt-4 space-y-1">
+          {/* The new-chat button is an action, the rows below it are a list.
+              At space-y-1 they read as one block, and a 28px row with a 4px gap
+              is below the comfortable target for a tappable row. */}
+          <div className="mt-4 space-y-1.5">
             <Button
               variant="outline"
-              className="w-full justify-start"
+              className="mb-2 w-full justify-start"
               onClick={newThread}
               disabled={busy}
             >
@@ -628,6 +623,7 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
             {threads.length === 0 && (
               <p className="px-1 py-3 text-sm text-muted-foreground">{t("assistant.noHistory")}</p>
             )}
+            <div className="space-y-0.5">
             {threads.map((th) => {
               const renaming = renamingId === th.id;
               return (
@@ -670,7 +666,7 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
                         setHistoryOpen(false);
                       }}
                       title={th.title}
-                      className="min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-left text-sm"
+                      className="min-w-0 flex-1 truncate rounded-md px-2 py-2 text-left text-sm leading-snug"
                     >
                       {th.title}
                     </button>
@@ -683,7 +679,7 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
                         onClick={() => startRename(th)}
                         aria-label={t("assistant.renameThread")}
                         title={t("assistant.renameThreadHint")}
-                        className="shrink-0 rounded p-1.5 text-muted-foreground transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className="shrink-0 rounded p-2 text-muted-foreground transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
@@ -693,7 +689,7 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
                         disabled={deletingId === th.id}
                         aria-label={t("assistant.deleteThread")}
                         title={t("assistant.deleteThread")}
-                        className="shrink-0 rounded p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                        className="shrink-0 rounded p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -702,6 +698,7 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
                 </div>
               );
             })}
+            </div>
           </div>
         </SheetContent>
       </Sheet>
