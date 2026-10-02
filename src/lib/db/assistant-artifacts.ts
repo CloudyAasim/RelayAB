@@ -37,9 +37,20 @@ export interface ArtifactRef {
   kind: ArtifactKind;
   contentType: string;
   url: string;
+  /**
+   * Size in bytes, or null when the file lives at an upstream link and nothing
+   * here ever measured it. Carried so the reader can be told how big the thing
+   * is; guessing would be worse than saying nothing.
+   */
+  bytes: number | null;
 }
 
-export function artifactRef(row: Pick<AssistantArtifact, "id" | "kind" | "contentType">): ArtifactRef {
+export function artifactRef(row: {
+  id: string;
+  kind: ArtifactKind;
+  contentType: string;
+  bytes: Uint8Array | null;
+}): ArtifactRef {
   return {
     id: row.id,
     kind: row.kind,
@@ -48,6 +59,10 @@ export function artifactRef(row: Pick<AssistantArtifact, "id" | "kind" | "conten
     // link, which is typically a long-lived CDN URL the model would otherwise
     // have to copy around and the reader would have no way to revoke.
     url: `/api/assistant/artifacts/${row.id}`,
+    // The length of what we hold, which is the whole of the file for a stored
+    // one and unknown for a linked one - so the reader is told nothing rather
+    // than something plausible.
+    bytes: row.bytes ? row.bytes.byteLength : null,
   };
 }
 

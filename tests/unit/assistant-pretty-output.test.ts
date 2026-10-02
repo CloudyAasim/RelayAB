@@ -110,11 +110,30 @@ describe("assistant: a picture with a label and a way to keep it", () => {
     "utf-8",
   );
 
-  it("shows the kind, the type and a download", () => {
+  it("puts the details beside the file, not under it", () => {
     const media = sourceOf(body, "MediaArtifacts");
-    expect(media).toContain("artifact.contentType");
-    expect(media).toContain("?dl=1");
-    expect(media).toContain("KIND_LABEL");
+    // A caption under a wide picture puts the two things a reader wants - what
+    // it is and where it lives - at the far edge of the column.
+    expect(media).toMatch(/className="flex flex-col gap-3 sm:flex-row sm:items-start"/);
+    expect(media).toMatch(/className="min-w-0 flex-1 space-y-2\.5"/);
+    expect(media).not.toContain("figcaption");
+  });
+
+  it("labels the kind, the format and the link, and says the size only when it knows it", () => {
+    const media = sourceOf(body, "MediaArtifacts");
+    for (const row of ["类型", "格式", "大小", "链接"]) {
+      expect(media, `missing the ${row} row`).toContain(row);
+    }
+    expect(media).toContain("artifact.url");
+    // A linked file was never measured, so the row is conditional rather than
+    // filled with a plausible number.
+    expect(media).toMatch(/\{size && \(/);
+  });
+
+  it("makes the download a button, not a word in a caption", () => {
+    const media = sourceOf(body, "MediaArtifacts");
+    expect(media).toContain("buttonVariants");
+    expect(media).toMatch(/<a[\s\S]{0,200}\?dl=1[\s\S]{0,120}download/);
   });
 
   it("downloads through our own route rather than linking at a redirect", () => {
@@ -128,11 +147,16 @@ describe("assistant: a picture with a label and a way to keep it", () => {
 
   it("renders the picture here and nowhere else", () => {
     // One place. Two was what made every generated image appear twice.
-    const file = body;
-    const withImg = file.match(/<img\b/g)?.length ?? 0;
+    const withImg = body.match(/<img\b/g)?.length ?? 0;
     expect(withImg).toBe(1);
-    expect(sourceOf(file, "AssistantBody")).not.toContain("<img");
-    expect(sourceOf(file, "MediaArtifacts")).toContain("<img");
+    expect(sourceOf(body, "AssistantBody")).not.toContain("<img");
+    expect(sourceOf(body, "MediaArtifacts")).toContain("<img");
+  });
+
+  it("carries a size only when one is known", () => {
+    const ref = readFileSync(join(SRC, "lib", "db", "assistant-artifacts.ts"), "utf-8");
+    expect(ref).toMatch(/bytes: row\.bytes \? row\.bytes\.byteLength : null/);
+    expect(ref).toMatch(/bytes: number \| null/);
   });
 });
 

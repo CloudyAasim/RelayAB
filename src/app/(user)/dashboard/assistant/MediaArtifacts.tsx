@@ -17,6 +17,8 @@
  */
 import type { ArtifactRef } from "@/lib/db/assistant-artifacts";
 import { markdownToHtml } from "@/lib/markdown";
+import { buttonVariants } from "@/components/ui/Button";
+import { cn } from "@/lib/utils";
 
 /**
  * Read the references a tool message carries.
@@ -299,7 +301,7 @@ export function ToolResultCard({
     </div>
   );
 }
-/** A short, honest description of a file, for the row under it. */
+/** A short, honest description of a file, for the panel beside it. */
 const KIND_LABEL: Record<ArtifactRef["kind"], string> = {
   image: "图片",
   audio: "音频",
@@ -322,47 +324,102 @@ export function MediaArtifacts({
 }) {
   if (artifacts.length === 0) return null;
   return (
-    <div className="space-y-2">
-      {artifacts.map((artifact) => (
-        <figure key={artifact.id} className="space-y-1.5">
-          {artifact.kind === "image" ? (
-            <a href={artifact.url} target="_blank" rel="noreferrer" className="block">
-              {/* eslint-disable-next-line @next/next/no-img-element -- the URL is a
-                  session-scoped route, not a static asset, and next/image would
-                  need a loader that can authenticate the fetch. */}
-              <img
+    <div className="space-y-4">
+      {artifacts.map((artifact) => {
+        const size = sizeLabel(artifact.bytes);
+        return (
+          <figure
+            key={artifact.id}
+            /* Beside the file, not under it. A caption line under a picture puts
+               the two facts the reader wants - what it is, and where it lives -
+               at the far edge of a 900px column, and makes the download a
+               word in running text. */
+            className="flex flex-col gap-3 sm:flex-row sm:items-start"
+          >
+            {artifact.kind === "image" ? (
+              <a
+                href={artifact.url}
+                target="_blank"
+                rel="noreferrer"
+                className="block shrink-0"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element -- the URL is a
+                    session-scoped route, not a static asset, and next/image would
+                    need a loader that can authenticate the fetch. */}
+                <img
+                  src={artifact.url}
+                  alt=""
+                  className="max-h-80 w-auto max-w-full rounded-lg border border-border"
+                />
+              </a>
+            ) : artifact.kind === "video" ? (
+              <video
                 src={artifact.url}
-                alt=""
-                className="max-h-96 w-auto max-w-full rounded-lg border border-border"
+                controls
+                preload="metadata"
+                className="max-h-80 w-auto max-w-full shrink-0 rounded-lg border border-border"
               />
-            </a>
-          ) : artifact.kind === "video" ? (
-            <video
-              src={artifact.url}
-              controls
-              preload="metadata"
-              className="max-h-96 w-auto max-w-full rounded-lg border border-border"
-            />
-          ) : (
-            <audio src={artifact.url} controls preload="metadata" className="w-full" />
-          )}
+            ) : (
+              <div className="shrink-0 sm:w-72">
+                <audio src={artifact.url} controls preload="metadata" className="w-full" />
+              </div>
+            )}
 
-          {/* What it is, and a way to keep it. The dl flag makes our route
-              stream the file with a download disposition, which a plain link to
-              a redirecting CDN URL cannot promise. */}
-          <figcaption className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
-            <span>{KIND_LABEL[artifact.kind]}</span>
-            <span aria-hidden>·</span>
-            <span className="font-mono">{artifact.contentType}</span>
-            <a
-              href={`${artifact.url}?dl=1`}
-              className="ml-auto underline underline-offset-2 hover:text-foreground"
-            >
-              {downloadLabel}
-            </a>
-          </figcaption>
-        </figure>
-      ))}
+            <div className="min-w-0 flex-1 space-y-2.5">
+              <dl className="space-y-1 text-xs">
+                <div className="flex gap-2">
+                  <dt className="w-14 shrink-0 text-muted-foreground">类型</dt>
+                  <dd className="text-foreground">{KIND_LABEL[artifact.kind]}</dd>
+                </div>
+                <div className="flex gap-2">
+                  <dt className="w-14 shrink-0 text-muted-foreground">格式</dt>
+                  <dd className="truncate font-mono text-foreground" title={artifact.contentType}>
+                    {artifact.contentType}
+                  </dd>
+                </div>
+                {size && (
+                  <div className="flex gap-2">
+                    <dt className="w-14 shrink-0 text-muted-foreground">大小</dt>
+                    <dd className="text-foreground">{size}</dd>
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <dt className="w-14 shrink-0 text-muted-foreground">链接</dt>
+                  <dd className="min-w-0">
+                    {/* The path the model keeps quoting back, shown where it can
+                        be read and copied rather than inferred from prose. */}
+                    <a
+                      href={artifact.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block break-all font-mono text-primary underline underline-offset-2"
+                    >
+                      {artifact.url}
+                    </a>
+                  </dd>
+                </div>
+              </dl>
+
+              {/* A `download` attribute is not honoured once the browser has
+                  followed a redirect to another origin, so the link asks our own
+                  route to stream the file instead - and only then, which keeps
+                  simply looking at a picture a cheap redirect. A real button
+                  rather than a word in a caption: a link you have to read before
+                  you know what it does is not a button. */}
+              <a
+                href={`${artifact.url}?dl=1`}
+                download
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "sm" }),
+                  "no-underline hover:no-underline",
+                )}
+              >
+                {downloadLabel}
+              </a>
+            </div>
+          </figure>
+        );
+      })}
     </div>
   );
 }
