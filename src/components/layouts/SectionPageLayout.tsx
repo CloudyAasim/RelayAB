@@ -56,9 +56,10 @@ export function SectionPageLayout({ children, scrollContent = true }: SectionPag
   // A page with no title, breadcrumb or actions renders none of that row. The
   // assistant page does exactly that on purpose - its own top bar carries the
   // name, and a second one above it would be the same screen saying its name
-  // twice - but the empty div and its bottom padding were still being emitted,
-  // which cost about 40px of height on a screen whose whole point is how much
-  // of it the conversation gets.
+  // twice - but the wrapper and its bottom padding were still being emitted,
+  // which measured 16px of dead height on a screen whose whole point is how
+  // much of it the conversation gets. (Only the padding: the empty heading has
+  // no line box, so it cost nothing on its own.)
   const hasHeader = title != null || breadcrumb != null || actions != null;
 
   return (

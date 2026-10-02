@@ -350,19 +350,21 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
 
   return (
     /**
-     * Full-bleed: `-mx-*` cancels the shell's own horizontal padding, so the
-     * top bar, the message area and the composer use the full column. The
-     * reading line inside stays `max-w-4xl` and centred, which is what keeps
-     * the text readable — a chat that stretches to a 2560px monitor is not a
-     * bigger chat, it is a worse one.
+     * Full-bleed on all four sides. The `-mx-*` / `-mt-*` / `-mb-*` cancel the
+     * shell's own padding, so the conversation spans the whole column and the
+     * only thing between it and the viewport edge is the 56px app header. That
+     * is what a chat screen should look like, and the padding was costing 64px
+     * of height before the top bar even started.
      *
-     * The height is the viewport minus the chrome that is actually above and
-     * below: a 56px header, plus main's vertical padding, which steps 16 → 24 →
-     * 32px with the same breakpoints the padding uses. The previous flat
-     * 100dvh-8.5rem over-reserved by 16px at desktop and 48px on a phone, and
-     * that gap is exactly what the conversation does not have to spare.
+     * With the padding cancelled the height is the same arithmetic at every
+     * breakpoint - viewport minus the header - so it no longer needs three
+     * guesses that each drift from the padding they are cancelling.
+     *
+     * The reading line inside stays `max-w-4xl` and centred, which is what
+     * keeps the text readable: a chat stretched across a 2560px monitor is not
+     * a bigger chat, it is a worse one.
      */
-    <div className="-mx-4 flex h-[calc(100dvh-5.5rem)] min-h-[26rem] flex-col sm:-mx-6 sm:h-[calc(100dvh-6.5rem)] lg:-mx-8 lg:h-[calc(100dvh-7.5rem)]">
+    <div className="-mx-4 -mt-4 -mb-4 flex h-[calc(100dvh-3.5rem)] min-h-[24rem] flex-col sm:-mx-6 sm:-mt-6 sm:-mb-6 lg:-mx-8 lg:-mt-8 lg:-mb-8">
       {/* ---- top bar: a new chat on the left, what is answering on the right ---- */}
       <div className="mx-auto flex w-full max-w-4xl shrink-0 items-center gap-2 border-b pb-2">
         <Button
