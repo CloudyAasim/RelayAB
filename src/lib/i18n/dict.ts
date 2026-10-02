@@ -770,7 +770,6 @@ const zhCN: Dict = {
   "assistant.toolResult": "查看工具输出",
   "assistant.gatewayKey": "网关密钥（可选）",
   "assistant.gatewayKeyHint": "填了助手才能帮你实测模型；不填就只能查不能测。同样不保存。",
-  "assistant.placeholder": "输入消息，Ctrl/⌘ + Enter 发送",
   "assistant.send": "发送",
   "assistant.thinking": "思考中…",
   "assistant.stop": "停止",
@@ -779,7 +778,8 @@ const zhCN: Dict = {
   "assistant.history": "历史对话",
   "assistant.historyDesc": "选择一次对话继续，或新建一个。",
   "assistant.noHistory": "还没有对话记录。",
-  "assistant.placeholderHint": "问点什么，Enter 发送，Shift+Enter 换行",
+  "assistant.placeholderHint": "问点什么，Enter 发送，Shift+Enter 换行",  "assistant.messageLabel": "消息",
+
   "assistant.settings.title": "助手设置",
   "assistant.settings.desc": "助手跑在你自己的上游密钥上，不经过本系统的提供商。",
   "assistant.settings.baseUrl": "API 地址",
@@ -1605,7 +1605,6 @@ const en: Dict = {
   "assistant.gatewayKey": "Gateway key (optional)",
   "assistant.gatewayKeyHint":
     "Needed only so the assistant can run a real test for you. Without it it can look things up but not try them. Also not stored.",
-  "assistant.placeholder": "Message — Ctrl/⌘ + Enter to send",
   "assistant.send": "Send",
   "assistant.thinking": "Thinking…",
   "assistant.stop": "Stop",
@@ -1616,7 +1615,8 @@ const en: Dict = {
   "assistant.history": "Conversations",
   "assistant.historyDesc": "Pick one to continue, or start a new one.",
   "assistant.noHistory": "No conversations yet.",
-  "assistant.placeholderHint": "Ask something — Enter to send, Shift+Enter for a new line",
+  "assistant.placeholderHint": "Ask something — Enter to send, Shift+Enter for a new line",  "assistant.messageLabel": "Message",
+
 
   "assistant.settings.title": "Assistant settings",
   "assistant.settings.desc":

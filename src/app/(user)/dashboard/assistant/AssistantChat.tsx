@@ -281,7 +281,7 @@ export function AssistantChat({ configured, settingsPanel, pendingPanel }: Props
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto py-4">
         {messages.length === 0 ? (
           <div className="flex h-full items-center justify-center px-4">
-            <p className="max-w-prose text-center text-sm text-muted-foreground">
+            <p className="mx-auto max-w-prose text-center text-sm text-muted-foreground">
               {t("assistant.emptyState")}
             </p>
           </div>
@@ -346,7 +346,7 @@ export function AssistantChat({ configured, settingsPanel, pendingPanel }: Props
 
         <div className="space-y-1.5">
           <label htmlFor="assistant-input" className="block text-sm font-medium text-foreground">
-            {t("assistant.placeholder")}
+            {t("assistant.messageLabel")}
           </label>
           <textarea
             id="assistant-input"
