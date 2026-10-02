@@ -136,18 +136,122 @@ describe("assistant: what a linked artefact weighs", () => {
     });
 
     // The link has expired, which is the common case for a CDN URL days later.
+    // Both probes are refused, and neither refusal carries a size we may use.
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 404 }));
-    // And the awkward one: a 200 with no length header at all.
-    fetchMock.mockResolvedValueOnce(new Response(null, { headers: { "content-type": "image/webp" } }));
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 404 }));
 
-    const missingLength = await call(artifact.id, `/api/assistant/artifacts/${artifact.id}?meta=1`);
-    expect((await missingLength.json()).data.bytes).toBeNull();
+    const gone = await call(artifact.id, `/api/assistant/artifacts/${artifact.id}?meta=1`);
+    const goneData = (await gone.json()).data;
+    expect(goneData.bytes).toBeNull();
+    expect(goneData.contentType).toBe("application/octet-stream");
 
+    // And the awkward one: a HEAD that succeeds but carries no length at all.
+    // No second probe there - the upstream answered, it just had nothing to
+    // say, and asking again would not change that.
+    fetchMock.mockResolvedValueOnce(
+      new Response(null, { headers: { "content-type": "image/webp" } }),
+    );
     const noLength = await call(artifact.id, `/api/assistant/artifacts/${artifact.id}?meta=1`);
     const data = (await noLength.json()).data;
     expect(data.bytes).toBeNull();
     // A type the upstream did send is still worth using.
     expect(data.contentType).toBe("image/webp");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("falls back to one byte when the upstream refuses the HEAD", async () => {
+    // The real shape of the problem. A presigned URL is signed for the method
+    // that was signed, and Aliyun OSS - where every image this deployment
+    // generates lives - answers HEAD with 403 and a 1225-byte `application/xml`
+    // error body. So the HEAD is tried, refused, and then the first byte is
+    // asked for instead, which is enough to learn the whole length.
+    const thread = await createAssistantThread(user.id, "a picture");
+    const artifact = await saveAssistantArtifact({
+      userId: user.id,
+      threadId: thread.id,
+      kind: "image",
+      url: "https://oss.example/prod/cat_aigc.jpeg?Signature=…",
+      contentType: "application/octet-stream",
+    });
+
+    fetchMock.mockResolvedValueOnce(
+      new Response('<?xml version="1.0"?><Error><Code>AccessDenied</Code></Error>', {
+        status: 403,
+        headers: { "content-length": "1225", "content-type": "application/xml" },
+      }),
+    );
+    // 206: the refusal's own headers are never what we report.
+    fetchMock.mockResolvedValueOnce(
+      new Response(new Uint8Array(1), {
+        status: 206,
+        headers: { "content-range": "bytes 0-0/286812", "content-type": "image/jpeg" },
+      }),
+    );
+
+    const res = await call(artifact.id, `/api/assistant/artifacts/${artifact.id}?meta=1`);
+    expect(await res.json()).toEqual({
+      ok: true,
+      data: { bytes: 286812, contentType: "image/jpeg" },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({ headers: { range: "bytes=0-0" } });
+  });
+
+  it("believes nothing when both probes are refused", async () => {
+    // HEAD refused, and the ranged GET refused too - a link that has expired.
+    // The answer is "we do not know", not the error document's own headers,
+    // which is what the first version of this endpoint reported.
+    const thread = await createAssistantThread(user.id, "a picture");
+    const artifact = await saveAssistantArtifact({
+      userId: user.id,
+      threadId: thread.id,
+      kind: "image",
+      url: "https://oss.example/prod/gone.jpeg?Signature=…",
+      contentType: "application/octet-stream",
+    });
+
+    const refusal = () =>
+      new Response(null, {
+        status: 403,
+        headers: { "content-length": "1225", "content-type": "application/xml" },
+      });
+    fetchMock.mockResolvedValueOnce(refusal());
+    fetchMock.mockResolvedValueOnce(refusal());
+
+    const res = await call(artifact.id, `/api/assistant/artifacts/${artifact.id}?meta=1`);
+    // Still a 200: the caller asked what we know, and the answer is nothing.
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      ok: true,
+      data: { bytes: null, contentType: "application/octet-stream" },
+    });
+  });
+
+  it("reads the length off a server that ignores Range", async () => {
+    // Asked for one byte, answered 200 with the whole file. The length is
+    // still in the headers, and that is all we came for.
+    const thread = await createAssistantThread(user.id, "a picture");
+    const artifact = await saveAssistantArtifact({
+      userId: user.id,
+      threadId: thread.id,
+      kind: "image",
+      url: "https://cdn.example/no-range.png",
+      contentType: "application/octet-stream",
+    });
+
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 405 }));
+    fetchMock.mockResolvedValueOnce(
+      new Response(new Uint8Array(64), {
+        status: 200,
+        headers: { "content-length": "64", "content-type": "image/png" },
+      }),
+    );
+
+    const res = await call(artifact.id, `/api/assistant/artifacts/${artifact.id}?meta=1`);
+    expect(await res.json()).toEqual({
+      ok: true,
+      data: { bytes: 64, contentType: "image/png" },
+    });
   });
 
   it("does not leak the size of somebody else's artefact", async () => {

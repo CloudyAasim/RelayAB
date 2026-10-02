@@ -31,6 +31,49 @@ function isHttpUrl(value: string): boolean {
   }
 }
 
+/**
+ * How big a linked file is, without downloading it.
+ *
+ * HEAD is the cheap probe, and for most hosts it is the whole answer. It is not
+ * always: a presigned URL is signed for the method that was signed, and the
+ * images this deployment generates live on an Aliyun OSS link that answers HEAD
+ * with 403 and a 1225-byte `application/xml` error body. Reading that turned a
+ * 280 KB JPEG into "1.2 KB, application/xml" on the panel - a wrong number, and
+ * a more confident-looking one than the blank row it replaced.
+ *
+ * So a refused HEAD falls through to a ranged GET. A 206 carries the whole
+ * length in `Content-Range` for one byte of transfer, and its content type is
+ * the file's rather than an error document's.
+ *
+ * Returns nulls rather than a guess when neither works. A blank row is a small
+ * loss; a wrong one is a lie the reader has no way to catch.
+ */
+async function probeRemote(
+  url: string,
+): Promise<{ bytes: number | null; contentType: string | null }> {
+  const head = await fetch(url, { method: "HEAD" }).catch(() => null);
+  if (head?.ok) {
+    const length = Number(head.headers.get("content-length") ?? NaN);
+    return {
+      bytes: Number.isFinite(length) && length > 0 ? length : null,
+      contentType: head.headers.get("content-type"),
+    };
+  }
+
+  // One byte is enough to learn the whole length.
+  const slice = await fetch(url, { headers: { range: "bytes=0-0" } }).catch(() => null);
+  if (!slice?.ok) return { bytes: null, contentType: null };
+  // A server that ignores Range answers 200 with the length in Content-Length;
+  // one that honours it answers 206 with `bytes 0-0/286812`.
+  const contentType = slice.headers.get("content-type");
+  const total = Number(
+    slice.headers.get("content-range")?.split("/")[1] ?? slice.headers.get("content-length") ?? NaN,
+  );
+  // We only wanted the headers; do not hold the body open.
+  void slice.body?.cancel();
+  return { bytes: Number.isFinite(total) && total > 0 ? total : null, contentType };
+}
+
 export async function GET(
   req: Request,
   context: { params: Promise<{ id: string }> },
@@ -66,15 +109,14 @@ export async function GET(
     if (!artifact.url || !isHttpUrl(artifact.url)) {
       return NextResponse.json({ ok: true, data: { bytes: null, contentType: artifact.contentType } });
     }
-    const upstream = await fetch(artifact.url, { method: "HEAD" }).catch(() => null);
-    const length = Number(upstream?.headers.get("content-length") ?? NaN);
+    const { bytes, contentType } = await probeRemote(artifact.url);
     return NextResponse.json({
       ok: true,
       data: {
-        bytes: Number.isFinite(length) && length > 0 ? length : null,
+        bytes,
         // The stored type for a linked artefact is a placeholder; the upstream
         // knows better, and the whole point of asking is to replace it.
-        contentType: upstream?.headers.get("content-type") ?? artifact.contentType,
+        contentType: contentType ?? artifact.contentType,
       },
     });
   }
