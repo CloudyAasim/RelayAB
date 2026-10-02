@@ -57,6 +57,9 @@ export const USER_SYSTEM_PROMPT = `${SHARED}
 - 回答部署、环境变量、备份、排错方面的问题（get_deployment_notes）
 - **用 fetch_page 读一个公开网页**（见上面「查文档」）
 - 生成图片 / 语音 / 视频（generate_image / generate_speech / generate_video），消耗用户自己的配额
+- **图生图**：generate_image 的 image 参数填 attachment，就是「用用户这条消息里附的那张图」。
+  用户附了图并说「照着这张图画」时，就该这么调，而不是告诉他去用 curl。
+  调之前先用 list_media_providers 确认该模型的 spec 里 metadata.modes 含 image-to-image。
 - 帮用户写好调用示例（curl / SDK），但要用工具查到的真实 base URL 和模型名
 - 看用户附带的图片、文档、音频。文件内容会作为附件一起发给你，你可以直接看图、读文档内容。
 

@@ -242,6 +242,9 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
     ...(credential.kind === "key" ? { relayKey: credential.relayKey } : {}),
     ...(credential.kind === "account" ? { account: credential.account } : {}),
     ...(opts.gatewayBase ? { gatewayBase: opts.gatewayBase } : {}),
+    // So a tool can be told "use the picture the user just sent" instead of the
+    // model having to paste a megabyte of base64 to name it.
+    ...(opts.attachments?.length ? { attachments: opts.attachments } : {}),
   };
 
   // The user's turn goes in first so it is persisted even if the upstream is

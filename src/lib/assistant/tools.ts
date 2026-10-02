@@ -40,7 +40,9 @@ import { fetchPage, WebFetchError } from "./web-fetch";
 import { NO_CREDENTIAL_MESSAGE, type AccountCredential } from "./credentials";
 import { executeMediaRequest, resultItems } from "../media/handler";
 import { proxyChatCompletion } from "../proxy/openai";
+import { getAssistantArtifact } from "../db/assistant-artifacts";
 import type { ArtifactKind } from "../db/assistant-artifacts";
+import type { MessageAttachment } from "./schema";
 import type { AuthedUser } from "../auth/session";
 
 export interface ToolContext {
@@ -59,6 +61,14 @@ export interface ToolContext {
    * starts. See `gatewayBase()`.
    */
   gatewayBase?: string;
+  /**
+   * The files attached to the turn in flight.
+   *
+   * Here so that "use the picture the user just sent me" is something a tool
+   * can be told, rather than something the model would have to paste a
+   * megabyte of base64 to express. See `resolveReferenceImage`.
+   */
+  attachments?: MessageAttachment[];
 }
 
 /** A media file the tool produced, for the caller to store and hand a URL back. */
@@ -238,13 +248,26 @@ const USER_TOOLS: AssistantToolDef[] = [
     function: {
       name: "generate_image",
       description:
-        "用一个媒体模型生成图片，返回图片 URL。走的是本系统的 /v1/images/generations 端点，消耗用户自己的配额。",
+        "用一个媒体模型生成图片，返回图片 URL。走的是本系统的 /v1/images/generations 端点，消耗用户自己的配额。\n" +
+        "图生图（以图为参考）用 image 参数：填 attachment 表示「用用户这条消息里附的那张图」，" +
+        "或直接给一个 http(s) 图片网址。服务商是否支持图生图取决于它的 spec，" +
+        "先用 list_media_providers 看该模型的 spec 里 metadata.modes 有没有 image-to-image。",
       parameters: {
         type: "object",
         properties: {
           model: { type: "string", description: "图片模型名，取自 list_gateway_models 的 mediaModels" },
           prompt: { type: "string", description: "想生成什么画面" },
           size: { type: "string", description: "如 1024x1024；不填则用服务商默认" },
+          ratio: {
+            type: "string",
+            description: "宽高比，如 16:9、9:16。服务商通常按尺寸表把它换算成实际尺寸。",
+          },
+          image: {
+            type: "string",
+            description:
+              "参考图。填 attachment 表示用用户这条消息里附的图片；也可以给一个 http(s) 图片网址。" +
+              "不填就是文生图。这个工具不接收 base64。",
+          },
         },
         required: ["model", "prompt"],
         additionalProperties: false,
@@ -721,6 +744,73 @@ function artifactsFromItems(
  * model permissions apply, which is the point of routing through the gateway
  * at all.
  */
+/**
+ * The reference image, in whatever form the caller gave it.
+ *
+ * A vendor's spec asks for a data URL (or a URL it can fetch), so the tool has
+ * to end up with one. Three ways in:
+ *
+ *   - the literal `attachment`, meaning the picture the user attached to this
+ *     message. This is the case that matters: a model that can see an image in
+ *     its context but cannot name it in a tool call can do text-to-image and
+ *     not image-to-image, and then falls back to telling the user to use curl.
+ *   - an http(s) URL, passed through. Also how most vendors want a reference.
+ *   - a data URL, passed through.
+ *
+ * The bytes come from `assistant_artifacts`, which is the same store the
+ * conversation renders from and which is owner-scoped — so a tool cannot reach
+ * a picture the user did not attach to this turn.
+ */
+
+/** Above this, the base64 body is a liability rather than a payload. */
+const MAX_REFERENCE_BYTES = 8 * 1024 * 1024;
+
+const ATTACHMENT_ALIASES = new Set(["attachment", "@attachment", "上传的图片", "附件"]);
+
+export async function resolveReferenceImage(
+  value: string,
+  ctx: ToolContext,
+): Promise<{ ok: true; dataUrl: string } | { ok: false; reason: string }> {
+  const raw = value.trim();
+  if (!raw) return { ok: false, reason: "image 是空的。" };
+
+  if (raw.startsWith("data:")) return { ok: true, dataUrl: raw };
+
+  if (/^https?:\/\//i.test(raw)) {
+    return { ok: true, dataUrl: raw };
+  }
+
+  if (!ATTACHMENT_ALIASES.has(raw)) {
+    return {
+      ok: false,
+      reason:
+        "image 只接受三种写法：attachment（用用户这一条消息里附的图片）、一个 http(s) 图片网址、或者一个 data URL。",
+    };
+  }
+
+  const pictures = (ctx.attachments ?? []).filter((a) => a.kind === "image");
+  if (pictures.length === 0) {
+    return { ok: false, reason: "这一条消息里没有附上图片，所以没有可用的参考图。" };
+  }
+  // Newest wins: the user may have sent a correction.
+  const attachment = pictures[pictures.length - 1];
+
+  const stored = await getAssistantArtifact(attachment.id, ctx.user.id);
+  if (!stored?.bytes) {
+    return { ok: false, reason: `附件 ${attachment.name} 已经读不出来了，请重新发一次。` };
+  }
+  if (stored.bytes.byteLength > MAX_REFERENCE_BYTES) {
+    return {
+      ok: false,
+      reason: `附件 ${attachment.name} 有 ${(stored.bytes.byteLength / 1024 / 1024).toFixed(1)}MB，超过 ${MAX_REFERENCE_BYTES / 1024 / 1024}MB 的参考图上限。`,
+    };
+  }
+  return {
+    ok: true,
+    dataUrl: `data:${attachment.contentType};base64,${Buffer.from(stored.bytes).toString("base64")}`,
+  };
+}
+
 async function mediaGenerate(
   args: Record<string, unknown>,
   ctx: ToolContext,
@@ -745,6 +835,17 @@ async function mediaGenerate(
 
   const path =
     kind === "image" ? "/v1/images/generations" : kind === "speech" ? "/v1/audio/speech" : "/v1/videos/generations";
+
+  // Image-to-image, when the caller asked for it. A spec decides what a
+  // reference turns into — MiniMax wraps it in `subject_reference`, others
+  // take it raw — so the only thing this has to get right is handing it over.
+  let reference: string | undefined;
+  if (kind === "image" && typeof args.image === "string" && args.image.trim()) {
+    const resolved = await resolveReferenceImage(args.image, ctx);
+    if (!resolved.ok) return fail(resolved.reason);
+    reference = resolved.dataUrl;
+  }
+
   const payload: Record<string, unknown> =
     kind === "speech"
       ? { model: model.data, input: prompt, response_format: "mp3", voice }
@@ -754,6 +855,11 @@ async function mediaGenerate(
             prompt,
             n: 1,
             ...(typeof args.size === "string" && args.size.trim() ? { size: args.size.trim() } : {}),
+            // A spec's size table maps dimensions onto a ratio, so a ratio the
+            // caller asked for is something the spec can resolve. Sent beside
+            // `size` because a spec honours one or the other, not both.
+            ...(typeof args.ratio === "string" && args.ratio.trim() ? { ratio: args.ratio.trim() } : {}),
+            ...(reference ? { image: reference } : {}),
           }
         : { model: model.data, prompt, n: 1, duration, ratio };
 
