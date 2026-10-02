@@ -13,6 +13,9 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { createElement as h, type ReactNode } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { SectionPageLayout } from "@/components/layouts/SectionPageLayout";
 
 function pageFiles(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
@@ -43,5 +46,42 @@ describe("SectionPageLayout usage", () => {
       `These pages render only their title because their body is not wrapped in ` +
         `<SectionPageLayout.Content>:\n${offenders.join("\n")}`,
     ).toEqual([]);
+  });
+});
+
+/**
+ * A page with no title used to get an empty heading and its bottom padding
+ * anyway. On the assistant page that was ~40px of dead height on a screen whose
+ * whole argument is how much of it the conversation gets, so the header block
+ * is now conditional.
+ */
+describe("SectionPageLayout header row", () => {
+  const render = (...children: ReactNode[]): string =>
+    renderToStaticMarkup(h(SectionPageLayout, { scrollContent: false, children }));
+
+  it("renders the row when there is a title", () => {
+    const html = render(h(SectionPageLayout.Title, null, "用量"), h(SectionPageLayout.Content, null, "body"));
+    expect(html).toContain("<h2");
+    expect(html).toContain("用量");
+  });
+
+  it("renders nothing but the content when there is no title at all", () => {
+    const html = render(h(SectionPageLayout.Content, null, "body"));
+    expect(html).not.toContain("<h2");
+    // The padding wrapper is the actual cost, so assert on the wrapper rather
+    // than on the absence of visible text: an empty div is easy to bring back.
+    expect(html).not.toContain("sm:pb-4");
+  });
+
+  it("keeps the row when only actions are supplied", () => {
+    const html = render(h(SectionPageLayout.Actions, null, "refresh"), h(SectionPageLayout.Content, null, "body"));
+    expect(html).toContain("sm:pb-4");
+    expect(html).toContain("refresh");
+  });
+
+  it("keeps the row when only a breadcrumb is supplied", () => {
+    const html = render(h(SectionPageLayout.Breadcrumb, null, "docs"), h(SectionPageLayout.Content, null, "body"));
+    expect(html).toContain("sm:pb-4");
+    expect(html).toContain("docs");
   });
 });

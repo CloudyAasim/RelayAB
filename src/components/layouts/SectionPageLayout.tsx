@@ -53,21 +53,31 @@ export function SectionPageLayout({ children, scrollContent = true }: SectionPag
     );
   }
 
+  // A page with no title, breadcrumb or actions renders none of that row. The
+  // assistant page does exactly that on purpose - its own top bar carries the
+  // name, and a second one above it would be the same screen saying its name
+  // twice - but the empty div and its bottom padding were still being emitted,
+  // which cost about 40px of height on a screen whose whole point is how much
+  // of it the conversation gets.
+  const hasHeader = title != null || breadcrumb != null || actions != null;
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="pb-3 sm:pb-4">
-        {breadcrumb != null && <div className="mb-2">{breadcrumb}</div>}
-        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3 sm:gap-x-4">
-          <h2 className="text-base font-semibold tracking-tight text-foreground sm:text-lg md:text-xl">
-            {title}
-          </h2>
-          {actions != null && (
-            <div className="flex flex-wrap items-center gap-2">
-              {actions}
-            </div>
-          )}
+      {hasHeader && (
+        <div className="pb-3 sm:pb-4">
+          {breadcrumb != null && <div className="mb-2">{breadcrumb}</div>}
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3 sm:gap-x-4">
+            <h2 className="text-base font-semibold tracking-tight text-foreground sm:text-lg md:text-xl">
+              {title}
+            </h2>
+            {actions != null && (
+              <div className="flex flex-wrap items-center gap-2">
+                {actions}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
       <div className={scrollContent ? "min-h-0 flex-1" : "min-h-0 flex-1 overflow-hidden"}>
         {content}
       </div>

@@ -349,9 +349,22 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
   ];
 
   return (
-    <div className="flex h-[calc(100dvh-8.5rem)] min-h-[28rem] flex-col">
+    /**
+     * Full-bleed: `-mx-*` cancels the shell's own horizontal padding, so the
+     * top bar, the message area and the composer use the full column. The
+     * reading line inside stays `max-w-4xl` and centred, which is what keeps
+     * the text readable — a chat that stretches to a 2560px monitor is not a
+     * bigger chat, it is a worse one.
+     *
+     * The height is the viewport minus the chrome that is actually above and
+     * below: a 56px header, plus main's vertical padding, which steps 16 → 24 →
+     * 32px with the same breakpoints the padding uses. The previous flat
+     * 100dvh-8.5rem over-reserved by 16px at desktop and 48px on a phone, and
+     * that gap is exactly what the conversation does not have to spare.
+     */
+    <div className="-mx-4 flex h-[calc(100dvh-5.5rem)] min-h-[26rem] flex-col sm:-mx-6 sm:h-[calc(100dvh-6.5rem)] lg:-mx-8 lg:h-[calc(100dvh-7.5rem)]">
       {/* ---- top bar: a new chat on the left, what is answering on the right ---- */}
-      <div className="mx-auto flex w-full max-w-3xl shrink-0 items-center gap-2 border-b pb-2">
+      <div className="mx-auto flex w-full max-w-4xl shrink-0 items-center gap-2 border-b pb-2">
         <Button
           variant="ghost"
           size="sm"
@@ -408,9 +421,15 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
       {/* ---- conversation ---- */}
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
         {messages.length === 0 ? (
-          <div className="mx-auto flex h-full w-full max-w-3xl flex-col items-center justify-center gap-6 px-4 text-center">
-            <div className="space-y-2">
-              <h2 className="text-2xl font-semibold text-foreground">{t("assistant.emptyTitle")}</h2>
+          /* Tighter than it looks: on a short window this block is a quarter of
+             the message area, and it is the one thing on screen that is
+             decorative. Heading down a size, the gap halved, the cards one row
+             of padding shallower. */
+          <div className="mx-auto flex h-full w-full max-w-4xl flex-col items-center justify-center gap-4 px-4 text-center">
+            <div className="space-y-1.5">
+              <h2 className="text-xl font-semibold text-foreground sm:text-2xl">
+                {t("assistant.emptyTitle")}
+              </h2>
               <p className="mx-auto max-w-prose text-sm text-muted-foreground">
                 {t("assistant.emptyState")}
               </p>
@@ -424,7 +443,7 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
                     setInput(s);
                     inputRef.current?.focus();
                   }}
-                  className="rounded-lg border border-border px-3 py-2.5 text-left text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  className="rounded-lg border border-border px-3 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                 >
                   {s}
                 </button>
@@ -432,7 +451,7 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
             </div>
           </div>
         ) : (
-          <div className="mx-auto w-full max-w-3xl space-y-5 px-1 py-6">
+          <div className="mx-auto w-full max-w-4xl space-y-5 px-1 py-6">
             {messages.map((m) =>
               m.role === "tool" ? (
                 <div key={m.id} className="space-y-2">
@@ -481,7 +500,7 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
 
       {/* ---- composer: one rounded box, send button inside it ---- */}
       <div className="shrink-0 bg-background pb-2">
-        <div className="mx-auto w-full max-w-3xl">
+        <div className="mx-auto w-full max-w-4xl">
           {error && (
             <pre className="mb-2 max-h-28 overflow-auto whitespace-pre-wrap break-words rounded-md bg-destructive/10 p-2 text-xs text-destructive">
               {error}
