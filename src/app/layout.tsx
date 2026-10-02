@@ -1,5 +1,5 @@
 import "./globals.css";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Footer } from "@/components/layouts/Footer";
 import { I18nProvider } from "@/components/i18n/I18nProvider";
 import { ThemeProvider } from "@/components/layouts/ThemeProvider";
@@ -13,6 +13,22 @@ export const metadata: Metadata = {
     template: "%s · RelayAB",
   },
   description: "自托管 AI API 网关 — 用户自助管理 · 管理员可控额度",
+};
+
+/**
+ * `resizes-content` tells a browser to shrink the layout viewport when the on-screen
+ * keyboard opens. Without it the keyboard is an overlay: the composer - which is
+ * pinned to the bottom of a full-height chat - sits underneath it, and no amount
+ * of viewport arithmetic fixes that. Browsers that do not implement it ignore the
+ * value and behave as before.
+ */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  // iOS zooms the page when a field is focused if the layout is only as wide as
+  // the device; capping the scale stops that sideways scroll being locked in.
+  maximumScale: 5,
+  interactiveWidget: "resizes-content",
 };
 
 export default async function RootLayout({

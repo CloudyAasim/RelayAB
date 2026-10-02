@@ -356,15 +356,21 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
      * is what a chat screen should look like, and the padding was costing 64px
      * of height before the top bar even started.
      *
-     * With the padding cancelled the height is the same arithmetic at every
-     * breakpoint - viewport minus the header - so it no longer needs three
-     * guesses that each drift from the padding they are cancelling.
+     * `100vh` first, then `100dvh`. The units mean different things: `vh` is
+     * the viewport with the browser chrome hidden, `dvh` is the one you can
+     * actually see. On a phone dvh is the right one - it follows the collapsing
+     * address bar and the on-screen keyboard. But a browser that does not know
+     * `dvh` discards the whole declaration, and a height-less flex column
+     * collapses to its content, which looks like a page that failed to render.
+     * Tailwind emits these in source order, so the second wins where it is
+     * understood and the first stands in where it is not.
      *
-     * The reading line inside stays `max-w-4xl` and centred, which is what
-     * keeps the text readable: a chat stretched across a 2560px monitor is not
-     * a bigger chat, it is a worse one.
+     * No minimum height. A floor is a promise the viewport may not keep - a
+     * phone in landscape is shorter than 384px - and honouring it means the
+     * composer falls below the fold on exactly the devices with least room.
+     * A short chat beats one you have to scroll to find the input in.
      */
-    <div className="-mx-4 -mt-4 -mb-4 flex h-[calc(100dvh-3.5rem)] min-h-[24rem] flex-col sm:-mx-6 sm:-mt-6 sm:-mb-6 lg:-mx-8 lg:-mt-8 lg:-mb-8">
+    <div className="-mx-4 -mt-4 -mb-4 flex h-[calc(100vh-3.5rem)] h-[calc(100dvh-3.5rem)] flex-col sm:-mx-6 sm:-mt-6 sm:-mb-6 lg:-mx-8 lg:-mt-8 lg:-mb-8">
       {/* ---- top bar: a new chat on the left, what is answering on the right ---- */}
       <div className="mx-auto flex w-full max-w-4xl shrink-0 items-center gap-2 border-b pb-2">
         <Button
