@@ -109,6 +109,34 @@ function toolNameOf(signature: string): string {
   return at === -1 ? signature : signature.slice(0, at);
 }
 
+/**
+ * Field names that hold a secret, whatever the model was told.
+ *
+ * The tools have no parameter a key could go in, which makes the stored action
+ * safe. It does not make the *transcript* safe: the model's tool call is
+ * persisted verbatim, so a model that ignored the instruction and passed an
+ * `apiKey` anyway would write a plaintext key into `assistant_messages` — and
+ * that is the row every later turn replays.
+ *
+ * So the field is redacted on the way to the database. The model still sees its
+ * own argument in the live request, so nothing about the turn's behaviour
+ * changes; only the copy that outlives it is scrubbed.
+ */
+const SECRET_FIELDS = /("(?:api[_-]?key|secret|password|token)"\s*:\s*)"(?:[^"\\]|\\.)*"/gi;
+
+/** The tool calls as they are stored, with anything key-shaped taken out. */
+export function redactToolCalls(
+  toolCalls: UpstreamTurn["toolCalls"],
+): UpstreamTurn["toolCalls"] {
+  return toolCalls.map((call) => ({
+    ...call,
+    function: {
+      ...call.function,
+      arguments: call.function.arguments.replace(SECRET_FIELDS, '$1"***"'),
+    },
+  }));
+}
+
 export interface ChatEvent {
   type: "delta" | "tool" | "done" | "error" | "action" | "artifact";
   text?: string;
@@ -258,12 +286,14 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
     finalText = turn.content;
 
     // Persist the assistant turn together with any tool calls it made, so the
-    // next request can replay the exact protocol the model produced.
+    // next request can replay the exact protocol the model produced. The tool
+    // calls are redacted on the way in: a key-shaped argument has no business
+    // outliving the request, and this row is replayed on every later turn.
     await appendAssistantMessage({
       threadId: thread.id,
       role: "assistant",
       content: turn.content,
-      toolCalls: turn.toolCalls,
+      toolCalls: redactToolCalls(turn.toolCalls),
     });
 
     if (turn.toolCalls.length === 0) {

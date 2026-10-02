@@ -38,11 +38,23 @@ const STATUS_TONE: Record<AssistantActionView["status"], "warning" | "success" |
   failed: "danger",
 };
 
+/** A create cannot be completed without a key, and the key is not in the action. */
+const CREATE_KINDS = new Set(["provider.create", "media_provider.create"]);
+
 export function PendingActions({ isAdmin }: { isAdmin: boolean }) {
   const t = useT();
   const [actions, setActions] = useState<AssistantActionView[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Key drafts, per action.
+   *
+   * Kept here and nowhere else: not in the action, not in localStorage, and
+   * cleared the moment the decision is sent — the same lifetime the key has on
+   * the server. A draft that survived an approval would be a secret sitting in
+   * a tab long after the thing it was for.
+   */
+  const [keys, setKeys] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     const res = await fetch("/api/assistant/actions?status=pending", { cache: "no-store" });
@@ -59,17 +71,31 @@ export function PendingActions({ isAdmin }: { isAdmin: boolean }) {
   async function decide(id: string, decision: "approve" | "reject") {
     setBusyId(id);
     setError(null);
+    // Read and clear before awaiting, so the field is empty from the moment the
+    // request goes out rather than when it comes back.
+    const apiKey = keys[id]?.trim() || undefined;
+    setKeys((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
     try {
       const res = await fetch(`/api/assistant/actions/${id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ decision }),
+        body: JSON.stringify({ decision, ...(apiKey ? { apiKey } : {}) }),
       });
       const json = (await res.json().catch(() => null)) as
         | { ok: boolean; error?: { message?: string } }
         | null;
       if (!json?.ok) {
         setError(json?.error?.message ?? `HTTP ${res.status}`);
+        // Put the key back only when it was refused for a reason the admin can
+        // fix — retyping a secret because the server hiccupped helps nobody.
+        if (apiKey && decision === "approve" && res.status !== 400) {
+          setKeys((prev) => ({ ...prev, [id]: apiKey }));
+        }
         await load();
         return;
       }
@@ -109,22 +135,44 @@ export function PendingActions({ isAdmin }: { isAdmin: boolean }) {
             {a.diff}
           </pre>
           {a.status === "pending" && isAdmin && (
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                disabled={busyId === a.id}
-                onClick={() => decide(a.id, "approve")}
-              >
-                {t("actions.approve")}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={busyId === a.id}
-                onClick={() => decide(a.id, "reject")}
-              >
-                {t("actions.reject")}
-              </Button>
+            <div className="space-y-2">
+              {/* Only a create needs one, and it is not in the diff above —
+                  which is the point. The assistant never handles a key, so
+                  this field is the only place one is ever typed. */}
+              {CREATE_KINDS.has(a.kind) && (
+                <div className="space-y-1">
+                  <label htmlFor={`key-${a.id}`} className="block text-xs font-medium text-foreground">
+                    {t("actions.apiKeyLabel")}
+                  </label>
+                  <input
+                    id={`key-${a.id}`}
+                    type="password"
+                    autoComplete="off"
+                    placeholder="sk-…"
+                    value={keys[a.id] ?? ""}
+                    onChange={(e) => setKeys((prev) => ({ ...prev, [a.id]: e.target.value }))}
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  />
+                  <p className="text-[11px] text-muted-foreground">{t("actions.apiKeyHint")}</p>
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  disabled={busyId === a.id || (CREATE_KINDS.has(a.kind) && !keys[a.id]?.trim())}
+                  onClick={() => decide(a.id, "approve")}
+                >
+                  {t("actions.approve")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busyId === a.id}
+                  onClick={() => decide(a.id, "reject")}
+                >
+                  {t("actions.reject")}
+                </Button>
+              </div>
             </div>
           )}
           {a.status === "pending" && !isAdmin && (

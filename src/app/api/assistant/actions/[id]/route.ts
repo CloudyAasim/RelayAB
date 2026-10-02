@@ -1,14 +1,15 @@
 /**
  * app/api/assistant/actions/[id]/route.ts
  *
- *   POST /api/assistant/actions/:id   Body: { decision: "approve" | "reject" }
+ *   POST /api/assistant/actions/:id   Body: { decision: "approve" | "reject",
+ *                                         apiKey?: string }
  *
  * **The only path in the codebase where an AI-proposed change reaches the
  * database.** The assistant itself can create a pending action but can never
  * resolve one; resolution is an explicit HTTP call made by a signed-in admin
  * after reading the diff.
  *
- * Three properties this endpoint is responsible for:
+ * Four properties this endpoint is responsible for:
  *
  *  1. **Admin only.** A regular user's action, if any, cannot be approved by
  *     anyone but an admin.
@@ -16,9 +17,16 @@
  *     with the status in the WHERE clause, so a double-click or a second tab
  *     affects zero rows and is told the change was already handled rather than
  *     applying it twice.
- *  3. **Keys are never carried through.** The stored `args` is replayed through
- *     the same schema the admin UI uses, and `apiKey` is not among the fields
- *     an action can carry.
+ *  3. **A key is never carried through an action.** The stored `args` is
+ *     replayed through the same schema the admin UI uses, and `apiKey` is not
+ *     among the fields an action can carry. A provider cannot be created
+ *     without one, so a create carries everything *except* the key and the
+ *     approval supplies it — which means the model has no field to put a
+ *     secret in, the transcript never holds one, and the only copy is the
+ *     ciphertext inside the provider row.
+ *  4. **A create asks for its key before it claims.** Claiming first and then
+ *     failing on a missing field would spend the proposal, and the admin would
+ *     have to make the model do the whole thing again.
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -28,14 +36,28 @@ import {
   getAssistantAction,
   setAssistantActionStatus,
 } from "@/lib/db/assistant";
-import { updateProvider } from "@/lib/db/providers";
-import { updateMediaProvider, MediaProviderValidationError } from "@/lib/db/media-providers";
+import { createProvider, updateProvider } from "@/lib/db/providers";
+import { createMediaProvider, updateMediaProvider, MediaProviderValidationError } from "@/lib/db/media-providers";
 
 export const dynamic = "force-dynamic";
 
 const DecisionSchema = z.object({
   decision: z.enum(["approve", "reject"]),
+  /**
+   * The API key, for a create only.
+   *
+   * It arrives with the approval rather than with the proposal, so the key
+   * never becomes part of what the assistant proposed — never sits in
+   * `assistant_actions`, never passes through a tool result, and never enters
+   * a conversation transcript. The model has no field to put it in, because
+   * there is no field for it.
+   *
+   * Rejected outright on an update, where it would be a silent no-op that
+   * reads as "the key was changed".
+   */
+  apiKey: z.string().max(400).optional(),
 });
+
 
 /** Mirrors PatchSchema in the provider editor, minus anything key-shaped. */
 const ModelConfigSchema = z.object({
@@ -70,6 +92,36 @@ const MediaArgsSchema = z
     specs: z.array(z.record(z.string(), z.unknown())).optional(),
   })
   .strict();
+
+/** A create's payload, which is a whole provider rather than a patch of one. */
+const ProviderCreateSchema = z
+  .object({
+    name: z.string().min(1).max(120),
+    kind: z.enum(["openai", "anthropic"]).default("openai"),
+    baseUrl: z.string().max(500).nullable().optional(),
+    upstreamFormat: z.enum(["responses", "chat", "anthropic"]).optional(),
+    priority: z.number().int().optional(),
+    enabled: z.boolean().optional(),
+    openaiEnabled: z.boolean().optional(),
+    anthropicEnabled: z.boolean().optional(),
+    anthropicBaseUrl: z.string().max(500).nullable().optional(),
+    modelMapping: z.record(z.string(), z.string()).optional(),
+    modelConfigs: z.record(z.string(), ModelConfigSchema).optional(),
+  })
+  .strict();
+
+const MediaProviderCreateSchema = z
+  .object({
+    name: z.string().min(1).max(120),
+    baseUrl: z.string().max(500).optional(),
+    enabled: z.boolean().optional(),
+    priority: z.number().int().optional(),
+    models: z.record(z.string(), z.unknown()),
+    specs: z.array(z.record(z.string(), z.unknown())).default([]),
+  })
+  .strict();
+
+const CREATE_KINDS = new Set(["provider.create", "media_provider.create"]);
 
 export async function POST(
   req: Request,
@@ -118,6 +170,30 @@ export async function POST(
     return NextResponse.json({ ok: true, data: { status: "rejected" } });
   }
 
+  // A create needs a key, and it has to be asked for *before* the claim.
+  // Claiming first and then failing would spend the proposal: the admin would
+  // have to make the model do the whole thing again over a missing field.
+  if (CREATE_KINDS.has(existing.kind)) {
+    const key = parsed.data.apiKey?.trim();
+    if (!key) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: {
+            code: "api_key_required",
+            message: "新建服务商需要在上方填入 API 密钥，助手不会替你保管它。",
+          },
+        },
+        { status: 400 },
+      );
+    }
+  } else if (parsed.data.apiKey) {
+    return NextResponse.json(
+      { ok: false, error: { code: "unexpected_api_key", message: "这条变更不涉及密钥" } },
+      { status: 400 },
+    );
+  }
+
   // Claim first: this is what makes a double approval a no-op instead of a
   // second write, and it happens before any parse of the payload so two racing
   // requests cannot both reach the provider layer.
@@ -141,7 +217,7 @@ export async function POST(
   }
 
   try {
-    if (claimed.kind === "provider.update" || claimed.kind === "provider.create") {
+    if (claimed.kind === "provider.update") {
       if (!claimed.targetId) throw new Error("变更缺少目标服务商 id");
       const patch = ProviderArgsSchema.parse(args);
       const updated = await updateProvider(claimed.targetId, patch);
@@ -155,7 +231,21 @@ export async function POST(
       return NextResponse.json({ ok: true, data: { status: "applied", providerId: updated.id } });
     }
 
-    if (claimed.kind === "media_provider.update" || claimed.kind === "media_provider.create") {
+    if (claimed.kind === "provider.create") {
+      const spec = ProviderCreateSchema.parse(args);
+      // The key comes from this request, not from the proposal: it is
+      // encrypted on the way into the provider row and exists nowhere else.
+      const created = await createProvider({ ...spec, apiKey: parsed.data.apiKey!.trim() });
+      await setAssistantActionStatus(
+        me.id,
+        id,
+        "applied",
+        `已新建服务商 ${created.name}（${Object.keys(spec).join(", ")}）`,
+      );
+      return NextResponse.json({ ok: true, data: { status: "applied", providerId: created.id } });
+    }
+
+    if (claimed.kind === "media_provider.update") {
       if (!claimed.targetId) throw new Error("变更缺少目标媒体服务商 id");
       const patch = MediaArgsSchema.parse(args);
       const updated = await updateMediaProvider(claimed.targetId, {
@@ -172,6 +262,26 @@ export async function POST(
         `已更新媒体服务商 ${updated.name}（${Object.keys(patch).join(", ") || "无字段"}）`,
       );
       return NextResponse.json({ ok: true, data: { status: "applied", providerId: updated.id } });
+    }
+
+    if (claimed.kind === "media_provider.create") {
+      const spec = MediaProviderCreateSchema.parse(args);
+      const created = await createMediaProvider({
+        name: spec.name,
+        baseUrl: spec.baseUrl ?? "",
+        apiKey: parsed.data.apiKey!.trim(),
+        enabled: spec.enabled ?? true,
+        priority: spec.priority ?? 1,
+        models: spec.models as never,
+        specs: spec.specs as never,
+      });
+      await setAssistantActionStatus(
+        me.id,
+        id,
+        "applied",
+        `已新建媒体服务商 ${created.name}（${Object.keys(spec.models ?? {}).length} 个模型）`,
+      );
+      return NextResponse.json({ ok: true, data: { status: "applied", providerId: created.id } });
     }
 
     throw new Error(`未知的变更类型：${claimed.kind}`);

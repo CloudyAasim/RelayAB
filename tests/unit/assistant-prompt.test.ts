@@ -43,13 +43,18 @@ describe("assistant: the admin prompt", () => {
     expect(ADMIN_SYSTEM_PROMPT).toMatch(/无法在提交后撤回|点确认就真的生效/);
   });
 
-  it("says it cannot create a provider, instead of leaving the model to find out", () => {
-    // There is no create tool, and a model that has not been told so will
-    // describe one that does not exist.
-    expect(ADMIN_SYSTEM_PROMPT).toMatch(/不能新建服务商/);
-    // And the tool it would reach for says the same thing, at the moment of
-    // the call, which is when the model is actually choosing.
-    expect(TOOLS).toMatch(/name: "propose_provider_update"[\s\S]{0,400}不能新建/);
+  it("says how a new provider is made, and that the key is the admin's to type", () => {
+    // The assistant can create one now. What it must never do is handle the
+    // key, and what it must never do is ask the user for one in the chat.
+    expect(ADMIN_SYSTEM_PROMPT).toMatch(/propose_provider_create/);
+    expect(ADMIN_SYSTEM_PROMPT).toMatch(/永远不碰密钥/);
+    expect(ADMIN_SYSTEM_PROMPT).toMatch(/绝对不要.{0,10}向用户索取密钥/);
+    expect(ADMIN_SYSTEM_PROMPT).toMatch(/自己填上 API 密钥/);
+  });
+
+  it("still says the parts it genuinely cannot do", () => {
+    expect(ADMIN_SYSTEM_PROMPT).toMatch(/不能删除服务商/);
+    expect(ADMIN_SYSTEM_PROMPT).toMatch(/不能改用户自己的密钥/);
   });
 
   it("routes a question to a tool instead of leaving it to recall", () => {
@@ -111,14 +116,30 @@ describe("assistant: the tool descriptions the model reads at call time", () => 
     }
   });
 
-  it("does not offer a create tool it cannot honour", () => {
-    const names = toolDefinitions(true).map((t) => t.function.name);
-    // `provider.create` exists in the action schema, but the apply path runs
-    // it through the same update branch and would fail on a missing target.
-    // Offering the tool would be worse than not having it.
+  it("offers a create tool with nowhere to put a key", () => {
+    const admin = toolDefinitions(true);
+    const names = admin.map((t) => t.function.name);
+    expect(names).toContain("propose_provider_create");
+    expect(names).toContain("propose_media_provider_create");
+
+    // The point of the whole design: there is no parameter a model could use
+    // to smuggle a secret into the stored action. Not "we tell it not to" —
+    // there is nowhere to put it.
+    for (const tool of ["propose_provider_create", "propose_media_provider_create"]) {
+      const def = admin.find((t) => t.function.name === tool)!;
+      const props = Object.keys(
+        (def.function.parameters as { properties?: Record<string, unknown> }).properties ?? {},
+      );
+      expect(props, `${tool} has a field a key could go in`).not.toContain("apiKey");
+      expect(def.function.description).toMatch(/密钥/);
+    }
+  });
+
+  it("keeps a create out of the regular user's tool set", () => {
+    const names = toolDefinitions(false).map((t) => t.function.name);
     expect(names).not.toContain("propose_provider_create");
     expect(names).not.toContain("propose_media_provider_create");
-    expect(names).toContain("propose_provider_update");
+    expect(names).not.toContain("propose_provider_update");
   });
 });
 

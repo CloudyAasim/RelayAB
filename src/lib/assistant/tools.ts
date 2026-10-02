@@ -365,6 +365,65 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
   {
     type: "function",
     function: {
+      name: "propose_provider_create",
+      description:
+        "提出一次「新建聊天服务商」的变更，管理员在界面上确认并补填 API 密钥后才会真正创建。这个工具不接收密钥，也不该向用户索取 —— 密钥由管理员在确认时自己填，所以你提议的内容里绝不能包含任何密钥。同样需要管理员点确认。",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "服务商的显示名称" },
+          kind: { type: "string", enum: ["openai", "anthropic"], description: "上游协议，默认 openai" },
+          summary: { type: "string", description: "一句话说明这次变更的目的" },
+          baseUrl: { type: "string", description: "上游 base URL，例如 https://api.minimaxi.com/v1" },
+          upstreamFormat: {
+            type: "string",
+            enum: ["responses", "chat", "anthropic"],
+            description: "上游接口风格，默认 responses",
+          },
+          priority: { type: "integer", description: "数值越小越优先" },
+          modelMapping: {
+            type: "object",
+            description: "客户端模型名 → 上游模型名。新建时这张表就是全部，所以传完整的一份。",
+            additionalProperties: { type: "string" },
+          },
+        },
+        required: ["name", "summary"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "propose_media_provider_create",
+      description:
+        "提出一次「新建媒体服务商」的变更，同样需要管理员确认并补填 API 密钥。models 和 specs 是新建时的完整内容，传完整的一份。不要向用户索取密钥。",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          summary: { type: "string", description: "一句话说明这次变更的目的" },
+          baseUrl: { type: "string" },
+          priority: { type: "integer" },
+          models: {
+            type: "object",
+            description: "模型表，【完整】的一份。每个值至少要有 upstreamId。",
+            additionalProperties: { type: "object" },
+          },
+          specs: {
+            type: "array",
+            description: "能力 spec 数组。【完整】的一份，通常可以从 list_media_providers 复制一个改。",
+            items: { type: "object" },
+          },
+        },
+        required: ["name", "summary", "models"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "list_users",
       description: "列出所有用户及其角色、配额和密钥数。",
       parameters: { type: "object", properties: {}, additionalProperties: false },
@@ -421,6 +480,12 @@ export async function executeTool(
     case "propose_media_provider_update":
       if (!isAdmin) return fail("这是管理员功能。");
       return proposeMediaProviderUpdate(args, ctx);
+    case "propose_provider_create":
+      if (!isAdmin) return fail("这是管理员功能。");
+      return proposeProviderCreate(args, ctx);
+    case "propose_media_provider_create":
+      if (!isAdmin) return fail("这是管理员功能。");
+      return proposeMediaProviderCreate(args, ctx);
     case "list_users":
       if (!isAdmin) return fail("这是管理员功能。");
       return listUsersTool();
@@ -990,8 +1055,177 @@ async function proposeMediaProviderUpdate(
   });
 }
 
-async function listUsersTool(): Promise<ToolResult> {
-  const { users } = await listUsers({ limit: 200 });
+/**
+ * Propose a brand-new chat provider.
+ *
+ * **There is no `apiKey` parameter, and that is the whole design.** A key the
+ * model handled would be a key in the conversation, in the tool-call arguments
+ * persisted beside it, and in `assistant_actions` — three copies of a secret in
+ * a place none of them are encrypted. Instead the admin types it into the
+ * approval, where it goes straight to the provider row and is encrypted on the
+ * way in.
+ *
+ * So this tool's job is everything *except* the key, and the diff has to say so
+ * — a card that looked complete and then needed a field the reader could not
+ * see is the same misread as everything else in this round.
+ */
+async function proposeProviderCreate(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<ToolResult> {
+  // Refused out loud rather than quietly dropped. The whitelist below already
+  // makes it impossible to *store* a key here, but a model that put one in the
+  // call has already put it in the persisted tool-call row — so the refusal is
+  // the model learning not to do that a second time.
+  if ("apiKey" in args || "api_key" in args) {
+    return fail(
+      "不要在工具参数里放 API 密钥。这个工具不接收它，管理员会在确认界面上自己填。你也不该向用户索取密钥。",
+    );
+  }
+
+  // Trimmed *before* the length check, not after. `"   "` satisfies
+  // `min(1)` and then trims to nothing, which is how a provider ends up with a
+  // blank name in the admin's list — created the moment they approve, and with
+  // nothing to pick it out by. The same bug once shipped as a 404 on an
+  // all-whitespace thread title.
+  const name = z.string().transform((v) => v.trim()).pipe(z.string().min(1).max(120)).safeParse(args.name);
+  if (!name.success) return fail("缺少 name。");
+
+  const spec: Record<string, unknown> = { name: name.data };
+  if (typeof args.kind === "string") spec.kind = args.kind;
+  if (typeof args.baseUrl === "string") spec.baseUrl = args.baseUrl.trim();
+  if (typeof args.upstreamFormat === "string") spec.upstreamFormat = args.upstreamFormat;
+  if (typeof args.priority === "number" && Number.isInteger(args.priority)) {
+    spec.priority = args.priority;
+  }
+  if (args.modelMapping && typeof args.modelMapping === "object") {
+    const mapping: Record<string, string> = {};
+    for (const [k, v] of Object.entries(args.modelMapping as Record<string, unknown>)) {
+      if (typeof v === "string") mapping[k] = v;
+    }
+    if (Object.keys(mapping).length === 0) return fail("modelMapping 是空的。");
+    spec.modelMapping = mapping;
+    // Same reason the update path does this: a mapped model with no config
+    // falls back to a generic context window, which is how a 200k model ends
+    // up advertised as 1M.
+    const configs: Record<string, unknown> = {};
+    for (const [client, upstream] of Object.entries(mapping)) {
+      const known = knownModelOrDefault(upstream);
+      configs[client] = {
+        upstreamId: upstream,
+        clientId: client,
+        displayName: client,
+        contextLength: known.context,
+        maxOutputTokens: known.output,
+        inputCost: 0,
+        outputCost: 0,
+        enabled: true,
+      };
+    }
+    spec.modelConfigs = configs;
+  }
+
+  const summary =
+    typeof args.summary === "string" && args.summary.trim() ? args.summary.trim() : "未说明的变更";
+  const action = await createAssistantAction({
+    userId: ctx.user.id,
+    kind: "provider.create",
+    summary,
+    args: spec,
+    diff: renderCreateDiff(spec, summary),
+  });
+
+  return ok({
+    actionId: action.id,
+    status: "pending",
+    message:
+      "新建请求已生成。还需要管理员在界面上补填 API 密钥并确认，才会产生服务商。请把下面这份内容告诉用户，并说明密钥由管理员自己填。",
+    diff: renderCreateDiff(spec, summary),
+  });
+}
+
+async function proposeMediaProviderCreate(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<ToolResult> {
+  if ("apiKey" in args || "api_key" in args) {
+    return fail(
+      "不要在工具参数里放 API 密钥。这个工具不接收它，管理员会在确认界面上自己填。你也不该向用户索取密钥。",
+    );
+  }
+
+  const name = z.string().transform((v) => v.trim()).pipe(z.string().min(1).max(120)).safeParse(args.name);
+  if (!name.success) return fail("缺少 name。");
+  if (!args.models || typeof args.models !== "object") {
+    return fail("缺少 models。新建媒体服务商必须给出模型表。");
+  }
+
+  const models = args.models as Record<string, unknown>;
+  if (Object.keys(models).length === 0) return fail("models 是空的。");
+  for (const [id, cfg] of Object.entries(models)) {
+    if (!cfg || typeof cfg !== "object") return fail(`模型 ${id} 的配置不是对象。`);
+    if (typeof (cfg as { upstreamId?: unknown }).upstreamId !== "string") {
+      return fail(`模型 ${id} 缺少 upstreamId。`);
+    }
+  }
+
+  const spec: Record<string, unknown> = { name: name.data, models };
+  if (typeof args.baseUrl === "string") spec.baseUrl = args.baseUrl.trim();
+  if (typeof args.priority === "number" && Number.isInteger(args.priority)) {
+    spec.priority = args.priority;
+  }
+  if (Array.isArray(args.specs)) spec.specs = args.specs;
+
+  const summary =
+    typeof args.summary === "string" && args.summary.trim() ? args.summary.trim() : "未说明的变更";
+  const diff = renderCreateDiff(spec, summary);
+  const action = await createAssistantAction({
+    userId: ctx.user.id,
+    kind: "media_provider.create",
+    summary,
+    args: spec,
+    diff,
+  });
+
+  return ok({
+    actionId: action.id,
+    status: "pending",
+    message:
+      "新建请求已生成。还需要管理员在界面上补填 API 密钥并确认，才会产生服务商。请把下面这份内容告诉用户。",
+    diff,
+  });
+}
+
+/**
+ * The before/after a create shows: nothing, then everything.
+ *
+ * Written by hand rather than reused from the update path because there is no
+ * "before" — and the one line that is *not* in the table is the line that
+ * matters, so it is stated in the table rather than left to be discovered at
+ * the approval.
+ */
+function renderCreateDiff(spec: Record<string, unknown>, summary: string): string {
+  const lines = [`新增：${summary}`, ""];
+  for (const [key, value] of Object.entries(spec)) {
+    if (key === "modelConfigs" || key === "specs") {
+      const count = Array.isArray(value) ? value.length : Object.keys(value as object).length;
+      lines.push(`  ${key}：${count} 项`);
+      continue;
+    }
+    if (key === "modelMapping") {
+      for (const [client, upstream] of Object.entries(value as Record<string, string>)) {
+        lines.push(`  modelMapping.${client} → ${upstream}`);
+      }
+      continue;
+    }
+    lines.push(`  ${key}：${JSON.stringify(value)}`);
+  }
+  lines.push("");
+  lines.push("  apiKey：（不在这份提议里）批准时由管理员在界面上填写");
+  return lines.join("\n");
+}
+
+async function listUsersTool(): Promise<ToolResult> {  const { users } = await listUsers({ limit: 200 });
   return ok(
     users.map((u) => ({
       id: u.id,
