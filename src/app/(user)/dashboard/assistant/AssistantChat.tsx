@@ -31,6 +31,7 @@ import {
 import { useT } from "@/components/i18n/I18nProvider";
 import { CredentialChoice, type Mode } from "@/lib/assistant/CredentialPanel";
 import { readPretty, writePretty } from "@/lib/assistant/pretty";
+import { latestRead } from "@/lib/assistant/latest-read";
 import { MediaArtifacts, ToolResultCard, AssistantBody } from "./MediaArtifacts";
 import type { ArtifactRef } from "@/lib/db/assistant-artifacts";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";
@@ -191,11 +192,23 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
     setThreads(json?.data?.threads ?? []);
   }, []);
 
+  /**
+   * Read a thread, discarding a reply that is no longer the newest.
+   *
+   * Three things can start a read for the same turn, and without the sequence
+   * guard the first one to be issued can be the last to land — see
+   * `latest-read` for why that reads as a truncated answer rather than as a
+   * race.
+   */
+  const transcriptReadRef = useRef(latestRead());
   const loadThread = useCallback(async (id: string) => {
+    const token = transcriptReadRef.current.begin();
     const res = await fetch(`/api/assistant/threads/${id}`, { cache: "no-store" });
     const json = (await res.json().catch(() => null)) as
       | { data?: { messages?: ChatMessage[] } }
       | null;
+    // A read that has been overtaken is not an error, it is just obsolete.
+    if (!transcriptReadRef.current.accept(token)) return;
     setMessages(json?.data?.messages ?? []);
   }, []);
 
@@ -475,6 +488,36 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
       const decoder = new TextDecoder();
       let buffer = "";
 
+      /** One `data:` frame, or nothing. */
+      const handle = (raw: string) => {
+        if (!raw.startsWith("data:")) return;
+        const data = raw.slice(5).trim();
+        if (!data || data === "[DONE]") return;
+
+        let evt: EventPayload;
+        try {
+          evt = JSON.parse(data) as EventPayload;
+        } catch {
+          return;
+        }
+
+        if (evt.type === "delta" && evt.text) {
+          const chunk = evt.text;
+          setMessages((prev) =>
+            prev.map((m) => (m.id === "streaming" ? { ...m, content: m.content + chunk } : m)),
+          );
+        } else if (evt.type === "error" && evt.text) {
+          setError(evt.text);
+        } else if (evt.type === "artifact" && evt.artifacts?.length) {
+          // Show it the moment the tool finishes, rather than waiting for the
+          // turn to end and the thread to reload.
+          setLiveArtifacts((prev) => [...prev, ...evt.artifacts!]);
+        } else if (evt.type === "done" && evt.data?.pendingActions?.length) {
+          void loadPendingCount();
+          router.refresh();
+        }
+      };
+
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -485,34 +528,13 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
           const raw = buffer.slice(0, at).trim();
           buffer = buffer.slice(at + 2);
           at = buffer.indexOf("\n\n");
-          if (!raw.startsWith("data:")) continue;
-          const data = raw.slice(5).trim();
-          if (!data || data === "[DONE]") continue;
-
-          let evt: EventPayload;
-          try {
-            evt = JSON.parse(data) as EventPayload;
-          } catch {
-            continue;
-          }
-
-          if (evt.type === "delta" && evt.text) {
-            const chunk = evt.text;
-            setMessages((prev) =>
-              prev.map((m) => (m.id === "streaming" ? { ...m, content: m.content + chunk } : m)),
-            );
-          } else if (evt.type === "error" && evt.text) {
-            setError(evt.text);
-          } else if (evt.type === "artifact" && evt.artifacts?.length) {
-            // Show it the moment the tool finishes, rather than waiting for the
-            // turn to end and the thread to reload.
-            setLiveArtifacts((prev) => [...prev, ...evt.artifacts!]);
-          } else if (evt.type === "done" && evt.data?.pendingActions?.length) {
-            void loadPendingCount();
-            router.refresh();
-          }
+          handle(raw);
         }
       }
+      // Whatever is left has no terminator of its own. Dropping it loses the
+      // tail of the answer with nothing on screen to say so — the reader is
+      // closed by then, so it is never coming in another chunk.
+      handle(buffer.trim());
     } catch (err) {
       if (!(err instanceof DOMException && err.name === "AbortError")) {
         setError(err instanceof Error ? err.message : String(err));
