@@ -84,6 +84,16 @@ export async function executeMediaRequest(args: {
 }): Promise<MediaExecutionOutcome> {
   const { capability, input, apiKey, user } = args;
 
+  // An absent model is a malformed request, not a missing resource: reporting
+  // it as 404 with an interpolated empty string ("model '' is not an
+  // available media model") tells the caller nothing they can act on.
+  if (!input.model?.trim()) {
+    return {
+      ok: false,
+      error: { status: 400, code: "invalid_request", message: "model is required" },
+    };
+  }
+
   const resolved = await resolveMediaProviderForModel(input.model);
   if (!resolved) {
     return {

@@ -56,7 +56,8 @@ export async function POST(req: Request): Promise<Response> {
   // a bad key is a bad key whatever the body says.
   const shapeError = validateResponsesBody(body);
   if (shapeError) {
-    return NextResponse.json({ ok: false, error: shapeError }, { status: shapeError.status });
+    const { status, ...error } = shapeError;
+    return NextResponse.json({ ok: false, error }, { status });
   }
 
   // 3. Get owner

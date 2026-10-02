@@ -64,7 +64,8 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
   // and reported back as a 502 for the upstream 400.
   const shapeError = validateAnthropicBody(body);
   if (shapeError) {
-    return NextResponse.json({ ok: false, error: shapeError }, { status: shapeError.status });
+    const { status, ...error } = shapeError;
+    return NextResponse.json({ ok: false, error }, { status });
   }
 
   // The owner record carries the quota pool and the model whitelist.

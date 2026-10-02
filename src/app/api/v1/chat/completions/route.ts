@@ -70,7 +70,8 @@ export async function POST(req: Request): Promise<Response> {
   // JSON was well formed.
   const shapeError = validateChatBody(body);
   if (shapeError) {
-    return NextResponse.json({ ok: false, error: shapeError }, { status: shapeError.status });
+    const { status, ...error } = shapeError;
+    return NextResponse.json({ ok: false, error }, { status });
   }
 
   // 4. Forward.
