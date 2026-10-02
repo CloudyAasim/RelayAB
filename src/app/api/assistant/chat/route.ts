@@ -26,6 +26,7 @@ import { runChat, type ChatEvent } from "@/lib/assistant/chat";
 import { resolveToolCredential } from "@/lib/assistant/credentials";
 import { consumeAssistantTurn } from "@/lib/assistant/rate-limit";
 import { resolvePublicUrl } from "@/lib/public-url";
+import { getServerLocale } from "@/lib/i18n/server";
 import { saveAssistantArtifact, artifactRef } from "@/lib/db/assistant-artifacts";
 import type { MessageAttachment } from "@/lib/assistant/schema";
 
@@ -233,9 +234,13 @@ export async function POST(req: Request): Promise<Response> {
   // longer resolve, and without resolving the address here the model tester
   // addressed http://localhost:3000 and failed with "fetch failed" on every
   // self-hosted deployment that does not set RELAY_PUBLIC_URL.
-  const [gatewayBase, credential] = await Promise.all([
+  const [gatewayBase, credential, locale] = await Promise.all([
     resolvePublicUrl(),
     resolveToolCredential({ userId: me.id, mode: credentialMode, relayKey }),
+    // Also resolved here, for the same reason: the tool loop runs inside a
+    // stream callback where `next/headers` no longer resolves, and the
+    // documentation tool has to answer in the reader's language.
+    getServerLocale(),
   ]);
 
   const encoder = new TextEncoder();
@@ -272,6 +277,7 @@ export async function POST(req: Request): Promise<Response> {
           thread,
           message,
           attachments,
+          locale,
           credential,
           gatewayBase,
           signal: req.signal,

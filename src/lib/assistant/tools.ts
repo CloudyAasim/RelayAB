@@ -37,6 +37,8 @@ import { decryptSecret } from "../crypto/secrets";
 import { renderProviderDiff, renderMediaDiff } from "./diff";
 import { DEPLOYMENT_NOTES } from "./deployment-notes";
 import { fetchPage, WebFetchError } from "./web-fetch";
+import { docIndex, readDoc } from "./docs-reader";
+import { DEFAULT_LOCALE, type Locale } from "../i18n/dict";
 import { NO_CREDENTIAL_MESSAGE, type AccountCredential } from "./credentials";
 import { executeMediaRequest, resultItems } from "../media/handler";
 import { proxyChatCompletion } from "../proxy/openai";
@@ -69,6 +71,23 @@ export interface ToolContext {
    * megabyte of base64 to express. See `resolveReferenceImage`.
    */
   attachments?: MessageAttachment[];
+  /**
+   * The reader's language, resolved by the route before the stream opened.
+   *
+   * Passed in rather than read here because the tool loop runs inside a stream
+   * callback, where `next/headers` no longer resolves — the same constraint the
+   * route already works around for the public URL. A documentation tool that
+   * answered in the wrong language would be worse than none.
+   */
+  locale?: Locale;
+  /**
+   * Whether the caller may read the admin documentation.
+   *
+   * The admin docs describe this deployment's internals — providers, quota,
+   * routing. A regular user reading them through a model that summarises on
+   * request is a different thing from an admin who can already open the page.
+   */
+  canReadAdminDocs?: boolean;
 }
 
 /** A media file the tool produced, for the caller to store and hand a URL back. */
@@ -239,6 +258,29 @@ const USER_TOOLS: AssistantToolDef[] = [
           url: { type: "string", description: "要读的完整网址，例如 https://platform.minimaxi.com/docs/api-reference/image-generation" },
         },
         required: ["url"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "read_docs",
+      description:
+        "读本系统自己的文档正文 —— 和用户界面上 /docs、/dashboard/docs、/admin/docs 显示的是同一份。\n" +
+        "不带 topic 返回目录；带 topic 返回那一页的全文。\n" +
+        "凡是问「这个系统怎么用」「这个接口怎么调」「这个配置项是什么意思」「为什么报这个错」，" +
+        "都要先读文档再回答，不要凭记忆作答。管理员文档只有管理员能读。",
+      parameters: {
+        type: "object",
+        properties: {
+          topic: {
+            type: "string",
+            description:
+              "不填则返回目录。填写形如 openai、anthropic、media、providers、trouble、mapping。" +
+              "也可以写 user:openai 或 admin:providers 指定是哪一套。",
+          },
+        },
         additionalProperties: false,
       },
     },
@@ -536,6 +578,8 @@ export async function executeTool(
       return getMyUsage(ctx);
     case "get_deployment_notes":
       return ok(DEPLOYMENT_NOTES(args.topic));
+    case "read_docs":
+      return readDocsTool(args, ctx);
     case "fetch_page":
       return fetchPageTool(args);
     case "generate_image":
@@ -744,6 +788,39 @@ function artifactsFromItems(
  * model permissions apply, which is the point of routing through the gateway
  * at all.
  */
+/**
+ * The documentation the reader can see, in their own language.
+ *
+ * A refusal comes back as a result, not an exception: "that page is admin-only"
+ * is something the model can report, where an exception ends the turn and
+ * loses whatever it had already established.
+ */
+function readDocsTool(args: Record<string, unknown>, ctx: ToolContext): ToolResult {
+  const locale = ctx.locale ?? DEFAULT_LOCALE;
+  const isAdmin = ctx.user.role === "admin";
+  const canReadAdmin = ctx.canReadAdminDocs ?? isAdmin;
+
+  const topic = typeof args.topic === "string" ? args.topic.trim() : "";
+  if (!topic) {
+    return ok({
+      note: "不带 topic 时这是目录。要读哪一页，把它的 topic 再传进来。",
+      userDocs: docIndex("user"),
+      adminDocs: canReadAdmin ? docIndex("admin") : "（管理员文档只有管理员能读）",
+    });
+  }
+
+  const wantsAdmin = topic.toLowerCase().startsWith("admin");
+  if (wantsAdmin && !canReadAdmin) {
+    return fail("admin: 文档只有管理员能读。你是普通用户看不到这一页。");
+  }
+
+  const result = readDoc(topic, locale, wantsAdmin ? "admin" : "user");
+  if (!result.ok) {
+    return fail(`${result.reason}${result.available ? `\n可用：${result.available.map((a) => a.topic).join(", ")}` : ""}`);
+  }
+  return ok({ topic: result.topic, title: result.title, truncated: result.truncated, text: result.text });
+}
+
 /**
  * The reference image, in whatever form the caller gave it.
  *
