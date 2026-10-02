@@ -215,21 +215,41 @@ export async function getApiKeyByPlaintext(plaintext: string): Promise<ApiKey | 
  * could skip rows or replay them. `generateId()` is time-sortable, so ordering
  * by `id` is still creation order, just coherent with the cursor this time.
  */
+/**
+ * A user's own keys, deliberately EXCLUDING the assistant credential.
+ *
+ * Two things follow from that exclusion, and both are wanted. The user is never
+ * shown a key they cannot use, and because the cap in `POST /api/user/keys` is
+ * computed from this same list, the assistant credential does not consume any of
+ * their `maxActiveKeys` budget either.
+ *
+ * The filter is in the SQL rather than applied to the returned rows: with
+ * cursor pagination, dropping a row afterwards would hand back a short page
+ * while more existed behind the cursor.
+ *
+ * Admins still see it — `listAllApiKeys` is untouched — because an admin has to
+ * be able to notice that a user switched this on and revoke it.
+ */
 export async function listApiKeysByUser(
   userId: string,
   opts: { limit?: number; cursor?: string } = {},
 ): Promise<{ keys: ApiKey[]; nextCursor: string | null }> {
   const limit = Math.max(1, Math.min(opts.limit ?? 50, 200));
+  const excluded = "id NOT IN (SELECT api_key_id FROM assistant_keys WHERE user_id = ?)";
 
   // Fetch one extra row to learn whether another page exists without a second
   // COUNT query.
-  const rows = getAll(
-    opts.cursor
-      ? "SELECT * FROM api_keys WHERE user_id = ? AND id > ? ORDER BY id ASC LIMIT ?"
-      : "SELECT * FROM api_keys WHERE user_id = ? ORDER BY id ASC LIMIT ?",
-    opts.cursor ? [userId, opts.cursor, limit + 1] : [userId, limit + 1],
-    rowToApiKey,
-  );
+  const rows = opts.cursor
+    ? getAll(
+        `SELECT * FROM api_keys WHERE user_id = ? AND ${excluded} AND id > ? ORDER BY id ASC LIMIT ?`,
+        [userId, userId, opts.cursor, limit + 1],
+        rowToApiKey,
+      )
+    : getAll(
+        `SELECT * FROM api_keys WHERE user_id = ? AND ${excluded} ORDER BY id ASC LIMIT ?`,
+        [userId, userId, limit + 1],
+        rowToApiKey,
+      );
 
   const hasMore = rows.length > limit;
   const keys = hasMore ? rows.slice(0, limit) : rows;

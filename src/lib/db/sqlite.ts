@@ -207,6 +207,32 @@ CREATE TABLE IF NOT EXISTS assistant_settings (
   updated_at         TEXT NOT NULL
 );
 
+-- The one credential the assistant may spend on a user's behalf, authorised by
+-- their *session* rather than by a pasted secret.
+--
+-- It points at an ordinary api_keys row on purpose. Usage and quota are
+-- accounted per key (usage_logs.api_key_id is NOT NULL, usage_totals is keyed by
+-- it), so the alternative — attributing assistant calls to no key at all —
+-- would mean reworking the per-request hot path. Reusing a real row keeps every
+-- existing check, whitelist and ledger entry working unchanged.
+--
+-- What makes it different from the other three kinds of row in this file is
+-- that its plaintext is never generated, never stored and never shown: the
+-- assistant holds the ApiKey object itself and calls the proxy in-process, so
+-- there is no bearer token anywhere for anyone to copy. That is also why
+-- "rebuild" is the only way to change it — there is nothing to re-read.
+--
+-- One row per user: the primary key *is* the "at most one" rule, so the limit
+-- cannot drift from the data the way a checked-in counter could. Absent means
+-- never created, and enabled defaults to 0, so the feature is off until the
+-- user turns it on.
+CREATE TABLE IF NOT EXISTS assistant_keys (
+  user_id    TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  api_key_id TEXT NOT NULL REFERENCES api_keys(id) ON DELETE CASCADE,
+  enabled    INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+
 -- Conversations. Threads are per user so one person's history can never be
 -- read through another's id, and messages cascade with the thread.
 CREATE TABLE IF NOT EXISTS assistant_threads (

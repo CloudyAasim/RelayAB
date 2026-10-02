@@ -23,6 +23,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { getAssistantSettings } from "@/lib/db/assistant";
 import { createAssistantThread, getAssistantThread } from "@/lib/db/assistant";
 import { runChat, type ChatEvent } from "@/lib/assistant/chat";
+import { resolveToolCredential } from "@/lib/assistant/credentials";
 import { consumeAssistantTurn } from "@/lib/assistant/rate-limit";
 import { resolvePublicUrl } from "@/lib/public-url";
 
@@ -56,7 +57,7 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  let body: { message?: unknown; threadId?: unknown; relayKey?: unknown };
+  let body: { message?: unknown; threadId?: unknown; relayKey?: unknown; credentialMode?: unknown };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -108,13 +109,21 @@ export async function POST(req: Request): Promise<Response> {
   const relayKey = typeof body.relayKey === "string" && body.relayKey.trim()
     ? body.relayKey.trim()
     : undefined;
+  const credentialMode =
+    body.credentialMode === "account" || body.credentialMode === "key" ? body.credentialMode : undefined;
 
-  // Resolved here, while the request context is still live. The tool loop runs
-  // inside a stream callback, where `next/headers` may no longer resolve, and
-  // without this the model tester addressed http://localhost:3000 and failed
-  // with "fetch failed" on every self-hosted deployment that does not set
-  // RELAY_PUBLIC_URL.
-  const gatewayBase = await resolvePublicUrl();
+  // Resolved here, while the request context is still live — it reads the
+  // database and, for the key path, the deployment's own address. Doing it in
+  // the stream callback would be too late for `next/headers`.
+  //
+  // The tool loop runs inside a stream callback, where `next/headers` may no
+  // longer resolve, and without resolving the address here the model tester
+  // addressed http://localhost:3000 and failed with "fetch failed" on every
+  // self-hosted deployment that does not set RELAY_PUBLIC_URL.
+  const [gatewayBase, credential] = await Promise.all([
+    resolvePublicUrl(),
+    resolveToolCredential({ userId: me.id, mode: credentialMode, relayKey }),
+  ]);
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
@@ -129,7 +138,7 @@ export async function POST(req: Request): Promise<Response> {
           settings,
           thread,
           message,
-          ...(relayKey ? { relayKey } : {}),
+          credential,
           gatewayBase,
           signal: req.signal,
           emit: send,

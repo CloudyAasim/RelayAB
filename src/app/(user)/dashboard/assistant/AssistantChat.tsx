@@ -29,6 +29,7 @@ import {
   SheetDescription,
 } from "@/components/ui/Sheet";
 import { useT } from "@/components/i18n/I18nProvider";
+import { CredentialPanel, type Mode } from "@/lib/assistant/CredentialPanel";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";
 import { Pencil, Trash2 } from "lucide-react";
 
@@ -69,6 +70,7 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [relayKey, setRelayKey] = useState("");
+  const [credentialMode, setCredentialMode] = useState<Mode>("account");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
@@ -249,7 +251,10 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
         body: JSON.stringify({
           message: text,
           ...(threadId ? { threadId } : {}),
-          ...(relayKey.trim() ? { relayKey: relayKey.trim() } : {}),
+          // Sent only in key mode: the account path has no token to send, which
+          // is the whole point of it.
+          ...(credentialMode === "key" && relayKey.trim() ? { relayKey: relayKey.trim() } : {}),
+          credentialMode,
         }),
         signal: controller.signal,
       });
@@ -627,25 +632,15 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
             <SheetDescription>{t("assistant.settings.desc")}</SheetDescription>
           </SheetHeader>
           <div className="mt-4 space-y-4">
-            {/* The gateway key belongs here rather than above the composer:
-                it is a setting, and pinning it into the conversation flow put
-                a password field between the user and the thing they came to
-                use. */}
-            <div className="space-y-1.5">
-              <label htmlFor="assistant-gateway-key" className="block text-sm font-medium text-foreground">
-                {t("assistant.gatewayKey")}
-              </label>
-              <input
-                id="assistant-gateway-key"
-                type="password"
-                autoComplete="off"
-                placeholder="sk-relay-..."
-                value={relayKey}
-                onChange={(e) => setRelayKey(e.target.value)}
-                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-              />
-              <p className="text-xs text-muted-foreground">{t("assistant.gatewayKeyHint")}</p>
-            </div>
+            {/* Which credential the assistant spends. The account switch is the
+                zero-friction path; the pasted key stays for anyone who would
+                rather hold something they can revoke by deleting it. */}
+            <CredentialPanel
+              mode={credentialMode}
+              onModeChange={setCredentialMode}
+              relayKey={relayKey}
+              onRelayKeyChange={setRelayKey}
+            />
             {settingsPanel}
           </div>
         </SheetContent>

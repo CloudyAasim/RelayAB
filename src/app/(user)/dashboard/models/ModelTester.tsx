@@ -20,6 +20,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { CredentialPanel, type Mode } from "@/lib/assistant/CredentialPanel";
 
 interface Labels {
   title: string;
@@ -41,6 +42,7 @@ interface Props {
 
 export function ModelTester({ chatModels, labels }: Props) {
   const [relayKey, setRelayKey] = useState("");
+  const [credentialMode, setCredentialMode] = useState<Mode>("account");
   const [model, setModel] = useState(chatModels[0] ?? "");
   const [prompt, setPrompt] = useState("");
   const [answer, setAnswer] = useState("");
@@ -54,7 +56,9 @@ export function ModelTester({ chatModels, labels }: Props) {
     [],
   );
 
-  const canSend = Boolean(model && relayKey.trim() && prompt.trim() && !busy);
+  const canSend = Boolean(
+    model && prompt.trim() && !busy && (credentialMode === "account" || relayKey.trim()),
+  );
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
@@ -74,6 +78,30 @@ export function ModelTester({ chatModels, labels }: Props) {
     abortRef.current = controller;
 
     try {
+      // Account path: the browser holds no token, so the call goes through the
+      // server. Key path: the browser calls the public route itself, which is
+      // what makes it evidence that the route works.
+      if (credentialMode === "account") {
+        const res = await fetch("/api/assistant/test-model", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model, prompt }),
+          signal: controller.signal,
+        });
+        const json = (await res.json().catch(() => null)) as {
+          ok?: boolean;
+          data?: { answer?: string; latencyMs?: number; totalTokens?: number | null };
+          error?: { message?: string };
+        } | null;
+        if (!res.ok || !json?.ok) {
+          setError(json?.error?.message ?? `HTTP ${res.status}`);
+          return;
+        }
+        setAnswer(json.data?.answer ?? "");
+        setLatency(json.data?.latencyMs ?? Date.now() - started);
+        return;
+      }
+
       const res = await fetch(`${base}/v1/chat/completions`, {
         method: "POST",
         headers: {
@@ -183,6 +211,13 @@ export function ModelTester({ chatModels, labels }: Props) {
           />
         </div>
 
+        <CredentialPanel
+          mode={credentialMode}
+          onModeChange={setCredentialMode}
+          relayKey={relayKey}
+          onRelayKeyChange={setRelayKey}
+        />
+
         <div className="flex items-center gap-2">
           <Button onClick={send} disabled={!canSend}>
             {busy ? labels.stop : labels.send}
@@ -197,7 +232,9 @@ export function ModelTester({ chatModels, labels }: Props) {
           )}
         </div>
 
-        {!relayKey.trim() && <p className="text-xs text-muted-foreground">{labels.needsKey}</p>}
+        {credentialMode === "key" && !relayKey.trim() && (
+          <p className="text-xs text-muted-foreground">{labels.needsKey}</p>
+        )}
         {error && (
           <pre className="overflow-x-auto rounded-md bg-destructive/10 p-3 text-xs text-destructive">
             {error}

@@ -17,6 +17,7 @@
 import { callAssistantModel, UpstreamError, type ChatMessage, type UpstreamTurn } from "./client";
 import { toolDefinitions, executeTool, type ToolContext } from "./tools";
 import { systemPrompt } from "./prompts";
+import type { ResolvedCredential } from "./credentials";
 import { decryptSecret } from "../crypto/secrets";
 import {
   appendAssistantMessage,
@@ -46,71 +47,31 @@ export interface RunChatOptions {
   settings: AssistantSettings;
   thread: AssistantThread;
   message: string;
-  /** The caller's own gateway key, used only by tools that need it. */
-  relayKey?: string;
-  /** Resolved by the route while the request context is live. */
+  /**
+   * What the tools are allowed to spend, already resolved by the route.
+   *
+   * Required rather than optional, so every call site has to decide. An earlier
+   * version inferred a credential here — reusing the assistant's own upstream key
+   * whenever it happened to point at this deployment — which made the feature
+   * work without asking but also meant a switch the user had turned off kept
+   * working. Resolving it once, in the route, is what makes the switch real.
+   */
+  credential: ResolvedCredential;
+  /** Resolved by the route while the request context is still live. */
   gatewayBase?: string;
   signal?: AbortSignal;
   emit: (event: ChatEvent) => void;
 }
 
-/**
- * True when `baseUrl` addresses this very deployment, so a key that
- * authenticates against it is a gateway key.
- *
- * Compared on the parsed origin rather than as a string prefix: `https://relay.example/v1`
- * must match `https://relay.example`, while `https://relay.example.evil.test/v1` and
- * a plain `http://` variant must not. A prefix comparison would hand the user's
- * own key to whatever host happens to start with the same characters.
- */
-export function pointsAtGateway(baseUrl: string, gateway: string): boolean {
-  try {
-    return new URL(baseUrl).origin === new URL(gateway).origin;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * The key a tool should authenticate to this gateway with.
- *
- * An explicitly supplied `relayKey` always wins. Failing that, a user who
- * pointed the assistant at this deployment already has a gateway key stored —
- * it is the one their own chat turns are authenticating with — so re-using it
- * costs them exactly what it has always cost them and saves them from having to
- * paste the same key twice.
- *
- * The condition matters: if the assistant points at somebody else's upstream,
- * that stored key is not a key for this gateway, and sending it to these
- * endpoints would both fail and hand a credential to a host it was not issued
- * for. In that case there is honestly nothing to use, and the tool says so.
- */
-export function resolveGatewayKey(
-  supplied: string | undefined,
-  settings: Pick<AssistantSettings, "baseUrl" | "encryptedApiKey">,
-  gatewayBase: string | undefined,
-): string | undefined {
-  if (supplied?.trim()) return supplied.trim();
-  if (!gatewayBase) return undefined;
-  if (!pointsAtGateway(settings.baseUrl, gatewayBase)) return undefined;
-  const own = decryptSecret(settings.encryptedApiKey);
-  return own || undefined;
-}
-
 export async function runChat(opts: RunChatOptions): Promise<void> {
-  const { user, settings, thread, message, relayKey, signal, emit } = opts;
+  const { user, settings, thread, message, credential, signal, emit } = opts;
   const apiKey = decryptSecret(settings.encryptedApiKey);
   const isAdmin = user.role === "admin";
   const tools = toolDefinitions(isAdmin);
-  // The chat turn authenticates with the user's own stored key; the tools that
-  // reach this deployment's gateway need a key for this deployment. When those
-  // are the same host they are the same key, and asking for it twice was the
-  // reason a user who had already configured the assistant was told to go and
-  // configure it again.
-  const gatewayKey = resolveGatewayKey(relayKey, settings, opts.gatewayBase);
   const ctx: ToolContext = {
     user,
-    ...(gatewayKey ? { relayKey: gatewayKey } : {}),
+    ...(credential.kind === "key" ? { relayKey: credential.relayKey } : {}),
+    ...(credential.kind === "account" ? { account: credential.account } : {}),
     ...(opts.gatewayBase ? { gatewayBase: opts.gatewayBase } : {}),
   };
 

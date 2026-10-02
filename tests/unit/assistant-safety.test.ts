@@ -33,7 +33,18 @@ import { createProvider } from "@/lib/db/providers";
 import { InMemoryCookieStore, getSessionFromStore } from "@/lib/auth/session";
 import { __resetConfigForTest } from "@/lib/config";
 import { toolDefinitions, executeTool } from "@/lib/assistant/tools";
-import { pointsAtGateway, resolveGatewayKey, runChat, type ChatEvent } from "@/lib/assistant/chat";
+import { runChat, type ChatEvent } from "@/lib/assistant/chat";
+import { resolveToolCredential } from "@/lib/assistant/credentials";
+import {
+  createAssistantCredential,
+  getAssistantCredential,
+  removeAssistantCredential,
+  rotateAssistantCredential,
+  setAssistantCredentialEnabled,
+} from "@/lib/db/assistant-keys";
+import { createApiKey, getApiKeyById, listAllApiKeys, listApiKeysByUser } from "@/lib/db/keys";
+import { createMediaProvider } from "@/lib/db/media-providers";
+import { MINIMAX_IMAGE_SPEC } from "@/lib/media/seeds";
 import { getAssistantSettings, saveAssistantSettings, AssistantSettingsError } from "@/lib/db/assistant";
 import { listAssistantThreads } from "@/lib/db/assistant";
 import { createAssistantThread } from "@/lib/db/assistant";
@@ -646,124 +657,237 @@ describe("assistant: an unconfigured account cannot start a turn", () => {
   });
 });
 
-describe("assistant: reusing the caller's own key for the gateway", () => {
+describe("assistant: what the tools are allowed to spend", () => {
   beforeEach(() => {
     __resetDbForTest();
   });
 
-  it("reads a base URL with or without /v1 as this deployment", () => {
-    expect(pointsAtGateway("https://relay.example.com/v1", "https://relay.example.com")).toBe(true);
-    expect(pointsAtGateway("https://relay.example.com", "https://relay.example.com")).toBe(true);
-    expect(pointsAtGateway("https://relay.example.com/v1/", "https://relay.example.com")).toBe(true);
-  });
-
-  it("does not read a look-alike host as this deployment", () => {
-    // The dangerous shape. A prefix comparison would hand the key to whoever
-    // registered `relay.example.com.evil.test`.
-    expect(pointsAtGateway("https://relay.example.com.evil.test/v1", "https://relay.example.com")).toBe(false);
-    expect(pointsAtGateway("http://relay.example.com/v1", "https://relay.example.com")).toBe(false);
-    expect(pointsAtGateway("https://other.example.com/v1", "https://relay.example.com")).toBe(false);
-    expect(pointsAtGateway("not a url", "https://relay.example.com")).toBe(false);
-  });
-
-  it("uses the caller's own stored key when their assistant points here", async () => {
+  it("has nothing to spend until the user creates a credential", async () => {
     const user = await makeUser("user", "u11");
-    await saveAssistantSettings(user.id, {
-      baseUrl: "https://relay.example.com/v1",
-      apiKey: "sk-relay-own",
-      model: "m1",
-    });
-    const settings = (await getAssistantSettings(user.id))!;
-    expect(resolveGatewayKey(undefined, settings, "https://relay.example.com")).toBe("sk-relay-own");
+    const resolved = await resolveToolCredential({ userId: user.id });
+    expect(resolved).toEqual({ kind: "none", reason: "no_credential" });
   });
 
-  it("never reuses a key that was issued for somebody else's upstream", async () => {
+  it("still has nothing after a credential is created but not switched on", async () => {
+    // The default is off, and "created" is not consent.
     const user = await makeUser("user", "u12");
-    await saveAssistantSettings(user.id, {
-      baseUrl: "https://api.thirdparty.test/v1",
-      apiKey: "sk-third-party",
-      model: "m1",
+    const created = await createAssistantCredential(user.id);
+    expect(created.enabled).toBe(false);
+    expect(await resolveToolCredential({ userId: user.id })).toEqual({
+      kind: "none",
+      reason: "switch_off",
     });
-    const settings = (await getAssistantSettings(user.id))!;
-    expect(resolveGatewayKey(undefined, settings, "https://relay.example.com")).toBeUndefined();
   });
 
-  it("prefers an explicitly supplied key over anything it could infer", async () => {
+  it("spends the account once the user switches it on", async () => {
     const user = await makeUser("user", "u13");
-    await saveAssistantSettings(user.id, {
-      baseUrl: "https://relay.example.com/v1",
-      apiKey: "sk-relay-own",
-      model: "m1",
-    });
-    const settings = (await getAssistantSettings(user.id))!;
-    expect(resolveGatewayKey("  sk-pasted  ", settings, "https://relay.example.com")).toBe("sk-pasted");
+    await createAssistantCredential(user.id);
+    await setAssistantCredentialEnabled(user.id, true);
+
+    const resolved = await resolveToolCredential({ userId: user.id });
+    expect(resolved.kind).toBe("account");
+    if (resolved.kind !== "account") throw new Error("unreachable");
+    expect(resolved.account.apiKey.userId).toBe(user.id);
+    expect(resolved.account.user.id).toBe(user.id);
+    // The account it spends is the caller's own, never a neighbour's.
+    expect(resolved.account.user.role).toBe("user");
   });
 
-  it("infers nothing when the route could not resolve this deployment's address", async () => {
+  it("stops spending the moment it is switched back off", async () => {
     const user = await makeUser("user", "u14");
-    await saveAssistantSettings(user.id, {
-      baseUrl: "https://relay.example.com/v1",
-      apiKey: "sk-relay-own",
-      model: "m1",
-    });
-    const settings = (await getAssistantSettings(user.id))!;
-    expect(resolveGatewayKey(undefined, settings, undefined)).toBeUndefined();
+    await createAssistantCredential(user.id);
+    await setAssistantCredentialEnabled(user.id, true);
+    expect((await resolveToolCredential({ userId: user.id })).kind).toBe("account");
+
+    await setAssistantCredentialEnabled(user.id, false);
+    expect((await resolveToolCredential({ userId: user.id })).kind).toBe("none");
   });
 
-  it("lets a media tool actually run on the reused key, and keeps the key out of the result", async () => {
-    // The seam that decides whether the inference is worth anything at all: if
-    // the tool ignored the resolved key, the user would still be told to go and
-    // configure something.
-    const user = await makeUser("user", "u15");
-    await saveAssistantSettings(user.id, {
-      baseUrl: "https://relay.example.com/v1",
-      apiKey: "sk-relay-own",
-      model: "m1",
-    });
-    const settings = (await getAssistantSettings(user.id))!;
-    const gatewayBase = "https://relay.example.com";
-    const relayKey = resolveGatewayKey(undefined, settings, gatewayBase);
-    expect(relayKey).toBe("sk-relay-own");
+  it("never hands out a credential that belongs to somebody else", async () => {
+    const owner = await makeUser("user", "u15");
+    const other = await makeUser("user", "u16");
+    await createAssistantCredential(owner.id);
+    await setAssistantCredentialEnabled(owner.id, true);
 
-    const seen: Array<{ url: string; auth: string | null }> = [];
-    vi.stubGlobal("fetch", async (url: string | URL | Request, init?: RequestInit) => {
-      seen.push({ url: String(url), auth: new Headers(init?.headers).get("authorization") });
-      return new Response(JSON.stringify({ data: [{ url: "https://cdn.example/a.png" }] }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-    });
+    const resolved = await resolveToolCredential({ userId: other.id });
+    expect(resolved.kind).toBe("none");
+  });
 
-    const result = await executeTool(
-      "generate_image",
-      JSON.stringify({ model: "image-01", prompt: "a cat wearing a hat" }),
-      {
-        user: { id: user.id, username: user.username, role: user.role, timezone: "shanghai" },
-        relayKey,
-        gatewayBase,
-      },
-    );
+  it("a pasted key wins over the account credential", async () => {
+    // A deliberate per-request choice is never quietly overridden.
+    const user = await makeUser("user", "u17");
+    await createAssistantCredential(user.id);
+    await setAssistantCredentialEnabled(user.id, true);
 
-    expect(result.ok).toBe(true);
-    expect(seen[0]?.url).toBe("https://relay.example.com/v1/images/generations");
-    expect(seen[0]?.auth).toBe("Bearer sk-relay-own");
-    // Re-using a stored credential is only safe if the model never sees it.
-    expect(result.content).not.toContain("sk-relay-own");
+    const resolved = await resolveToolCredential({ userId: user.id, relayKey: "  sk-pasted  " });
+    expect(resolved).toEqual({ kind: "key", relayKey: "sk-pasted" });
+  });
 
-    vi.unstubAllGlobals();
+  it("asking for the key path without supplying one does not fall back", async () => {
+    // This is the case the old inference got wrong: the user chose a mode, and
+    // that choice has to be honoured even when it means "cannot".
+    const user = await makeUser("user", "u18");
+    await createAssistantCredential(user.id);
+    await setAssistantCredentialEnabled(user.id, true);
+
+    const resolved = await resolveToolCredential({ userId: user.id, mode: "key" });
+    expect(resolved).toEqual({ kind: "none", reason: "no_credential" });
+  });
+
+  it("holds at most one credential per account, however often create is called", async () => {
+    const user = await makeUser("user", "u19");
+    const first = await createAssistantCredential(user.id);
+    const second = await createAssistantCredential(user.id);
+    expect(second.apiKeyId).toBe(first.apiKeyId);
+  });
+
+  it("rotating produces a different key, and keeps the switch where it was", async () => {
+    const user = await makeUser("user", "u20");
+    const first = await createAssistantCredential(user.id);
+    await setAssistantCredentialEnabled(user.id, true);
+
+    const rotated = await rotateAssistantCredential(user.id);
+    expect(rotated).not.toBeNull();
+    expect(rotated!.apiKeyId).not.toBe(first.apiKeyId);
+    expect(rotated!.enabled).toBe(true);
+    expect(await getApiKeyById(first.apiKeyId)).toBeNull();
+  });
+
+  it("removing takes the underlying key with it", async () => {
+    const user = await makeUser("user", "u21");
+    const created = await createAssistantCredential(user.id);
+    expect(await removeAssistantCredential(user.id)).toBe(true);
+    expect(await getApiKeyById(created.apiKeyId)).toBeNull();
+    expect(await getAssistantCredential(user.id)).toBeNull();
+  });
+
+  it("keeps the credential out of the user's own key list, and off their budget", async () => {
+    // maxActiveKeys is computed from that same list, so hiding it here is what
+    // stops the assistant from eating a capped user's allowance.
+    const user = await makeUser("user", "u22");
+    const credential = await createAssistantCredential(user.id);
+    const { key } = await createApiKey({ userId: user.id, label: "mine" });
+
+    const { keys } = await listApiKeysByUser(user.id);
+    const ids = keys.map((k) => k.id);
+    expect(ids).toContain(key.id);
+    expect(ids).not.toContain(credential.apiKeyId);
+  });
+
+  it("still shows the credential to an admin, so it can be revoked", async () => {
+    const user = await makeUser("user", "u23");
+    const credential = await createAssistantCredential(user.id);
+    const all = await listAllApiKeys({ limit: 200 });
+    expect(all.map((k) => k.id)).toContain(credential.apiKeyId);
   });
 });
 
 /**
- * The reported bug, end to end: a user asked for a picture, and the assistant
- * told them to go and set something up they had already set up. Testing
- * `resolveGatewayKey` and the tool separately would not have caught a turn loop
- * that simply forgot to pass the result between them, which is exactly the
- * shape the bug had.
+ * The route the panel actually talks to. The verbs are the user's — create,
+ * switch on, switch off, rebuild, remove — so each one is pinned here rather
+ * than only through the repository.
  */
-describe("assistant: a turn whose assistant points at this deployment", () => {
+describe("assistant: /api/assistant/credentials", () => {
   beforeEach(() => {
     __resetDbForTest();
+  });
+
+  async function asCaller(username: string): Promise<string> {
+    const user = await makeUser("user", username);
+    const store = new InMemoryCookieStore();
+    await loginAs(store, user.id, user.username, "user");
+    currentStore = store;
+    return user.id;
+  }
+
+  function post(action: string): Request {
+    return new Request("http://localhost/api/assistant/credentials", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action }),
+    });
+  }
+
+  it("starts out not created, and needs a session", async () => {
+    currentStore = new InMemoryCookieStore();
+    const { GET } = await import("@/app/api/assistant/credentials/route");
+    expect((await GET()).status).toBe(401);
+
+    await asCaller("u40");
+    const res = await GET();
+    const body = (await res.json()) as { data: { created: boolean; enabled: boolean } };
+    expect(body.data).toMatchObject({ created: false, enabled: false, usable: false });
+  });
+
+  it("create, enable, disable, rotate, remove", async () => {
+    const userId = await asCaller("u41");
+    const { GET, POST } = await import("@/app/api/assistant/credentials/route");
+
+    // Enabling before creating is refused rather than silently succeeding.
+    expect((await POST(post("enable"))).status).toBe(409);
+
+    const created = await POST(post("create"));
+    const createdBody = (await created.json()) as { data: { created: boolean; enabled: boolean; keyPrefix: string } };
+    expect(createdBody.data.created).toBe(true);
+    // Off by default: creating is not consent.
+    expect(createdBody.data.enabled).toBe(false);
+    expect(createdBody.data.keyPrefix).toBeTruthy();
+
+    const enabled = (await (await POST(post("enable"))).json()) as { data: { enabled: boolean; usable: boolean } };
+    expect(enabled.data).toMatchObject({ enabled: true, usable: true });
+
+    const disabled = (await (await POST(post("disable"))).json()) as { data: { enabled: boolean } };
+    expect(disabled.data.enabled).toBe(false);
+
+    const before = await getAssistantCredential(userId);
+    const rotated = (await (await POST(post("rotate"))).json()) as { data: { keyPrefix: string } };
+    expect(rotated.data.keyPrefix).toBeTruthy();
+    expect((await getAssistantCredential(userId))?.apiKeyId).not.toBe(before?.apiKeyId);
+
+    const removed = await POST(post("remove"));
+    expect(removed.status).toBe(200);
+    expect(await getAssistantCredential(userId)).toBeNull();
+    // Removing twice is a clean 404, not a second write.
+    expect((await POST(post("remove"))).status).toBe(404);
+  });
+
+  it("never returns anything the caller could authenticate with", async () => {
+    const userId = await asCaller("u42");
+    const { GET, POST } = await import("@/app/api/assistant/credentials/route");
+    await POST(post("create"));
+    const credential = await getAssistantCredential(userId);
+
+    for (const res of [await GET(), await POST(post("enable"))]) {
+      const body = await res.text();
+      // The hash is the only value that identifies the row, and the prefix is
+      // all the user is ever entitled to see — it is already in their own key
+      // list for any normal key.
+      expect(body).not.toContain(credential!.key.keyHash);
+      expect(body).not.toMatch(/sk-relay-[A-Za-z0-9]{10,}/);
+    }
+    expect(JSON.stringify(credential)).not.toContain("encrypted");
+  });
+
+  it("rejects an unknown action", async () => {
+    await asCaller("u43");
+    const { POST } = await import("@/app/api/assistant/credentials/route");
+    expect((await POST(post("nonsense"))).status).toBe(400);
+  });
+});
+
+/**
+ * The reported bug, end to end. A user asked for a picture and was told to go
+ * and configure something. Under the account path the assistant holds a
+ * credential the user created and switched on, and calls the media handler
+ * in-process with it: no key is pasted, no bearer token exists, and the spend
+ * still lands on that user's own quota.
+ */
+describe("assistant: a turn spent on the caller's own account", () => {
+  beforeEach(() => {
+    __resetDbForTest();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   /** One streamed assistant turn, in the chunk shape the client accumulates. */
@@ -785,71 +909,177 @@ describe("assistant: a turn whose assistant points at this deployment", () => {
     );
   }
 
-  it("generates an image with no gateway key pasted anywhere", async () => {
-    const user = await makeUser("user", "u16");
-    const gatewayBase = "https://relay.example.com";
+  /** A user with room to spend; the default allocation is zero, and a media
+   *  call is refused on quota before it ever reaches an upstream. */
+  async function makeSpender(username: string): Promise<User> {
+    const name = username.padEnd(3, "x");
+    const user = await createUser({
+      username: name,
+      password: "correct horse battery",
+      displayName: name,
+      quotaType: "credits",
+      quotaLimit: 1_000_000,
+    });
+    expect(user).not.toBeNull();
+    return user!;
+  }
+
+  async function seedMediaProvider(): Promise<void> {
+    await createMediaProvider({
+      name: "MiniMax Image",
+      baseUrl: "https://api.minimax.test",
+      apiKey: "vendor-key",
+      models: { "image-01": { upstreamId: "image-01", pricePerItem: 2, enabled: true } },
+      specs: [MINIMAX_IMAGE_SPEC as unknown as Record<string, unknown>],
+    });
+  }
+
+  /** The model asks for the picture on the first turn and then just talks. */
+  function assistantTurns(): Array<[unknown, string | null]> {
+    return [
+      [
+        {
+          role: "assistant",
+          tool_calls: [
+            {
+              index: 0,
+              id: "call_1",
+              function: {
+                name: "generate_image",
+                arguments: JSON.stringify({ model: "image-01", prompt: "a cat wearing a hat" }),
+              },
+            },
+          ],
+        },
+        null,
+      ],
+      [{ content: "图好了。" }, "stop"],
+    ];
+  }
+
+  it("generates an image with no key pasted and no bearer token anywhere", async () => {
+    const user = await makeSpender("u30");
+    const owner = { id: user.id, username: user.username, role: user.role, timezone: "shanghai" } as const;
     await saveAssistantSettings(user.id, {
-      baseUrl: `${gatewayBase}/v1`,
-      apiKey: "sk-relay-own",
+      baseUrl: "https://assistant-upstream.test/v1",
+      apiKey: "sk-upstream-key",
       model: "m1",
     });
     const settings = (await getAssistantSettings(user.id))!;
     const thread = await createAssistantThread(user.id, "t");
+    await seedMediaProvider();
 
-    const mediaCalls: Array<{ url: string; auth: string | null }> = [];
-    let modelTurns = 0;
+    const credential = await createAssistantCredential(user.id);
+    await setAssistantCredentialEnabled(user.id, true);
+
+    const upstream: Array<{ url: string; auth: string | null }> = [];
+    const everyUrl: string[] = [];
+    const turns = assistantTurns();
+    let turn = 0;
     vi.stubGlobal("fetch", async (url: string | URL | Request, init?: RequestInit) => {
       const target = String(url);
-      if (target.includes("/images/generations")) {
-        mediaCalls.push({ url: target, auth: new Headers(init?.headers).get("authorization") });
-        return new Response(JSON.stringify({ data: [{ url: "https://cdn.example/cat.png" }] }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
-      }
-      // The model asks for the picture on the first turn and then just talks.
-      modelTurns++;
-      if (modelTurns === 1) {
-        return sseTurn(
-          {
-            role: "assistant",
-            tool_calls: [
-              {
-                index: 0,
-                id: "call_1",
-                function: {
-                  name: "generate_image",
-                  arguments: JSON.stringify({ model: "image-01", prompt: "a cat wearing a hat" }),
-                },
-              },
-            ],
-          },
-          null,
+      everyUrl.push(target);
+      if (target.includes("api.minimax.test")) {
+        upstream.push({ url: target, auth: new Headers(init?.headers).get("authorization") });
+        return new Response(
+          JSON.stringify({
+            id: "task-1",
+            data: { image_urls: ["https://cdn.example/cat.png"] },
+            metadata: { success_count: 1, failed_count: 0 },
+            base_resp: { status_code: 0, status_msg: "success" },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
         );
       }
-      return sseTurn({ content: "图好了。" });
+      const next = turns[turn++] ?? turns[turns.length - 1];
+      return sseTurn(next[0], next[1]);
     });
+
+    const resolved = await resolveToolCredential({ userId: user.id });
+    expect(resolved.kind).toBe("account");
 
     const events: ChatEvent[] = [];
     await runChat({
-      user: { id: user.id, username: user.username, role: user.role, timezone: "shanghai" },
+      user: owner,
       settings,
       thread,
       message: "用 generate_image 生成一张「戴帽子的猫」",
-      gatewayBase,
+      credential: resolved,
+      gatewayBase: "https://relay.example.com",
       emit: (e) => events.push(e),
     });
 
-    expect(mediaCalls).toHaveLength(1);
-    expect(mediaCalls[0]?.url).toBe(`${gatewayBase}/v1/images/generations`);
-    expect(mediaCalls[0]?.auth).toBe("Bearer sk-relay-own");
+    // The tool result is fed back to the model and persisted, not streamed —
+    // so the transcript is where the evidence is. Joined from the message
+    // *contents* rather than stringified whole: re-stringifying the rows would
+    // escape the inner quotes and make every quoted assertion a lie.
+    const { listAssistantMessages } = await import("@/lib/db/assistant");
+    const persisted = (await listAssistantMessages(thread.id))
+      .map((m) => `${m.role}:${m.content}`)
+      .join("\n");
 
-    // And the model was not handed the credential, nor told to go configure it.
-    const transcript = JSON.stringify(events);
-    expect(transcript).not.toContain("sk-relay-own");
-    expect(transcript).not.toContain("网关密钥");
+    // It really called the media upstream...
+    expect(upstream).toHaveLength(1);
+    // ...using the provider's own key, because that is what the media layer
+    // authenticates with. What matters is that it is NOT one of the user's
+    // gateway keys: no bearer token was minted for this call at all.
+    expect(upstream[0]?.auth).not.toMatch(/Bearer sk-relay-/);
+    expect(persisted).toContain("https://cdn.example/cat.png");
+    expect(persisted).toMatch(/"via":\s*"account"/);
 
-    vi.unstubAllGlobals();
+    // And nothing in the conversation carries a credential.
+    const transcript = persisted;
+    expect(transcript).not.toContain("sk-upstream-key");
+    expect(transcript).not.toContain("sk-relay-");
+    expect(transcript).not.toContain(credential.key.keyHash);
+
+    // The spend landed on the user, not on a neighbour.
+    const { listUsageByKey } = await import("@/lib/db/usage");
+    const usage = await listUsageByKey(credential.apiKeyId);
+    expect(usage).toHaveLength(1);
+  });
+
+  it("refuses when the user never switched the credential on", async () => {
+    // The same turn, with the switch still off: the tool must decline rather
+    // than fall back to anything.
+    const user = await makeSpender("u31");
+    const owner = { id: user.id, username: user.username, role: user.role, timezone: "shanghai" } as const;
+    await saveAssistantSettings(user.id, {
+      baseUrl: "https://assistant-upstream.test/v1",
+      apiKey: "sk-upstream-key",
+      model: "m1",
+    });
+    const settings = (await getAssistantSettings(user.id))!;
+    const thread = await createAssistantThread(user.id, "t");
+    await createAssistantCredential(user.id); // created, deliberately not enabled
+
+    const upstream: string[] = [];
+    const turns = assistantTurns();
+    let turn = 0;
+    vi.stubGlobal("fetch", async (url: string | URL | Request) => {
+      upstream.push(String(url));
+      const next = turns[turn++] ?? turns[turns.length - 1];
+      return sseTurn(next[0], next[1]);
+    });
+
+    const resolved = await resolveToolCredential({ userId: user.id });
+    const events: ChatEvent[] = [];
+    await runChat({
+      user: owner,
+      settings,
+      thread,
+      message: "用 generate_image 生成一张「戴帽子的猫」",
+      credential: resolved,
+      gatewayBase: "https://relay.example.com",
+      emit: (e) => events.push(e),
+    });
+
+    expect(resolved.kind).toBe("none");
+    // No media upstream was touched, and the model was told the truth.
+    expect(upstream.filter((u) => u.includes("api.minimax.test"))).toEqual([]);
+    const { listAssistantMessages } = await import("@/lib/db/assistant");
+    const persisted = JSON.stringify(await listAssistantMessages(thread.id));
+    expect(persisted).toContain("凭据");
   });
 });
 

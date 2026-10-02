@@ -36,12 +36,22 @@ import { knownModelOrDefault } from "../providers/known-models";
 import { decryptSecret } from "../crypto/secrets";
 import { renderProviderDiff, renderMediaDiff } from "./diff";
 import { DEPLOYMENT_NOTES } from "./deployment-notes";
+import { NO_CREDENTIAL_MESSAGE, type AccountCredential } from "./credentials";
+import { executeMediaRequest, resultItems } from "../media/handler";
+import { proxyChatCompletion } from "../proxy/openai";
 import type { AuthedUser } from "../auth/session";
 
 export interface ToolContext {
   user: AuthedUser;
   /** The caller's own `sk-relay-…` key, supplied per request and never stored. */
   relayKey?: string;
+  /**
+   * The account-authenticated path: a credential the user created and switched
+   * on, plus the account it spends. Tools call the proxy in-process with it, so
+   * no secret is ever involved. See ./credentials for why nothing here is
+   * inferred.
+   */
+  account?: AccountCredential;
   /**
    * Where this gateway is reachable, resolved by the route before the tool loop
    * starts. See `gatewayBase()`.
@@ -416,26 +426,60 @@ async function testGatewayModel(
 ): Promise<ToolResult> {
   const model = z.string().min(1).safeParse(args.model);
   if (!model.success) return fail("缺少 model 参数。");
-  if (!ctx.relayKey) {
-    return fail(
-      "没有拿到用户的网关密钥，无法发起真实调用。请让用户在模型测试页填入自己的 API 密钥后再试。",
-    );
-  }
+  if (!ctx.relayKey && !ctx.account) return fail(NO_CREDENTIAL_MESSAGE);
 
-  const base = gatewayBase(ctx);
+  const prompt =
+    typeof args.prompt === "string" && args.prompt.trim() ? args.prompt : "用一句话介绍你自己。";
   const body = {
     model: model.data,
-    messages: [
-      {
-        role: "user",
-        content: typeof args.prompt === "string" && args.prompt.trim() ? args.prompt : "用一句话介绍你自己。",
-      },
-    ],
+    messages: [{ role: "user" as const, content: prompt }],
     max_tokens: 200,
     stream: false,
   };
 
   const started = Date.now();
+
+  // Account path: straight into the proxy, with the user's own credential. The
+  // same function the public route calls, minus the bearer lookup — there is no
+  // token to look up.
+  if (ctx.account) {
+    try {
+      const result = await proxyChatCompletion({
+        req: body,
+        apiKey: ctx.account.apiKey,
+        user: ctx.account.user,
+        signal: AbortSignal.timeout(90_000),
+      });
+      const latencyMs = Date.now() - started;
+      if (!result.ok) {
+        return ok({
+          model: model.data,
+          ok: false,
+          httpStatus: result.status,
+          latencyMs,
+          response: JSON.stringify(result.error ?? {}).slice(0, 600),
+        });
+      }
+      const parsed = result.data as {
+        choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
+        usage?: { total_tokens?: number };
+      };
+      return ok({
+        model: model.data,
+        ok: true,
+        via: "account",
+        httpStatus: result.status,
+        latencyMs,
+        finishReason: parsed.choices?.[0]?.finish_reason ?? null,
+        totalTokens: parsed.usage?.total_tokens ?? null,
+        answer: (parsed.choices?.[0]?.message?.content ?? "").slice(0, 1200),
+      });
+    } catch (err) {
+      return fail(`调用失败：${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  const base = gatewayBase(ctx);
   try {
     const res = await fetch(`${base}/v1/chat/completions`, {
       method: "POST",
@@ -458,6 +502,7 @@ async function testGatewayModel(
     return ok({
       model: model.data,
       ok: true,
+      via: "key",
       httpStatus: res.status,
       latencyMs,
       finishReason: parsed.choices?.[0]?.finish_reason ?? null,
@@ -470,7 +515,28 @@ async function testGatewayModel(
 }
 
 /**
- * Generate a media artefact through the gateway, with the caller's own key.
+ * What to tell the model when a media call fails, keyed by status.
+ *
+ * Shared by both credential paths so the account path cannot quietly lose the
+ * advice that the key path gives — the 400 case in particular exists because a
+ * model was observed inventing a cause ("the response format does not match")
+ * for an upstream error whose actual text was sitting in the same result.
+ */
+function mediaFailureHint(status: number): string | undefined {
+  if (status === 401 || status === 403) return "密钥无效，或该账号没有这个媒体能力的权限。";
+  if (status === 402) return "上游额度用尽（不是权限问题）。原话在 response 里，照它解释。";
+  if (status === 404) return "模型名不对，或该媒体服务商没有为这个模型配置 spec。";
+  if (status === 400) {
+    return (
+      "上游的参数校验没过。原话在 response 字段里 —— 照它转述给用户，" +
+      "不要猜测原因（例如不要说「返回格式不匹配」，你看不到上游返回了什么）。"
+    );
+  }
+  return undefined;
+}
+
+/**
+ * Generate a media artefact with the caller's own credential.
  *
  * Goes out over the same public routes a client would use rather than calling
  * the media engine directly, so a tool result is evidence that the route
@@ -485,17 +551,7 @@ async function mediaGenerate(
 ): Promise<ToolResult> {
   const model = z.string().min(1).safeParse(args.model);
   if (!model.success) return fail("缺少 model 参数。");
-  if (!ctx.relayKey) {
-    // Accurate about *why*, which is what this message used to get wrong. The
-    // common case is not a user who forgot to paste anything: it is an assistant
-    // configured against a third-party upstream, whose stored key is not a key
-    // for this gateway and must not be sent here.
-    return fail(
-      "没有可用于本部署的网关密钥，无法调用媒体接口。媒体接口只在本部署上存在；" +
-        "把助手设置里的 API 地址改成指向本部署（助手就会自动用它自己那把密钥），" +
-        "或者在助手设置里手动填一把 sk-relay- 开头的网关密钥，再试一次。",
-    );
-  }
+  if (!ctx.relayKey && !ctx.account) return fail(NO_CREDENTIAL_MESSAGE);
 
   const prompt = typeof args.prompt === "string" ? args.prompt : typeof args.input === "string" ? args.input : "";
   if (!prompt.trim()) return fail("缺少提示词 / 输入文本。");
@@ -525,6 +581,56 @@ async function mediaGenerate(
         : { model: model.data, prompt, n: 1, duration, ratio };
 
   const started = Date.now();
+
+  // Account path: the same handler the public route calls, invoked in-process
+  // with the user's own credential. The quota, whitelist and spec checks all
+  // still apply because they are the handler's own; the only thing skipped is
+  // the bearer lookup, which has no bearer token to do. A tool result therefore
+  // proves the handler works but not the route, which is why the route keeps
+  // its own tests rather than relying on this.
+  if (ctx.account) {
+    try {
+      const outcome = await executeMediaRequest({
+        capability:
+          kind === "image" ? "image.generate" : kind === "speech" ? "audio.tts" : "video.generate",
+        input: {
+          model: model.data,
+          prompt,
+          ...(typeof args.size === "string" && args.size.trim() ? { size: args.size.trim() } : {}),
+          extra: payload,
+        },
+        apiKey: ctx.account.apiKey,
+        user: ctx.account.user,
+        signal: AbortSignal.timeout(240_000),
+      });
+      const latencyMs = Date.now() - started;
+      if (!outcome.ok) {
+        return ok({
+          ok: false,
+          via: "account",
+          httpStatus: outcome.error.status,
+          latencyMs,
+          response: JSON.stringify(outcome.error).slice(0, 1000),
+          hint: mediaFailureHint(outcome.error.status),
+        });
+      }
+      const items = await resultItems(outcome.value.result);
+      return ok({
+        ok: true,
+        via: "account",
+        httpStatus: 200,
+        latencyMs,
+        urls: items.filter((i) => i.kind === "url").map((i) => i.value),
+        b64Images: items.filter((i) => i.kind === "base64").length,
+        ...(kind === "speech"
+          ? { audioBytes: outcome.value.result.successCount, contentType: "audio/mpeg" }
+          : {}),
+      });
+    } catch (err) {
+      return fail(`调用失败：${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   try {
     const res = await fetch(`${gatewayBase(ctx)}${path}`, {
       method: "POST",
@@ -538,23 +644,11 @@ async function mediaGenerate(
       const text = await res.text().catch(() => "");
       return ok({
         ok: false,
+        via: "key",
         httpStatus: res.status,
         latencyMs,
         response: text.slice(0, 1000),
-        hint:
-          res.status === 401 || res.status === 403
-            ? "密钥无效，或该账号没有这个媒体能力的权限。"
-            : res.status === 402
-              ? "上游额度用尽（不是权限问题）。原话在 response 里，照它解释。"
-              : res.status === 404
-                ? "模型名不对，或该媒体服务商没有为这个模型配置 spec。"
-                : res.status === 400
-                  ? // Observed: a model handed a bare upstream field-path error
-                    // and told the user the spec was broken. It had no way to
-                    // know that, and the `response` field already has the truth.
-                    "上游的参数校验没过。原话在 response 字段里 —— 照它转述给用户，" +
-                    "不要猜测原因（例如不要说「返回格式不匹配」，你看不到上游返回了什么）。"
-                  : undefined,
+        hint: mediaFailureHint(res.status),
       });
     }
 
