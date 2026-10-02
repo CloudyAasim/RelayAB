@@ -32,16 +32,13 @@ export default async function AssistantPage() {
   const isAdmin = sessionUser.role === "admin";
 
   return (
+    // No page title: the app header already says "AI 助手", and a chat screen
+    // that greets you with its own name twice reads as two different screens.
     <SectionPageLayout scrollContent={false}>
-      <SectionPageLayout.Title>{t("assistant.title")}</SectionPageLayout.Title>
-
-      {/* The chat owns the available height and scrolls internally, so the page
-          must not scroll as well: a document-scrolled chat pushes the composer
-          out of reach partway through an answer. Without the Content wrapper
-          the layout would also drop every child — see its child scan. */}
       <SectionPageLayout.Content>
         <AssistantChat
           configured={Boolean(settings)}
+          modelLabel={settings?.model ?? t("assistant.unconfiguredModel")}
           settingsPanel={<AssistantSettingsPanel initial={settings} />}
           pendingPanel={isAdmin ? <PendingActions isAdmin={isAdmin} /> : null}
         />

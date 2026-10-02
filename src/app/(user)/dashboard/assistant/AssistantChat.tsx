@@ -3,25 +3,23 @@
 /**
  * app/(user)/dashboard/assistant/AssistantChat.tsx
  *
- * The assistant, laid out the way a chat interface is expected to be laid out:
- * the conversation owns the screen, and everything else is behind a control.
+ * A chat screen. The shape follows what people already know from every other
+ * AI chat product, because a familiar layout is worth more than an
+ * "optimised" one:
  *
- * What that means concretely, and why:
- *
- *   - The message list and the composer fill the available height and do their
- *     own scrolling. The page must not scroll — a chat that scrolls the document
- *     moves the composer out of reach mid-answer.
- *   - The conversation history, the settings form and the admin change queue
- *     are drawers, not stacked cards. They were three blocks of vertical
- *     content pushing the actual conversation below the fold, which is the
- *     opposite of what the page is for.
- *   - The pending-change badge is fetched here rather than passed in, so the
- *     count is live even when the drawer has never been opened.
+ *   - One centred reading column. Messages and the composer share it, so the
+ *     eye travels down a single line instead of across a full-width layout.
+ *   - The composer is a rounded box with the send button inside it, and it
+ *     never leaves the screen. The page does not scroll; this list does.
+ *   - The gateway key is a *setting*, not part of the conversation, so it
+ *     lives in the settings drawer. Having it pinned above the input on every
+ *     screen is the single most chat-hostile thing that was there before.
+ *   - The empty state offers something to click. A lone line of grey text is
+ *     an empty state; a question with four suggestions is a starting point.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import {
   Sheet,
@@ -43,8 +41,6 @@ interface ChatMessage {
   role: "user" | "assistant" | "tool";
   content: string;
   toolName?: string | null;
-  toolCalls?: unknown[];
-  toolCallId?: string | null;
 }
 
 type EventPayload =
@@ -56,13 +52,13 @@ type EventPayload =
 
 interface Props {
   configured: boolean;
-  /** Rendered inside the settings drawer. */
+  /** Model name shown in the top bar, so it is obvious what is answering. */
+  modelLabel: string;
   settingsPanel: React.ReactNode;
-  /** Rendered inside the admin drawer; null for a regular user. */
   pendingPanel: React.ReactNode | null;
 }
 
-export function AssistantChat({ configured, settingsPanel, pendingPanel }: Props) {
+export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPanel }: Props) {
   const t = useT();
   const router = useRouter();
 
@@ -81,12 +77,11 @@ export function AssistantChat({ configured, settingsPanel, pendingPanel }: Props
 
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const loadThreads = useCallback(async () => {
     const res = await fetch("/api/assistant/threads", { cache: "no-store" });
-    const json = (await res.json().catch(() => null)) as
-      | { data?: { threads?: Thread[] } }
-      | null;
+    const json = (await res.json().catch(() => null)) as { data?: { threads?: Thread[] } } | null;
     setThreads(json?.data?.threads ?? []);
   }, []);
 
@@ -118,13 +113,12 @@ export function AssistantChat({ configured, settingsPanel, pendingPanel }: Props
   }, [threadId, loadThread]);
 
   // Follow the tail as tokens arrive, but only when the reader is already near
-  // the bottom — yanking someone back down while they re-read an earlier
-  // answer is worse than letting the newest text land off-screen.
+  // the bottom. Yanking someone back down while they re-read an earlier answer
+  // is its own bug.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 160;
-    if (nearBottom) el.scrollTop = el.scrollHeight;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 160) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
   async function newThread() {
@@ -139,11 +133,6 @@ export function AssistantChat({ configured, settingsPanel, pendingPanel }: Props
       setHistoryOpen(false);
       void loadThreads();
     }
-  }
-
-  async function selectThread(id: string) {
-    setThreadId(id);
-    setHistoryOpen(false);
   }
 
   async function send() {
@@ -241,25 +230,33 @@ export function AssistantChat({ configured, settingsPanel, pendingPanel }: Props
     }
   }
 
-  const currentTitle = threads.find((th) => th.id === threadId)?.title ?? "";
+  const currentTitle = threads.find((th) => th.id === threadId)?.title;
+  const suggestions = [
+    t("assistant.suggestions.1"),
+    t("assistant.suggestions.2"),
+    t("assistant.suggestions.3"),
+    t("assistant.suggestions.4"),
+  ];
 
   return (
-    <div className="flex h-[calc(100dvh-13rem)] min-h-[26rem] flex-col">
-      {/* ---- top bar: everything secondary lives behind one of these ---- */}
-      <div className="flex shrink-0 items-center gap-2 border-b pb-2">
-        <Button variant="ghost" size="sm" onClick={() => setHistoryOpen(true)}>
-          <svg viewBox="0 0 24 24" className="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-            <path d="M3 6h18M3 12h18M3 18h18" />
+    <div className="flex h-[calc(100dvh-8.5rem)] min-h-[28rem] flex-col">
+      {/* ---- top bar: a new chat on the left, what is answering on the right ---- */}
+      <div className="mx-auto flex w-full max-w-3xl shrink-0 items-center gap-2 border-b pb-2">
+        <Button variant="ghost" size="sm" onClick={newThread} title={t("assistant.newThread")}>
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+            <path d="M12 5v14M5 12h14" />
           </svg>
+          <span className="hidden sm:inline">{t("assistant.newThread")}</span>
+        </Button>
+
+        <Button variant="ghost" size="sm" onClick={() => setHistoryOpen(true)}>
           {t("assistant.history")}
           {threads.length > 0 && (
             <span className="ml-1 text-xs text-muted-foreground">{threads.length}</span>
           )}
         </Button>
 
-        {currentTitle && (
-          <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{currentTitle}</span>
-        )}
+        <div className="flex-1" />
 
         {pendingPanel && (
           <Button variant="ghost" size="sm" onClick={() => setPendingOpen(true)}>
@@ -272,24 +269,57 @@ export function AssistantChat({ configured, settingsPanel, pendingPanel }: Props
           </Button>
         )}
 
-        <Button variant="ghost" size="sm" onClick={() => setSettingsOpen(true)}>
-          {t("assistant.settings.title")}
+        <span
+          className="hidden max-w-[14rem] truncate rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground sm:inline-block"
+          title={modelLabel}
+        >
+          {modelLabel}
+        </span>
+
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setSettingsOpen(true)}
+          title={t("assistant.settings.title")}
+        >
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
         </Button>
       </div>
 
       {/* ---- conversation ---- */}
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto py-4">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
         {messages.length === 0 ? (
-          <div className="flex h-full items-center justify-center px-4">
-            <p className="mx-auto max-w-prose text-center text-sm text-muted-foreground">
-              {t("assistant.emptyState")}
-            </p>
+          <div className="mx-auto flex h-full w-full max-w-3xl flex-col items-center justify-center gap-6 px-4 text-center">
+            <div className="space-y-2">
+              <h2 className="text-2xl font-semibold text-foreground">{t("assistant.emptyTitle")}</h2>
+              <p className="mx-auto max-w-prose text-sm text-muted-foreground">
+                {t("assistant.emptyState")}
+              </p>
+            </div>
+            <div className="grid w-full gap-2 sm:grid-cols-2">
+              {suggestions.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => {
+                    setInput(s);
+                    inputRef.current?.focus();
+                  }}
+                  className="rounded-lg border border-border px-3 py-2.5 text-left text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
           </div>
         ) : (
-          <div className="mx-auto w-full max-w-3xl space-y-4 px-1">
+          <div className="mx-auto w-full max-w-3xl space-y-5 px-1 py-6">
             {messages.map((m) =>
               m.role === "tool" ? (
-                <details key={m.id} className="rounded-md border border-border bg-muted/30 p-2">
+                <details key={m.id} className="rounded-lg border border-border bg-muted/30 p-2">
                   <summary className="cursor-pointer text-xs text-muted-foreground">
                     ⚙ {m.toolName ?? t("assistant.toolResult")}
                   </summary>
@@ -299,15 +329,23 @@ export function AssistantChat({ configured, settingsPanel, pendingPanel }: Props
                 </details>
               ) : m.role === "user" ? (
                 <div key={m.id} className="flex justify-end">
-                  <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-lg rounded-br-sm bg-primary px-3 py-2 text-sm text-primary-foreground">
+                  <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl bg-muted px-4 py-2.5 text-sm">
                     {m.content}
                   </div>
                 </div>
               ) : (
-                <div key={m.id} className="whitespace-pre-wrap break-words text-sm">
-                  {m.content || (
-                    <span className="text-muted-foreground">{t("assistant.thinking")}…</span>
-                  )}
+                <div key={m.id} className="flex gap-3">
+                  <div
+                    aria-hidden
+                    className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground"
+                  >
+                    AI
+                  </div>
+                  <div className="min-w-0 flex-1 whitespace-pre-wrap break-words pt-0.5 text-sm">
+                    {m.content || (
+                      <span className="text-muted-foreground">{t("assistant.thinking")}…</span>
+                    )}
+                  </div>
                 </div>
               ),
             )}
@@ -315,64 +353,71 @@ export function AssistantChat({ configured, settingsPanel, pendingPanel }: Props
         )}
       </div>
 
-      {/* ---- composer ---- */}
-      <div className="shrink-0 space-y-2 border-t pt-3">
-        {!configured && (
-          <p className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-sm text-destructive">
-            {t("assistant.notConfigured")}
-          </p>
-        )}
-
-        {error && (
-          <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-md bg-destructive/10 p-2 text-xs text-destructive">
-            {error}
-          </pre>
-        )}
-
-        {pendingCount > 0 && (
-          <p className="text-xs text-muted-foreground">{t("assistant.pendingAction")}</p>
-        )}
-
-        <Input
-          label={t("assistant.gatewayKey")}
-          hint={t("assistant.gatewayKeyHint")}
-          type="password"
-          autoComplete="off"
-          placeholder="sk-relay-..."
-          value={relayKey}
-          onChange={(e) => setRelayKey(e.target.value)}
-          className="h-8 text-xs"
-        />
-
-        <div className="space-y-1.5">
-          <label htmlFor="assistant-input" className="block text-sm font-medium text-foreground">
-            {t("assistant.messageLabel")}
-          </label>
-          <textarea
-            id="assistant-input"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void send();
-              }
-            }}
-            rows={3}
-            placeholder={t("assistant.placeholderHint")}
-            className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm"
-          />
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button onClick={send} disabled={busy || !input.trim() || !configured}>
-            {busy ? t("assistant.stop") : t("assistant.send")}
-          </Button>
-          {busy && (
-            <Button variant="outline" onClick={() => abortRef.current?.abort()}>
-              {t("assistant.stop")}
-            </Button>
+      {/* ---- composer: one rounded box, send button inside it ---- */}
+      <div className="shrink-0 bg-background pb-2">
+        <div className="mx-auto w-full max-w-3xl">
+          {error && (
+            <pre className="mb-2 max-h-28 overflow-auto whitespace-pre-wrap break-words rounded-md bg-destructive/10 p-2 text-xs text-destructive">
+              {error}
+            </pre>
           )}
+
+          {!configured && (
+            <p className="mb-2 rounded-md border border-destructive/40 bg-destructive/10 p-2 text-sm text-destructive">
+              {t("assistant.notConfigured")}{" "}
+              <button
+                type="button"
+                className="underline underline-offset-2"
+                onClick={() => setSettingsOpen(true)}
+              >
+                {t("assistant.openSettings")}
+              </button>
+            </p>
+          )}
+
+          {pendingCount > 0 && (
+            <p className="mb-2 text-xs text-muted-foreground">{t("assistant.pendingAction")}</p>
+          )}
+
+          <div className="flex items-end gap-2 rounded-2xl border border-input bg-background p-2 focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
+            <textarea
+              id="assistant-input"
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void send();
+                }
+              }}
+              rows={1}
+              placeholder={t("assistant.placeholderHint")}
+              className="max-h-40 min-h-[2.25rem] flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none"
+            />
+            {busy ? (
+              <Button size="icon" variant="ghost" onClick={() => abortRef.current?.abort()}>
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
+                  <rect x="6" y="6" width="12" height="12" rx="1" />
+                </svg>
+              </Button>
+            ) : (
+              <Button
+                size="icon"
+                onClick={send}
+                disabled={!input.trim() || !configured}
+                aria-label={t("assistant.send")}
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                  <path d="M12 19V5M5 12l7-7 7 7" />
+                </svg>
+              </Button>
+            )}
+          </div>
+
+          <p className="mt-1.5 text-center text-[11px] text-muted-foreground">
+            {currentTitle ?? t("assistant.composerHint")}
+          </p>
         </div>
       </div>
 
@@ -394,7 +439,10 @@ export function AssistantChat({ configured, settingsPanel, pendingPanel }: Props
               <button
                 key={th.id}
                 type="button"
-                onClick={() => selectThread(th.id)}
+                onClick={() => {
+                  setThreadId(th.id);
+                  setHistoryOpen(false);
+                }}
                 className={`block w-full truncate rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent ${
                   th.id === threadId ? "bg-accent font-medium" : ""
                 }`}
@@ -412,7 +460,28 @@ export function AssistantChat({ configured, settingsPanel, pendingPanel }: Props
             <SheetTitle>{t("assistant.settings.title")}</SheetTitle>
             <SheetDescription>{t("assistant.settings.desc")}</SheetDescription>
           </SheetHeader>
-          <div className="mt-4 space-y-4">{settingsPanel}</div>
+          <div className="mt-4 space-y-4">
+            {/* The gateway key belongs here rather than above the composer:
+                it is a setting, and pinning it into the conversation flow put
+                a password field between the user and the thing they came to
+                use. */}
+            <div className="space-y-1.5">
+              <label htmlFor="assistant-gateway-key" className="block text-sm font-medium text-foreground">
+                {t("assistant.gatewayKey")}
+              </label>
+              <input
+                id="assistant-gateway-key"
+                type="password"
+                autoComplete="off"
+                placeholder="sk-relay-..."
+                value={relayKey}
+                onChange={(e) => setRelayKey(e.target.value)}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              />
+              <p className="text-xs text-muted-foreground">{t("assistant.gatewayKeyHint")}</p>
+            </div>
+            {settingsPanel}
+          </div>
         </SheetContent>
       </Sheet>
 
@@ -423,9 +492,7 @@ export function AssistantChat({ configured, settingsPanel, pendingPanel }: Props
               <SheetTitle>{t("actions.title")}</SheetTitle>
               <SheetDescription>{t("actions.desc")}</SheetDescription>
             </SheetHeader>
-            <div className="mt-4 space-y-3">
-              {pendingPanel}
-            </div>
+            <div className="mt-4 space-y-3">{pendingPanel}</div>
           </SheetContent>
         </Sheet>
       )}

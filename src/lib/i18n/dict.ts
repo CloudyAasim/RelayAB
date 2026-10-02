@@ -779,6 +779,15 @@ const zhCN: Dict = {
   "assistant.historyDesc": "选择一次对话继续，或新建一个。",
   "assistant.noHistory": "还没有对话记录。",
   "assistant.placeholderHint": "问点什么，Enter 发送，Shift+Enter 换行",  "assistant.messageLabel": "消息",
+  "assistant.emptyTitle": "有什么可以帮你的？",
+  "assistant.composerHint": "Enter 发送 · Shift+Enter 换行",
+  "assistant.openSettings": "去设置",
+  "assistant.unconfiguredModel": "未配置模型",
+  "assistant.suggestions.1": "这个网关现在提供哪些模型？各自的上下文窗口多大？",
+  "assistant.suggestions.2": "帮我实测一下 MiniMax-M3 能不能用",
+  "assistant.suggestions.3": "我新装了一个 Dokku，部署要配哪些环境变量？",
+  "assistant.suggestions.4": "用 generate_image 生成一张「戴帽子的猫」",
+
 
   "assistant.settings.title": "助手设置",
   "assistant.settings.desc": "助手跑在你自己的上游密钥上，不经过本系统的提供商。",
@@ -1616,6 +1625,15 @@ const en: Dict = {
   "assistant.historyDesc": "Pick one to continue, or start a new one.",
   "assistant.noHistory": "No conversations yet.",
   "assistant.placeholderHint": "Ask something — Enter to send, Shift+Enter for a new line",  "assistant.messageLabel": "Message",
+  "assistant.emptyTitle": "How can I help?",
+  "assistant.composerHint": "Enter to send · Shift+Enter for a new line",
+  "assistant.openSettings": "Open settings",
+  "assistant.unconfiguredModel": "No model configured",
+  "assistant.suggestions.1": "Which models does this gateway serve, and how large is each context window?",
+  "assistant.suggestions.2": "Actually test whether MiniMax-M3 works",
+  "assistant.suggestions.3": "I just set up Dokku — which env vars do I need?",
+  "assistant.suggestions.4": "Generate a picture of a cat wearing a hat with generate_image",
+
 
 
   "assistant.settings.title": "Assistant settings",
