@@ -109,11 +109,11 @@ export function AssistantSettingsPanel({ initial }: { initial: AssistantSettings
   }
 
   return (
-    <Card>
-      <CardHeader title={t("assistant.settings.title")} description={t("assistant.settings.desc")} />
-      <div className="space-y-4">
-        <Input
-          label={t("assistant.settings.baseUrl")}
+    // No Card wrapper: this lives inside a drawer that already has a title and
+    // a description, so a card around it would just be a box in a box.
+    <div className="space-y-4">
+      <Input
+        label={t("assistant.settings.baseUrl")}
           hint={t("assistant.settings.baseUrlHint")}
           placeholder="https://api.example.com/v1"
           value={baseUrl}
@@ -152,14 +152,11 @@ export function AssistantSettingsPanel({ initial }: { initial: AssistantSettings
           </Button>
         </div>
 
-        {message && (
-          <p
-            className={`text-sm ${message.ok ? "text-muted-foreground" : "text-destructive"}`}
-          >
-            {message.text}
-          </p>
-        )}
-      </div>
-    </Card>
+      {message && (
+        <p className={`text-sm ${message.ok ? "text-muted-foreground" : "text-destructive"}`}>
+          {message.text}
+        </p>
+      )}
+    </div>
   );
 }

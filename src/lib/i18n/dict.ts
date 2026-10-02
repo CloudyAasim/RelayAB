@@ -776,6 +776,10 @@ const zhCN: Dict = {
   "assistant.stop": "停止",
   "assistant.notConfigured": "还没有配置助手模型。请在下方填入你自己的 API 地址、密钥和模型名。",
   "assistant.pendingAction": "助手提出了一项配置变更，需要管理员确认后才会生效。",
+  "assistant.history": "历史对话",
+  "assistant.historyDesc": "选择一次对话继续，或新建一个。",
+  "assistant.noHistory": "还没有对话记录。",
+  "assistant.placeholderHint": "问点什么，Enter 发送，Shift+Enter 换行",
   "assistant.settings.title": "助手设置",
   "assistant.settings.desc": "助手跑在你自己的上游密钥上，不经过本系统的提供商。",
   "assistant.settings.baseUrl": "API 地址",
@@ -802,6 +806,10 @@ const zhCN: Dict = {
   "actions.status.applied": "已执行",
   "actions.status.rejected": "已拒绝",
   "actions.status.failed": "执行失败",
+  "actions.titleShort": "待确认",
+  "actions.desc": "助手提出的变更。确认后才会真正执行。",
+  "actions.empty": "没有待确认的变更。",
+
   // ===== 文档：模型目录（用户可见，实时读取）=====
   "docs.catalog.baseUrl": "接入地址",
   "docs.catalog.chatModels": "对话模型",
@@ -1605,6 +1613,11 @@ const en: Dict = {
     "The assistant has no model configured yet. Add your own API base URL, key and model below.",
   "assistant.pendingAction":
     "The assistant proposed a configuration change. It takes effect only once an admin confirms it.",
+  "assistant.history": "Conversations",
+  "assistant.historyDesc": "Pick one to continue, or start a new one.",
+  "assistant.noHistory": "No conversations yet.",
+  "assistant.placeholderHint": "Ask something — Enter to send, Shift+Enter for a new line",
+
   "assistant.settings.title": "Assistant settings",
   "assistant.settings.desc":
     "The assistant runs on your own upstream key. It does not go through this deployment's providers.",
@@ -1632,6 +1645,10 @@ const en: Dict = {
   "actions.status.applied": "Applied",
   "actions.status.rejected": "Rejected",
   "actions.status.failed": "Failed",
+  "actions.titleShort": "Pending",
+  "actions.desc": "Changes the assistant has proposed. Nothing is applied until you approve one.",
+  "actions.empty": "Nothing waiting for approval.",
+
   // ===== Docs: model catalogue (user-facing, read live) =====
   "docs.catalog.baseUrl": "Base URL",
   "docs.catalog.chatModels": "Chat models",

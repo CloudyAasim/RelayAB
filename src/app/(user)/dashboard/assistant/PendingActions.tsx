@@ -81,7 +81,15 @@ export function PendingActions({ isAdmin }: { isAdmin: boolean }) {
     }
   }
 
-  if (actions.length === 0) return null;
+  if (actions.length === 0) {
+    // Inside the drawer this used to render nothing at all, which reads as a
+    // broken panel rather than an empty queue.
+    return (
+      <p className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
+        {t("actions.empty")}
+      </p>
+    );
+  }
 
   return (
     <div className="space-y-3">

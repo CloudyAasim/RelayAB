@@ -32,24 +32,19 @@ export default async function AssistantPage() {
   const isAdmin = sessionUser.role === "admin";
 
   return (
-    <SectionPageLayout>
+    <SectionPageLayout scrollContent={false}>
       <SectionPageLayout.Title>{t("assistant.title")}</SectionPageLayout.Title>
 
-      {/* Without this wrapper the layout drops every child except the title and
-          the page renders empty. See SectionPageLayout's child scan. */}
+      {/* The chat owns the available height and scrolls internally, so the page
+          must not scroll as well: a document-scrolled chat pushes the composer
+          out of reach partway through an answer. Without the Content wrapper
+          the layout would also drop every child — see its child scan. */}
       <SectionPageLayout.Content>
-        <div className="space-y-4">
-          {isAdmin && (
-            <div className="space-y-2">
-              <h2 className="text-sm font-medium text-foreground">{t("actions.title")}</h2>
-              <PendingActions isAdmin={isAdmin} />
-            </div>
-          )}
-
-          <AssistantChat configured={Boolean(settings)} />
-
-          <AssistantSettingsPanel initial={settings} />
-        </div>
+        <AssistantChat
+          configured={Boolean(settings)}
+          settingsPanel={<AssistantSettingsPanel initial={settings} />}
+          pendingPanel={isAdmin ? <PendingActions isAdmin={isAdmin} /> : null}
+        />
       </SectionPageLayout.Content>
     </SectionPageLayout>
   );
