@@ -420,9 +420,30 @@ export function applyMapping(node: MediaMapping, scope: unknown): unknown {
   if ("$mapSize" in record) {
     const params = asRecord(record.$mapSize);
     if (!params) return undefined;
-    const raw = getPath(scope, String(params.path ?? "$.size"));
-    if (raw === undefined || raw === null) return params.default;
     const table = resolveEnumTable(params, "table", scope);
+    const raw = getPath(scope, String(params.path ?? "$.size"));
+    if (raw === undefined || raw === null) {
+      // No size. A ratio the caller did state is the more specific of the two,
+      // and this mapping's *value* is the ratio, so honouring it means checking
+      // it against the table rather than translating it.
+      //
+      // Without this the `default` wins, and that is how "I asked for 16:9 and
+      // got a square" happens: the caller says 16:9, the mapping only ever
+      // looks at `size`, and the request goes out at the default with nothing
+      // anywhere saying it had been downgraded.
+      //
+      // The table is the authority on what this model accepts, so a ratio it
+      // does not list falls back rather than being forwarded to a vendor that
+      // will reject it.
+      const ratio = getPath(scope, String(params.ratioPath ?? "$.ratio"));
+      if (ratio !== undefined && ratio !== null) {
+        for (const mapped of table.values()) {
+          if (String(mapped) === String(ratio)) return ratio;
+        }
+      }
+      return params.default;
+    }
+    // A size is the more specific answer when both are given.
     return table.get(String(raw)) ?? params.default ?? raw;
   }
 

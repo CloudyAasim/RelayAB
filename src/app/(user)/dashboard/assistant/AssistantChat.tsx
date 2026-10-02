@@ -554,7 +554,12 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
       // persisted - including the tool results the stream never carried.
       const settled = createdThreadRef.current ?? threadId;
       if (settled) void loadThread(settled);
-      else void loadThreads();
+      // The history *list* is a separate read from the transcript, and a
+      // conversation this turn just created is not in it. Refreshing only the
+      // transcript is why a brand new conversation could be opened and used
+      // and still not be in the history until the page was reloaded — the list
+      // was last read before the thread existed.
+      void loadThreads();
     }
   }
 
