@@ -143,6 +143,21 @@ function ok(value: unknown): ToolResult {
   return { ok: true, content: JSON.stringify(value, null, 2) };
 }
 
+/**
+ * The same, without the indentation.
+ *
+ * For a payload whose size is a concern: a full media-spec listing is ~15 KB
+ * pretty-printed and ~11 KB compact, and the turn loop truncates a tool result.
+ * A truncation lands wherever it lands, and where it landed last time was
+ * inside a video spec's `async.poll` — so the model copied a spec with no
+ * `statusMap` and the approval rejected it.
+ *
+ * Indentation is for a person reading a terminal. A model reads JSON.
+ */
+function okCompact(value: unknown): ToolResult {
+  return { ok: true, content: JSON.stringify(value) };
+}
+
 // ---------------------------------------------------------------------------
 // Tool catalogue
 // ---------------------------------------------------------------------------
@@ -956,7 +971,10 @@ function specForTheModel(spec: unknown): unknown {
 
 async function listMediaProvidersTool(): Promise<ToolResult> {
   const media = await listMediaProviders();
-  return ok(
+  // Compact, not pretty: this payload is the biggest one any tool returns and
+  // it has to survive the turn loop's truncation whole, because half a spec is
+  // worse than a summary — it is a spec that looks complete and calls nothing.
+  return okCompact(
     media.map((m) => ({
       id: m.id,
       name: m.name,
@@ -971,9 +989,7 @@ async function listMediaProvidersTool(): Promise<ToolResult> {
       specs: (m.specs ?? []).map(specForTheModel),
     })),
   );
-}
-
-async function proposeProviderUpdate(
+}async function proposeProviderUpdate(
   args: Record<string, unknown>,
   ctx: ToolContext,
 ): Promise<ToolResult> {

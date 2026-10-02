@@ -58,6 +58,16 @@ export const MAX_TURN_MS = 10 * 60 * 1000;
 const MAX_HISTORY_MESSAGES = 40;
 
 /**
+ * The ceiling on one tool result.
+ *
+ * Sized against the largest payload a tool legitimately returns — the media
+ * provider configuration, which is a few thousand characters of spec documents
+ * that the model has to be able to read in full and copy. Set too low it does
+ * not shorten a result so much as corrupt it.
+ */
+export const MAX_TOOL_RESULT_CHARS = 24_000;
+
+/**
  * What makes a tool call the *same* call.
  *
  * Key order is not identity: a model that re-emits `{a,b}` as `{b,a}` has not
@@ -342,10 +352,18 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
         resultText = `工具执行失败：${err instanceof Error ? err.message : String(err)}`;
       }
 
-      if (resultText.length > 8000) {
-        // Keep the transcript bounded: an image spec JSON can be enormous, and
-        // replaying it verbatim on every later turn is what blows the context.
-        resultText = `${resultText.slice(0, 8000)}\n…（内容过长已截断）`;
+      if (resultText.length > MAX_TOOL_RESULT_CHARS) {
+        // Keep the transcript bounded: a user list or a model catalogue can be
+        // enormous, and replaying it verbatim on every later turn is what blows
+        // the context.
+        //
+        // The size has to be big enough for the *legitimate* payloads, though,
+        // because a truncation lands wherever it lands rather than at a
+        // boundary. At 8000 this clipped the media-spec listing in the middle
+        // of a video spec's `async.poll`, so the model copied a spec with no
+        // `statusMap` and the approval rejected it — a result that looked
+        // complete and was not.
+        resultText = `${resultText.slice(0, MAX_TOOL_RESULT_CHARS)}\n…（内容过长已截断）`;
       }
 
       await appendAssistantMessage({
