@@ -369,7 +369,10 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
           specs: {
             type: "array",
             description:
-              "能力 spec 数组，【完整】替换。整份替换，不是增量：只传一条会让其余能力全部失效。改之前务必先 list_media_providers 取回现状并合并。",
+              "能力 spec 数组，【完整】替换。整份替换，不是增量：只传一条会让其余能力全部失效。" +
+              "而且必须与 list_media_providers 返回的形状逐字一致 —— 那才是校验器接受的形状。" +
+              "正确做法：先 list_media_providers 取回现状，整份复制，再只改要改的字段。" +
+              "不要自己拼一个「看起来像」的 spec：没有 transport.request / transport.response 的 spec 保存下来也调用不了任何东西。",
             items: { type: "object" },
           },
           enabled: { type: "boolean" },
@@ -429,7 +432,9 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
           },
           specs: {
             type: "array",
-            description: "能力 spec 数组。【完整】的一份，通常可以从 list_media_providers 复制一个改。",
+            description:
+              "能力 spec 数组。【完整】的一份，并且必须与 list_media_providers 返回的形状逐字一致 —— 那才是校验器接受的形状。" +
+              "正确做法：先 list_media_providers 取回现有的 spec，整份复制，再只改要改的字段。",
             items: { type: "object" },
           },
         },
@@ -932,6 +937,23 @@ async function probeProviderHost(args: Record<string, unknown>): Promise<ToolRes
   });
 }
 
+/**
+ * The specs exactly as they are stored.
+ *
+ * This used to hand over a summary — `capability`, `displayName`, and
+ * `method`/`path` hoisted out of the `transport` object they actually live in,
+ * with `request`, `response` and `auth` omitted. The model then proposed specs
+ * in that shape, because it had only ever seen that shape, and the approval
+ * failed with a refusal that said nothing about why. Three times.
+ *
+ * A spec is a document the model has to reproduce, not a row to be skimmed, so
+ * what it is shown is what it must send back. If this ever needs to be
+ * shortened, the cut has to be something the write tool also accepts.
+ */
+function specForTheModel(spec: unknown): unknown {
+  return spec;
+}
+
 async function listMediaProvidersTool(): Promise<ToolResult> {
   const media = await listMediaProviders();
   return ok(
@@ -946,13 +968,7 @@ async function listMediaProvidersTool(): Promise<ToolResult> {
         upstreamId: (cfg as { upstreamId?: string })?.upstreamId ?? id,
         enabled: (cfg as { enabled?: boolean })?.enabled ?? true,
       })),
-      specs: (m.specs ?? []).map((s) => ({
-        capability: s.capability,
-        displayName: s.displayName,
-        method: s.transport?.method,
-        path: s.transport?.path,
-        models: s.models ?? null,
-      })),
+      specs: (m.specs ?? []).map(specForTheModel),
     })),
   );
 }

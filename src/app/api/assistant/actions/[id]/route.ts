@@ -286,7 +286,16 @@ export async function POST(
 
     throw new Error(`未知的变更类型：${claimed.kind}`);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    // `MediaProviderValidationError` computed a list of exactly what is wrong
+    // with a configuration, and that list was being dropped on the floor: the
+    // admin saw the class name, the model saw the class name, and the second
+    // could only guess again. It is the part of the error anyone can act on.
+    const message =
+      err instanceof MediaProviderValidationError
+        ? `配置不合法：${err.issues.join("；")}`
+        : err instanceof Error
+          ? err.message
+          : String(err);
     await setAssistantActionStatus(me.id, id, "failed", message);
     const status = err instanceof MediaProviderValidationError ? 400 : 422;
     return NextResponse.json(
