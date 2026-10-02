@@ -151,12 +151,22 @@ export const MINIMAX_VIDEO_V1_SPEC: MediaSpec = {
   errors: [
     { when: { $eq: ["$.base_resp.status_code", 1002] }, status: 429, code: "rate_limited" },
     { when: { $eq: ["$.base_resp.status_code", 1008] }, status: 402, code: "upstream_credit_exhausted" },
+    // 2067 is the Token Plan ceiling. It answers 2xx with an empty `task_id`,
+    // so without this rule it fell through to the generic "no task id" branch
+    // and read like a permissions problem rather than an exhausted plan.
+    { when: { $eq: ["$.base_resp.status_code", 2067] }, status: 402, code: "upstream_credit_exhausted" },
     { when: { $eq: ["$.base_resp.status_code", 1026] }, status: 400, code: "content_filter" },
     { when: { $eq: ["$.base_resp.status_code", 2013] }, status: 400, code: "bad_request" },
     { when: { $eq: ["$.base_resp.status_code", 1004] }, status: 502, code: "upstream_auth_failed" },
   ],
   limits: { maxN: 1, timeoutMs: 240_000 },
-  metadata: { modes: ["text-to-video"], async: true, sizes: ["1280x720", "1920x1080"] },
+  metadata: {
+    modes: ["text-to-video"],
+    async: true,
+    sizes: ["1280x720", "1920x1080"],
+    // V1 accepts 6s and 10s only, and knows nothing about aspect ratio.
+    durations: [6, 10],
+  },
 };
 
 /**
@@ -178,6 +188,11 @@ export const MINIMAX_VIDEO_V2_SPEC: MediaSpec = {
     model: "$.model",
     content: [{ type: "text", text: "$.prompt" }],
     duration: "$.duration",
+    // H3 rejects an omitted or "adaptive" ratio outright:
+    //   "t2va(纯文本)场景必须显式指定 ratio 且不能为 adaptive"
+    // Without this line the field is dropped before the request leaves, so the
+    // caller sends a perfectly good ratio and still gets that error.
+    ratio: "$.ratio",
     resolution: {
       $enum: {
         path: "$.size",
@@ -223,7 +238,14 @@ export const MINIMAX_VIDEO_V2_SPEC: MediaSpec = {
     { when: { $eq: ["$.error.type", "rate_limit_error"] }, status: 429, code: "rate_limited" },
   ],
   limits: { maxN: 1, timeoutMs: 240_000 },
-  metadata: { modes: ["text-to-video"], async: true, sizes: ["1280x720", "1920x1080"] },
+  metadata: {
+    modes: ["text-to-video"],
+    async: true,
+    sizes: ["1280x720", "1920x1080"],
+    // H3 needs both a duration and an explicit, non-adaptive ratio.
+    durations: [6, 10],
+    ratios: ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9"],
+  },
 };
 
 /**
