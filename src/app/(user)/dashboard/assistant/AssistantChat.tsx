@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/Sheet";
 import { useT } from "@/components/i18n/I18nProvider";
 import { CredentialPanel, type Mode } from "@/lib/assistant/CredentialPanel";
-import { MediaArtifacts, artifactsFromToolContent } from "./MediaArtifacts";
+import { MediaArtifacts, artifactsFromToolContent, AssistantBody } from "./MediaArtifacts";
 import type { ArtifactRef } from "@/lib/db/assistant-artifacts";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";
 import { Pencil, Trash2 } from "lucide-react";
@@ -97,6 +97,12 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
   const [historyError, setHistoryError] = useState<string | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
+  /**
+   * The thread this turn created, when it started without one. `threadId` in a
+   * closure is the value from the render that began the turn, which is still
+   * null on the first message of a conversation, so the settle step needs this.
+   */
+  const createdThreadRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   /**
@@ -134,10 +140,23 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
     void loadPendingCount();
   }, [loadThreads, loadPendingCount]);
 
+  /**
+   * Load a thread's messages — but never while a turn is in flight.
+   *
+   * A new conversation has no thread id until the response headers arrive, and
+   * the moment one is set this used to load it: mid-stream, with the server
+   * holding only the user's message. That overwrote the local transcript, and
+   * every later delta then looked for a streaming placeholder that no longer
+   * existed, so the answer never appeared at all — only after a reload, which
+   * by then could read a complete conversation. It only ever happened on the
+   * first message of a conversation, because after that the id is already set
+   * and this effect does not re-run.
+   */
   useEffect(() => {
+    if (busy) return;
     if (threadId) void loadThread(threadId);
     else setMessages([]);
-  }, [threadId, loadThread]);
+  }, [threadId, busy, loadThread]);
 
   // Follow the tail as tokens arrive, but only when the reader is already near
   // the bottom. Yanking someone back down while they re-read an earlier answer
@@ -279,7 +298,10 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
       }
 
       const created = res.headers.get("x-assistant-thread");
-      if (created) setThreadId(created);
+      if (created) {
+        createdThreadRef.current = created;
+        setThreadId(created);
+      }
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -335,7 +357,13 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
           m.id === "streaming" && i === prev.length - 1 ? { ...m, id: `a-${Date.now()}` } : m,
         ),
       );
-      if (threadId) void loadThread(threadId);
+      // `threadId` here is the value from the render that started this turn, so
+      // on the first message of a conversation it is still null even though the
+      // response headers named the thread the turn created. Reloading that one
+      // is what replaces the streamed transcript with what was actually
+      // persisted - including the tool results the stream never carried.
+      const settled = createdThreadRef.current ?? threadId;
+      if (settled) void loadThread(settled);
       else void loadThreads();
     }
   }
@@ -494,10 +522,8 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
                   >
                     AI
                   </div>
-                  <div className="min-w-0 flex-1 whitespace-pre-wrap break-words pt-0.5 text-sm">
-                    {m.content || (
-                      <span className="text-muted-foreground">{t("assistant.thinking")}…</span>
-                    )}
+                  <div className="min-w-0 flex-1 pt-0.5 text-sm">
+                    <AssistantBody text={m.content} thinkingLabel={`${t("assistant.thinking")}…`} />
                   </div>
                 </div>
               ),
