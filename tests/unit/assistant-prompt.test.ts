@@ -108,12 +108,26 @@ describe("assistant: the tool descriptions the model reads at call time", () => 
     expect(d).toMatch(/list_providers/);
   });
 
-  it("warns on media models and specs that they replace", () => {
-    for (const field of ["models", "specs"]) {
-      const d = paramDescription("propose_media_provider_update", field);
-      expect(d, `${field} carries no warning`).toMatch(/完整|整份替换/);
-      expect(d, `${field} does not say what to do first`).toContain("list_media_providers");
-    }
+  it("warns on media models, and points at the patch for specs", () => {
+    const models = paramDescription("propose_media_provider_update", "models");
+    expect(models).toMatch(/完整|整份替换/);
+    expect(models).toContain("list_media_providers");
+
+    // Specs no longer ask the model to retype them: it does that badly, and the
+    // broken JSON it produced is what the admin was looking at.
+    const specs = paramDescription("propose_media_provider_update", "specs");
+    expect(specs).toMatch(/specEdits/);
+    expect(specs).toMatch(/新增或删除/);
+  });
+
+  it("offers specEdits, which is how a spec changes now", () => {
+    const def = toolDefinitions(true).find((t) => t.function.name === "propose_media_provider_update")!;
+    const props = (def.function.parameters as { properties?: Record<string, { description?: string }> })
+      .properties ?? {};
+    expect(Object.keys(props)).toContain("specEdits");
+    const item = (props.specEdits as { items?: { properties?: Record<string, unknown> } }).items;
+    // It has to say which spec, or the patch is not addressable.
+    expect(Object.keys(item?.properties ?? {})).toContain("index");
   });
 
   it("offers a create tool with nowhere to put a key", () => {

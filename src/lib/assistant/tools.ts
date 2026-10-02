@@ -368,7 +368,9 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
     function: {
       name: "propose_media_provider_update",
       description:
-        "提出一次媒体服务商配置变更，同样需要管理员确认才执行。可以整份替换 models 与 specs。只能改已存在的媒体服务商，不能新建。",
+        "提出一次媒体服务商配置变更，同样需要管理员确认才执行。只能改已存在的媒体服务商，不能新建。\n" +
+        "改已有 spec 的字段请用 specEdits（按下标指明、只写要改的字段），不要把整个 specs 数组重发一遍 —— 数组有十几 KB，重发极易在传输中损坏。\n" +
+        "只有新增或删除整个能力 spec 时才用 specs。",
       parameters: {
         type: "object",
         properties: {
@@ -381,13 +383,30 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
               "模型表的【完整】替换。整份替换，不是增量：想加一个模型必须先 list_media_providers 取回现状、合并、再整份传回，否则其余模型会被删掉。",
             additionalProperties: true,
           },
+          specEdits: {
+            type: "array",
+            description:
+              "推荐用法：按下标修改已有 spec 的字段。只写要改的字段，其余原样保留。" +
+              "下标从 list_media_providers 返回的 specs 数组顺序数起（从 0 开始）。" +
+              "这样你不需要重发整个 spec，也就不会把它写坏。",
+            items: {
+              type: "object",
+              properties: {
+                index: { type: "integer", description: "要修改的 spec 在现有列表中的下标，从 0 开始" },
+                displayName: { type: "string" },
+                enabled: { type: "boolean" },
+                models: { type: "array", items: { type: "string" } },
+              },
+              required: ["index"],
+              additionalProperties: true,
+            },
+          },
           specs: {
             type: "array",
             description:
-              "能力 spec 数组，【完整】替换。整份替换，不是增量：只传一条会让其余能力全部失效。" +
-              "而且必须与 list_media_providers 返回的形状逐字一致 —— 那才是校验器接受的形状。" +
-              "正确做法：先 list_media_providers 取回现状，整份复制，再只改要改的字段。" +
-              "不要自己拼一个「看起来像」的 spec：没有 transport.request / transport.response 的 spec 保存下来也调用不了任何东西。",
+              "【完整】替换整个 specs 数组。只在新增或删除整个能力 spec 时用；改字段请用 specEdits。" +
+              "重发整个数组有十几 KB，在传输中损坏过（模型会写出 _request 这种不存在的字段），" +
+              "而损坏的 JSON 解析出来是空对象，管理员只会看到一个没有理由的失败。",
             items: { type: "object" },
           },
           enabled: { type: "boolean" },
@@ -1067,6 +1086,49 @@ async function listMediaProvidersTool(): Promise<ToolResult> {
   });
 }
 
+/**
+ * Apply `specEdits` to a provider's specs.
+ *
+ * Asking a model to re-send the whole spec array is how this went wrong four
+ * times in a row: the array is ~15 KB, the model has to reproduce all of it in
+ * one tool call, and what arrived was not valid JSON — `_request` where the
+ * field is `request`, head and tail intact and the middle mangled. The shape
+ * was right because it had just read a real spec; the operation was not
+ * reliable because it had to echo a document back verbatim.
+ *
+ * So the model sends what it wants *changed* and the merge happens here, where
+ * it is exact. Only whole-spec work — adding a capability, removing one — still
+ * needs the full array, and that is rare and bounded.
+ */
+export function applySpecEdits(
+  current: unknown[],
+  edits: unknown,
+): { specs: Record<string, unknown>[]; error?: string } {
+  if (!Array.isArray(edits)) return { specs: current as Record<string, unknown>[], error: "specEdits 不是数组" };
+
+  const specs = JSON.parse(JSON.stringify(current)) as Record<string, unknown>[];
+  for (const [i, raw] of edits.entries()) {
+    const edit = raw as Record<string, unknown>;
+    const index = typeof edit?.index === "number" ? edit.index : -1;
+    if (index < 0 || index >= specs.length) {
+      return {
+        specs,
+        error: `specEdits[${i}].index 越界：现在是 ${index}，而当前只有 ${specs.length} 个 spec`,
+      };
+    }
+    // Shallow merge, per spec. A nested override would need the model to
+    // reproduce `transport` or `response` wholesale to change one field inside
+    // it, which is the same problem one level down.
+    const { index: _index, ...overrides } = edit as Record<string, unknown> & { index?: number };
+    void _index;
+    for (const [key, value] of Object.entries(overrides)) {
+      if (value === undefined) continue;
+      specs[index] = { ...specs[index], [key]: value };
+    }
+  }
+  return { specs };
+}
+
 async function proposeMediaProviderUpdate(
   args: Record<string, unknown>,
   ctx: ToolContext,
@@ -1081,7 +1143,16 @@ async function proposeMediaProviderUpdate(
   if (typeof args.baseUrl === "string") patch.baseUrl = args.baseUrl.trim();
   if (typeof args.enabled === "boolean") patch.enabled = args.enabled;
   if (args.models && typeof args.models === "object") patch.models = args.models;
-  if (Array.isArray(args.specs)) patch.specs = args.specs;
+
+  if (args.specEdits !== undefined) {
+    // Resolved here rather than stored as edits, so the approval still applies
+    // a *whole* spec array and the diff the admin reads is the result.
+    const merged = applySpecEdits(provider.specs ?? [], args.specEdits);
+    if (merged.error) return fail(merged.error);
+    patch.specs = merged.specs;
+  } else if (Array.isArray(args.specs)) {
+    patch.specs = args.specs;
+  }
 
   if (Object.keys(patch).length === 0) return fail("没有提供任何要修改的字段。");
 

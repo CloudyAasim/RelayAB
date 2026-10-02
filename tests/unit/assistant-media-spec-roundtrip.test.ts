@@ -23,10 +23,23 @@
  * This file pins the round trip: what the tool shows, and what the validator
  * accepts, have to be the same thing.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+let currentStore: import("@/lib/auth/session").InMemoryCookieStore | null = null;
+vi.mock("next/headers", () => ({
+  cookies: async () => currentStore,
+}));
+
 import { validateMediaSpecs, parseMediaSpec } from "@/lib/media/spec";
+import { applySpecEdits, executeTool } from "@/lib/assistant/tools";
+import { __resetDbForTest } from "@/lib/db/sqlite";
+import { createUser } from "@/lib/db/users";
+import type { User } from "@/lib/db/types";
+import { getAssistantAction } from "@/lib/db/assistant";
+import { createMediaProvider } from "@/lib/db/media-providers";
+import { InMemoryCookieStore, getSessionFromStore } from "@/lib/auth/session";
 import {
   MINIMAX_IMAGE_SPEC,
   MINIMAX_VIDEO_V1_SPEC,
@@ -90,6 +103,140 @@ describe("the refusal explains itself", () => {
   it("names what is missing, so the model can fix it rather than guess again", () => {
     const errors = errorsOf([{ capability: "image.generate", method: "POST", path: "/v1/x" }]).join(" ");
     expect(errors).toMatch(/transport|request|response|spec/i);
+  });
+});
+
+describe("editing a spec without retyping it", () => {
+  // The failure that motivated this: the model was told to copy the spec
+  // verbatim, produced four tool calls in a row of ~15 KB each, and every one
+  // was invalid JSON — `_request` where the field is `request`, head and tail
+  // intact and the middle mangled. The arguments parsed to `{}`, so the tool
+  // said "缺少 providerId" and the admin saw a refusal with no reason.
+  //
+  // Asking a model to echo a document back is not a reliable operation. Sending
+  // the edit and merging it here is.
+  const [IMAGE, VIDEO, TTS] = STORED;
+
+  it("changes only the field named, and leaves the rest of the spec alone", () => {
+    const { specs, error } = applySpecEdits([IMAGE, VIDEO, TTS], [
+      { index: 1, displayName: "改过的名字" },
+    ]);
+    expect(error).toBeUndefined();
+    expect((specs[1] as Record<string, unknown>).displayName).toBe("改过的名字");
+    // The blocks that were being lost, and the neighbours, untouched.
+    expect((specs[1] as Record<string, unknown>).transport).toEqual(VIDEO.transport);
+    expect((specs[1] as Record<string, unknown>).request).toEqual(VIDEO.request);
+    expect((specs[1] as Record<string, unknown>).response).toEqual(VIDEO.response);
+    expect(specs[0]).toEqual(IMAGE);
+    expect(specs[2]).toEqual(TTS);
+  });
+
+  it("the merged result is what the validator accepts", () => {
+    // The point of merging rather than retyping: a rename cannot corrupt the
+    // parts of the document the rename did not touch.
+    const { specs, error } = applySpecEdits(STORED, [{ index: 1, displayName: "改过的名字" }]);
+    expect(error).toBeUndefined();
+    expect(errorsOf(specs)).toEqual([]);
+  });
+
+  it("does not mutate what it was given", () => {
+    // The provider's own row, read on the next turn, must be unchanged until
+    // the admin approves.
+    const before = JSON.stringify(STORED);
+    applySpecEdits(STORED, [{ index: 0, displayName: "改过的名字" }]);
+    expect(JSON.stringify(STORED)).toBe(before);
+  });
+
+  it("an index outside the list is refused rather than creating a spec", () => {
+    // Silently appending would be the worst outcome: a capability that appears
+    // in the list and has never been configured.
+    const { error } = applySpecEdits(STORED, [{ index: 99, displayName: "x" }]);
+    expect(error).toMatch(/越界/);
+  });
+
+  it("an edit with no index is refused, and says what it wanted", () => {
+    const { error } = applySpecEdits(STORED, [{ displayName: "x" }]);
+    expect(error).toMatch(/index/);
+  });
+
+  it("the tool offers the patch, and says why", () => {
+    const TOOLS = readFileSync(join(process.cwd(), "src", "lib", "assistant", "tools.ts"), "utf-8");
+    expect(TOOLS).toMatch(/specEdits/);
+    expect(TOOLS).toMatch(/不要把整个 specs 数组重发一遍|重发极易在传输中损坏/);
+  });
+
+  it("and the prompt says so before any tool is chosen", () => {
+    const PROMPTS = readFileSync(join(process.cwd(), "src", "lib", "assistant", "prompts.ts"), "utf-8");
+    expect(PROMPTS).toMatch(/specEdits/);
+    expect(PROMPTS).toMatch(/不要把整个 specs 数组重发一遍/);
+  });
+});
+
+describe("what actually reaches the approval", () => {
+  // The load-bearing property. A merge that happens and is then thrown away —
+  // or stored under a key the apply route's strict schema rejects — is the same
+  // failure with more code in it.
+  let store: InMemoryCookieStore;
+  let user: User;
+
+  beforeEach(async () => {
+    __resetDbForTest();
+    store = new InMemoryCookieStore();
+    currentStore = store;
+    user = (await createUser({
+      username: "spec-edit",
+      password: "correct horse battery",
+      displayName: "spec-edit",
+      role: "admin",
+    }))!;
+    const session = await getSessionFromStore(store);
+    session.userId = user.id;
+    session.username = user.username;
+    session.role = user.role;
+    await session.save();
+  });
+
+  afterEach(() => {
+    currentStore = null;
+  });
+
+  it("stores the merged array, not the edits", async () => {
+    const provider = await createMediaProvider({
+      name: "Media",
+      baseUrl: "https://upstream.test",
+      apiKey: "vendor",
+      models: { "image-01": { upstreamId: "image-01", pricePerItem: 1, enabled: true } },
+      specs: [MINIMAX_IMAGE_SPEC as unknown as Record<string, unknown>],
+    });
+
+    const result = await executeTool(
+      "propose_media_provider_update",
+      JSON.stringify({
+        providerId: provider.id,
+        summary: "改个名字",
+        specEdits: [{ index: 0, displayName: "改过的名字" }],
+      }),
+      { user: { ...user, timezone: "shanghai" } } as never,
+    );
+    expect(result.ok, result.content.slice(0, 200)).toBe(true);
+
+    const actionId = (result.content.match(/"actionId":\s*"([^"]+)"/) ?? [])[1];
+    const action = await getAssistantAction(user.id, actionId);
+    const args = JSON.parse(action!.args);
+
+    // The key the apply route understands...
+    expect(args).toHaveProperty("specs");
+    // ...and not the one it would reject.
+    expect(args).not.toHaveProperty("specEdits");
+
+    expect(args.specs[0].displayName).toBe("改过的名字");
+    // The blocks that were being lost are present, because they were never
+    // retyped.
+    expect(args.specs[0].transport).toEqual(MINIMAX_IMAGE_SPEC.transport);
+    expect(args.specs[0].request).toEqual(MINIMAX_IMAGE_SPEC.request);
+    expect(args.specs[0].response).toEqual(MINIMAX_IMAGE_SPEC.response);
+    // And what is stored is something the validator accepts.
+    expect(errorsOf(args.specs)).toEqual([]);
   });
 });
 

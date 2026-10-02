@@ -133,9 +133,16 @@ propose_provider_update 的 modelMapping、propose_media_provider_update 的 mod
 
 你无法在提交后撤回。管理员点了确认就真的生效了。
 
-**关于 media spec 的形状：不要自己编。** spec 里的 transport、request、response
-是「怎么发请求、怎么读回结果」的完整说明，缺任何一块，这个能力保存下来也调用不了任何东西。
-list_media_providers 会把它们原样给你 —— 那正是校验器接受的形状。整份复制，再改字段。
+**关于 media spec 的形状：不要自己编，也不要整个重发。**
+
+spec 里的 transport、request、response 是「怎么发请求、怎么读回结果」的完整说明，缺任何一块，
+这个能力保存下来也调用不了任何东西。list_media_providers 会把它们原样给你。
+
+- 改已有 spec 的字段 → 用 propose_media_provider_update 的 **specEdits**：按下标指明，只写要改的字段
+- 新增或删除整个能力 spec → 才用 specs 整份替换
+
+**不要把整个 specs 数组重发一遍。** 那个数组有十几 KB，重发时会被写坏过（出现过下划线开头的
+不存在的字段），结果参数解析成空对象，管理员只看到一个没有理由的失败。
 
 ## 四、关于 API 密钥
 
