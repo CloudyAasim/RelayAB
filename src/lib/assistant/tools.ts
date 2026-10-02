@@ -658,30 +658,21 @@ async function mediaGenerate(
         });
       }
       const items = await resultItems(outcome.value.result);
-      // Audio has no item list: it arrives as `binary`, and those bytes are the
-      // only copy — without them there is nothing to play.
-      const binary = outcome.value.result.binary;
-      const artifacts: RawArtifact[] =
-        kind === "speech" && binary
-          ? [
-              {
-                kind: "audio",
-                contentType: binary.contentType ?? "audio/mpeg",
-                base64: Buffer.from(new Uint8Array(binary.body)).toString("base64"),
-              },
-            ]
-          : artifactsFromItems(items, kind === "image" ? "image" : "video");
+      // The kind comes from the tool, never from a fallback expression.
+      // `resultItems` normalises both shapes an upstream can return — a url item
+      // and a `binary` result, which it converts to a base64 item — so there is
+      // one mapping to do, and deriving it from anything but the requested
+      // capability is how a synthesised voice ends up labelled as a video.
+      const artifactKind: ArtifactKind = kind === "image" ? "image" : kind === "speech" ? "audio" : "video";
       return {
         ...ok({
           ok: true,
           via: "account",
           httpStatus: 200,
           latencyMs,
-          // Counts only. The files themselves are on the side channel, so the
-          // model is told how many there are without carrying them.
           itemCount: items.length || outcome.value.result.successCount,
         }),
-        artifacts,
+        artifacts: artifactsFromItems(items, artifactKind),
       };
     } catch (err) {
       return fail(`调用失败：${err instanceof Error ? err.message : String(err)}`);
@@ -743,11 +734,17 @@ async function mediaGenerate(
         artifacts: artifactsFromItems(items, "image"),
       };
     }
-
-    // Video through this route is an async task, so there is no file yet — only
-    // an id to poll with. Nothing to show inline, and the JSON stays visible so
-    // the task id is at least readable.
-    return ok({ ok: true, via: "key", httpStatus: res.status, latencyMs, task: json, note: "视频是异步任务，这里只有任务 id。" });
+    const itemCount = ((json as { data?: unknown[] })?.data ?? []).length;
+    return {
+      ...ok({ ok: true, via: "key", httpStatus: res.status, latencyMs, itemCount }),
+      artifacts: artifactsFromItems(
+        ((json as { data?: Array<Record<string, unknown>> })?.data ?? []).map((d) => ({
+          kind: "url",
+          value: typeof d?.url === "string" ? d.url : "",
+        })),
+        "video",
+      ),
+    };
   } catch (err) {
     return fail(`调用失败：${err instanceof Error ? err.message : String(err)}`);
   }

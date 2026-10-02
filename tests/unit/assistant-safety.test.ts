@@ -27,7 +27,7 @@ vi.mock("next/headers", () => ({
 }));
 
 import { __resetDbForTest } from "@/lib/db/sqlite";
-import { createUser } from "@/lib/db/users";
+import { createUser, getUserById } from "@/lib/db/users";
 import type { User } from "@/lib/db/types";
 import { createProvider } from "@/lib/db/providers";
 import { InMemoryCookieStore, getSessionFromStore } from "@/lib/auth/session";
@@ -44,7 +44,7 @@ import {
 } from "@/lib/db/assistant-keys";
 import { createApiKey, getApiKeyById, listAllApiKeys, listApiKeysByUser } from "@/lib/db/keys";
 import { createMediaProvider } from "@/lib/db/media-providers";
-import { MINIMAX_IMAGE_SPEC } from "@/lib/media/seeds";
+import { MINIMAX_IMAGE_SPEC, MINIMAX_TTS_SPEC } from "@/lib/media/seeds";
 import { getAssistantArtifact } from "@/lib/db/assistant-artifacts";
 import { artifactsFromToolContent } from "@/app/(user)/dashboard/assistant/MediaArtifacts";
 import { getAssistantSettings, saveAssistantSettings, AssistantSettingsError } from "@/lib/db/assistant";
@@ -74,8 +74,27 @@ async function makeUser(role: "admin" | "user", username: string): Promise<User>
   return user!;
 }
 
-async function loginAs(store: InMemoryCookieStore, userId: string, username: string, role: "admin" | "user") {
-  const s = await getSessionFromStore(store);
+/**
+ * A user with room to spend.
+ *
+ * The default allocation is zero, and a media call is refused on quota before
+ * it ever reaches an upstream — so a test that seeds a media provider and
+ * expects it to be called has to give the account room first.
+ */
+async function makeSpender(username: string): Promise<User> {
+  const name = username.padEnd(3, "x");
+  const user = await createUser({
+    username: name,
+    password: "correct horse battery",
+    displayName: name,
+    quotaType: "credits",
+    quotaLimit: 1_000_000,
+  });
+  expect(user).not.toBeNull();
+  return user!;
+}
+
+async function loginAs(store: InMemoryCookieStore, userId: string, username: string, role: "admin" | "user") {  const s = await getSessionFromStore(store);
   s.userId = userId;
   s.username = username;
   s.role = role;
@@ -409,6 +428,56 @@ describe("assistant: media tools", () => {
     __resetConfigForTest();
     if (previous === undefined) delete process.env.RELAY_PUBLIC_URL;
     else process.env.RELAY_PUBLIC_URL = previous;
+  });
+
+  it("labels a synthesised voice as audio, whatever shape it came back in", async () => {
+    // Found on production, not here: the artefact was tagged `video` with an
+    // `image/png` content type while the bytes were a perfectly good MP3. The
+    // kind was being mapped off anything except the requested capability, so a
+    // result the binary branch did not cover fell into the video default. This
+    // pins the kind to the tool argument.
+    __resetDbForTest();
+    const user = await makeSpender("u33");
+    await createMediaProvider({
+      name: "MiniMax Speech",
+      baseUrl: "https://api.minimax.test",
+      apiKey: "vendor-key",
+      models: { "speech-2.8-hd": { upstreamId: "speech-2.8-hd", pricePerItem: 1, enabled: true } },
+      specs: [MINIMAX_TTS_SPEC as unknown as Record<string, unknown>],
+    });
+    const credential = await createAssistantCredential(user.id);
+    await setAssistantCredentialEnabled(user.id, true);
+
+    const audio = Buffer.from("ID3 synthesised speech").toString("base64");
+    vi.stubGlobal("fetch", async (url: string | URL | Request) => {
+      if (String(url).includes("api.minimax.test")) {
+        return new Response(
+          JSON.stringify({ data: { audio }, base_resp: { status_code: 0, status_msg: "success" } }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("{}", { status: 500 });
+    });
+
+    const result = await executeTool(
+      "generate_speech",
+      JSON.stringify({ model: "speech-2.8-hd", input: "hello" }),
+      {
+        user: { id: user.id, username: user.username, role: user.role, timezone: "shanghai" },
+        account: {
+          apiKey: credential.key,
+          user: (await getUserById(user.id))!,
+        },
+        gatewayBase: "https://relay.example.com",
+      },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.artifacts).toHaveLength(1);
+    expect(result.artifacts?.[0]?.kind).toBe("audio");
+    expect(result.artifacts?.[0]?.contentType).toMatch(/^audio\//);
+    // The audio is on the side channel, never in the text.
+    expect(result.content).not.toContain(audio);
   });
 
   it("keeps speech bytes out of the text, because there is no URL for them", async () => {
@@ -976,21 +1045,6 @@ describe("assistant: a turn spent on the caller's own account", () => {
     );
   }
 
-  /** A user with room to spend; the default allocation is zero, and a media
-   *  call is refused on quota before it ever reaches an upstream. */
-  async function makeSpender(username: string): Promise<User> {
-    const name = username.padEnd(3, "x");
-    const user = await createUser({
-      username: name,
-      password: "correct horse battery",
-      displayName: name,
-      quotaType: "credits",
-      quotaLimit: 1_000_000,
-    });
-    expect(user).not.toBeNull();
-    return user!;
-  }
-
   async function seedMediaProvider(): Promise<void> {
     await createMediaProvider({
       name: "MiniMax Image",
@@ -1098,7 +1152,6 @@ describe("assistant: a turn spent on the caller's own account", () => {
     expect(persisted).not.toContain("https://cdn.example/cat.png");
     expect(persisted).toContain('"url": "/api/assistant/artifacts/');
     expect(persisted).toContain('"kind": "image"');
-
     const refs = JSON.parse(
       (await listAssistantMessages(thread.id)).filter((m) => m.role === "tool")[0].content,
     ).artifacts as Array<{ id: string }>;
@@ -1107,7 +1160,6 @@ describe("assistant: a turn spent on the caller's own account", () => {
     // Owner-scoped: the same id under another account simply is not there.
     const stranger = await makeSpender("u32");
     expect(await getAssistantArtifact(refs[0].id, stranger.id)).toBeNull();
-
     // And nothing in the conversation carries a credential.
     const transcript = persisted;
     expect(transcript).not.toContain("sk-upstream-key");
