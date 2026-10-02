@@ -12,10 +12,14 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { splitMediaFromText } from "@/app/(user)/dashboard/assistant/MediaArtifacts";
+import { splitLinks } from "@/app/(user)/dashboard/assistant/MediaArtifacts";
 
 const SRC = join(process.cwd(), "src");
 const CHAT = readFileSync(join(SRC, "app", "(user)", "dashboard", "assistant", "AssistantChat.tsx"), "utf-8");
+const BODY = readFileSync(
+  join(SRC, "app", "(user)", "dashboard", "assistant", "MediaArtifacts.tsx"),
+  "utf-8",
+);
 const PROMPTS = readFileSync(join(SRC, "lib", "assistant", "prompts.ts"), "utf-8");
 
 describe("assistant: the first message of a conversation keeps its answer", () => {
@@ -51,54 +55,75 @@ describe("assistant: what the model is told about artefact references", () => {
     expect(PROMPTS).toMatch(/不是内网地址/);
   });
 
-  it("tells it not to paste a link or markdown image into the answer", () => {
-    expect(PROMPTS).toMatch(/不要.*贴裸链接/s);
-    expect(PROMPTS).toContain("markdown");
+  it("tells it not to repeat the reference, and how to give a link instead", () => {
+    // Repeating it is what put the same picture on screen twice.
+    expect(PROMPTS).toMatch(/不要再在回答里重复引用它/);
+    expect(PROMPTS).toMatch(/出现两次/);
+    // A bare URL is fine and renders as a link; markdown image syntax is not.
+    expect(PROMPTS).toMatch(/可点击的链接/);
   });
 });
 
-describe("assistant: a pasted link is forgiven, a hostile one is not", () => {
-  it("lifts an image out of markdown and leaves the prose", () => {
-    const { media, text } = splitMediaFromText(
+describe("assistant: prose carries links, never a second picture", () => {
+  it("turns a redundant image reference into a link, not another picture", () => {
+    // The artefact is already rendered by the tool message above. An earlier
+    // version rendered it a second time here, so every generated image showed
+    // up twice.
+    const segments = splitLinks(
       "图片已生成！\n\n![苹果素描](/api/assistant/artifacts/abc)\n\n这是用 image-01 生成的。",
     );
-    expect(media).toEqual(["/api/assistant/artifacts/abc"]);
+    const links = segments.filter((s) => s.kind === "link");
+    expect(links).toHaveLength(1);
+    expect(links[0]).toMatchObject({
+      value: "/api/assistant/artifacts/abc",
+      label: "苹果素描",
+    });
+    const text = segments.map((s) => s.value).join("");
     expect(text).toContain("图片已生成！");
-    expect(text).toContain("这是用 image-01 生成的。");
-    // The punctuation that made it look broken is gone.
     expect(text).not.toContain("![");
   });
 
-  it("lifts a bare media link on its own line", () => {
-    const { media, text } = splitMediaFromText(
-      "看这里：\nhttps://cdn.example/a.png\n就这张。",
-    );
-    expect(media).toEqual(["https://cdn.example/a.png"]);
-    expect(text).toContain("看这里：");
-    expect(text).not.toContain("cdn.example");
+  it("makes a bare link clickable and shows its address", () => {
+    const links = splitLinks("链接：https://example.com/a.png 就这个").filter((s) => s.kind === "link");
+    expect(links).toHaveLength(1);
+    expect(links[0]).toMatchObject({ value: "https://example.com/a.png", label: "https://example.com/a.png" });
   });
 
-  it("leaves an ordinary link in the prose", () => {
-    const { media, text } = splitMediaFromText("文档在 https://example.com/docs 上。");
-    expect(media).toEqual([]);
-    expect(text).toContain("https://example.com/docs");
+  it("leaves prose with no URL exactly as it was", () => {
+    const segments = splitLinks("已经生成好了，提示词是「戴帽子的猫」。");
+    expect(segments).toHaveLength(1);
+    expect(segments[0]).toEqual({ kind: "text", value: "已经生成好了，提示词是「戴帽子的猫」。" });
   });
 
-  it("refuses to render a script url", () => {
+  it("refuses a script url", () => {
     // A model response is untrusted input. Whatever it writes must never reach
-    // an element's src as something executable.
+    // an href as something executable.
     for (const hostile of [
       "![x](javascript:alert(1))",
+      "看这个 [点](javascript:alert(1))",
       "![x](data:text/html;base64,PHNjcmlwdD4=)",
-      "![x](vbscript:msgbox(1))",
     ]) {
-      const { media } = splitMediaFromText(hostile);
-      expect(media, `"${hostile}" became a media element`).toEqual([]);
+      const links = splitLinks(hostile).filter((s) => s.kind === "link");
+      expect(links, `"${hostile}" became a link`).toEqual([]);
     }
   });
 
-  it("keeps duplicate references to one image", () => {
-    const { media } = splitMediaFromText("![a](/x.png)\n\n![b](/x.png)");
-    expect(media).toEqual(["/x.png"]);
+  it("never renders a picture element in an assistant message", () => {
+    // The whole point of the change, stated where a future edit cannot miss it.
+    // Scoped to AssistantBody's own text: `MediaArtifacts` in the same file
+    // *should* render an <img> — that is the tool result, and it is the one
+    // place a picture belongs.
+    const start = BODY.indexOf("export function AssistantBody");
+    const end = BODY.indexOf("export function MediaArtifacts");
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const body = BODY.slice(start, end);
+    expect(body).toContain("splitLinks");
+    expect(body).not.toContain("<img");
+  });
+
+  it("renders the picture in exactly one place: the tool result", () => {
+    const start = BODY.indexOf("export function MediaArtifacts");
+    expect(BODY.slice(start)).toContain("<img");
   });
 });

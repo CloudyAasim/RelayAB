@@ -44,69 +44,88 @@ export function artifactsFromToolContent(content: string): ArtifactRef[] {
 }
 
 /**
- * Pull images out of the assistant's own text.
+ * Split the assistant's prose into text and links.
  *
- * The model was told not to paste links, and it mostly listens — but when it
- * does, `![alt](url)` in a plain-text renderer shows up as a row of brackets
- * and parentheses, which reads as the assistant being broken rather than as
- * the assistant being redundant. Rendering it costs nothing and removes the
- * worst version of the mistake.
+ * A previous version turned image-looking URLs in here into pictures as well,
+ * which was wrong twice over: the artefact is already rendered by the tool
+ * message directly above, so every generated image appeared twice; and when the
+ * model *meant* to hand over a link, the reader got a second picture instead of
+ * something clickable.
  *
- * Only http(s) and same-origin paths become images. A `javascript:` URL in a
- * model response must never reach an `src`.
+ * The rule this encodes: pictures come from tool results, and a URL in prose is
+ * a link, always. The system prompt tells the model the same thing.
+ *
+ * Only http(s) and same-origin paths become links. A `javascript:` or `data:`
+ * URL in a model response has nowhere to go.
  */
-export function splitMediaFromText(text: string): { media: string[]; text: string } {
-  const media: string[] = [];
-  const isSafe = (url: string): boolean => /^https?:\/\//i.test(url) || url.startsWith("/");
+export type Segment =
+  | { kind: "text"; value: string }
+  | { kind: "link"; value: string; label: string };
 
-  const markdown = /!\[[^\]]*\]\(\s*([^)\s]+)[^)]*\)/g;
-  let rest = text.replace(markdown, (_match, url: string) => {
-    if (isSafe(url)) media.push(url);
+function isSafeUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url) || url.startsWith("/");
+}
+
+const MARKDOWN_IMAGE = /!\[\s*([^\]]*)\s*\]\(\s*([^)\s]+)[^)]*\)/g;
+const BARE_URL = /https?:\/\/[^\s<>()]+[^\s<>().,;:!?]/gi;
+
+export function splitLinks(text: string): Segment[] {
+  const segments: Segment[] = [];
+  const push = (segment: Segment): void => {
+    const last = segments[segments.length - 1];
+    if (last && last.kind === "text" && segment.kind === "text") {
+      last.value += segment.value;
+      return;
+    }
+    segments.push(segment);
+  };
+
+  // Markdown image syntax is a redundant reference to something already shown,
+  // so it becomes a plain link rather than a second picture - and never literal
+  // brackets, which is what it looked like before.
+  let rest = text.replace(MARKDOWN_IMAGE, (_match, alt: string, url: string) => {
+    if (isSafeUrl(url)) push({ kind: "link", value: url, label: alt.trim() || url });
     return "";
   });
 
-  // A bare link on its own line, which is what a model writes when it decides
-  // the URL is the interesting part.
-  rest = rest.replace(/(^|\n)[ \t]*(https?:\/\/\S+\.(?:png|jpe?g|gif|webp|avif|mp3|m4a|wav|mp4|webm))[ \t]*(?=\n|$)/gi, (_match, lead: string, url: string) => {
-    if (isSafe(url)) media.push(url);
-    return lead;
+  rest = rest.replace(BARE_URL, (url: string) => {
+    if (isSafeUrl(url)) push({ kind: "link", value: url, label: url });
+    return " ";
   });
 
-  return { media: [...new Set(media)], text: rest.replace(/\n{3,}/g, "\n\n").trim() };
+  push({ kind: "text", value: rest });
+  return segments.map((s) => (s.kind === "text" ? { ...s, value: s.value.replace(/[ \t]{2,}/g, " ") } : s));
 }
 
 /**
- * An assistant message: its text, plus any image the model pasted into it.
+ * An assistant message: its prose, with any URL it mentions made clickable.
  *
- * The tool result above already renders the artefact itself, so this is only
- * about the case where the model decided to write the link out in prose. Kept
- * in this file because it is the same problem — a media file the conversation
- * should show rather than spell out.
+ * Pictures are NOT rendered here. The tool result directly above already shows
+ * whatever was produced, and a second copy - whether the model pasted a link or
+ * the page turned the link into one - is the picture appearing twice.
  */
 export function AssistantBody({ text, thinkingLabel }: { text: string; thinkingLabel: string }) {
   if (!text) {
     return <span className="text-muted-foreground">{thinkingLabel}</span>;
   }
-  const { media, text: rest } = splitMediaFromText(text);
   return (
-    <>
-      {media.length > 0 && (
-        <div className="mb-2 space-y-2">
-          {media.map((url) => (
-            // eslint-disable-next-line @next/next/no-img-element -- these are
-            // session-scoped routes, not static assets, and the media tag
-            // carries the session cookie that the route authorises against.
-            <img
-              key={url}
-              src={url}
-              alt=""
-              className="max-h-96 w-auto max-w-full rounded-lg border border-border"
-            />
-          ))}
-        </div>
+    <div className="whitespace-pre-wrap break-words">
+      {splitLinks(text).map((segment, i) =>
+        segment.kind === "link" ? (
+          <a
+            key={`${segment.value}-${i}`}
+            href={segment.value}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="underline underline-offset-2 hover:text-primary"
+          >
+            {segment.label}
+          </a>
+        ) : (
+          <span key={`t-${i}`}>{segment.value}</span>
+        ),
       )}
-      {rest && <div className="whitespace-pre-wrap break-words">{rest}</div>}
-    </>
+    </div>
   );
 }
 
