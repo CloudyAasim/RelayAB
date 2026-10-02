@@ -30,6 +30,8 @@ import {
 } from "@/components/ui/Sheet";
 import { useT } from "@/components/i18n/I18nProvider";
 import { CredentialPanel, type Mode } from "@/lib/assistant/CredentialPanel";
+import { MediaArtifacts, artifactsFromToolContent } from "./MediaArtifacts";
+import type { ArtifactRef } from "@/lib/db/assistant-artifacts";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";
 import { Pencil, Trash2 } from "lucide-react";
 
@@ -49,6 +51,7 @@ interface ChatMessage {
 type EventPayload =
   | { type: "delta"; text?: string }
   | { type: "tool"; toolName?: string; text?: string }
+  | { type: "artifact"; artifacts?: ArtifactRef[] }
   | { type: "action"; text?: string; data?: { actionId?: string } }
   | { type: "error"; text?: string }
   | { type: "done"; data?: { pendingActions?: string[]; usage?: unknown } };
@@ -73,6 +76,12 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
   const [credentialMode, setCredentialMode] = useState<Mode>("account");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Media from the turn in flight. Cleared when a turn starts: once the turn is
+   * over the same files are readable from the stored tool messages, and showing
+   * both would double every picture.
+   */
+  const [liveArtifacts, setLiveArtifacts] = useState<ArtifactRef[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
 
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -234,6 +243,7 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
     setBusy(true);
     setError(null);
     setInput("");
+    setLiveArtifacts([]);
 
     setMessages((prev) => [
       ...prev,
@@ -303,6 +313,10 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
             );
           } else if (evt.type === "error" && evt.text) {
             setError(evt.text);
+          } else if (evt.type === "artifact" && evt.artifacts?.length) {
+            // Show it the moment the tool finishes, rather than waiting for the
+            // turn to end and the thread to reload.
+            setLiveArtifacts((prev) => [...prev, ...evt.artifacts!]);
           } else if (evt.type === "done" && evt.data?.pendingActions?.length) {
             void loadPendingCount();
             router.refresh();
@@ -421,14 +435,20 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
           <div className="mx-auto w-full max-w-3xl space-y-5 px-1 py-6">
             {messages.map((m) =>
               m.role === "tool" ? (
-                <details key={m.id} className="rounded-lg border border-border bg-muted/30 p-2">
-                  <summary className="cursor-pointer text-xs text-muted-foreground">
-                    ⚙ {m.toolName ?? t("assistant.toolResult")}
-                  </summary>
-                  <pre className="mt-1 max-h-56 overflow-auto whitespace-pre-wrap break-words text-xs">
-                    {m.content}
-                  </pre>
-                </details>
+                <div key={m.id} className="space-y-2">
+                  {/* The artefact, then the raw tool output underneath it. The
+                      JSON is still there to expand, but it is no longer the only
+                      way to see what came back. */}
+                  <MediaArtifacts artifacts={artifactsFromToolContent(m.content)} />
+                  <details className="rounded-lg border border-border bg-muted/30 p-2">
+                    <summary className="cursor-pointer text-xs text-muted-foreground">
+                      ⚙ {m.toolName ?? t("assistant.toolResult")}
+                    </summary>
+                    <pre className="mt-1 max-h-56 overflow-auto whitespace-pre-wrap break-words text-xs">
+                      {m.content}
+                    </pre>
+                  </details>
+                </div>
               ) : m.role === "user" ? (
                 <div key={m.id} className="flex justify-end">
                   <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl bg-muted px-4 py-2.5 text-sm">
@@ -451,6 +471,10 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
                 </div>
               ),
             )}
+            {/* Artefacts from the turn still streaming. Once the turn ends the
+                thread reloads and these are rendered from the stored tool
+                messages instead, so this is cleared rather than duplicated. */}
+            {busy && <MediaArtifacts artifacts={liveArtifacts} />}
           </div>
         )}
       </div>

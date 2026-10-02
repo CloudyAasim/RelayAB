@@ -39,6 +39,7 @@ import { DEPLOYMENT_NOTES } from "./deployment-notes";
 import { NO_CREDENTIAL_MESSAGE, type AccountCredential } from "./credentials";
 import { executeMediaRequest, resultItems } from "../media/handler";
 import { proxyChatCompletion } from "../proxy/openai";
+import type { ArtifactKind } from "../db/assistant-artifacts";
 import type { AuthedUser } from "../auth/session";
 
 export interface ToolContext {
@@ -59,10 +60,31 @@ export interface ToolContext {
   gatewayBase?: string;
 }
 
+/** A media file the tool produced, for the caller to store and hand a URL back. */
+export interface RawArtifact {
+  kind: ArtifactKind;
+  contentType: string;
+  /** The upstream's own link, when it had one. Nothing is copied in that case. */
+  url?: string;
+  /** Base64, for results the vendor returned inline (images, audio). */
+  base64?: string;
+}
+
 export interface ToolResult {
   ok: boolean;
   /** Text handed back to the model. */
   content: string;
+  /**
+   * Media produced, on a side channel rather than inside `content`.
+   *
+   * That placement is the whole point. A base64 image is megabytes, and a CDN
+   * link is a months-long capability handed to a model that will paste it into
+   * prose; either one inside `content` would end up in the model's context and
+   * in the stored transcript. The turn loop persists these and writes short
+   * references into the content instead, so a bug that skipped that step would
+   * lose the media rather than leak it.
+   */
+  artifacts?: RawArtifact[];
 }
 
 /**
@@ -536,6 +558,27 @@ function mediaFailureHint(status: number): string | undefined {
 }
 
 /**
+ * Turn engine items into storable artifacts.
+ *
+ * A `url` item keeps its link and costs nothing to store. A `base64` item is
+ * kept inline because that is the only copy that will ever exist — and its
+ * content type is a guess, because the item shape does not carry one. That is
+ * acceptable only because the inline path is images in practice: audio always
+ * arrives as `binary`, which does carry its type, and browsers sniff an image
+ * regardless of what the header says.
+ */
+function artifactsFromItems(
+  items: Array<{ kind: string; value: string }>,
+  kind: ArtifactKind,
+): RawArtifact[] {
+  return items.map((item) =>
+    item.kind === "url"
+      ? { kind, contentType: "application/octet-stream", url: item.value }
+      : { kind, contentType: kind === "audio" ? "audio/mpeg" : "image/png", base64: item.value },
+  );
+}
+
+/**
  * Generate a media artefact with the caller's own credential.
  *
  * Goes out over the same public routes a client would use rather than calling
@@ -615,17 +658,31 @@ async function mediaGenerate(
         });
       }
       const items = await resultItems(outcome.value.result);
-      return ok({
-        ok: true,
-        via: "account",
-        httpStatus: 200,
-        latencyMs,
-        urls: items.filter((i) => i.kind === "url").map((i) => i.value),
-        b64Images: items.filter((i) => i.kind === "base64").length,
-        ...(kind === "speech"
-          ? { audioBytes: outcome.value.result.successCount, contentType: "audio/mpeg" }
-          : {}),
-      });
+      // Audio has no item list: it arrives as `binary`, and those bytes are the
+      // only copy — without them there is nothing to play.
+      const binary = outcome.value.result.binary;
+      const artifacts: RawArtifact[] =
+        kind === "speech" && binary
+          ? [
+              {
+                kind: "audio",
+                contentType: binary.contentType ?? "audio/mpeg",
+                base64: Buffer.from(new Uint8Array(binary.body)).toString("base64"),
+              },
+            ]
+          : artifactsFromItems(items, kind === "image" ? "image" : "video");
+      return {
+        ...ok({
+          ok: true,
+          via: "account",
+          httpStatus: 200,
+          latencyMs,
+          // Counts only. The files themselves are on the side channel, so the
+          // model is told how many there are without carrying them.
+          itemCount: items.length || outcome.value.result.successCount,
+        }),
+        artifacts,
+      };
     } catch (err) {
       return fail(`调用失败：${err instanceof Error ? err.message : String(err)}`);
     }
@@ -653,28 +710,44 @@ async function mediaGenerate(
     }
 
     if (kind === "speech") {
-      // The endpoint answers with bytes; the tool result is text, so report the
-      // size and the content type rather than pretending to have a link.
-      const bytes = (await res.arrayBuffer()).byteLength;
-      return ok({
-        ok: true,
-        httpStatus: res.status,
-        latencyMs,
-        audioBytes: bytes,
-        contentType: res.headers.get("content-type"),
-        note: "音频已生成并计费。要拿到可播放的文件，请让用户到 /v1/audio/speech 自行取。",
-      });
+      // The endpoint answers with bytes. Measuring them and then throwing them
+      // away is what left the user with a byte count and no way to hear it, so
+      // they go on the side channel where the conversation can keep them.
+      const buffer = await res.arrayBuffer();
+      const contentType = res.headers.get("content-type") ?? "audio/mpeg";
+      return {
+        ...ok({
+          ok: true,
+          via: "key",
+          httpStatus: res.status,
+          latencyMs,
+          audioBytes: buffer.byteLength,
+          contentType,
+        }),
+        artifacts: [
+          { kind: "audio", contentType, base64: Buffer.from(new Uint8Array(buffer)).toString("base64") },
+        ],
+      };
     }
 
     const json: unknown = await res.json().catch(() => null);
     if (kind === "image") {
       const data = (json as { data?: Array<Record<string, unknown>> })?.data ?? [];
-      const urls = data.map((d) => d?.url).filter((u): u is string => typeof u === "string");
-      const b64 = data.filter((d) => typeof d?.b64_json === "string").length;
-      return ok({ ok: urls.length > 0 || b64 > 0, httpStatus: res.status, latencyMs, urls, b64Images: b64 });
+      const items = data.map((d) =>
+        typeof d?.url === "string"
+          ? { kind: "url", value: d.url }
+          : { kind: "base64", value: typeof d?.b64_json === "string" ? d.b64_json : "" },
+      );
+      return {
+        ...ok({ ok: items.length > 0, via: "key", httpStatus: res.status, latencyMs, itemCount: items.length }),
+        artifacts: artifactsFromItems(items, "image"),
+      };
     }
 
-    return ok({ ok: true, httpStatus: res.status, latencyMs, task: json, note: "视频是异步任务，这里只有任务 id。" });
+    // Video through this route is an async task, so there is no file yet — only
+    // an id to poll with. Nothing to show inline, and the JSON stays visible so
+    // the task id is at least readable.
+    return ok({ ok: true, via: "key", httpStatus: res.status, latencyMs, task: json, note: "视频是异步任务，这里只有任务 id。" });
   } catch (err) {
     return fail(`调用失败：${err instanceof Error ? err.message : String(err)}`);
   }

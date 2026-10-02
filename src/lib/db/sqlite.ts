@@ -233,6 +233,30 @@ CREATE TABLE IF NOT EXISTS assistant_keys (
   created_at TEXT NOT NULL
 );
 
+-- Media the assistant produced, kept so the conversation can show it.
+--
+-- Without this the only thing a generated image or a spoken line ever was, both
+-- to the reader and to the model, was a line of text: the upstream URL for
+-- images, and a byte count for audio, whose bytes were then thrown away. Audio
+-- has no URL at all, so there was nothing for a <audio> tag to point at and no
+-- way to get one without paying for the same synthesis twice.
+--
+-- The bytes column is null when the upstream already gave us a durable link, which is
+-- the normal case for images and video; the route then redirects rather than
+-- proxying, so nothing large is stored. It is only populated for results that
+-- have no URL of their own - audio, and images the vendor returned inline.
+CREATE TABLE IF NOT EXISTS assistant_artifacts (
+  id           TEXT PRIMARY KEY,
+  user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  thread_id    TEXT NOT NULL REFERENCES assistant_threads(id) ON DELETE CASCADE,
+  kind         TEXT NOT NULL,
+  url          TEXT,
+  bytes        BLOB,
+  content_type TEXT NOT NULL,
+  created_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_assistant_artifacts_thread ON assistant_artifacts(thread_id);
+
 -- Conversations. Threads are per user so one person's history can never be
 -- read through another's id, and messages cascade with the thread.
 CREATE TABLE IF NOT EXISTS assistant_threads (

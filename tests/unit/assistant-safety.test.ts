@@ -45,6 +45,8 @@ import {
 import { createApiKey, getApiKeyById, listAllApiKeys, listApiKeysByUser } from "@/lib/db/keys";
 import { createMediaProvider } from "@/lib/db/media-providers";
 import { MINIMAX_IMAGE_SPEC } from "@/lib/media/seeds";
+import { getAssistantArtifact } from "@/lib/db/assistant-artifacts";
+import { artifactsFromToolContent } from "@/app/(user)/dashboard/assistant/MediaArtifacts";
 import { getAssistantSettings, saveAssistantSettings, AssistantSettingsError } from "@/lib/db/assistant";
 import { listAssistantThreads } from "@/lib/db/assistant";
 import { createAssistantThread } from "@/lib/db/assistant";
@@ -345,6 +347,26 @@ describe("assistant: media tools", () => {
     expect(names).toContain("generate_video");
   });
 
+  it("renders a stored artefact, and ignores anything that is not one", () => {
+    // The reader side of the same contract: the page has to find the
+    // references, and a malformed or absent one must not break the message it
+    // sits in.
+    expect(
+      artifactsFromToolContent(
+        JSON.stringify({ ok: true, artifacts: [{ id: "a1", kind: "image", url: "/api/assistant/artifacts/a1" }] }),
+      ),
+    ).toHaveLength(1);
+    expect(artifactsFromToolContent("这不是 JSON")).toEqual([]);
+    expect(artifactsFromToolContent(JSON.stringify({ ok: true }))).toEqual([]);
+    expect(artifactsFromToolContent(JSON.stringify([1, 2, 3]))).toEqual([]);
+    // A half-written reference is dropped rather than rendered as a broken
+    // <img> pointing at undefined.
+    expect(artifactsFromToolContent(JSON.stringify({ artifacts: [{ kind: "image" }] }))).toEqual([]);
+    expect(
+      artifactsFromToolContent(JSON.stringify({ artifacts: [{ id: "x", kind: "audio", url: "/a" }] })),
+    ).toHaveLength(1);
+  });
+
   it("go out through the public route, so a tool result proves the route works", async () => {
     __resetDbForTest();
     const previous = process.env.RELAY_PUBLIC_URL;
@@ -374,7 +396,52 @@ describe("assistant: media tools", () => {
     expect(seen[0]?.auth).toBe("Bearer sk-relay-x");
     expect((seen[0]?.body as { prompt?: string })?.prompt).toBe("a red apple");
     expect(result.ok).toBe(true);
-    expect(result.content).toContain("https://cdn.example/a.png");
+
+    // The payload and the upstream's long-lived link both stay off the text
+    // the model reads; they ride the side channel for the turn loop to store.
+    expect(result.content).not.toContain("https://cdn.example/a.png");
+    expect(result.content).not.toContain("base64");
+    expect(result.artifacts).toHaveLength(1);
+    expect(result.artifacts?.[0]?.url).toBe("https://cdn.example/a.png");
+    expect(result.artifacts?.[0]?.kind).toBe("image");
+
+    vi.unstubAllGlobals();
+    __resetConfigForTest();
+    if (previous === undefined) delete process.env.RELAY_PUBLIC_URL;
+    else process.env.RELAY_PUBLIC_URL = previous;
+  });
+
+  it("keeps speech bytes out of the text, because there is no URL for them", async () => {
+    // Audio is the case that forced all of this: the endpoint answers with
+    // bytes, and reporting only their length left nothing to play.
+    __resetDbForTest();
+    const previous = process.env.RELAY_PUBLIC_URL;
+    process.env.RELAY_PUBLIC_URL = "https://relay.example.com";
+    __resetConfigForTest();
+    const audio = Buffer.from("ID3 fake mp3 bytes").toString("base64");
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(Buffer.from(audio, "base64"), {
+          status: 200,
+          headers: { "content-type": "audio/mpeg" },
+        }),
+    );
+
+    const result = await executeTool(
+      "generate_speech",
+      JSON.stringify({ model: "speech-2.8-hd", input: "hello" }),
+      { user, relayKey: "sk-relay-x" },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.content).not.toContain(audio);
+    expect(result.artifacts).toHaveLength(1);
+    expect(result.artifacts?.[0]?.kind).toBe("audio");
+    expect(result.artifacts?.[0]?.contentType).toBe("audio/mpeg");
+    // And the bytes really are the audio, not a truncated stand-in.
+    expect(Buffer.from(result.artifacts?.[0]?.base64 ?? "", "base64").toString("utf-8")).toBe(
+      "ID3 fake mp3 bytes",
+    );
 
     vi.unstubAllGlobals();
     __resetConfigForTest();
@@ -1024,8 +1091,22 @@ describe("assistant: a turn spent on the caller's own account", () => {
     // authenticates with. What matters is that it is NOT one of the user's
     // gateway keys: no bearer token was minted for this call at all.
     expect(upstream[0]?.auth).not.toMatch(/Bearer sk-relay-/);
-    expect(persisted).toContain("https://cdn.example/cat.png");
     expect(persisted).toMatch(/"via":\s*"account"/);
+
+    // The picture is now a short first-party reference rather than the CDN link,
+    // and the stored row is what the reference resolves to.
+    expect(persisted).not.toContain("https://cdn.example/cat.png");
+    expect(persisted).toContain('"url": "/api/assistant/artifacts/');
+    expect(persisted).toContain('"kind": "image"');
+
+    const refs = JSON.parse(
+      (await listAssistantMessages(thread.id)).filter((m) => m.role === "tool")[0].content,
+    ).artifacts as Array<{ id: string }>;
+    const stored = await getAssistantArtifact(refs[0].id, user.id);
+    expect(stored?.url).toBe("https://cdn.example/cat.png");
+    // Owner-scoped: the same id under another account simply is not there.
+    const stranger = await makeSpender("u32");
+    expect(await getAssistantArtifact(refs[0].id, stranger.id)).toBeNull();
 
     // And nothing in the conversation carries a credential.
     const transcript = persisted;

@@ -18,6 +18,8 @@ import { callAssistantModel, UpstreamError, type ChatMessage, type UpstreamTurn 
 import { toolDefinitions, executeTool, type ToolContext } from "./tools";
 import { systemPrompt } from "./prompts";
 import type { ResolvedCredential } from "./credentials";
+import type { RawArtifact } from "./tools";
+import { artifactRef, saveAssistantArtifact, type ArtifactRef } from "../db/assistant-artifacts";
 import { decryptSecret } from "../crypto/secrets";
 import {
   appendAssistantMessage,
@@ -36,10 +38,12 @@ const MAX_ROUNDS = 8;
 const MAX_HISTORY_MESSAGES = 40;
 
 export interface ChatEvent {
-  type: "delta" | "tool" | "done" | "error" | "action";
+  type: "delta" | "tool" | "done" | "error" | "action" | "artifact";
   text?: string;
   toolName?: string;
   data?: unknown;
+  /** Media a tool just produced, so the conversation can show it as it lands. */
+  artifacts?: ArtifactRef[];
 }
 
 export interface RunChatOptions {
@@ -61,6 +65,53 @@ export interface RunChatOptions {
   gatewayBase?: string;
   signal?: AbortSignal;
   emit: (event: ChatEvent) => void;
+}
+
+/**
+ * Persist what a tool produced and hand back short references to it.
+ *
+ * A row per artefact, owned by the user and cascading with their thread. The
+ * failure path is deliberately quiet: a conversation that cannot store a picture
+ * still gets the tool's text, because losing the transcript over an unwritable
+ * blob would be a much worse outcome than a missing image.
+ */
+async function storeArtifacts(args: {
+  userId: string;
+  threadId: string;
+  artifacts: RawArtifact[];
+}): Promise<ArtifactRef[]> {
+  const refs: ArtifactRef[] = [];
+  for (const artifact of args.artifacts) {
+    try {
+      const saved = await saveAssistantArtifact({
+        userId: args.userId,
+        threadId: args.threadId,
+        kind: artifact.kind,
+        contentType: artifact.contentType,
+        ...(artifact.url ? { url: artifact.url } : {}),
+        ...(artifact.base64 ? { bytes: new Uint8Array(Buffer.from(artifact.base64, "base64")) } : {}),
+      });
+      refs.push(artifactRef(saved));
+    } catch {
+      // Skip this one and keep the rest.
+    }
+  }
+  return refs;
+}
+
+/**
+ * Add the references to a tool's JSON result, leaving anything that is not
+ * parseable JSON alone — a refusal message is prose, and rewriting it as JSON
+ * would only confuse the model.
+ */
+function withArtifactRefs(content: string, refs: ArtifactRef[]): string {
+  try {
+    const parsed: unknown = JSON.parse(content);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return content;
+    return JSON.stringify({ ...(parsed as Record<string, unknown>), artifacts: refs }, null, 2);
+  } catch {
+    return content;
+  }
 }
 
 export async function runChat(opts: RunChatOptions): Promise<void> {
@@ -150,6 +201,20 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
         if (result.ok) {
           const actionId = (result.content.match(/"actionId":\s*"([^"]+)"/) ?? [])[1];
           if (actionId) pendingActions.push(actionId);
+        }
+
+        // Media the tool produced is stored here and referenced by a short
+        // first-party URL, so the model is handed a link it can cite and the
+        // reader gets something playable. Both the payload and the upstream's
+        // own long-lived CDN link stay out of the transcript on purpose.
+        if (result.artifacts?.length) {
+          const refs = await storeArtifacts({
+            userId: user.id,
+            threadId: thread.id,
+            artifacts: result.artifacts,
+          });
+          resultText = withArtifactRefs(resultText, refs);
+          emit({ type: "artifact", artifacts: refs });
         }
       } catch (err) {
         // A tool that throws is a fact the model can reason about, not a reason
