@@ -36,6 +36,7 @@ import { knownModelOrDefault } from "../providers/known-models";
 import { decryptSecret } from "../crypto/secrets";
 import { renderProviderDiff, renderMediaDiff } from "./diff";
 import { DEPLOYMENT_NOTES } from "./deployment-notes";
+import { fetchPage, WebFetchError } from "./web-fetch";
 import { NO_CREDENTIAL_MESSAGE, type AccountCredential } from "./credentials";
 import { executeMediaRequest, resultItems } from "../media/handler";
 import { proxyChatCompletion } from "../proxy/openai";
@@ -201,6 +202,22 @@ const USER_TOOLS: AssistantToolDef[] = [
   // sit in the user tier: a gateway key and a model id. They were added to the
   // admin list first by mistake, which would have meant a regular user could not
   // generate an image with a key that already works.
+  {
+    type: "function",
+    function: {
+      name: "fetch_page",
+      description:
+        "抓取一个公开网页并读出正文文字。查厂商官方文档、API 参考、报错说明时用它 —— 这些内容不能靠记忆编。用户给了一个网址、或者问题需要看某个具体页面时，先调它再回答。只支持 http/https 的公网地址，内网地址会被拒绝；返回的是正文纯文本，不含图片和脚本。",
+      parameters: {
+        type: "object",
+        properties: {
+          url: { type: "string", description: "要读的完整网址，例如 https://platform.minimaxi.com/docs/api-reference/image-generation" },
+        },
+        required: ["url"],
+        additionalProperties: false,
+      },
+    },
+  },
   {
     type: "function",
     function: {
@@ -457,6 +474,8 @@ export async function executeTool(
       return getMyUsage(ctx);
     case "get_deployment_notes":
       return ok(DEPLOYMENT_NOTES(args.topic));
+    case "fetch_page":
+      return fetchPageTool(args);
     case "generate_image":
       return mediaGenerate(args, ctx, "image");
     case "generate_speech":
@@ -1240,6 +1259,37 @@ async function listUsersTool(): Promise<ToolResult> {  const { users } = await l
       lastLoginAt: u.lastLoginAt,
     })),
   );
+}
+
+/**
+ * Read a public web page.
+ *
+ * Available to both tiers: reading a vendor's documentation is not an
+ * administrative act, and the model that cannot check a spec is the model that
+ * guesses one. The address checks live in `web-fetch` — the point of routing
+ * through it rather than calling `fetch` here is that they are the feature.
+ *
+ * A refusal comes back as a *result*, not an exception. "That URL is on the
+ * private network" is a fact the model can report and work around; an
+ * exception would end the turn and lose whatever it had already established.
+ */
+async function fetchPageTool(args: Record<string, unknown>): Promise<ToolResult> {
+  const url = z.string().min(1).max(2000).safeParse(args.url);
+  if (!url.success) return fail("缺少 url。");
+  try {
+    const page = await fetchPage(url.data);
+    return ok({
+      url: page.finalUrl,
+      status: page.status,
+      contentType: page.contentType || "text/plain",
+      bytes: page.bytes,
+      truncated: page.truncated,
+      text: page.text,
+    });
+  } catch (err) {
+    if (err instanceof WebFetchError) return fail(err.message);
+    return fail(`抓取失败：${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 /** Exposed for the test route so it resolves a model the same way the proxy does. */
