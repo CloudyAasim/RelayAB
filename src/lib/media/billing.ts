@@ -50,8 +50,11 @@ export async function settleMediaUsage(args: SettleMediaUsageArgs): Promise<void
 
   if (creditsUsed > 0) {
     await incrementUserQuotaUsed(args.apiKey.userId, creditsUsed);
-    await touchApiKeyLastUsed(args.apiKey.id);
   }
+
+  // Every settled request touches the key, billed or not — see the same note
+  // in proxy/billing.ts. A media model priced at 0 is unpriced, not unused.
+  await touchApiKeyLastUsed(args.apiKey.id);
 
   await recordUsage({
     apiKeyId: args.apiKey.id,

@@ -59,8 +59,14 @@ export async function settleUsage(args: SettleUsageArgs): Promise<void> {
   });
   if (delta > 0) {
     await incrementUserQuotaUsed(args.apiKey.userId, delta);
-    await touchApiKeyLastUsed(args.apiKey.id);
   }
+
+  // Touched on every settled request, not only a billed one. "Was this key
+  // used?" and "was the user charged?" are different questions: a deployment
+  // with no prices configured (0 means *not priced*, not free) produced
+  // delta === 0 forever, so lastUsedAt stayed null on keys that were in fact
+  // serving traffic, and the admin list showed them as never used.
+  await touchApiKeyLastUsed(args.apiKey.id);
 
   await recordUsage({
     apiKeyId: args.apiKey.id,
