@@ -16,6 +16,7 @@
  * anonymously by whoever the page is shown to.
  */
 import type { ArtifactRef } from "@/lib/db/assistant-artifacts";
+import { markdownToHtml } from "@/lib/markdown";
 
 /**
  * Read the references a tool message carries.
@@ -113,19 +114,58 @@ export function splitLinks(text: string): Segment[] {
 }
 
 /**
- * An assistant message: its prose, with any URL it mentions made clickable.
+ * Split a model answer into its reasoning and the part it meant for the reader.
  *
- * Pictures are NOT rendered here. The tool result directly above already shows
- * whatever was produced, and a second copy - whether the model pasted a link or
- * the page turned the link into one - is the picture appearing twice.
+ * Reasoning arrives inline in the same text as the answer, so without this it
+ * sits in the middle of every reply as a wall of first-person deliberation. It
+ * is kept - deleting it would be taking the model's words away - just put out
+ * of the way until asked for.
  */
-export function AssistantBody({ text, thinkingLabel }: { text: string; thinkingLabel: string }) {
-  if (!text) {
-    return <span className="text-muted-foreground">{thinkingLabel}</span>;
+export function splitThinking(text: string): { thinking: string[]; answer: string } {
+  const thinking: string[] = [];
+  const answer = text
+    .replace(/<think>([\s\S]*?)(?:<\/think>|$)/gi, (_match, inner: string) => {
+      const trimmed = inner.trim();
+      if (trimmed) thinking.push(trimmed);
+      return "\n\n";
+    })
+    .trim();
+  return { thinking, answer };
+}
+
+/**
+ * The same typography the docs panel uses, at chat size. Reusing it rather than
+ * inventing a second scale is the point: rendered Markdown that looks like the
+ * rest of the product's Markdown is one thing to get right, two are not.
+ */
+const PROSE_CLASS =
+  "prose prose-sm max-w-none break-words text-foreground prose-headings:mt-3 prose-headings:mb-1.5 " +
+  "prose-p:my-1.5 prose-pre:my-2 prose-pre:bg-foreground/[0.03] " +
+  "prose-code:before:content-none prose-code:after:content-none prose-a:text-primary";
+
+/**
+ * One contiguous run of prose, rendered as Markdown.
+ *
+ * Split by URL first so a link becomes a real anchor instead of being escaped
+ * into text by the Markdown renderer. Each run is rendered separately, which
+ * means a list interrupted by a link will break into blocks around it - an
+ * acceptable price for not losing the link.
+ */
+function Prose({ text }: { text: string }) {
+  const segments = splitLinks(text);
+  if (segments.length === 1 && segments[0].kind === "text") {
+    return (
+      <div
+        className={PROSE_CLASS}
+        // The renderer escapes every input before emitting markup, and is the
+        // same audited path the docs panel uses.
+        dangerouslySetInnerHTML={{ __html: markdownToHtml(segments[0].value) }}
+      />
+    );
   }
   return (
-    <div className="whitespace-pre-wrap break-words">
-      {splitLinks(text).map((segment, i) =>
+    <div className={PROSE_CLASS}>
+      {segments.map((segment, i) =>
         segment.kind === "link" ? (
           <a
             key={`${segment.value}-${i}`}
@@ -137,8 +177,59 @@ export function AssistantBody({ text, thinkingLabel }: { text: string; thinkingL
             {segment.label}
           </a>
         ) : (
-          <span key={`t-${i}`}>{segment.value}</span>
+          <span key={`t-${i}`} dangerouslySetInnerHTML={{ __html: markdownToHtml(segment.value) }} />
         ),
+      )}
+    </div>
+  );
+}
+
+/**
+ * An assistant message.
+ *
+ * `pretty` is the user's choice, and it is the only thing that decides whether
+ * this looks like a document or like a terminal: with it off, the text is shown
+ * exactly as it arrived, which is still a perfectly good way to read a
+ * conversation and the way to see what the model actually wrote.
+ */
+export function AssistantBody({
+  text,
+  thinkingLabel,
+  pretty,
+  expandLabel,
+  collapseLabel,
+}: {
+  text: string;
+  thinkingLabel: string;
+  pretty: boolean;
+  expandLabel: string;
+  collapseLabel: string;
+}) {
+  if (!text) {
+    return <span className="text-muted-foreground">{thinkingLabel}</span>;
+  }
+
+  if (!pretty) {
+    return <div className="whitespace-pre-wrap break-words">{text}</div>;
+  }
+
+  const { thinking, answer } = splitThinking(text);
+  return (
+    <div className="space-y-2 break-words">
+      {thinking.map((block, i) => (
+        <details key={i} className="rounded-md border border-border/60 bg-muted/40">
+          <summary className="cursor-pointer list-none px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground">
+            <span className="font-medium">{thinkingLabel}</span>
+          </summary>
+          <div className="border-t border-border/60 px-2.5 py-2 text-xs text-muted-foreground">
+            <Prose text={block} />
+          </div>
+        </details>
+      ))}
+      {answer ? (
+        <Prose text={answer} />
+      ) : thinking.length ? null : (
+        <div className="whitespace-pre-wrap">{text}</div>
       )}
     </div>
   );
@@ -175,17 +266,19 @@ export function ToolResultCard({
   toolName,
   label,
   content,
+  downloadLabel,
 }: {
   toolName: string | null | undefined;
   label: string;
   content: string;
+  downloadLabel: string;
 }) {
   const display = toolContentForDisplay(content);
   const failed = /\n?\s*"ok":\s*false/.test(content) || /^工具执行失败/.test(content);
 
   return (
     <div className="space-y-2">
-      <MediaArtifacts artifacts={artifactsFromToolContent(content)} />
+      <MediaArtifacts artifacts={artifactsFromToolContent(content)} downloadLabel={downloadLabel} />
       <details className="group rounded-lg border border-border bg-muted/30">
         <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-xs text-muted-foreground transition-colors hover:text-foreground">
           <span
@@ -206,39 +299,70 @@ export function ToolResultCard({
     </div>
   );
 }
+/** A short, honest description of a file, for the row under it. */
+const KIND_LABEL: Record<ArtifactRef["kind"], string> = {
+  image: "图片",
+  audio: "音频",
+  video: "视频",
+};
 
-export function MediaArtifacts({ artifacts }: { artifacts: ArtifactRef[] }) {
+function sizeLabel(bytes: number | null): string | null {
+  if (bytes === null || bytes <= 0) return null;
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+export function MediaArtifacts({
+  artifacts,
+  downloadLabel,
+}: {
+  artifacts: ArtifactRef[];
+  downloadLabel: string;
+}) {
   if (artifacts.length === 0) return null;
   return (
-    <div className="space-y-3">
-      {artifacts.map((artifact) => {
-        if (artifact.kind === "image") {
-          return (
-            <a key={artifact.id} href={artifact.url} target="_blank" rel="noreferrer" className="block">
-              {/* eslint-disable-next-line @next/next/no-img-element -- the URL is
-                  a session-scoped route, not a static asset, and next/image would
+    <div className="space-y-2">
+      {artifacts.map((artifact) => (
+        <figure key={artifact.id} className="space-y-1.5">
+          {artifact.kind === "image" ? (
+            <a href={artifact.url} target="_blank" rel="noreferrer" className="block">
+              {/* eslint-disable-next-line @next/next/no-img-element -- the URL is a
+                  session-scoped route, not a static asset, and next/image would
                   need a loader that can authenticate the fetch. */}
               <img
                 src={artifact.url}
-                alt="生成结果"
+                alt=""
                 className="max-h-96 w-auto max-w-full rounded-lg border border-border"
               />
             </a>
-          );
-        }
-        if (artifact.kind === "video") {
-          return (
+          ) : artifact.kind === "video" ? (
             <video
-              key={artifact.id}
               src={artifact.url}
               controls
               preload="metadata"
               className="max-h-96 w-auto max-w-full rounded-lg border border-border"
             />
-          );
-        }
-        return <audio key={artifact.id} src={artifact.url} controls preload="metadata" className="w-full" />;
-      })}
+          ) : (
+            <audio src={artifact.url} controls preload="metadata" className="w-full" />
+          )}
+
+          {/* What it is, and a way to keep it. The dl flag makes our route
+              stream the file with a download disposition, which a plain link to
+              a redirecting CDN URL cannot promise. */}
+          <figcaption className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+            <span>{KIND_LABEL[artifact.kind]}</span>
+            <span aria-hidden>·</span>
+            <span className="font-mono">{artifact.contentType}</span>
+            <a
+              href={`${artifact.url}?dl=1`}
+              className="ml-auto underline underline-offset-2 hover:text-foreground"
+            >
+              {downloadLabel}
+            </a>
+          </figcaption>
+        </figure>
+      ))}
     </div>
   );
 }

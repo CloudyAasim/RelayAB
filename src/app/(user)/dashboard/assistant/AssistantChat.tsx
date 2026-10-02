@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/Sheet";
 import { useT } from "@/components/i18n/I18nProvider";
 import { CredentialPanel, type Mode } from "@/lib/assistant/CredentialPanel";
+import { readPretty, writePretty } from "@/lib/assistant/pretty";
 import { MediaArtifacts, ToolResultCard, AssistantBody } from "./MediaArtifacts";
 import type { ArtifactRef } from "@/lib/db/assistant-artifacts";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";
@@ -67,6 +68,13 @@ interface Props {
 export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPanel }: Props) {
   const t = useT();
   const router = useRouter();
+
+  /**
+   * Whether replies are rendered or shown raw. Kept in state as well as
+   * localStorage so the change is instant; the stored value is what survives a
+   * reload.
+   */
+  const [pretty, setPretty] = useState(false);
 
   const [threads, setThreads] = useState<Thread[]>([]);
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -134,6 +142,12 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
       | null;
     setPendingCount(json?.data?.actions?.length ?? 0);
   }, [pendingPanel]);
+
+  useEffect(() => {
+    // Read after mount, not during render: the server cannot see localStorage,
+    // and rendering one way then switching would flash the wrong form.
+    setPretty(readPretty());
+  }, []);
 
   useEffect(() => {
     void loadThreads();
@@ -499,6 +513,7 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
                   toolName={m.toolName}
                   label={t("assistant.toolResult")}
                   content={m.content}
+                  downloadLabel={t("assistant.artifact.download")}
                 />
               ) : m.role === "user" ? (
                 <div key={m.id} className="flex justify-end">
@@ -515,7 +530,13 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
                     AI
                   </div>
                   <div className="min-w-0 flex-1 pt-0.5 text-sm">
-                    <AssistantBody text={m.content} thinkingLabel={`${t("assistant.thinking")}…`} />
+                    <AssistantBody
+                      text={m.content}
+                      thinkingLabel={t("assistant.thinkingBlock")}
+                      pretty={pretty}
+                      expandLabel={t("assistant.expand")}
+                      collapseLabel={t("assistant.collapse")}
+                    />
                   </div>
                 </div>
               ),
@@ -523,7 +544,7 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
             {/* Artefacts from the turn still streaming. Once the turn ends the
                 thread reloads and these are rendered from the stored tool
                 messages instead, so this is cleared rather than duplicated. */}
-            {busy && <MediaArtifacts artifacts={liveArtifacts} />}
+            {busy && <MediaArtifacts artifacts={liveArtifacts} downloadLabel={t("assistant.artifact.download")} />}
           </div>
         )}
       </div>
@@ -710,6 +731,31 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
             <SheetDescription>{t("assistant.settings.desc")}</SheetDescription>
           </SheetHeader>
           <div className="mt-4 space-y-4">
+            {/* Whether a reply is rendered or shown raw. A display choice, so
+                it lives with the other things you can change about how this
+                screen looks rather than with the model configuration. */}
+            <div className="rounded-lg border border-border p-3">
+              <label className="flex cursor-pointer items-start gap-2.5">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 rounded border-input text-primary focus:ring-ring"
+                  checked={pretty}
+                  onChange={(e) => {
+                    setPretty(e.target.checked);
+                    writePretty(e.target.checked);
+                  }}
+                />
+                <span>
+                  <span className="block text-sm font-medium text-foreground">
+                    {t("assistant.pretty.switch")}
+                  </span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    {t("assistant.pretty.hint")}
+                  </span>
+                </span>
+              </label>
+            </div>
+
             {/* Which credential the assistant spends. The account switch is the
                 zero-friction path; the pasted key stays for anyone who would
                 rather hold something they can revoke by deleting it. */}

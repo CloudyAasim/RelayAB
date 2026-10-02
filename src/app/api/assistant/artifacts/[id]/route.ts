@@ -32,7 +32,7 @@ function isHttpUrl(value: string): boolean {
 }
 
 export async function GET(
-  _req: Request,
+  req: Request,
   context: { params: Promise<{ id: string }> },
 ): Promise<Response> {
   const me = await getCurrentUser();
@@ -52,6 +52,14 @@ export async function GET(
     );
   }
 
+  // `?dl=1` means "hand it over as a file". A `download` attribute on a link to
+  // a redirect is not something a browser will honour once it has followed the
+  // hop to another origin, so a download asks us to stream it instead - and
+  // only then, which keeps the redirect cheap for the ordinary case of someone
+  // just looking at a picture.
+  const wantsDownload = new URL(req.url).searchParams.get("dl") === "1";
+  const filename = `${artifact.kind}-${artifact.id}`;
+
   if (artifact.url) {
     if (!isHttpUrl(artifact.url)) {
       // Stored by us, so this should be unreachable; a non-web scheme here
@@ -61,7 +69,23 @@ export async function GET(
         { status: 502 },
       );
     }
-    return NextResponse.redirect(artifact.url, 302);
+    if (!wantsDownload) return NextResponse.redirect(artifact.url, 302);
+
+    const upstream = await fetch(artifact.url).catch(() => null);
+    if (!upstream || !upstream.ok || !upstream.body) {
+      return NextResponse.json(
+        { ok: false, error: { code: "upstream_unavailable", message: "源文件暂时取不到" } },
+        { status: 502 },
+      );
+    }
+    return new Response(upstream.body, {
+      status: 200,
+      headers: {
+        "Content-Type": upstream.headers.get("content-type") ?? artifact.contentType,
+        "Content-Disposition": `attachment; filename="${filename}${extOf(upstream.headers.get("content-type"))}"`,
+        "Cache-Control": "private, no-store",
+      },
+    });
   }
 
   if (!artifact.bytes || artifact.bytes.byteLength === 0) {
@@ -76,8 +100,29 @@ export async function GET(
     headers: {
       "Content-Type": artifact.contentType,
       "Content-Length": String(artifact.bytes.byteLength),
+      ...(wantsDownload
+        ? { "Content-Disposition": `attachment; filename="${filename}${extOf(artifact.contentType)}"` }
+        : {}),
       // Session-scoped: must never be cached by a shared cache.
       "Cache-Control": "private, max-age=3600",
     },
   });
+}
+
+/** A filename needs an extension or some platforms will not treat it as a file. */
+function extOf(contentType: string | null): string {
+  if (!contentType) return "";
+  const map: Record<string, string> = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+    "audio/mpeg": ".mp3",
+    "audio/mp4": ".m4a",
+    "audio/wav": ".wav",
+    "video/mp4": ".mp4",
+    "video/webm": ".webm",
+  };
+  return map[contentType.split(";")[0].trim().toLowerCase()] ?? "";
 }

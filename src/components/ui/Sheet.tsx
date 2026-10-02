@@ -38,7 +38,11 @@ const SheetOverlay = React.forwardRef<
 SheetOverlay.displayName = SheetPrimitive.Overlay.displayName;
 
 const sheetVariants = cva(
-  "fixed z-50 gap-4 bg-background shadow-lg transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:duration-500",
+  // p-5 on the panel rather than on each child: a drawer whose heading sits
+  // flush against the edge reads as broken, and previously every child had to
+  // supply its own inset - so the header, a bordered card and a form field each
+  // ended up a different distance from the edge.
+  "fixed z-50 gap-4 bg-background p-5 shadow-lg transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:duration-500",
   {
     variants: {
       side: {
