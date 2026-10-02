@@ -486,8 +486,14 @@ async function mediaGenerate(
   const model = z.string().min(1).safeParse(args.model);
   if (!model.success) return fail("缺少 model 参数。");
   if (!ctx.relayKey) {
+    // Accurate about *why*, which is what this message used to get wrong. The
+    // common case is not a user who forgot to paste anything: it is an assistant
+    // configured against a third-party upstream, whose stored key is not a key
+    // for this gateway and must not be sent here.
     return fail(
-      "没有拿到用户的网关密钥，无法调用媒体接口。请让用户在模型测试页填入自己的 API 密钥后再试。",
+      "没有可用于本部署的网关密钥，无法调用媒体接口。媒体接口只在本部署上存在；" +
+        "把助手设置里的 API 地址改成指向本部署（助手就会自动用它自己那把密钥），" +
+        "或者在助手设置里手动填一把 sk-relay- 开头的网关密钥，再试一次。",
     );
   }
 

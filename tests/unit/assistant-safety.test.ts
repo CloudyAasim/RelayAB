@@ -13,6 +13,11 @@
  *  4. The one-shot model probe never persists the key it was handed.
  *  5. Saving settings without a key keeps the stored one.
  *  6. No tool result can carry an encrypted key back to the model.
+ *  7. A user's own assistant key is reused for the gateway only when their
+ *     assistant really points at this deployment - and never leaked into a
+ *     tool result.
+ *  8. An unconfigured account cannot start a turn at all, and turns are
+ *     rate-limited.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
@@ -28,8 +33,10 @@ import { createProvider } from "@/lib/db/providers";
 import { InMemoryCookieStore, getSessionFromStore } from "@/lib/auth/session";
 import { __resetConfigForTest } from "@/lib/config";
 import { toolDefinitions, executeTool } from "@/lib/assistant/tools";
+import { pointsAtGateway, resolveGatewayKey, runChat, type ChatEvent } from "@/lib/assistant/chat";
 import { getAssistantSettings, saveAssistantSettings, AssistantSettingsError } from "@/lib/db/assistant";
 import { listAssistantThreads } from "@/lib/db/assistant";
+import { createAssistantThread } from "@/lib/db/assistant";
 import {
   consumeAssistantTurn,
   __resetAssistantRateLimitForTest,
@@ -636,6 +643,213 @@ describe("assistant: an unconfigured account cannot start a turn", () => {
     currentStore = new InMemoryCookieStore();
     await loginAs(currentStore, quiet.id, quiet.username, "user");
     expect((await POST(chatRequest("你好"))).status).toBe(409);
+  });
+});
+
+describe("assistant: reusing the caller's own key for the gateway", () => {
+  beforeEach(() => {
+    __resetDbForTest();
+  });
+
+  it("reads a base URL with or without /v1 as this deployment", () => {
+    expect(pointsAtGateway("https://relay.example.com/v1", "https://relay.example.com")).toBe(true);
+    expect(pointsAtGateway("https://relay.example.com", "https://relay.example.com")).toBe(true);
+    expect(pointsAtGateway("https://relay.example.com/v1/", "https://relay.example.com")).toBe(true);
+  });
+
+  it("does not read a look-alike host as this deployment", () => {
+    // The dangerous shape. A prefix comparison would hand the key to whoever
+    // registered `relay.example.com.evil.test`.
+    expect(pointsAtGateway("https://relay.example.com.evil.test/v1", "https://relay.example.com")).toBe(false);
+    expect(pointsAtGateway("http://relay.example.com/v1", "https://relay.example.com")).toBe(false);
+    expect(pointsAtGateway("https://other.example.com/v1", "https://relay.example.com")).toBe(false);
+    expect(pointsAtGateway("not a url", "https://relay.example.com")).toBe(false);
+  });
+
+  it("uses the caller's own stored key when their assistant points here", async () => {
+    const user = await makeUser("user", "u11");
+    await saveAssistantSettings(user.id, {
+      baseUrl: "https://relay.example.com/v1",
+      apiKey: "sk-relay-own",
+      model: "m1",
+    });
+    const settings = (await getAssistantSettings(user.id))!;
+    expect(resolveGatewayKey(undefined, settings, "https://relay.example.com")).toBe("sk-relay-own");
+  });
+
+  it("never reuses a key that was issued for somebody else's upstream", async () => {
+    const user = await makeUser("user", "u12");
+    await saveAssistantSettings(user.id, {
+      baseUrl: "https://api.thirdparty.test/v1",
+      apiKey: "sk-third-party",
+      model: "m1",
+    });
+    const settings = (await getAssistantSettings(user.id))!;
+    expect(resolveGatewayKey(undefined, settings, "https://relay.example.com")).toBeUndefined();
+  });
+
+  it("prefers an explicitly supplied key over anything it could infer", async () => {
+    const user = await makeUser("user", "u13");
+    await saveAssistantSettings(user.id, {
+      baseUrl: "https://relay.example.com/v1",
+      apiKey: "sk-relay-own",
+      model: "m1",
+    });
+    const settings = (await getAssistantSettings(user.id))!;
+    expect(resolveGatewayKey("  sk-pasted  ", settings, "https://relay.example.com")).toBe("sk-pasted");
+  });
+
+  it("infers nothing when the route could not resolve this deployment's address", async () => {
+    const user = await makeUser("user", "u14");
+    await saveAssistantSettings(user.id, {
+      baseUrl: "https://relay.example.com/v1",
+      apiKey: "sk-relay-own",
+      model: "m1",
+    });
+    const settings = (await getAssistantSettings(user.id))!;
+    expect(resolveGatewayKey(undefined, settings, undefined)).toBeUndefined();
+  });
+
+  it("lets a media tool actually run on the reused key, and keeps the key out of the result", async () => {
+    // The seam that decides whether the inference is worth anything at all: if
+    // the tool ignored the resolved key, the user would still be told to go and
+    // configure something.
+    const user = await makeUser("user", "u15");
+    await saveAssistantSettings(user.id, {
+      baseUrl: "https://relay.example.com/v1",
+      apiKey: "sk-relay-own",
+      model: "m1",
+    });
+    const settings = (await getAssistantSettings(user.id))!;
+    const gatewayBase = "https://relay.example.com";
+    const relayKey = resolveGatewayKey(undefined, settings, gatewayBase);
+    expect(relayKey).toBe("sk-relay-own");
+
+    const seen: Array<{ url: string; auth: string | null }> = [];
+    vi.stubGlobal("fetch", async (url: string | URL | Request, init?: RequestInit) => {
+      seen.push({ url: String(url), auth: new Headers(init?.headers).get("authorization") });
+      return new Response(JSON.stringify({ data: [{ url: "https://cdn.example/a.png" }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    const result = await executeTool(
+      "generate_image",
+      JSON.stringify({ model: "image-01", prompt: "a cat wearing a hat" }),
+      {
+        user: { id: user.id, username: user.username, role: user.role, timezone: "shanghai" },
+        relayKey,
+        gatewayBase,
+      },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(seen[0]?.url).toBe("https://relay.example.com/v1/images/generations");
+    expect(seen[0]?.auth).toBe("Bearer sk-relay-own");
+    // Re-using a stored credential is only safe if the model never sees it.
+    expect(result.content).not.toContain("sk-relay-own");
+
+    vi.unstubAllGlobals();
+  });
+});
+
+/**
+ * The reported bug, end to end: a user asked for a picture, and the assistant
+ * told them to go and set something up they had already set up. Testing
+ * `resolveGatewayKey` and the tool separately would not have caught a turn loop
+ * that simply forgot to pass the result between them, which is exactly the
+ * shape the bug had.
+ */
+describe("assistant: a turn whose assistant points at this deployment", () => {
+  beforeEach(() => {
+    __resetDbForTest();
+  });
+
+  /** One streamed assistant turn, in the chunk shape the client accumulates. */
+  function sseTurn(delta: unknown, finishReason: string | null = "stop"): Response {
+    const frame = {
+      id: "c1",
+      object: "chat.completion.chunk",
+      choices: [{ index: 0, delta, finish_reason: finishReason }],
+    };
+    const body = `data: ${JSON.stringify(frame)}\n\ndata: [DONE]\n\n`;
+    return new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(body));
+          controller.close();
+        },
+      }),
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    );
+  }
+
+  it("generates an image with no gateway key pasted anywhere", async () => {
+    const user = await makeUser("user", "u16");
+    const gatewayBase = "https://relay.example.com";
+    await saveAssistantSettings(user.id, {
+      baseUrl: `${gatewayBase}/v1`,
+      apiKey: "sk-relay-own",
+      model: "m1",
+    });
+    const settings = (await getAssistantSettings(user.id))!;
+    const thread = await createAssistantThread(user.id, "t");
+
+    const mediaCalls: Array<{ url: string; auth: string | null }> = [];
+    let modelTurns = 0;
+    vi.stubGlobal("fetch", async (url: string | URL | Request, init?: RequestInit) => {
+      const target = String(url);
+      if (target.includes("/images/generations")) {
+        mediaCalls.push({ url: target, auth: new Headers(init?.headers).get("authorization") });
+        return new Response(JSON.stringify({ data: [{ url: "https://cdn.example/cat.png" }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      // The model asks for the picture on the first turn and then just talks.
+      modelTurns++;
+      if (modelTurns === 1) {
+        return sseTurn(
+          {
+            role: "assistant",
+            tool_calls: [
+              {
+                index: 0,
+                id: "call_1",
+                function: {
+                  name: "generate_image",
+                  arguments: JSON.stringify({ model: "image-01", prompt: "a cat wearing a hat" }),
+                },
+              },
+            ],
+          },
+          null,
+        );
+      }
+      return sseTurn({ content: "图好了。" });
+    });
+
+    const events: ChatEvent[] = [];
+    await runChat({
+      user: { id: user.id, username: user.username, role: user.role, timezone: "shanghai" },
+      settings,
+      thread,
+      message: "用 generate_image 生成一张「戴帽子的猫」",
+      gatewayBase,
+      emit: (e) => events.push(e),
+    });
+
+    expect(mediaCalls).toHaveLength(1);
+    expect(mediaCalls[0]?.url).toBe(`${gatewayBase}/v1/images/generations`);
+    expect(mediaCalls[0]?.auth).toBe("Bearer sk-relay-own");
+
+    // And the model was not handed the credential, nor told to go configure it.
+    const transcript = JSON.stringify(events);
+    expect(transcript).not.toContain("sk-relay-own");
+    expect(transcript).not.toContain("网关密钥");
+
+    vi.unstubAllGlobals();
   });
 });
 
