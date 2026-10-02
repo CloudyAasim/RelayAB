@@ -45,6 +45,11 @@ function renderInline(text: string): string {
     return CODE_TOKEN(codes.length - 1);
   });
   out = escapeHtml(out);
+  // A link with no destination is not a link. A model asked to cite a file
+  // sometimes writes `[点击查看]()` — and the link regex below requires a
+  // target, so it would survive as literal `[点击查看]()`, which reads as a
+  // broken control rather than as the words it was trying to say.
+  out = out.replace(/\[([^\]]+)\]\(\s*\)/g, "$1");
   out = out.replace(
     /\[([^\]]+)\]\(([^)\s]+)\)/g,
     (_m, label: string, href: string) =>

@@ -73,16 +73,35 @@ function isSafeUrl(url: string): boolean {
 
 const MARKDOWN_IMAGE = /!\[\s*([^\]]*)\s*\]\(\s*([^)\s]+)[^)]*\)/g;
 const BARE_URL = /https?:\/\/[^\s<>()]+[^\s<>().,;:!?]/gi;
+
+/**
+ * One of our own artefact paths, matched by the shape it actually has.
+ *
+ * This runs before the generic relative-path matcher, and it has to. That
+ * matcher treats any run of `/segment/segment` as a single path, so two
+ * artefact addresses written back to back — which is what a model does when it
+ * is listing the results of one turn that made two pictures — merge into one
+ * token. The reader then gets a single link to
+ * `…/artifacts/<id>/api/assistant/artifacts/<id>`, which is not an address
+ * anything serves, so both pictures are unreachable from the prose.
+ *
+ * The id is a fixed 26 characters of base62, so this is not a guess: it cannot
+ * swallow the `/` that starts the next address, which is the entire point.
+ */
+const ARTIFACT_PATH = /\/api\/assistant\/artifacts\/[0-9A-Za-z]{26}(?:\?[^\s]*)?/g;
+
 /**
  * A root-relative path, which is how a model actually writes one of ours: it
- * copies `/api/assistant/artifacts/…` straight out of the tool result. Treating
- * only absolute addresses as links left it sitting in the prose as plain text,
- * which is the same complaint as before with a smaller trigger.
+ * copies `/api/assistant/artifacts/…` straight out of the tool result.
  *
  * Requires a second slash and no whitespace, so ordinary punctuation and bare
  * words are not mistaken for a path.
+ *
+ * The query string is part of the path. It used to be cut off, which turned
+ * `/docs/usage/range?from=2026-01-01` into a link to `/docs/usage/range` —
+ * silently the wrong address rather than an obvious failure.
  */
-const RELATIVE_PATH = /(?<![\w/])\/[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._~%/-]*)+/g;
+const RELATIVE_PATH = /(?<![\w/])\/[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._~%-]+)*(?:\?[^\s]*)?/g;
 
 export function splitLinks(text: string): Segment[] {
   const segments: Segment[] = [];
@@ -104,6 +123,11 @@ export function splitLinks(text: string): Segment[] {
   });
 
   rest = rest.replace(BARE_URL, (url: string) => {
+    if (isSafeUrl(url)) push({ kind: "link", value: url, label: url });
+    return " ";
+  });
+
+  rest = rest.replace(ARTIFACT_PATH, (url: string) => {
     if (isSafeUrl(url)) push({ kind: "link", value: url, label: url });
     return " ";
   });
