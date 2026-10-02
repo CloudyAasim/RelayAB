@@ -23,6 +23,8 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
+import { useT } from "@/components/i18n/I18nProvider";
+import { CredentialPanel, type Mode } from "@/lib/assistant/CredentialPanel";
 
 export interface MediaModelOption {
   id: string;
@@ -114,6 +116,7 @@ function extractItems(body: unknown): { urls: string[]; b64: number } {
 }
 
 export function MediaTester({ models, labels }: Props) {
+  const t = useT();
   const [relayKey, setRelayKey] = useState("");
   const [model, setModel] = useState(models[0]?.id ?? "");
   const [prompt, setPrompt] = useState("");
@@ -122,6 +125,7 @@ export function MediaTester({ models, labels }: Props) {
   const [duration, setDuration] = useState(String(DEFAULT_VIDEO_DURATION));
   const [ratio, setRatio] = useState<string>(DEFAULT_VIDEO_RATIO);
   const [language, setLanguage] = useState("");
+  const [credentialMode, setCredentialMode] = useState<Mode>("account");
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
@@ -133,7 +137,8 @@ export function MediaTester({ models, labels }: Props) {
   const auth = { "Content-Type": "application/json", Authorization: `Bearer ${relayKey.trim()}` };
 
   async function run() {
-    if (!model || !relayKey.trim() || busy) return;
+    if (!model || busy) return;
+    if (credentialMode !== "account" && !relayKey.trim()) return;
     if (capability !== "audio.stt" && !prompt.trim()) return;
     if (capability === "audio.stt" && !file) return;
 
@@ -143,7 +148,28 @@ export function MediaTester({ models, labels }: Props) {
 
     try {
       let res: Response;
-      if (capability === "image.generate") {
+      if (credentialMode === "account") {
+        // No bearer token exists on this path, so the call goes through the
+        // server. The panel keeps the account option disabled for speech
+        // recognition, which is why that capability cannot arrive here.
+        res = await fetch("/api/assistant/test-media", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            capability,
+            model,
+            prompt,
+            ...(size ? { size } : {}),
+            ...(capability === "video.generate"
+              ? {
+                  duration: Number(duration) || DEFAULT_VIDEO_DURATION,
+                  ...(ratio ? { ratio } : {}),
+                }
+              : {}),
+            ...(voice ? { voice } : {}),
+          }),
+        });
+      } else if (capability === "image.generate") {
         res = await fetch(`${base}/v1/images/generations`, {
           method: "POST",
           headers: auth,
@@ -230,20 +256,27 @@ export function MediaTester({ models, labels }: Props) {
   }
 
   const isStt = capability === "audio.stt";
-  const canRun = Boolean(model) && Boolean(relayKey.trim()) && !busy && (isStt ? Boolean(file) : Boolean(prompt.trim()));
+  const hasCredential = credentialMode === "account" || Boolean(relayKey.trim());
+  const canRun = Boolean(model) && hasCredential && !busy && (isStt ? Boolean(file) : Boolean(prompt.trim()));
 
   return (
     <Card>
       <CardHeader title={labels.title} description={labels.desc} />
       <div className="space-y-4">
-        <Input
-          label={labels.keyLabel}
-          hint={labels.keyHint}
-          type="password"
-          autoComplete="off"
-          placeholder={labels.keyPlaceholder}
-          value={relayKey}
-          onChange={(e) => setRelayKey(e.target.value)}
+        {/* Same reason as on the chat tester: the key belongs to the panel that
+            decides which credential a call spends, and this card was showing a
+            second one that the account path would quietly ignore. */}
+        <CredentialPanel
+          mode={credentialMode}
+          onModeChange={setCredentialMode}
+          relayKey={relayKey}
+          onRelayKeyChange={setRelayKey}
+          // Speech recognition needs an uploaded file, and the account route
+          // speaks JSON - so it stays on the key path, and says so instead of
+          // pretending otherwise.
+          accountBlockedReason={
+            isStt ? t("dashboard.models.credential.sttNeedsKey") : null
+          }
         />
 
         <div className="space-y-1.5">
@@ -281,7 +314,10 @@ export function MediaTester({ models, labels }: Props) {
               type="file"
               accept="audio/*"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              className="block w-full text-sm"
+              /* Bordered like every other field here. The bare native control
+                 next to bordered inputs read as a component that had lost its
+                 box rather than as a file picker. */
+              className="block w-full cursor-pointer rounded-md border border-input bg-background px-3 py-1.5 text-sm file:mr-3 file:cursor-pointer file:rounded file:border-0 file:bg-muted file:px-2 file:py-1 file:text-xs"
             />
           ) : (
             <textarea
@@ -341,20 +377,32 @@ export function MediaTester({ models, labels }: Props) {
             />
           )}
           {isStt && (
-            <Input
-              label={labels.language}
-              value={language}
-              onChange={(e) => setLanguage(e.target.value)}
-              placeholder="zh"
-            />
+            /* Language only ever renders for speech recognition, where it is
+               the grid's only child - so spanning the row is what a lone field
+               filling half a card always looked like a mistake. */
+            <div className="sm:col-span-2">
+              <Input
+                label={labels.language}
+                value={language}
+                onChange={(e) => setLanguage(e.target.value)}
+                placeholder="zh"
+              />
+            </div>
           )}
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button onClick={run} disabled={!canRun}>
-            {busy ? labels.running : labels.run}
-          </Button>
-          {!relayKey.trim() && <p className="text-xs text-muted-foreground">{labels.needsKey}</p>}
+        {/* The button and its reasons were on one line, so two hints and a
+            button ended up shoulder to shoulder reading as one run-on line.
+            The reasons belong under the button. */}
+        <div className="space-y-2">
+          <div>
+            <Button onClick={run} disabled={!canRun}>
+              {busy ? labels.running : labels.run}
+            </Button>
+          </div>
+          {credentialMode === "key" && !relayKey.trim() && (
+            <p className="text-xs text-muted-foreground">{labels.needsKey}</p>
+          )}
           {capability && !isStt && !prompt.trim() && (
             <p className="text-xs text-muted-foreground">{labels.needsPrompt}</p>
           )}

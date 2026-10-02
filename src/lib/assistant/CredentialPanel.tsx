@@ -15,7 +15,7 @@
  * credential's plaintext is never generated, so the only thing this panel can
  * honestly offer is create / switch on / switch off / rebuild / remove.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { useT } from "@/components/i18n/I18nProvider";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";
@@ -41,6 +41,14 @@ interface Props {
   onRelayKeyChange: (value: string) => void;
   /** Set when the panel should be usable; the assistant hides it until configured. */
   disabled?: boolean;
+  /**
+   * Why the account path is unavailable *here*, when the reason is not simply
+   * "you have not switched it on". The media tester passes this for speech
+   * recognition, which takes an uploaded file and so only works on the key
+   * path - a capability that quietly fell back to a hidden key would be worse
+   * than one that says so.
+   */
+  accountBlockedReason?: string | null;
   /** Fired after any change, so the parent can refresh whatever it caches. */
   onChanged?: () => void;
 }
@@ -51,6 +59,7 @@ export function CredentialPanel({
   relayKey,
   onRelayKeyChange,
   disabled,
+  accountBlockedReason,
   onChanged,
 }: Props) {
   const t = useT();
@@ -58,6 +67,11 @@ export function CredentialPanel({
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Whether the account option has ever been picked on purpose. Until it has,
+   * the panel is allowed to move the selection itself - see the effect below.
+   */
+  const userPickedRef = useRef(false);
 
   const load = useCallback(async () => {
     try {
@@ -79,6 +93,37 @@ export function CredentialPanel({
     void load();
   }, [load]);
 
+  const blockedReason = accountBlockedReason ?? null;
+  const canUseAccount = state.created && state.enabled && !blockedReason;
+
+  /**
+   * Never leave the page resting on an option that cannot be chosen.
+   *
+   * The initial mode is "account" because that is the path worth taking, but
+   * for someone who has not created a credential it is disabled - and because
+   * the key field is hidden while it is selected, the page came up looking like
+   * it had no way to run anything at all. Once the real state is known, fall
+   * back to the key path, unless the user has already chosen for themselves:
+   * their choice is not ours to second-guess when it is still available.
+   */
+  useEffect(() => {
+    if (!loaded) return;
+    if (!canUseAccount && mode === "account" && !userPickedRef.current) onModeChange("key");
+    // Once the account path becomes available again, follow it - that is the
+    // point of creating it.
+    if (canUseAccount && mode === "key" && !relayKey.trim() && !userPickedRef.current) {
+      onModeChange("account");
+    }
+  }, [loaded, canUseAccount, mode, onModeChange, relayKey]);
+
+  const choose = useCallback(
+    (next: Mode) => {
+      userPickedRef.current = true;
+      onModeChange(next);
+    },
+    [onModeChange],
+  );
+
   async function act(action: "create" | "enable" | "disable" | "rotate" | "remove") {
     setBusy(action);
     setError(null);
@@ -99,7 +144,7 @@ export function CredentialPanel({
       setState(json.data);
       // Turning it on is the moment the account path becomes usable, so the
       // selection follows rather than leaving the user on a dead option.
-      if (action === "enable") onModeChange("account");
+      if (action === "enable") choose("account");
       onChanged?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -107,8 +152,6 @@ export function CredentialPanel({
       setBusy(null);
     }
   }
-
-  const canUseAccount = state.created && state.enabled;
 
   return (
     <div className="space-y-3">
@@ -178,12 +221,14 @@ export function CredentialPanel({
             className="mt-0.5"
             checked={mode === "account"}
             disabled={!canUseAccount}
-            onChange={() => onModeChange("account")}
+            onChange={() => choose("account")}
           />
           <span>
             {t("assistant.credential.modeAccount")}
             {!canUseAccount && (
-              <span className="block text-xs text-muted-foreground">{t("assistant.credential.modeAccountLocked")}</span>
+              <span className="block text-xs text-muted-foreground">
+                {blockedReason ?? t("assistant.credential.modeAccountLocked")}
+              </span>
             )}
           </span>
         </label>
@@ -198,7 +243,7 @@ export function CredentialPanel({
             name="assistant-credential-mode"
             className="mt-0.5"
             checked={mode === "key"}
-            onChange={() => onModeChange("key")}
+            onChange={() => choose("key")}
           />
           <span>{t("assistant.credential.modeKey")}</span>
         </label>

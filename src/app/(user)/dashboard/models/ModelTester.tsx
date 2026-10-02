@@ -168,15 +168,11 @@ export function ModelTester({ chatModels, labels }: Props) {
     <Card>
       <CardHeader title={labels.title} description={labels.desc} />
       <div className="space-y-4">
-        <Input
-          label={labels.keyLabel}
-          hint={labels.keyHint}
-          type="password"
-          autoComplete="off"
-          placeholder={labels.keyPlaceholder}
-          value={relayKey}
-          onChange={(e) => setRelayKey(e.target.value)}
-        />
+        {/* The key field used to live here, directly above the model picker.
+            It now belongs to CredentialPanel below, which is the one place
+            that decides whether a call runs as the account or with a pasted
+            key - two key inputs on one card meant one of them was silently
+            ignored. */}
 
         <div className="space-y-1.5">
           <label htmlFor="model-tester-model" className="block text-sm font-medium text-foreground">

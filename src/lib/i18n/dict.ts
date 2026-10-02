@@ -786,6 +786,7 @@ const zhCN: Dict = {
   "assistant.credential.modeKey": "用我自己配置的密钥",
   "assistant.credential.keyLabel": "网关密钥",
   "assistant.credential.keyHint": "只对这一次请求有效，不会保存。适合你想随时删掉它来撤销访问的场景。",
+  "dashboard.models.credential.sttNeedsKey": "语音转写要上传文件，只能用自己配置的密钥。",
   "assistant.send": "发送",
   "assistant.thinking": "思考中…",
   "assistant.stop": "停止",
@@ -1654,6 +1655,8 @@ const en: Dict = {
   "assistant.credential.keyLabel": "Gateway key",
   "assistant.credential.keyHint":
     "Used for this request only and never stored. Suits anyone who would rather revoke access by deleting a key.",
+  "dashboard.models.credential.sttNeedsKey":
+    "Transcription uploads a file, so it can only use a key you supply.",
   "assistant.send": "Send",
   "assistant.thinking": "Thinking…",
   "assistant.stop": "Stop",
