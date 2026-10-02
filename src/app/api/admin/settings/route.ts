@@ -37,6 +37,26 @@ const ModelNoteSchema = z
   })
   .strict();
 
+/** A slug: lowercase, dashes, nothing a reader could mistake for a route. */
+const DocPageIdSchema = z
+  .string()
+  .min(1)
+  .max(60)
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "页面标识只能用小写字母、数字和中划线");
+
+const DocPageSchema = z
+  .object({
+    id: DocPageIdSchema,
+    title: z.string().min(1).max(120),
+    // Markdown, capped. It is rendered by the same escaping path as the built-in
+    // docs, so it is text — but it is still a body of prose typed by a human, and
+    // an unbounded one would be a body of prose nobody can finish reading.
+    body: z.string().max(60_000),
+    hidden: z.boolean().optional(),
+    order: z.number().int().min(0).max(10_000).optional(),
+  })
+  .strict();
+
 const UpdateSchema = z
   .object({
     publicUrl: z.string().url().optional(),
@@ -46,8 +66,27 @@ const UpdateSchema = z
     supportContact: z.string().max(500).optional(),
     publicCatalog: z.boolean().optional(),
     modelNotes: z.record(z.string().min(1).max(200), ModelNoteSchema).optional(),
+    // Capped as a whole as well as per page: the list is rendered into the
+    // reader's navigation, and a hundred entries there is a hundred entries
+    // nobody scrolls past.
+    docPages: z.array(DocPageSchema).max(30).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    // Two pages with one id would render two chapters at the same anchor, and
+    // the second would silently never be reachable.
+    const seen = new Set<string>();
+    for (const [i, page] of (value.docPages ?? []).entries()) {
+      if (seen.has(page.id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["docPages", i, "id"],
+          message: `页面标识「${page.id}」重复了`,
+        });
+      }
+      seen.add(page.id);
+    }
+  });
 
 export const dynamic = "force-dynamic";
 

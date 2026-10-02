@@ -40,6 +40,7 @@ export default async function SettingsPage() {
       ...(settings.supportContact !== undefined && { supportContact: settings.supportContact }),
       ...(settings.publicCatalog !== undefined && { publicCatalog: settings.publicCatalog }),
       ...(settings.modelNotes !== undefined && { modelNotes: settings.modelNotes }),
+      ...(settings.docPages !== undefined && { docPages: settings.docPages }),
     } as typeof docsSettings;
   } catch (e) {
     console.error("Failed to load settings:", e);

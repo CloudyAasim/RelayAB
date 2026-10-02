@@ -50,6 +50,35 @@ export interface AppSettings {
    * the gateway, so the type has no field for one.
    */
   modelNotes?: Record<string, ModelNote>;
+  /**
+   * Documentation the operator wrote, rendered as one chapter of the user docs.
+   *
+   * Stored as a JSON blob under one key, like `modelNotes`: this is prose that
+   * changes rarely, is read whole, and has no query shape. Splitting it into
+   * rows would buy nothing and cost a table.
+   *
+   * Deliberately not a way to edit the built-in pages. Those are the pages
+   * that describe the protocol, and a page that says something else about the
+   * same subject is worse than a missing one. This is for the things only the
+   * operator knows: their usage policy, their rate limits, which model to pick.
+   */
+  docPages?: DocPage[];
+}
+
+export interface DocPage {
+  /** Slug, unique across the pages. Also the anchor on the page. */
+  id: string;
+  title: string;
+  /** Markdown. Rendered with the same audited path the rest of the docs use. */
+  body: string;
+  /**
+   * Draft: written but not shown. The point of a draft is that the outline
+   * does not change while it is being written, so a half-finished page never
+   * appears in a reader's navigation.
+   */
+  hidden?: boolean;
+  /** Sort order within the chapter; ties fall back to the title. */
+  order?: number;
 }
 
 export interface ModelNote {
@@ -71,6 +100,7 @@ const ANNOUNCEMENT_KEY = "announcement";
 const SUPPORT_CONTACT_KEY = "supportContact";
 const PUBLIC_CATALOG_KEY = "publicCatalog";
 const MODEL_NOTES_KEY = "modelNotes";
+const DOC_PAGES_KEY = "docPages";
 
 /** Every scalar key, so a read is one query rather than one per field. */
 const SCALAR_KEYS = [
@@ -115,6 +145,9 @@ export async function getSettings(): Promise<AppSettings> {
   );
   if (notes && Object.keys(notes).length > 0) out.modelNotes = notes;
 
+  const pages = parseJson<DocPage[] | undefined>(byKey.get(DOC_PAGES_KEY), undefined);
+  if (pages && Array.isArray(pages) && pages.length > 0) out.docPages = pages;
+
   // Stored as a string because the column is TEXT and everything else here is
   // a string; parsed into a boolean at the boundary so callers get a real one.
   const pub = byKey.get(PUBLIC_CATALOG_KEY)?.trim();
@@ -149,6 +182,16 @@ export async function updateSettings(settings: Partial<AppSettings>): Promise<Ap
         run("DELETE FROM settings WHERE key = ?", [MODEL_NOTES_KEY]);
       } else {
         write(MODEL_NOTES_KEY, JSON.stringify(notes));
+      }
+    }
+    if (settings.docPages !== undefined) {
+      const pages = settings.docPages ?? [];
+      if (pages.length === 0) {
+        // Same reasoning as modelNotes: an empty array and an absent row are
+        // different facts, and storing "[]" would lose that.
+        run("DELETE FROM settings WHERE key = ?", [DOC_PAGES_KEY]);
+      } else {
+        write(DOC_PAGES_KEY, JSON.stringify(pages));
       }
     }
     return getSettings();

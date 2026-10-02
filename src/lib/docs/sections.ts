@@ -25,8 +25,19 @@ const USER_SECTION_IDS = [
   "models",
   "sdks",
   "media",
+  // The operator's own chapter, and the only id here that can be absent: a
+  // deployment with no custom pages has no such chapter, and an outline entry
+  // pointing at nothing is worse than a shorter outline.
+  "notes",
 ] as const;
 export type UserDocId = (typeof USER_SECTION_IDS)[number];
+
+/** Sections that only appear when the operator has written something for them. */
+export const OPTIONAL_USER_SECTION_IDS = ["notes"] as const;
+
+export function isOptionalUserDocId(value: string): boolean {
+  return (OPTIONAL_USER_SECTION_IDS as readonly string[]).includes(value);
+}
 
 /** Exported for tests: the exact slugs the admin docs outline accepts. */
 export const ADMIN_SECTION_IDS = [
@@ -58,7 +69,8 @@ export function isAdminDocId(value: string): value is AdminDocId {
   return (ADMIN_SECTION_IDS as readonly string[]).includes(value);
 }
 
-export function userDocSections(t: TFn): DocSection[] {
+export function userDocSections(t: TFn, present?: string[]): DocSection[] {
+  const has = (id: string): boolean => !present || present.includes(id);
   return [
     { id: "start", label: t("docs.nav.start") },
     { id: "endpoints", label: t("docs.nav.endpoints") },
@@ -68,6 +80,10 @@ export function userDocSections(t: TFn): DocSection[] {
     { id: "models", label: t("docs.nav.models") },
     { id: "sdks", label: t("docs.nav.sdks") },
     { id: "media", label: t("docs.nav.media") },
+    // Last, and only when it has something in it. The alternative — a permanent
+    // entry that says "there is nothing here" — is the thing that makes a
+    // customised section look bolted on rather than part of the document.
+    ...(has("notes") ? [{ id: "notes", label: t("docs.nav.notes") }] : []),
   ];
 }
 

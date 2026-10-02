@@ -18,6 +18,19 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { useT } from "@/components/i18n/I18nProvider";
+import { validatePage, type DocPage } from "@/lib/docs/custom";
+
+/** The editable shape of a page, before it is trimmed on the way to the API. */
+type DocPageInput = Partial<DocPage>;
+
+/** The fields a page row is edited by; the rest of `DocPage` is not editable here. */
+const pageFields = (p: DocPageInput): DocPage => ({
+  id: p.id ?? "",
+  title: p.title ?? "",
+  body: p.body ?? "",
+  ...(p.hidden ? { hidden: true } : {}),
+  ...(p.order === undefined ? {} : { order: p.order }),
+});
 
 export interface DocSettingsModel {
   id: string;
@@ -40,6 +53,7 @@ interface Props {
     supportContact?: string;
     publicCatalog?: boolean;
     modelNotes?: Record<string, ModelNoteInput>;
+    docPages?: DocPageInput[];
   };
   models: DocSettingsModel[];
 }
@@ -53,6 +67,7 @@ export function DocsSettingsForm({ initial, models }: Props) {
   const [supportContact, setSupportContact] = useState(initial.supportContact ?? "");
   const [publicCatalog, setPublicCatalog] = useState(initial.publicCatalog ?? false);
   const [notes, setNotes] = useState<Record<string, ModelNoteInput>>(initial.modelNotes ?? {});
+  const [pages, setPages] = useState<DocPageInput[]>(initial.docPages ?? []);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [query, setQuery] = useState("");
@@ -60,11 +75,57 @@ export function DocsSettingsForm({ initial, models }: Props) {
   const patch = (id: string, next: ModelNoteInput) =>
     setNotes((prev) => ({ ...prev, [id]: { ...prev[id], ...next } }));
 
+  /**
+   * A page's id is editable while it is a draft and fixed once it is published.
+   *
+   * The id is the anchor readers link to, so silently changing it would break
+   * every link somebody ever shared. Drafts have no readers yet, which is why
+   * that is the moment it is safe.
+   */
+  const patchPage = (index: number, next: Partial<DocPageInput>) =>
+    setPages((prev) => prev.map((p, i) => (i === index ? { ...p, ...next } : p)));
+
+  const addPage = () =>
+    setPages((prev) => [
+      ...prev,
+      { id: "", title: "", body: "", hidden: true, order: prev.length },
+    ]);
+
+  const removePage = (index: number) =>
+    setPages((prev) => prev.filter((_, i) => i !== index));
+
+  const movePage = (index: number, delta: number) =>
+    setPages((prev) => {
+      const next = [...prev];
+      const to = index + delta;
+      if (to < 0 || to >= next.length) return prev;
+      [next[index], next[to]] = [next[to], next[index]];
+      return next.map((p, i) => ({ ...p, order: i }));
+    });
+
+  /** Local, so an unusable page is refused here rather than by a round trip. */
+  const pageProblem = (p: DocPageInput, index: number): string | null => {
+    const reason = validatePage(pageFields(p));
+    if (reason) return reason;
+    const clash = pages.some(
+      (other, i) => i !== index && (other.id ?? "").trim() === (p.id ?? "").trim(),
+    );
+    return clash ? t("admin.docsSettings.pageDuplicate") : null;
+  };
+
+  const pageProblems = pages.map((p, i) => pageProblem(p, i));
+  const pagesOk = pageProblems.every((p) => p === null);
+
   const visible = models.filter(
     (m) => !query.trim() || m.id.toLowerCase().includes(query.trim().toLowerCase()),
   );
 
   async function save() {
+    // A page that cannot be published is not silently dropped on the way past.
+    if (!pagesOk) {
+      setMessage({ ok: false, text: t("admin.docsSettings.pageFixFirst") });
+      return;
+    }
     setBusy(true);
     setMessage(null);
     try {
@@ -89,6 +150,20 @@ export function DocsSettingsForm({ initial, models }: Props) {
           supportContact,
           publicCatalog,
           modelNotes: cleaned,
+          docPages: pages
+            .map((p, i) => {
+              const f = pageFields(p);
+              return {
+                id: f.id.trim(),
+                title: f.title.trim(),
+                body: f.body,
+                ...(f.hidden ? { hidden: true } : {}),
+                order: f.order ?? i,
+              };
+            })
+            // A page with no id is a row someone started and abandoned. Keeping
+            // it would put an unlinkable entry in the outline.
+            .filter((p) => p.id && p.title),
         }),
       });
       const json = (await res.json().catch(() => null)) as
@@ -109,6 +184,141 @@ export function DocsSettingsForm({ initial, models }: Props) {
 
   return (
     <div className="space-y-4">
+      {/*
+        The operator's own chapter, first in the editor.
+
+        First because it is the thing most likely to be being changed, and
+        because the fields below it — site name, announcement, model notes —
+        are set once and then left alone.
+      */}
+      <Card>
+        <CardHeader
+          title={t("admin.docsSettings.pagesTitle")}
+          description={t("admin.docsSettings.pagesDesc")}
+        />
+
+        {pages.length === 0 && (
+          <p className="text-sm text-muted-foreground">{t("admin.docsSettings.pagesEmpty")}</p>
+        )}
+
+        <div className="space-y-4">
+          {pages.map((p, i) => {
+            const problem = pageProblems[i];
+            return (
+              <div
+                key={i}
+                className={`space-y-3 rounded-lg border p-3 ${
+                  problem ? "border-destructive/50" : "border-border"
+                }`}
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="min-w-40 flex-1">
+                    <label
+                      htmlFor={`page-id-${i}`}
+                      className="block text-xs font-medium text-foreground"
+                    >
+                      {t("admin.docsSettings.pageId")}
+                    </label>
+                    <input
+                      id={`page-id-${i}`}
+                      value={p.id ?? ""}
+                      readOnly={!p.hidden}
+                      onChange={(e) => patchPage(i, { id: e.target.value })}
+                      placeholder="rate-limits"
+                      className={`mt-1 h-9 w-full rounded-md border border-input bg-background px-3 font-mono text-sm ${
+                        p.hidden ? "" : "opacity-70"
+                      }`}
+                    />
+                  </div>
+                  <div className="min-w-40 flex-1">
+                    <label
+                      htmlFor={`page-title-${i}`}
+                      className="block text-xs font-medium text-foreground"
+                    >
+                      {t("admin.docsSettings.pageTitle")}
+                    </label>
+                    <input
+                      id={`page-title-${i}`}
+                      value={p.title ?? ""}
+                      onChange={(e) => patchPage(i, { title: e.target.value })}
+                      className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    />
+                  </div>
+                  <div className="flex items-end gap-1.5 pb-0.5">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => movePage(i, -1)}
+                      disabled={i === 0}
+                      aria-label={t("admin.docsSettings.pageUp")}
+                    >
+                      ↑
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => movePage(i, 1)}
+                      disabled={i === pages.length - 1}
+                      aria-label={t("admin.docsSettings.pageDown")}
+                    >
+                      ↓
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => removePage(i)}
+                      aria-label={t("admin.docsSettings.pageDelete")}
+                    >
+                      {t("admin.docsSettings.pageDelete")}
+                    </Button>
+                  </div>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor={`page-body-${i}`}
+                    className="block text-xs font-medium text-foreground"
+                  >
+                    {t("admin.docsSettings.pageBody")}
+                  </label>
+                  <textarea
+                    id={`page-body-${i}`}
+                    value={p.body ?? ""}
+                    onChange={(e) => patchPage(i, { body: e.target.value })}
+                    rows={10}
+                    className="mt-1 w-full rounded-md border border-input bg-background p-3 font-mono text-xs leading-relaxed"
+                  />
+                </div>
+
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={p.hidden ?? false}
+                    onChange={(e) => patchPage(i, { hidden: e.target.checked })}
+                  />
+                  {t("admin.docsSettings.pageHidden")}
+                </label>
+
+                {problem && (
+                  <p className="text-xs text-destructive">
+                    {problem === t("admin.docsSettings.pageDuplicate")
+                      ? problem
+                      : t("admin.docsSettings.pageInvalidId")}
+                  </p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-3 space-y-2">
+          <Button size="sm" variant="outline" onClick={addPage}>
+            {t("admin.docsSettings.pageNew")}
+          </Button>
+          <p className="text-xs text-muted-foreground">{t("admin.docsSettings.pagesHint")}</p>
+        </div>
+      </Card>
+
       <Card>
         <CardHeader
           title={t("admin.docsSettings.siteTitle")}

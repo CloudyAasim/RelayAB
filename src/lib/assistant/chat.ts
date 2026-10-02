@@ -38,6 +38,7 @@ import {
 } from "../db/assistant";
 import type { AssistantSettings, AssistantThread, MessageAttachment } from "./schema";
 import type { Locale } from "../i18n/dict";
+import type { DocPage } from "../docs/custom";
 import type { AuthedUser } from "../auth/session";
 
 /**
@@ -190,6 +191,8 @@ export interface RunChatOptions {
    * in the wrong language would be worse than not having one.
    */
   locale?: Locale;
+  /** The operator's own documentation pages, resolved by the route. */
+  docPages?: DocPage[];
   signal?: AbortSignal;
   emit: (event: ChatEvent) => void;
 }
@@ -255,6 +258,7 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
     // model having to paste a megabyte of base64 to name it.
     ...(opts.attachments?.length ? { attachments: opts.attachments } : {}),
     ...(opts.locale ? { locale: opts.locale } : {}),
+    ...(opts.docPages ? { docPages: opts.docPages } : {}),
   };
 
   // The user's turn goes in first so it is persisted even if the upstream is

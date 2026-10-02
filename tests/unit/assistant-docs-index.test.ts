@@ -18,7 +18,10 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { WEB_DOC_SECTIONS } from "@/lib/assistant/docs-index.generated";
-import { docIndex, readDoc } from "@/lib/assistant/docs-reader";
+import { createDocReader } from "@/lib/assistant/docs-reader";
+
+/** The reader over a deployment with no operator pages. */
+const reader = () => createDocReader(undefined);
 
 // In the repository, not in a scratch directory: this test has to run on CI
 // too, and a generator that only exists on the machine that wrote the file is
@@ -82,21 +85,57 @@ describe("the index is usable", () => {
   });
 
   it("lists both surfaces", () => {
-    const topics = docIndex().map((e) => e.topic);
+    const topics = reader().index.map((e) => e.topic);
     expect(topics).toContain("user:openai");
     expect(topics).toContain("admin:providers");
   });
 });
 
+describe("the operator's own chapter, which is written at runtime", () => {
+  const pages = [
+    { id: "rate-limits", title: "限流", body: "每分钟 30 次。", order: 0 },
+    { id: "draft", title: "草稿", body: "还没写完。", hidden: true },
+  ];
+  const custom = createDocReader(pages);
+
+  it("appears in the index only when there is something to read", () => {
+    expect(custom.index.some((e) => e.topic === "user:notes")).toBe(true);
+    expect(reader().index.some((e) => e.topic === "user:notes")).toBe(false);
+  });
+
+  it("lists each published page, and not the drafts", () => {
+    const topics = custom.index.map((e) => e.topic);
+    expect(topics).toContain("user:notes#rate-limits");
+    expect(topics.some((t) => t.includes("draft"))).toBe(false);
+  });
+
+  it("reads a page by its slug", () => {
+    const result = custom.read("user:notes#rate-limits", "zh-CN", "user");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.text).toBe("每分钟 30 次。");
+  });
+
+  it("a draft is not readable through a link either", () => {
+    const result = custom.read("user:notes#draft", "zh-CN", "user");
+    expect(result.ok).toBe(false);
+  });
+
+  it("a deployment with only drafts has no chapter at all", () => {
+    const allDrafts = createDocReader([{ id: "x", title: "X", body: "…", hidden: true }]);
+    expect(allDrafts.index.some((e) => e.topic === "user:notes")).toBe(false);
+  });
+});
+
 describe("reading a page", () => {
   it("returns real prose, in the reader's language", () => {
-    const zh = readDoc("openai", "zh-CN", "user");
+    const zh = reader().read("openai", "zh-CN", "user");
     expect(zh.ok).toBe(true);
     if (!zh.ok) return;
     expect(zh.text.length).toBeGreaterThan(40);
     expect(/[一-鿿]/.test(zh.text), "Chinese reader got English").toBe(true);
 
-    const en = readDoc("openai", "en", "user");
+    const en = reader().read("openai", "en", "user");
     expect(en.ok).toBe(true);
     if (!en.ok) return;
     expect(en.text).not.toBe(zh.text);
@@ -105,8 +144,9 @@ describe("reading a page", () => {
   it("works with a bare id and with a surface-qualified one", () => {
     // `media` is the one page id that exists on both surfaces, so it is the one
     // that can legitimately be reached either way.
-    const bare = readDoc("media", "zh-CN", "user");
-    const qualified = readDoc("admin:media", "zh-CN", "admin");
+    const r = reader();
+    const bare = r.read("media", "zh-CN", "user");
+    const qualified = r.read("admin:media", "zh-CN", "admin");
     expect(bare.ok && qualified.ok).toBe(true);
     if (bare.ok && qualified.ok) {
       // Same id, different pages — the surface is not decoration.
@@ -115,7 +155,7 @@ describe("reading a page", () => {
   });
 
   it("says a page has no readable text rather than returning silence", () => {
-    const ops = readDoc("admin:ops", "zh-CN", "admin");
+    const ops = reader().read("admin:ops", "zh-CN", "admin");
     expect(ops.ok).toBe(true);
     if (!ops.ok) return;
     // The note, not an empty body the model would read as "nothing to say".
@@ -123,7 +163,7 @@ describe("reading a page", () => {
   });
 
   it("lists what there is when asked for a page that does not exist", () => {
-    const result = readDoc("nope", "zh-CN", "user");
+    const result = reader().read("nope", "zh-CN", "user");
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.reason).toMatch(/user:openai|可用|没有这一页/);
@@ -131,7 +171,7 @@ describe("reading a page", () => {
   });
 
   it("lists the pages too, when asked with no topic at all", () => {
-    const result = readDoc("", "zh-CN", "user");
+    const result = reader().read("", "zh-CN", "user");
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.available?.length).toBeGreaterThan(3);
@@ -140,14 +180,14 @@ describe("reading a page", () => {
   it("tells a regular user the admin docs are not theirs", () => {
     // The surface check is the tool's job, but the reader must be able to say
     // why, so the distinction has to survive into the message.
-    const result = readDoc("providers", "zh-CN", "user");
+    const result = reader().read("providers", "zh-CN", "user");
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.reason).toMatch(/管理员/);
   });
 
   it("shows a missing translation rather than a blank line", () => {
-    const zh = readDoc("openai", "zh-CN", "user");
+    const zh = reader().read("openai", "zh-CN", "user");
     expect(zh.ok).toBe(true);
     if (!zh.ok) return;
     // A key that resolves to itself is the fallback identity; seeing it in the

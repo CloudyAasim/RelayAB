@@ -37,8 +37,9 @@ import { decryptSecret } from "../crypto/secrets";
 import { renderProviderDiff, renderMediaDiff } from "./diff";
 import { DEPLOYMENT_NOTES } from "./deployment-notes";
 import { fetchPage, WebFetchError } from "./web-fetch";
-import { docIndex, readDoc } from "./docs-reader";
+import { createDocReader } from "./docs-reader";
 import { DEFAULT_LOCALE, type Locale } from "../i18n/dict";
+import type { DocPage } from "../docs/custom";
 import { NO_CREDENTIAL_MESSAGE, type AccountCredential } from "./credentials";
 import { executeMediaRequest, resultItems } from "../media/handler";
 import { proxyChatCompletion } from "../proxy/openai";
@@ -88,6 +89,14 @@ export interface ToolContext {
    * request is a different thing from an admin who can already open the page.
    */
   canReadAdminDocs?: boolean;
+  /**
+   * The operator's own documentation pages, resolved by the route.
+   *
+   * Same reason as the locale: they come from the settings table, and the tool
+   * loop runs where `next/headers` no longer resolves. Passed in so one turn
+   * reads them once rather than once per call.
+   */
+  docPages?: DocPage[];
 }
 
 /** A media file the tool produced, for the caller to store and hand a URL back. */
@@ -799,13 +808,16 @@ function readDocsTool(args: Record<string, unknown>, ctx: ToolContext): ToolResu
   const locale = ctx.locale ?? DEFAULT_LOCALE;
   const isAdmin = ctx.user.role === "admin";
   const canReadAdmin = ctx.canReadAdminDocs ?? isAdmin;
+  const reader = createDocReader(ctx.docPages);
 
   const topic = typeof args.topic === "string" ? args.topic.trim() : "";
   if (!topic) {
     return ok({
       note: "不带 topic 时这是目录。要读哪一页，把它的 topic 再传进来。",
-      userDocs: docIndex("user"),
-      adminDocs: canReadAdmin ? docIndex("admin") : "（管理员文档只有管理员能读）",
+      userDocs: reader.index.filter((e) => e.surface === "user"),
+      adminDocs: canReadAdmin
+        ? reader.index.filter((e) => e.surface === "admin")
+        : "（管理员文档只有管理员能读）",
     });
   }
 
@@ -814,7 +826,7 @@ function readDocsTool(args: Record<string, unknown>, ctx: ToolContext): ToolResu
     return fail("admin: 文档只有管理员能读。你是普通用户看不到这一页。");
   }
 
-  const result = readDoc(topic, locale, wantsAdmin ? "admin" : "user");
+  const result = reader.read(topic, locale, wantsAdmin ? "admin" : "user");
   if (!result.ok) {
     return fail(`${result.reason}${result.available ? `\n可用：${result.available.map((a) => a.topic).join(", ")}` : ""}`);
   }

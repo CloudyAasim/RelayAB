@@ -131,79 +131,259 @@ export function ModelCatalog({ models, providers, site, publicUrl }: Props) {
 
       <p className="text-xs text-muted-foreground">{t("docs.catalog.count", { n: filtered.length })}</p>
 
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] text-sm">
-          <thead>
-            <tr className="border-b border-border text-left text-xs text-muted-foreground">
-              <th className="py-2 pr-3 font-medium">{t("docs.catalog.model")}</th>
-              <th className="py-2 pr-3 font-medium">{t("docs.catalog.provider")}</th>
-              <th className="py-2 pr-3 font-medium">{t("docs.catalog.context")}</th>
-              <th className="py-2 pr-3 font-medium">{t("docs.catalog.maxOutput")}</th>
-              <th className="py-2 pr-3 font-medium">{t("docs.catalog.price")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((m) => (
-              <tr key={`${m.kind}:${m.id}`} className="border-b border-border/60 align-top">
-                <td className="py-2 pr-3">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <code className="font-mono text-xs">{m.id}</code>
-                    {m.kind === "media" && m.capability && (
-                      <Badge tone="purple">{m.capability}</Badge>
-                    )}
-                    {m.faces.map((f) => (
-                      <Badge key={f} tone="neutral">
-                        {f}
-                      </Badge>
-                    ))}
-                    {m.tags.map((tag) => (
-                      <Badge key={tag} tone="info">
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
-                  {m.displayName !== m.id && (
-                    <p className="mt-0.5 text-xs text-muted-foreground">{m.displayName}</p>
-                  )}
-                  {m.note && (
-                    <p className="mt-1 max-w-prose text-xs leading-relaxed text-muted-foreground">{m.note}</p>
-                  )}
-                </td>
-                <td className="py-2 pr-3 text-xs text-muted-foreground">{m.provider}</td>
-                <td className="py-2 pr-3 text-xs">{m.kind === "media" ? "—" : fmt(m.contextLength)}</td>
-                <td className="py-2 pr-3 text-xs">{m.kind === "media" ? "—" : fmt(m.maxOutputTokens)}</td>
-                <td className="py-2 pr-3 text-xs">
-                  {m.kind === "media" ? (m.inputCost ? cost(m.inputCost) : "—") : cost(m.inputCost)}
-                </td>
-              </tr>
-            ))}
-            {filtered.length === 0 && (
-              <tr>
-                <td colSpan={5} className="py-6 text-center text-sm text-muted-foreground">
-                  {t("docs.catalog.empty")}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      {/*
+        Two tables, not one table with a filter chip.
 
-      <div className="rounded-lg border border-border p-4">
-        <h3 className="text-sm font-medium text-foreground">{t("docs.catalog.providers")}</h3>
-        <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
-          {providers.map((p) => (
-            <li key={p.name} className="flex flex-wrap items-center gap-2">
-              <span className="font-medium text-foreground">{p.name}</span>
-              <Badge tone={p.enabled ? "success" : "slate"}>
-                {p.enabled ? t("docs.catalog.enabled") : t("docs.catalog.disabled")}
+        The columns are not the same for the two kinds, and pretending they are
+        is what made the old single table half dashes: a media row showed "—"
+        for a context window that does not exist, and a chat row had nowhere to
+        put the capability that distinguishes one image model from another.
+      */}
+      {(["chat", "media"] as const).map((group) => {
+        const rows = filtered.filter((m) => m.kind === group);
+        if (rows.length === 0) return null;
+        const isChat = group === "chat";
+        return (
+          <section key={group} className="space-y-2">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">
+                {isChat ? t("docs.catalog.groupChat") : t("docs.catalog.groupMedia")}
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                {isChat ? t("docs.catalog.groupChatDesc") : t("docs.catalog.groupMediaDesc")}
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[720px] text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                    <th className="py-2 pr-3 font-medium">{t("docs.catalog.model")}</th>
+                    <th className="py-2 pr-3 font-medium">{t("docs.catalog.providerOf")}</th>
+                    {isChat ? (
+                      <>
+                        <th className="py-2 pr-3 font-medium">{t("docs.catalog.context")}</th>
+                        <th className="py-2 pr-3 font-medium">{t("docs.catalog.maxOutput")}</th>
+                      </>
+                    ) : (
+                      <>
+                        <th className="py-2 pr-3 font-medium">{t("docs.catalog.kind")}</th>
+                        <th className="py-2 pr-3 font-medium">{t("docs.catalog.endpoint")}</th>
+                      </>
+                    )}
+                    <th className="py-2 pr-3 font-medium">
+                      {isChat ? t("docs.catalog.price") : t("docs.catalog.pricePerItem")}
+                    </th>
+                    <th className="py-2 font-medium" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((m) => (
+                    <ModelRows key={`${m.kind}:${m.id}`} model={m} isChat={isChat} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        );
+      })}
+
+      {filtered.length === 0 && (
+        <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+          {t("docs.catalog.empty")}
+        </p>
+      )}
+
+      <ProviderList providers={providers} />
+    </div>
+  );
+}
+
+/**
+ * One model, and the configuration behind it.
+ *
+ * The detail row is the point. The spec's own `metadata` — which sizes it
+ * accepts, which modes, how many reference images — was being loaded on every
+ * request and rendered nowhere, so the page answered "which model should I
+ * use" with a name and three numbers.
+ */
+function ModelRows({ model: m, isChat }: { model: CatalogModel; isChat: boolean }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+
+  const meta = m.meta ?? {};
+  const modes = Array.isArray(meta.modes) ? (meta.modes as unknown[]).map(String) : [];
+  const sizes = Array.isArray(meta.sizes) ? (meta.sizes as unknown[]).map(String) : [];
+  const maxRef = typeof meta.max_reference_images === "number" ? meta.max_reference_images : null;
+  // Everything the spec's metadata carries that is not one of the three
+  // rendered above. An operator put it there; a reader should be able to see it.
+  const rest = Object.entries(meta).filter(
+    ([k]) => !["modes", "sizes", "max_reference_images", "edit_mode"].includes(k),
+  );
+
+  return (
+    <>
+      <tr className="border-b border-border/60 align-top">
+        <td className="py-2 pr-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <code className="font-mono text-xs">{m.id}</code>
+            {m.upstreamId && m.upstreamId !== m.id && (
+              <span className="text-[11px] text-muted-foreground">← {m.upstreamId}</span>
+            )}
+            {!isChat && m.capability && <Badge tone="purple">{m.capability}</Badge>}
+            {m.faces.map((f) => (
+              <Badge key={f} tone="neutral">
+                {f}
               </Badge>
-              <span className="text-xs">
-                {t("docs.catalog.modelCount", { n: p.modelCount })}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </div>
+            ))}
+            {m.tags.map((tag) => (
+              <Badge key={tag} tone="info">
+                {tag}
+              </Badge>
+            ))}
+          </div>
+          {m.displayName !== m.id && (
+            <p className="mt-0.5 text-xs text-muted-foreground">{m.displayName}</p>
+          )}
+          {m.note && (
+            <p className="mt-1 max-w-prose text-xs leading-relaxed text-muted-foreground">{m.note}</p>
+          )}
+        </td>
+        <td className="py-2 pr-3 text-xs">
+          <span className="font-medium text-foreground">{m.source.name}</span>
+          {m.source.baseUrl && (
+            <p className="mt-0.5 break-all font-mono text-[11px] text-muted-foreground">
+              {m.source.baseUrl}
+            </p>
+          )}
+          {m.source.priority !== null && (
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              {t("docs.catalog.priority")}: {m.source.priority}
+            </p>
+          )}
+        </td>
+        {isChat ? (
+          <>
+            <td className="py-2 pr-3 text-xs">{fmt(m.contextLength)}</td>
+            <td className="py-2 pr-3 text-xs">{fmt(m.maxOutputTokens)}</td>
+          </>
+        ) : (
+          <>
+            <td className="py-2 pr-3 text-xs">{m.capability ?? "—"}</td>
+            <td className="py-2 pr-3 font-mono text-[11px]">{m.source.endpoint ?? "—"}</td>
+          </>
+        )}
+        <td className="py-2 pr-3 text-xs">
+          {isChat
+            ? cost(m.inputCost)
+            : m.inputCost
+              ? `${(m.inputCost / 1000).toFixed(3)} 积分`
+              : "—"}
+        </td>
+        <td className="py-2 text-right">
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            className="rounded px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            {t("docs.catalog.detail")} {open ? "▾" : "▸"}
+          </button>
+        </td>
+      </tr>
+      {open && (
+        <tr className="border-b border-border/60 bg-muted/20">
+          <td colSpan={6} className="px-3 py-2">
+            <dl className="grid gap-x-6 gap-y-1 text-xs sm:grid-cols-2 lg:grid-cols-3">
+              <Detail label={t("docs.catalog.base")} value={m.source.baseUrl ?? "—"} mono />
+              <Detail
+                label={t("docs.catalog.format")}
+                value={m.source.upstreamFormat ?? "—"}
+                mono
+              />
+              <Detail label={t("docs.catalog.endpoint")} value={m.source.endpoint ?? "—"} mono />
+              <Detail label={t("docs.catalog.upstream")} value={m.upstreamId ?? "—"} mono />
+              <Detail label={t("docs.catalog.context")} value={fmt(m.contextLength)} />
+              <Detail label={t("docs.catalog.maxOutput")} value={fmt(m.maxOutputTokens)} />
+              {m.source.priority !== null && (
+                <Detail label={t("docs.catalog.priority")} value={String(m.source.priority)} />
+              )}
+              {modes.length > 0 && (
+                <Detail label={t("docs.catalog.modes")} value={modes.join(" / ")} />
+              )}
+              {maxRef !== null && (
+                <Detail label={t("docs.catalog.maxReference")} value={String(maxRef)} />
+              )}
+              {sizes.length > 0 && (
+                <Detail label={t("docs.catalog.sizes")} value={sizes.join("  ")} mono />
+              )}
+              {rest.map(([k, v]) => (
+                <Detail
+                  key={k}
+                  label={k}
+                  value={typeof v === "object" ? JSON.stringify(v) : String(v)}
+                />
+              ))}
+            </dl>
+            {modes.length === 0 && sizes.length === 0 && rest.length === 0 && (
+              <p className="text-[11px] text-muted-foreground">{t("docs.catalog.detailEmpty")}</p>
+            )}
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+function Detail({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className={`break-all ${mono ? "font-mono" : ""}`}>{value}</dd>
+    </div>
+  );
+}
+
+/**
+ * The providers, split by what they serve.
+ *
+ * "MiniMax" appears in both lists in most deployments, which is the whole
+ * reason a single undifferentiated list of names was not enough.
+ */
+function ProviderList({
+  providers,
+}: {
+  providers: Array<{ name: string; enabled: boolean; modelCount: number; kind?: "chat" | "media" }>;
+}) {
+  const t = useT();
+  const groups: Array<{ kind: "chat" | "media"; rows: typeof providers }> = [
+    { kind: "chat", rows: providers.filter((p) => p.kind !== "media") },
+    { kind: "media", rows: providers.filter((p) => p.kind === "media") },
+  ];
+
+  return (
+    <div className="rounded-lg border border-border p-4">
+      <h3 className="text-sm font-medium text-foreground">{t("docs.catalog.providerGroup")}</h3>
+      {groups.map((g) => {
+        if (g.rows.length === 0) return null;
+        return (
+          <div key={g.kind} className="mt-3 first:mt-2">
+            <p className="text-xs text-muted-foreground">
+              {g.kind === "chat" ? t("docs.catalog.groupChat") : t("docs.catalog.groupMedia")}
+            </p>
+            <ul className="mt-1.5 space-y-1.5 text-sm text-muted-foreground">
+              {g.rows.map((p) => (
+                <li key={`${g.kind}:${p.name}`} className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium text-foreground">{p.name}</span>
+                  <Badge tone={p.enabled ? "success" : "slate"}>
+                    {p.enabled ? t("docs.catalog.enabled") : t("docs.catalog.disabled")}
+                  </Badge>
+                  <span className="text-xs">{t("docs.catalog.modelCount", { n: p.modelCount })}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
     </div>
   );
 }

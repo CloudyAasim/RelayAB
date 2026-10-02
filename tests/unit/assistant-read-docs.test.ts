@@ -131,12 +131,15 @@ describe("the loop is given the language to answer in", () => {
   it("the route resolves it, because the tool loop cannot", () => {
     // `next/headers` does not resolve inside a stream callback, and the whole
     // point of resolving it here is that the reader is not a hypothetical.
+    // The operator's pages come from the same read, for the same reason.
     expect(CHAT_ROUTE).toMatch(/getServerLocale\(\)/);
-    expect(CHAT_ROUTE).toMatch(/locale,\s*\n\s*credential,/);
+    expect(CHAT_ROUTE).toMatch(/getSettings\(\)\.then\(\(s\) => s\.docPages \?\? \[\]\)/);
+    expect(CHAT_ROUTE).toMatch(/locale,\s*\n\s*docPages,\s*\n\s*credential,/);
   });
 
-  it("and the tool context carries it", () => {
+  it("and the tool context carries both", () => {
     expect(TOOLS_SOURCE).toMatch(/locale\?: Locale/);
+    expect(TOOLS_SOURCE).toMatch(/docPages\?: DocPage\[\]/);
   });
 });
 

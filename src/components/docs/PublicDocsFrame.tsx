@@ -1,5 +1,6 @@
 import { getT } from "@/lib/i18n/server";
 import { getCurrentUser } from "@/lib/auth/session";
+import { getSettings } from "@/lib/db/settings";
 import { ThemeToggle } from "@/components/layouts";
 import { IntegrationDocs } from "./IntegrationDocs";
 import type { UserDocId } from "@/lib/docs/sections";
@@ -14,6 +15,9 @@ export async function PublicDocsFrame({
 }) {
   const { t } = await getT();
   const user = await getCurrentUser().catch(() => null);
+  // Read here rather than at each call site: four pages render this frame and
+  // the operator's chapter has to be known before the outline is built.
+  const { docPages } = await getSettings();
 
   return (
     // The root layout already owns `min-h-screen` and appends the site footer
@@ -64,7 +68,7 @@ export async function PublicDocsFrame({
           <h1 className="text-2xl font-semibold tracking-tight">{t("docs.title")}</h1>
           <p className="mt-2 text-muted-foreground">{t("docs.intro")}</p>
           <div className="mt-6">
-            <IntegrationDocs basePath={basePath} section={section} />
+            <IntegrationDocs basePath={basePath} section={section} docPages={docPages} />
           </div>
         </div>
       </main>

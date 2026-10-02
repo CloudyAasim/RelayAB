@@ -44,13 +44,42 @@ export interface CatalogModel {
   note: string | null;
   /** Operator-configured extras, passed through from the spec's `metadata`. */
   meta: Record<string, unknown>;
+  /**
+   * The provider that serves this model, in more than its name.
+   *
+   * A reader picking between two models cannot tell them apart by provider
+   * name, which is often the same string twice — `MiniMax` serves the chat
+   * models and the media ones, and neither says which base URL, which face, or
+   * which of the two is even reachable.
+   */
+  source: {
+    name: string;
+    kind: "chat" | "media";
+    baseUrl: string | null;
+    priority: number | null;
+    enabled: boolean;
+    /** Chat only: which upstream format the provider speaks. */
+    upstreamFormat: string | null;
+    /** Media only: the endpoint path the spec posts to. */
+    endpoint: string | null;
+  };
+  /** Media only: the upstream model name, which is rarely the client id. */
+  upstreamId: string | null;
+  /** Chat only: the display label an operator set for this model. */
+  displayLabel: string | null;
 }
 
 export interface ModelCatalog {
   models: CatalogModel[];
   chatCount: number;
   mediaCount: number;
-  providers: Array<{ name: string; enabled: boolean; modelCount: number }>;
+  providers: Array<{
+    name: string;
+    kind: "chat" | "media";
+    baseUrl: string | null;
+    enabled: boolean;
+    modelCount: number;
+  }>;
   site: {
     name: string;
     description: string;
@@ -126,6 +155,20 @@ export async function buildModelCatalog(): Promise<ModelCatalog> {
         faces: faceNames,
         ...note,
         meta: {},
+        source: {
+          name: provider.name,
+          kind: "chat",
+          baseUrl: provider.baseUrl ?? null,
+          priority: provider.priority,
+          enabled: provider.enabled,
+          upstreamFormat: provider.upstreamFormat,
+          endpoint: null,
+        },
+        // Chat models are their own upstream name unless a mapping says
+        // otherwise, so the client id is the honest answer and the mapped one
+        // is the useful one.
+        upstreamId: provider.modelMapping[clientId] ?? null,
+        displayLabel: cfg?.displayName?.trim() || null,
       });
     }
   }
@@ -154,6 +197,20 @@ export async function buildModelCatalog(): Promise<ModelCatalog> {
         faces: spec ? [spec.capability] : [],
         ...note,
         meta: (spec?.metadata ?? {}) as Record<string, unknown>,
+        source: {
+          name: provider.name,
+          kind: "media",
+          baseUrl: provider.baseUrl ?? null,
+          priority: provider.priority,
+          enabled: provider.enabled,
+          upstreamFormat: null,
+          // The path the spec posts to. For a reader choosing between two
+          // providers this is the difference between "same vendor" and "one
+          // speaks /v1/image_generation, the other something else".
+          endpoint: spec?.transport?.path ?? null,
+        },
+        upstreamId: (model as { upstreamId?: string }).upstreamId ?? null,
+        displayLabel: null,
       });
     }
   }
@@ -173,11 +230,18 @@ export async function buildModelCatalog(): Promise<ModelCatalog> {
     providers: [
       ...providers.map((p) => ({
         name: p.name,
+        // The kind is what lets the docs list "MiniMax" twice — once for the
+        // chat models, once for the media ones. Merged, they are two different
+        // things behind one name, and a reader cannot tell which serves what.
+        kind: "chat" as const,
+        baseUrl: p.baseUrl ?? null,
         enabled: p.enabled,
         modelCount: Object.keys(p.modelMapping ?? {}).length,
       })),
       ...mediaProviders.map((p) => ({
         name: p.name,
+        kind: "media" as const,
+        baseUrl: p.baseUrl ?? null,
         enabled: p.enabled,
         modelCount: Object.keys(p.models ?? {}).length,
       })),
