@@ -52,6 +52,33 @@ export async function GET(
     );
   }
 
+  // `?meta=1` reports what the file is without sending it. A generated image
+  // usually lives at an upstream link, so the size and the real content type
+  // were never known here — and the reader is shown both. One HEAD per artefact,
+  // on demand, rather than fetching every file just to label it.
+  if (new URL(req.url).searchParams.get("meta") === "1") {
+    if (artifact.bytes) {
+      return NextResponse.json({
+        ok: true,
+        data: { bytes: artifact.bytes.byteLength, contentType: artifact.contentType },
+      });
+    }
+    if (!artifact.url || !isHttpUrl(artifact.url)) {
+      return NextResponse.json({ ok: true, data: { bytes: null, contentType: artifact.contentType } });
+    }
+    const upstream = await fetch(artifact.url, { method: "HEAD" }).catch(() => null);
+    const length = Number(upstream?.headers.get("content-length") ?? NaN);
+    return NextResponse.json({
+      ok: true,
+      data: {
+        bytes: Number.isFinite(length) && length > 0 ? length : null,
+        // The stored type for a linked artefact is a placeholder; the upstream
+        // knows better, and the whole point of asking is to replace it.
+        contentType: upstream?.headers.get("content-type") ?? artifact.contentType,
+      },
+    });
+  }
+
   // `?dl=1` means "hand it over as a file". A `download` attribute on a link to
   // a redirect is not something a browser will honour once it has followed the
   // hop to another origin, so a download asks us to stream it instead - and

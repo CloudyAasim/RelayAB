@@ -1,5 +1,7 @@
 "use client";
 
+import { useCallback, useEffect, useRef, useState } from "react";
+
 /**
  * src/app/(user)/dashboard/assistant/MediaArtifacts.tsx
  *
@@ -315,6 +317,59 @@ function sizeLabel(bytes: number | null): string | null {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+/**
+ * What the file actually is, when the row could not know at first.
+ *
+ * A generated image usually lives at an upstream link, so its size and its
+ * content type were never measured here — which left the panel saying
+ * "application/octet-stream" and showing no size at all. One HEAD per artefact,
+ * asked for only when the row is missing something, and only when it is on
+ * screen. A HEAD that fails leaves the row as it was rather than showing a
+ * number nobody measured.
+ */
+function useArtifactMeta(artifact: ArtifactRef): { bytes: number | null; contentType: string } {
+  const [meta, setMeta] = useState<{ bytes: number | null; contentType: string }>({
+    bytes: artifact.bytes,
+    contentType: artifact.contentType,
+  });
+
+  useEffect(() => {
+    // Nothing to ask: we already hold the file, so we know both answers.
+    if (artifact.bytes !== null) {
+      setMeta({ bytes: artifact.bytes, contentType: artifact.contentType });
+      return;
+    }
+    let cancelled = false;
+    fetch(`${artifact.url}?meta=1`, { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json: { data?: { bytes?: number | null; contentType?: string } } | null) => {
+        if (cancelled || !json?.data) return;
+        setMeta({
+          bytes: typeof json.data.bytes === "number" ? json.data.bytes : null,
+          contentType: json.data.contentType || artifact.contentType,
+        });
+      })
+      .catch(() => {
+        /* Leave the row as it was. */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [artifact.id, artifact.url, artifact.bytes, artifact.contentType]);
+
+  return meta;
+}
+
+/** Pixel dimensions, read off the image the browser has already loaded. */
+function usePixelSize(ref: React.RefObject<HTMLImageElement | null>): [string | null, () => void] {
+  const [size, setSize] = useState<string | null>(null);
+  const onLoad = useCallback(() => {
+    const el = ref.current;
+    if (el?.naturalWidth && el?.naturalHeight) setSize(`${el.naturalWidth} × ${el.naturalHeight}`);
+  }, [ref]);
+  return [size, onLoad];
+}
+
 export function MediaArtifacts({
   artifacts,
   downloadLabel,
@@ -325,101 +380,111 @@ export function MediaArtifacts({
   if (artifacts.length === 0) return null;
   return (
     <div className="space-y-4">
-      {artifacts.map((artifact) => {
-        const size = sizeLabel(artifact.bytes);
-        return (
-          <figure
-            key={artifact.id}
-            /* Beside the file, not under it. A caption line under a picture puts
-               the two facts the reader wants - what it is, and where it lives -
-               at the far edge of a 900px column, and makes the download a
-               word in running text. */
-            className="flex flex-col gap-3 sm:flex-row sm:items-start"
-          >
-            {artifact.kind === "image" ? (
+      {artifacts.map((artifact) => (
+        <Artifact key={artifact.id} artifact={artifact} downloadLabel={downloadLabel} />
+      ))}
+    </div>
+  );
+}
+
+function Artifact({ artifact, downloadLabel }: { artifact: ArtifactRef; downloadLabel: string }) {
+  const meta = useArtifactMeta(artifact);
+  const imgRef = useRef<HTMLImageElement | null>(null);
+  const [pixels, onImageLoad] = usePixelSize(imgRef);
+  const size = sizeLabel(meta.bytes);
+  return (
+    <figure
+      /* Beside the file, not under it. A caption line under a picture puts the
+         two facts the reader wants - what it is, and where it lives - at the
+         far edge of a 900px column, and makes the download a word in running
+         text. */
+      className="flex flex-col gap-3 sm:flex-row sm:items-start"
+    >
+      {artifact.kind === "image" ? (
+        <a href={artifact.url} target="_blank" rel="noreferrer" className="block shrink-0">
+          {/* eslint-disable-next-line @next/next/no-img-element -- the URL is a
+              session-scoped route, not a static asset, and next/image would
+              need a loader that can authenticate the fetch. */}
+          <img
+            ref={imgRef}
+            src={artifact.url}
+            alt=""
+            onLoad={onImageLoad}
+            className="max-h-80 w-auto max-w-full rounded-lg border border-border"
+          />
+        </a>
+      ) : artifact.kind === "video" ? (
+        <video
+          src={artifact.url}
+          controls
+          preload="metadata"
+          className="max-h-80 w-auto max-w-full shrink-0 rounded-lg border border-border"
+        />
+      ) : (
+        <div className="shrink-0 sm:w-72">
+          <audio src={artifact.url} controls preload="metadata" className="w-full" />
+        </div>
+      )}
+
+      <div className="min-w-0 flex-1 space-y-2.5">
+        <dl className="space-y-1 text-xs">
+          <div className="flex gap-2">
+            <dt className="w-14 shrink-0 text-muted-foreground">类型</dt>
+            <dd className="text-foreground">{KIND_LABEL[artifact.kind]}</dd>
+          </div>
+          <div className="flex gap-2">
+            <dt className="w-14 shrink-0 text-muted-foreground">格式</dt>
+            <dd className="truncate font-mono text-foreground" title={meta.contentType}>
+              {meta.contentType}
+            </dd>
+          </div>
+          {/* Only for something with pixels; a sound has none. */}
+          {pixels && (
+            <div className="flex gap-2">
+              <dt className="w-14 shrink-0 text-muted-foreground">像素</dt>
+              <dd className="font-mono text-foreground">{pixels}</dd>
+            </div>
+          )}
+          {size && (
+            <div className="flex gap-2">
+              <dt className="w-14 shrink-0 text-muted-foreground">大小</dt>
+              <dd className="text-foreground">{size}</dd>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <dt className="w-14 shrink-0 text-muted-foreground">链接</dt>
+            <dd className="min-w-0">
+              {/* The path the model keeps quoting back, shown where it can be
+                  read and copied rather than inferred from prose. */}
               <a
                 href={artifact.url}
                 target="_blank"
                 rel="noreferrer"
-                className="block shrink-0"
+                className="block break-all font-mono text-primary underline underline-offset-2"
               >
-                {/* eslint-disable-next-line @next/next/no-img-element -- the URL is a
-                    session-scoped route, not a static asset, and next/image would
-                    need a loader that can authenticate the fetch. */}
-                <img
-                  src={artifact.url}
-                  alt=""
-                  className="max-h-80 w-auto max-w-full rounded-lg border border-border"
-                />
+                {artifact.url}
               </a>
-            ) : artifact.kind === "video" ? (
-              <video
-                src={artifact.url}
-                controls
-                preload="metadata"
-                className="max-h-80 w-auto max-w-full shrink-0 rounded-lg border border-border"
-              />
-            ) : (
-              <div className="shrink-0 sm:w-72">
-                <audio src={artifact.url} controls preload="metadata" className="w-full" />
-              </div>
-            )}
+            </dd>
+          </div>
+        </dl>
 
-            <div className="min-w-0 flex-1 space-y-2.5">
-              <dl className="space-y-1 text-xs">
-                <div className="flex gap-2">
-                  <dt className="w-14 shrink-0 text-muted-foreground">类型</dt>
-                  <dd className="text-foreground">{KIND_LABEL[artifact.kind]}</dd>
-                </div>
-                <div className="flex gap-2">
-                  <dt className="w-14 shrink-0 text-muted-foreground">格式</dt>
-                  <dd className="truncate font-mono text-foreground" title={artifact.contentType}>
-                    {artifact.contentType}
-                  </dd>
-                </div>
-                {size && (
-                  <div className="flex gap-2">
-                    <dt className="w-14 shrink-0 text-muted-foreground">大小</dt>
-                    <dd className="text-foreground">{size}</dd>
-                  </div>
-                )}
-                <div className="flex gap-2">
-                  <dt className="w-14 shrink-0 text-muted-foreground">链接</dt>
-                  <dd className="min-w-0">
-                    {/* The path the model keeps quoting back, shown where it can
-                        be read and copied rather than inferred from prose. */}
-                    <a
-                      href={artifact.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block break-all font-mono text-primary underline underline-offset-2"
-                    >
-                      {artifact.url}
-                    </a>
-                  </dd>
-                </div>
-              </dl>
-
-              {/* A `download` attribute is not honoured once the browser has
-                  followed a redirect to another origin, so the link asks our own
-                  route to stream the file instead - and only then, which keeps
-                  simply looking at a picture a cheap redirect. A real button
-                  rather than a word in a caption: a link you have to read before
-                  you know what it does is not a button. */}
-              <a
-                href={`${artifact.url}?dl=1`}
-                download
-                className={cn(
-                  buttonVariants({ variant: "outline", size: "sm" }),
-                  "no-underline hover:no-underline",
-                )}
-              >
-                {downloadLabel}
-              </a>
-            </div>
-          </figure>
-        );
-      })}
-    </div>
+        {/* A `download` attribute is not honoured once the browser has followed
+            a redirect to another origin, so the link asks our own route to
+            stream the file instead - and only then, which keeps simply looking
+            at a picture a cheap redirect. A real button rather than a word in a
+            caption: a link you have to read before you know what it does is not
+            a button. */}
+        <a
+          href={`${artifact.url}?dl=1`}
+          download
+          className={cn(
+            buttonVariants({ variant: "outline", size: "sm" }),
+            "no-underline hover:no-underline",
+          )}
+        >
+          {downloadLabel}
+        </a>
+      </div>
+    </figure>
   );
 }

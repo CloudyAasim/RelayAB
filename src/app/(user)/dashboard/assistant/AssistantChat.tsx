@@ -765,12 +765,6 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
               relayKey={relayKey}
               onRelayKeyChange={setRelayKey}
             />
-            <p className="text-xs text-muted-foreground">
-              {t("assistant.credential.whereToEnable")}{" "}
-              <a href="/dashboard/settings" className="underline underline-offset-2 hover:text-foreground">
-                {t("settings.assistantCredential.title")}
-              </a>
-            </p>
             {settingsPanel}
           </div>
         </SheetContent>

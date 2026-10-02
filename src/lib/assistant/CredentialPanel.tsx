@@ -129,16 +129,24 @@ export function AccountCredentialPanel({ onChanged }: { onChanged?: () => void }
         ? t("assistant.credential.status.on")
         : t("assistant.credential.status.off");
 
-  const statusTone = state.enabled ? "text-primary" : "text-muted-foreground";
-
   return (
     <div className="space-y-3">
       <div className="rounded-lg border border-border p-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               <p className="text-sm font-medium text-foreground">{t("assistant.credential.switch")}</p>
-              <span className={`text-xs ${statusTone}`}>{status}</span>
+              {/* Set apart from the label: "允许助手用我的账号调用 已开启" ran
+                  together as one phrase, and the state is the part worth
+                  noticing. A pill rather than a recoloured word, so it reads
+                  as a status and not as part of the title. */}
+              <span
+                className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                  state.enabled ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                }`}
+              >
+                {status}
+              </span>
             </div>
             <p className="mt-0.5 text-xs text-muted-foreground">{t("assistant.credential.switchHint")}</p>
           </div>
@@ -285,9 +293,17 @@ export function CredentialChoice({
             {t("assistant.credential.modeAccount")}
             {!canUseAccount && (
               <span className="block text-xs text-muted-foreground">
-                {loaded
-                  ? (blockedReason ?? t("assistant.credential.modeAccountLocked"))
-                  : t("assistant.credential.status.loading")}
+                {blockedReason ?? (
+                  /* The pointer belongs on the disabled option itself: that is
+                     where the reader is looking, and a paragraph elsewhere left
+                     the radio looking broken rather than unavailable. */
+                  <>
+                    {t("assistant.credential.modeAccountLocked")}{" "}
+                    <a href="/dashboard/settings" className="text-primary underline underline-offset-2">
+                      {t("settings.assistantCredential.title")}
+                    </a>
+                  </>
+                )}
               </span>
             )}
           </span>

@@ -19,12 +19,18 @@ const ARTIFACT_ROUTE = readFileSync(
   "utf-8",
 );
 
-/** The source of one exported function, up to the next one. */
+/**
+ * The source of one function, up to the next one.
+ *
+ * Stops at the next top-level declaration, exported or not: a component that
+ * used to be inlined is now its own function, and "everything after the last
+ * export" is not a boundary anyone can reason about.
+ */
 function sourceOf(file: string, name: string): string {
-  const start = file.indexOf(`export function ${name}`);
-  expect(start, `${name} is not exported any more`).toBeGreaterThanOrEqual(0);
+  const start = file.search(new RegExp(`^export function ${name}\\b|^function ${name}\\b`, "m"));
+  expect(start, `${name} is not defined any more`).toBeGreaterThanOrEqual(0);
   const rest = file.slice(start + 1);
-  const next = rest.indexOf("export function ");
+  const next = rest.search(/^(export )?function \w/m);
   return next === -1 ? rest : rest.slice(0, next);
 }
 
@@ -111,7 +117,7 @@ describe("assistant: a picture with a label and a way to keep it", () => {
   );
 
   it("puts the details beside the file, not under it", () => {
-    const media = sourceOf(body, "MediaArtifacts");
+    const media = sourceOf(body, "Artifact");
     // A caption under a wide picture puts the two things a reader wants - what
     // it is and where it lives - at the far edge of the column.
     expect(media).toMatch(/className="flex flex-col gap-3 sm:flex-row sm:items-start"/);
@@ -120,7 +126,7 @@ describe("assistant: a picture with a label and a way to keep it", () => {
   });
 
   it("labels the kind, the format and the link, and says the size only when it knows it", () => {
-    const media = sourceOf(body, "MediaArtifacts");
+    const media = sourceOf(body, "Artifact");
     for (const row of ["类型", "格式", "大小", "链接"]) {
       expect(media, `missing the ${row} row`).toContain(row);
     }
@@ -130,8 +136,41 @@ describe("assistant: a picture with a label and a way to keep it", () => {
     expect(media).toMatch(/\{size && \(/);
   });
 
+  it("shows how many pixels the picture is", () => {
+    const media = sourceOf(body, "Artifact");
+    expect(media, "missing the pixel row").toContain("像素");
+    expect(media).toMatch(/onLoad=\{onImageLoad\}/);
+    // A sound has no pixels, so the row is conditional.
+    expect(media).toMatch(/\{pixels && \(/);
+    // Read off the image the browser has already fetched, rather than asking
+    // the server to decode a file it may not even hold - and rather than
+    // pulling a second copy of it over the network to find out.
+    const hook = sourceOf(body, "usePixelSize");
+    expect(hook).toMatch(/naturalWidth && el\?\.naturalHeight/);
+    expect(hook).toMatch(/`\$\{el\.naturalWidth\} × \$\{el\.naturalHeight\}`/);
+  });
+
+  it("asks the route what a linked file weighs, rather than leaving the row blank", () => {
+    const hook = sourceOf(body, "useArtifactMeta");
+    expect(hook).toMatch(/\$\{artifact\.url\}\?meta=1/);
+    // Only when the row is short of something. A stored file is already
+    // measured, and asking anyway would be a wasted round trip per artefact.
+    expect(hook).toMatch(/if \(artifact\.bytes !== null\)/);
+    // A HEAD that fails leaves the row as it was rather than inventing a size.
+    expect(hook).toMatch(/\.catch\(\(\) => \{/);
+    expect(sourceOf(body, "Artifact")).toContain("useArtifactMeta(artifact)");
+  });
+
+  it("renders every kind of artefact through the same panel", () => {
+    // Pixel dimensions are read off the loaded image, so the panel had to
+    // become a component of its own: a hook called from inside a branch would
+    // run only for whichever kind happened to be showing.
+    expect(sourceOf(body, "MediaArtifacts")).toContain("<Artifact ");
+    expect(body).toMatch(/function Artifact\(\{/);
+  });
+
   it("makes the download a button, not a word in a caption", () => {
-    const media = sourceOf(body, "MediaArtifacts");
+    const media = sourceOf(body, "Artifact");
     expect(media).toContain("buttonVariants");
     expect(media).toMatch(/<a[\s\S]{0,200}\?dl=1[\s\S]{0,120}download/);
   });
@@ -150,7 +189,7 @@ describe("assistant: a picture with a label and a way to keep it", () => {
     const withImg = body.match(/<img\b/g)?.length ?? 0;
     expect(withImg).toBe(1);
     expect(sourceOf(body, "AssistantBody")).not.toContain("<img");
-    expect(sourceOf(body, "MediaArtifacts")).toContain("<img");
+    expect(sourceOf(body, "Artifact")).toContain("<img");
   });
 
   it("carries a size only when one is known", () => {

@@ -25,6 +25,16 @@ export default async function SettingsPage() {
       <SectionPageLayout.Content>
         <div className="space-y-6">
           <Card>
+            {/* First, because it is the one that is easy to miss everywhere
+                else: it decides whether the assistant can spend your quota at
+                all, and the place you look for it is the assistant itself. */}
+            <CardHeader
+              title={t("settings.assistantCredential.title")}
+              description={t("settings.assistantCredential.desc")}
+            />
+            <AccountCredentialPanel />
+          </Card>
+          <Card>
             <CardHeader
               title={t("settings.profile.title")}
               description={t("settings.profile.desc")}
@@ -47,15 +57,6 @@ export default async function SettingsPage() {
               description={t("settings.password.desc")}
             />
             <ChangePasswordForm />
-          </Card>
-          <Card>
-            {/* An account-level decision, so it lives with the other things
-                that are about the account rather than about one screen. */}
-            <CardHeader
-              title={t("settings.assistantCredential.title")}
-              description={t("settings.assistantCredential.desc")}
-            />
-            <AccountCredentialPanel />
           </Card>
         </div>
       </SectionPageLayout.Content>

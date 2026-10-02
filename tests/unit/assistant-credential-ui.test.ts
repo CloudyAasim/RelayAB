@@ -72,6 +72,40 @@ describe("credential UI: one key field, owned by the panel", () => {
     expect(CHAT, "the assistant drawer still mounts the account switch").not.toContain("<AccountCredentialPanel");
   });
 
+  it("puts the credential card first, where the eye lands", () => {
+    // Asked for directly: it is the setting that is easy to miss everywhere
+    // else, and a fourth card below three of the usual ones is the fourth card.
+    const settings = readFileSync(join(process.cwd(), "src", "app", "(user)", "dashboard", "settings", "page.tsx"), "utf-8");
+    const first = settings.indexOf("<Card>");
+    expect(first, "the credential card is not the first one on the page").toBeGreaterThan(-1);
+    const panel = settings.indexOf("<AccountCredentialPanel");
+    const profile = settings.indexOf("settings.profile.title");
+    const timezone = settings.indexOf("settings.timezone.title");
+    const password = settings.indexOf("settings.password.title");
+    expect(panel).toBeGreaterThan(-1);
+    // Ahead of every other card, not merely somewhere on the page.
+    expect(panel).toBeLessThan(profile);
+    expect(panel).toBeLessThan(timezone);
+    expect(panel).toBeLessThan(password);
+    expect(settings.slice(first, panel)).toContain("settings.assistantCredential.title");
+  });
+
+  it("sets the state apart from the label it belongs to", () => {
+    // "允许助手用我的账号调用 已开启" ran together as one phrase, so the state -
+    // the part worth noticing - read as part of the title. A gap on the row and
+    // a pill on the state, rather than a recoloured word.
+    const header = PANEL.slice(
+      PANEL.indexOf("export function AccountCredentialPanel"),
+      PANEL.indexOf("export function CredentialChoice"),
+    );
+    expect(header).toMatch(/flex flex-wrap items-center gap-x-3 gap-y-1/);
+    const label = header.indexOf("assistant.credential.switch\"");
+    const pill = header.indexOf("rounded-full px-2 py-0.5");
+    expect(pill).toBeGreaterThan(label);
+    expect(header).toContain("bg-primary/10 text-primary");
+    expect(header).toContain("bg-muted text-muted-foreground");
+  });
+
   it("leaves the per-screen choice where the call is made", () => {
     // The switch decides whether account calls are allowed; the choice decides
     // which credential this screen spends. Collapsing the two is what put an
@@ -86,9 +120,13 @@ describe("credential UI: one key field, owned by the panel", () => {
     expect(choice).not.toContain("assistant.credential.remove");
   });
 
-  it("points at the settings screen from the drawer", () => {
-    expect(CHAT).toContain("assistant.credential.whereToEnable");
-    expect(CHAT).toContain('href="/dashboard/settings"');
+  it("points at the settings screen from the option the reader is looking at", () => {
+    // The hint belongs inside the disabled account option itself. A link parked
+    // in a paragraph elsewhere left the radio looking broken rather than
+    // unavailable, which is the same misread the setting move was fixing.
+    const choice = PANEL.slice(PANEL.indexOf("export function CredentialChoice"));
+    expect(choice).toContain("assistant.credential.modeAccountLocked");
+    expect(choice).toContain('href="/dashboard/settings"');
   });
 
   it("says out loud that transcription stays on the key path", () => {
