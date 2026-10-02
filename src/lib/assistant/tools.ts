@@ -811,6 +811,18 @@ export async function resolveReferenceImage(
   };
 }
 
+/**
+ * Told at the moment it matters.
+ *
+ * The rule is in the system prompt, and it was in the system prompt and the
+ * model pasted the addresses anyway — twice glued into one that does not
+ * resolve, while the panel above already showed both pictures. This lands
+ * immediately after the call, which is the moment the decision is made.
+ */
+const ARTIFACT_NOTE =
+  "图片/音频已经渲染在工具结果里了。不要把 artifacts 里的地址写进回答，多个地址更不要连在一起写。" +
+  "像素尺寸这里没有给，界面上会显示，不要猜，也不要把 spec 里的请求尺寸当成出图结果。";
+
 async function mediaGenerate(
   args: Record<string, unknown>,
   ctx: ToolContext,
@@ -911,6 +923,7 @@ async function mediaGenerate(
           httpStatus: 200,
           latencyMs,
           itemCount: items.length || outcome.value.result.successCount,
+          note: ARTIFACT_NOTE,
         }),
         artifacts: artifactsFromItems(items, artifactKind),
       };
@@ -970,7 +983,14 @@ async function mediaGenerate(
           : { kind: "base64", value: typeof d?.b64_json === "string" ? d.b64_json : "" },
       );
       return {
-        ...ok({ ok: items.length > 0, via: "key", httpStatus: res.status, latencyMs, itemCount: items.length }),
+        ...ok({
+          ok: items.length > 0,
+          via: "key",
+          httpStatus: res.status,
+          latencyMs,
+          itemCount: items.length,
+          note: ARTIFACT_NOTE,
+        }),
         artifacts: artifactsFromItems(items, "image"),
       };
     }

@@ -52,15 +52,25 @@ describe("assistant: what the model is told about artefact references", () => {
     // The transcript showed the model reasoning about a "内网 URL" and about the
     // user being unable to open it, for a path that is the deployment's own.
     expect(PROMPTS).toContain("/api/assistant/artifacts");
-    expect(PROMPTS).toMatch(/不是内网地址/);
+    expect(PROMPTS).toMatch(/用户的浏览器带着自己的登录态就能打开它/);
   });
 
-  it("tells it not to repeat the reference, and how to give a link instead", () => {
-    // Repeating it is what put the same picture on screen twice.
-    expect(PROMPTS).toMatch(/不要再在回答里重复引用它/);
-    expect(PROMPTS).toMatch(/出现两次/);
-    // A bare URL is fine and renders as a link; markdown image syntax is not.
-    expect(PROMPTS).toMatch(/可点击的链接/);
+  it("tells it not to write the address at all, and gives it something to write instead", () => {
+    // Repeating it put the same picture on screen twice, and it then pasted two
+    // of them glued into one address that resolves to nothing. So: a flat
+    // prohibition, and the alternative the model should reach for — which is
+    // what it reached for before, wrongly, because the old paragraph also said
+    // "一行 URL 就够了" right beside the prohibition.
+    expect(PROMPTS).toMatch(/绝对不要在回答里写出这个地址/);
+    expect(PROMPTS).toMatch(/每张一句话/);
+    expect(PROMPTS).not.toMatch(/一行 URL 就够了/);
+  });
+
+  it("tells it not to invent a pixel count it was never given", () => {
+    // A turn reported "1792×1024" — a key in the spec's size table, which is
+    // the requested size. The pictures came back 1280×720.
+    expect(PROMPTS).toMatch(/像素尺寸它没有给/);
+    expect(PROMPTS).toMatch(/把 spec 里的请求尺寸当成出图结果/);
   });
 });
 
