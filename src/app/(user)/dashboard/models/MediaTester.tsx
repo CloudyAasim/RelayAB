@@ -40,6 +40,9 @@ interface Labels {
   prompt: string;
   promptPlaceholder: string;
   size: string;
+  duration: string;
+  durationHint: string;
+  ratio: string;
   voice: string;
   voiceHint: string;
   language: string;
@@ -86,6 +89,18 @@ const CAP_LABEL: Record<string, string> = {
  */
 const DEFAULT_TTS_VOICE = "English_Trustworth_Man";
 
+/**
+ * Video defaults the form must supply.
+ *
+ * `minimax-hailuo-02` (V1) accepts only 6s and 10s; `minimax-h3` (V2) needs
+ * `duration` *and* an explicit `ratio` — it rejects an omitted or "adaptive"
+ * one. A duration in both models' accepted set keeps the default usable
+ * whichever spec answers.
+ */
+const DEFAULT_VIDEO_DURATION = 6;
+const VIDEO_RATIOS = ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9"] as const;
+const DEFAULT_VIDEO_RATIO = "16:9";
+
 function extractItems(body: unknown): { urls: string[]; b64: number } {
   const data = (body as { data?: unknown })?.data;
   if (!Array.isArray(data)) return { urls: [], b64: 0 };
@@ -104,6 +119,8 @@ export function MediaTester({ models, labels }: Props) {
   const [prompt, setPrompt] = useState("");
   const [size, setSize] = useState("1024x1024");
   const [voice, setVoice] = useState(DEFAULT_TTS_VOICE);
+  const [duration, setDuration] = useState(String(DEFAULT_VIDEO_DURATION));
+  const [ratio, setRatio] = useState<string>(DEFAULT_VIDEO_RATIO);
   const [language, setLanguage] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -133,10 +150,20 @@ export function MediaTester({ models, labels }: Props) {
           body: JSON.stringify({ model, prompt, n: 1, size }),
         });
       } else if (capability === "video.generate") {
+        // Both video specs require `duration`, and MiniMax's H3 additionally
+        // refuses an omitted/adaptive `ratio` with a bare field-path error.
+        // Sending neither means the form's first click is always a 400 about a
+        // field the user cannot see.
         res = await fetch(`${base}/v1/videos/generations`, {
           method: "POST",
           headers: auth,
-          body: JSON.stringify({ model, prompt, n: 1 }),
+          body: JSON.stringify({
+            model,
+            prompt,
+            n: 1,
+            duration: Number(duration) || DEFAULT_VIDEO_DURATION,
+            ...(ratio ? { ratio } : {}),
+          }),
         });
       } else if (capability === "audio.tts") {
         res = await fetch(`${base}/v1/audio/speech`, {
@@ -276,6 +303,33 @@ export function MediaTester({ models, labels }: Props) {
               onChange={(e) => setSize(e.target.value)}
               placeholder="1024x1024"
             />
+          )}
+          {capability === "video.generate" && (
+            <Input
+              label={labels.duration}
+              hint={labels.durationHint}
+              value={duration}
+              onChange={(e) => setDuration(e.target.value)}
+            />
+          )}
+          {capability === "video.generate" && (
+            <div className="space-y-1.5">
+              <label htmlFor="media-ratio" className="block text-sm font-medium text-foreground">
+                {labels.ratio}
+              </label>
+              <select
+                id="media-ratio"
+                value={ratio}
+                onChange={(e) => setRatio(e.target.value)}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                {VIDEO_RATIOS.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
           {capability === "audio.tts" && (
             <Input

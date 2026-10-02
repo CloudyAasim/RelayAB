@@ -751,8 +751,16 @@ function matchesRule(spec: MediaSpec, rawPayload: unknown): MediaEngineError | n
   return null;
 }
 
-function decodeJson(text: string): unknown {
-  // Google-style XSSI guards prefix the body with `)]}'`, and a UTF-8 BOM shows
+/** A short, single-line rendering of an upstream body for an error message. */
+function summarisePayload(payload: unknown, limit = 300): string {
+  if (payload === null || payload === undefined) return "(empty body)";
+  const text = typeof payload === "string" ? payload : JSON.stringify(payload);
+  if (!text) return "(empty body)";
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > limit ? `${flat.slice(0, limit)}…` : flat;
+}
+
+function decodeJson(text: string): unknown {  // Google-style XSSI guards prefix the body with `)]}'`, and a UTF-8 BOM shows
   // up on the wire often enough to matter. Without stripping them the whole body
   // fails to parse, becomes `null`, and the call is misreported as "2xx but the
   // mapping produced no items" — the vendor's real payload never surfaces.
@@ -951,9 +959,20 @@ export async function executeMedia(args: ExecuteMediaArgs): Promise<MediaExecute
   if (spec.async) {
     const taskId = submitRecord && typeof submitRecord.taskId === "string" ? submitRecord.taskId : null;
     if (!taskId) {
+      // The spec's own error rules already ran above (line: vendorRuleError),
+      // and none of them matched — so this is a 2xx the spec cannot explain.
+      // "upstream did not return a task id" on its own is a dead end: the
+      // likeliest cause is the vendor refusing the call (permissions, quota,
+      // an account restriction) and saying so in a field this spec does not
+      // map. Carrying the body turns that into something the caller can act
+      // on, and it costs nothing when the real problem is a bad spec path.
       return {
         ok: false,
-        error: { status: 502, code: "no_task_id", message: "upstream did not return a task id" },
+        error: {
+          status: 502,
+          code: "no_task_id",
+          message: `upstream did not return a task id; it answered 2xx with: ${summarisePayload(rawPayload)}`,
+        },
       };
     }
     const poll = await pollUntilDone({

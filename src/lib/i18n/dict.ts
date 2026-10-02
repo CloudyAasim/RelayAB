@@ -730,6 +730,10 @@ const zhCN: Dict = {
   "dashboard.models.media.size": "尺寸",
   "dashboard.models.media.voice": "音色",
   "dashboard.models.media.voiceHint": "上游必填。留空会被拒（missing required parameter），所以这里已预填一个可用的。",
+  "dashboard.models.media.duration": "时长（秒）",
+  "dashboard.models.media.durationHint": "上游必填。minimax-hailuo-02 只接受 6 或 10；minimax-h3 还要求下面显式指定比例。",
+  "dashboard.models.media.ratio": "画面比例",
+
 
   "dashboard.models.media.language": "语言",
   "dashboard.models.media.audioFile": "音频文件",
@@ -1550,6 +1554,10 @@ const en: Dict = {
   "dashboard.models.media.size": "Size",
   "dashboard.models.media.voice": "Voice",
   "dashboard.models.media.voiceHint": "The vendor requires it. An empty value is rejected with 'missing required parameter', so one that is known to work is pre-filled.",
+  "dashboard.models.media.duration": "Duration (seconds)",
+  "dashboard.models.media.durationHint": "Required by the vendor. minimax-hailuo-02 accepts only 6 or 10; minimax-h3 also needs an explicit ratio below.",
+  "dashboard.models.media.ratio": "Aspect ratio",
+
 
   "dashboard.models.media.language": "Language",
   "dashboard.models.media.audioFile": "Audio file",
