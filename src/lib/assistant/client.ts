@@ -23,9 +23,27 @@ export interface AssistantToolDef {
   };
 }
 
+/**
+ * One piece of a message, in the OpenAI vision shape.
+ *
+ * Only what an arbitrary OpenAI-compatible upstream is reliably willing to
+ * accept: text, and an image by data URL. There is no `file` part here because
+ * support for one is a per-provider decision, and this client is configured
+ * against whatever key the user pasted — sending a shape half of them reject
+ * turns "look at my PDF" into a 400.
+ */
+export type ContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
+
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
-  content: string;
+  /**
+   * A string for everything except a user turn that carries a picture, which
+   * becomes the array form. Upstreams accept both, so this is the only
+   * difference from what every other message here has always sent.
+   */
+  content: string | ContentPart[];
   tool_calls?: Array<{ id: string; type: "function"; function: { name: string; arguments: string } }>;
   tool_call_id?: string;
   name?: string;

@@ -129,12 +129,17 @@ describe("credential UI: one key field, owned by the panel", () => {
     expect(choice).toContain('href="/dashboard/settings"');
   });
 
-  it("says out loud that transcription stays on the key path", () => {
-    // The account route speaks JSON and recognition uploads a file, so that
-    // capability cannot use it. Silently falling back to a hidden key would be
-    // the same class of bug as the two duplicate fields.
-    expect(MEDIA_TESTER).toContain("accountBlockedReason");
-    expect(MEDIA_TESTER).toContain("isStt ?");
+  it("lets every capability spend the account, transcription included", () => {
+    // Transcription was the one capability the panel refused to run on the
+    // account path, because it carries a file and the route spoke JSON. The
+    // route now takes multipart for exactly that case, so the exclusion is
+    // gone — and it has to be gone, or the capability that most needs testing
+    // is the one the user cannot test without pasting a key.
+    expect(MEDIA_TESTER, "the account path is still blocked for stt").not.toContain("accountBlockedReason");
+    expect(MEDIA_TESTER).toMatch(/credentialMode === "account"[\s\S]{0,400}isStt && file/);
+    expect(MEDIA_TESTER).toMatch(/form\.append\("file", file\)/);
+    // …and the key path still works, because that is the other half of the page.
+    expect(MEDIA_TESTER).toMatch(/v1\/audio\/transcriptions/);
   });
 });
 

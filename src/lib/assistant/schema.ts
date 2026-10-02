@@ -70,6 +70,26 @@ export const ToolCallSchema = z.object({
 });
 export type ToolCall = z.infer<typeof ToolCallSchema>;
 
+/**
+ * Files a user attached to a message.
+ *
+ * Kept beside `content` rather than inside it. A screenshot is 200 KB of
+ * base64 that the model does not need in the stored transcript, and the same
+ * argument that keeps tool artefacts out of `content` keeps uploads out of it.
+ * The bytes live in `assistant_artifacts`; this is the reference to them, which
+ * is what lets the conversation show the picture and the next turn still have
+ * it available.
+ */
+export const MessageAttachmentSchema = z.object({
+  id: z.string().min(1),
+  kind: z.enum(["image", "audio", "video"]),
+  contentType: z.string(),
+  url: z.string(),
+  bytes: z.number().nullable(),
+  name: z.string(),
+});
+export type MessageAttachment = z.infer<typeof MessageAttachmentSchema>;
+
 export const AssistantMessageSchema = z.object({
   id: z.string().min(1),
   threadId: z.string().min(1),
@@ -78,6 +98,7 @@ export const AssistantMessageSchema = z.object({
   toolCalls: z.array(ToolCallSchema).default([]),
   toolCallId: z.string().nullable().default(null),
   toolName: z.string().nullable().default(null),
+  attachments: z.array(MessageAttachmentSchema).default([]),
   createdAt: z.string(),
 });
 export type AssistantMessage = z.infer<typeof AssistantMessageSchema>;
@@ -173,6 +194,7 @@ export function rowToAssistantMessage(row: Record<string, unknown>): AssistantMe
     toolCalls: parseJson(row.tool_calls, []),
     toolCallId: row.tool_call_id ?? null,
     toolName: row.tool_name ?? null,
+    attachments: parseJson(row.attachments, []),
     createdAt: row.created_at,
   });
 }

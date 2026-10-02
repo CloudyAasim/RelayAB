@@ -276,6 +276,7 @@ CREATE TABLE IF NOT EXISTS assistant_messages (
   tool_calls    TEXT,
   tool_call_id  TEXT,
   tool_name     TEXT,
+  attachments   TEXT,
   created_at    TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_assistant_messages_thread ON assistant_messages(thread_id, created_at);
@@ -377,12 +378,41 @@ export function getDb(): Database {
   conn.exec("PRAGMA synchronous = NORMAL");
 
   conn.exec(SCHEMA);
+  for (const col of ADDED_COLUMNS) addColumnIfMissing(conn, col);
   // Recorded for the first migration that needs it; harmless while unused.
   conn.prepare("INSERT OR IGNORE INTO schema_version (version) VALUES (1)").run();
 
   db = conn;
   g[DB_GLOBAL_KEY] = conn;
   return conn;
+}
+
+/**
+ * Columns added after the first release.
+ *
+ * `CREATE TABLE IF NOT EXISTS` cannot widen a table that already exists, so a
+ * deployed database would keep the old shape and every query naming one of
+ * these would fail at runtime — long after the build that introduced it had
+ * gone green, and only on the deployment that actually had old data. Adding a
+ * column is the one migration SQLite has no `IF NOT EXISTS` for, so the table
+ * is asked instead.
+ */
+const ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; type: string }> = [
+  // Files the user attached to a message. A JSON array of artefact references,
+  // beside `content` rather than inside it, for the same reason tool artefacts
+  // are not: the model's context and the stored transcript should not grow by
+  // however large someone's screenshot is.
+  { table: "assistant_messages", column: "attachments", type: "TEXT" },
+];
+
+function addColumnIfMissing(
+  conn: Database,
+  { table, column, type }: { table: string; column: string; type: string },
+): void {
+  const existing = conn.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (existing.length === 0 || existing.some((c) => c.name === column)) return;
+  // The table and column names are literals in ADDED_COLUMNS, never input.
+  conn.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
 }
 
 /** Test-only: drop the cached handle so the next call reopens. */

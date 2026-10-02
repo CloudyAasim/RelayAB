@@ -26,10 +26,108 @@ import { runChat, type ChatEvent } from "@/lib/assistant/chat";
 import { resolveToolCredential } from "@/lib/assistant/credentials";
 import { consumeAssistantTurn } from "@/lib/assistant/rate-limit";
 import { resolvePublicUrl } from "@/lib/public-url";
+import { saveAssistantArtifact, artifactRef } from "@/lib/db/assistant-artifacts";
+import type { MessageAttachment } from "@/lib/assistant/schema";
 
 export const dynamic = "force-dynamic";
 
 const MAX_MESSAGE_CHARS = 8000;
+
+/** One file, one ceiling. Matches the media transcriptions route's 25 MB. */
+const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+const MAX_ATTACHMENTS = 6;
+
+/**
+ * What the browser is allowed to send.
+ *
+ * Only images and audio/video are stored, and only the types the artifact
+ * pipeline already knows how to serve. Everything else is refused by name
+ * rather than accepted and then discovered: an attachment nothing can render is
+ * a row the conversation carries forever and nobody can see.
+ */
+const ATTACHMENT_KINDS: Record<string, "image" | "audio" | "video"> = {
+  "image/png": "image",
+  "image/jpeg": "image",
+  "image/jpg": "image",
+  "image/webp": "image",
+  "image/gif": "image",
+  "audio/mpeg": "audio",
+  "audio/mp3": "audio",
+  "audio/mp4": "audio",
+  "audio/wav": "audio",
+  "audio/x-wav": "audio",
+  "audio/webm": "audio",
+  "audio/ogg": "audio",
+  "video/mp4": "video",
+  "video/webm": "video",
+};
+
+interface UploadedFile {
+  name: string;
+  contentType: string;
+  kind: "image" | "audio" | "video";
+  bytes: Uint8Array;
+}
+
+function badRequest(code: string, message: string, status = 400): Response {
+  return Response.json({ ok: false, error: { code, message } }, { status });
+}
+
+/**
+ * Read the `attachments` field.
+ *
+ * Base64 in JSON rather than multipart, because this request also carries the
+ * message, the thread and the credential choice, and turning the whole turn
+ * into a multipart form would mean a second parser for the common case that
+ * has no files at all.
+ */
+function readAttachments(value: unknown): { files: UploadedFile[] } | { error: Response } {
+  if (value === undefined || value === null) return { files: [] };
+  if (!Array.isArray(value)) return { error: badRequest("bad_request", "attachments 必须是数组") };
+  if (value.length > MAX_ATTACHMENTS) {
+    return { error: badRequest("too_many_attachments", `一次最多上传 ${MAX_ATTACHMENTS} 个文件`) };
+  }
+
+  const files: UploadedFile[] = [];
+  for (const raw of value) {
+    const row = (raw ?? {}) as Record<string, unknown>;
+    const contentType = typeof row.contentType === "string" ? row.contentType.toLowerCase().trim() : "";
+    const name = typeof row.name === "string" && row.name.trim() ? row.name.trim().slice(0, 200) : "upload";
+    const kind = ATTACHMENT_KINDS[contentType];
+    if (!kind) {
+      return {
+        error: badRequest(
+          "unsupported_attachment",
+          `${name} 没有加上：不支持 ${contentType || "未知类型"}，只支持图片、音频和视频。`,
+        ),
+      };
+    }
+    if (typeof row.data !== "string" || !row.data) {
+      return { error: badRequest("bad_request", `${name} 没有内容`) };
+    }
+    let bytes: Uint8Array;
+    try {
+      bytes = new Uint8Array(Buffer.from(row.data, "base64"));
+    } catch {
+      return { error: badRequest("bad_request", `${name} 不是合法的 base64`) };
+    }
+    if (bytes.byteLength === 0) {
+      return { error: badRequest("bad_request", `${name} 是空文件`) };
+    }
+    if (bytes.byteLength > MAX_ATTACHMENT_BYTES) {
+      return { error: badRequest("attachment_too_large", `${name} 超过 25MB 上限`) };
+    }
+    files.push({ name, contentType, kind, bytes });
+  }
+  return { files };
+}
+
+/** A thread opened by nothing but a file still needs a name a person can find. */
+function firstUploadTitle(files: UploadedFile[]): string {
+  const first = files[0];
+  if (!first) return "新对话";
+  return files.length > 1 ? `${first.name} 等 ${files.length} 个文件` : first.name.slice(0, 60);
+}
 
 export async function POST(req: Request): Promise<Response> {
   const me = await getCurrentUser();
@@ -57,7 +155,13 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  let body: { message?: unknown; threadId?: unknown; relayKey?: unknown; credentialMode?: unknown };
+  let body: {
+    message?: unknown;
+    threadId?: unknown;
+    relayKey?: unknown;
+    credentialMode?: unknown;
+    attachments?: unknown;
+  };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -67,8 +171,17 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
+  // Read before anything is created, so an unusable file leaves no thread and
+  // no half-written turn behind.
+  const uploads = readAttachments(body.attachments);
+  if ("error" in uploads) return uploads.error;
+
   const message = typeof body.message === "string" ? body.message.trim() : "";
-  if (!message) {
+  // A turn of nothing but a picture is a normal thing to send, so it is
+  // allowed — but only with files. An empty turn with nothing attached is a
+  // mistake, and starting a thread for it would leave a question mark in the
+  // user's history.
+  if (!message && uploads.files.length === 0) {
     return Response.json(
       { ok: false, error: { code: "bad_request", message: "消息不能为空" } },
       { status: 400 },
@@ -98,7 +211,7 @@ export async function POST(req: Request): Promise<Response> {
   const threadId = typeof body.threadId === "string" ? body.threadId : null;
   const thread = threadId
     ? await getAssistantThread(me.id, threadId)
-    : await createAssistantThread(me.id, message.slice(0, 60));
+    : await createAssistantThread(me.id, message.slice(0, 60) || firstUploadTitle(uploads.files));
   if (!thread) {
     return Response.json(
       { ok: false, error: { code: "not_found", message: "对话不存在" } },
@@ -133,11 +246,32 @@ export async function POST(req: Request): Promise<Response> {
       };
 
       try {
+        // Stored here rather than in the route body so a write failure is a
+        // result the model can be told about, next to everything else that can
+        // go wrong mid-turn — not an exception that ends the stream.
+        const attachments: MessageAttachment[] = [];
+        for (const file of uploads.files) {
+          try {
+            const saved = await saveAssistantArtifact({
+              userId: me.id,
+              threadId: thread.id,
+              kind: file.kind,
+              bytes: file.bytes,
+              contentType: file.contentType,
+            });
+            attachments.push({ ...artifactRef(saved), name: file.name });
+          } catch {
+            // Drop this one, keep the rest: an unwritable blob should not cost
+            // the user the file they did manage to attach.
+          }
+        }
+
         await runChat({
           user: me,
           settings,
           thread,
           message,
+          attachments,
           credential,
           gatewayBase,
           signal: req.signal,

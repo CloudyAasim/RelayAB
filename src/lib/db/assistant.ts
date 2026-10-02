@@ -29,6 +29,7 @@ import {
   type AssistantAction,
   type AssistantActionKind,
   type AssistantActionStatus,
+  type MessageAttachment,
   type ToolCall,
 } from "../assistant/schema";
 
@@ -214,6 +215,8 @@ export interface AppendMessageInput {
   toolCalls?: ToolCall[];
   toolCallId?: string | null;
   toolName?: string | null;
+  /** Files the user attached. A reference list; the bytes are in assistant_artifacts. */
+  attachments?: MessageAttachment[];
 }
 
 export async function appendAssistantMessage(
@@ -228,12 +231,13 @@ export async function appendAssistantMessage(
     toolCalls: input.toolCalls ?? [],
     toolCallId: input.toolCallId ?? null,
     toolName: input.toolName ?? null,
+    attachments: input.attachments ?? [],
     createdAt: now,
   };
   run(
     `INSERT INTO assistant_messages
-       (id, thread_id, role, content, tool_calls, tool_call_id, tool_name, created_at)
-     VALUES (?,?,?,?,?,?,?,?)`,
+       (id, thread_id, role, content, tool_calls, tool_call_id, tool_name, attachments, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?)`,
     [
       message.id,
       message.threadId,
@@ -242,6 +246,7 @@ export async function appendAssistantMessage(
       message.toolCalls.length ? JSON.stringify(message.toolCalls) : null,
       message.toolCallId,
       message.toolName,
+      message.attachments.length ? JSON.stringify(message.attachments) : null,
       message.createdAt,
     ],
   );

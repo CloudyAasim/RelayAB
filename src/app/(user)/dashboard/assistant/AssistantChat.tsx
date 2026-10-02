@@ -34,7 +34,7 @@ import { readPretty, writePretty } from "@/lib/assistant/pretty";
 import { MediaArtifacts, ToolResultCard, AssistantBody } from "./MediaArtifacts";
 import type { ArtifactRef } from "@/lib/db/assistant-artifacts";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Trash2, Paperclip, X } from "lucide-react";
 
 interface Thread {
   id: string;
@@ -47,6 +47,67 @@ interface ChatMessage {
   role: "user" | "assistant" | "tool";
   content: string;
   toolName?: string | null;
+  /** Files the user attached, once the server has given them a URL. */
+  attachments?: Attachment[];
+}
+
+/** A file the user picked: bytes not yet sent, or a reference once they are. */
+interface PendingUpload {
+  key: string;
+  name: string;
+  contentType: string;
+  size: number;
+  /** Object URL for the preview chip; revoked when the chip goes away. */
+  previewUrl: string;
+}
+
+interface Attachment extends ArtifactRef {
+  name: string;
+}
+
+/** Matches the route's allowlist, so the picker refuses before the upload does. */
+const UPLOADABLE = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/webp",
+  "image/gif",
+  "audio/mpeg",
+  "audio/mp3",
+  "audio/mp4",
+  "audio/wav",
+  "audio/x-wav",
+  "audio/webm",
+  "audio/ogg",
+  "video/mp4",
+  "video/webm",
+]);
+
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+const MAX_UPLOADS = 6;
+
+/**
+ * File → base64, without blowing the argument limit.
+ *
+ * `String.fromCharCode(...bytes)` throws on anything megabyte-sized, and a
+ * phone photo is megabyte-sized. The chunking is the fix, and the reason is
+ * worth remembering the first time a 4 MB screenshot silently fails.
+ */
+async function toBase64(file: File): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+}
+
+/** What a small, useful attachment list looks like. */
+function humanSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 type EventPayload =
@@ -80,6 +141,10 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
   const [threadId, setThreadId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  /** Files picked but not yet sent. The preview chips render from here. */
+  const [uploads, setUploads] = useState<PendingUpload[]>([]);
+  /** Kept beside the chips so `send` can read the bytes without a second picker. */
+  const uploadFilesRef = useRef(new Map<string, File>());
   const [relayKey, setRelayKey] = useState("");
   const [credentialMode, setCredentialMode] = useState<Mode>("account");
   const [busy, setBusy] = useState(false);
@@ -270,17 +335,97 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
     }
   }
 
+  /**
+   * Take files from the picker.
+   *
+   * Refused here, by name, rather than uploaded and then refused: a turn that
+   * only fails after the bytes have crossed the network teaches nothing and
+   * costs the most when the file is the biggest one.
+   */
+  function addFiles(list: FileList | null): void {
+    if (!list || list.length === 0) return;
+    const refused: string[] = [];
+    const accepted: PendingUpload[] = [];
+    const files = uploadFilesRef.current;
+
+    for (const file of Array.from(list)) {
+      const type = file.type.toLowerCase().trim();
+      if (!UPLOADABLE.has(type)) {
+        refused.push(`${file.name}（${type || "未知类型"}）`);
+        continue;
+      }
+      if (file.size > MAX_UPLOAD_BYTES) {
+        refused.push(`${file.name} 超过 25MB`);
+        continue;
+      }
+      const key = `${file.name}:${file.size}:${file.lastModified}`;
+      if (files.has(key) || accepted.some((u) => u.key === key)) continue;
+      files.set(key, file);
+      accepted.push({
+        key,
+        name: file.name,
+        contentType: type,
+        size: file.size,
+        previewUrl: URL.createObjectURL(file),
+      });
+    }
+
+    setUploads((prev) => {
+      const next = [...prev, ...accepted].slice(0, MAX_UPLOADS);
+      // Anything over the limit keeps its row but is dropped, so the chip row
+      // and what will actually be sent can never disagree.
+      for (const extra of [...prev, ...accepted].slice(MAX_UPLOADS)) {
+        files.delete(extra.key);
+        URL.revokeObjectURL(extra.previewUrl);
+        refused.push(`${extra.name} 超过一次 ${MAX_UPLOADS} 个的上限`);
+      }
+      return next;
+    });
+
+    setError(refused.length ? `这些文件没有加上：${refused.join("、")}` : null);
+  }
+
+  function dropUpload(key: string): void {
+    uploadFilesRef.current.delete(key);
+    setUploads((prev) => {
+      const gone = prev.find((u) => u.key === key);
+      if (gone) URL.revokeObjectURL(gone.previewUrl);
+      return prev.filter((u) => u.key !== key);
+    });
+  }
+
   async function send() {
     const text = input.trim();
-    if (!text || busy || !configured) return;
+    const files = uploadFilesRef.current;
+    const picked = uploads.filter((u) => files.has(u.key));
+    // A turn of nothing but a picture is a normal thing to send, so it is
+    // allowed; the server fills in what the model should be told about it.
+    if ((!text && picked.length === 0) || busy || !configured) return;
     setBusy(true);
     setError(null);
     setInput("");
+    setUploads([]);
     setLiveArtifacts([]);
+
+    // The local echo shows the picture from the object URL the chip was using;
+    // the server's own reference replaces it when the turn lands.
+    const localAttachments: Attachment[] = picked.map((u) => ({
+      id: u.key,
+      kind: u.contentType.startsWith("image/") ? "image" : u.contentType.startsWith("audio/") ? "audio" : "video",
+      contentType: u.contentType,
+      url: u.previewUrl,
+      bytes: u.size,
+      name: u.name,
+    }));
 
     setMessages((prev) => [
       ...prev,
-      { id: `local-${Date.now()}`, role: "user", content: text },
+      {
+        id: `local-${Date.now()}`,
+        role: "user",
+        content: text,
+        ...(localAttachments.length ? { attachments: localAttachments } : {}),
+      },
       { id: "streaming", role: "assistant", content: "" },
     ]);
 
@@ -288,6 +433,14 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
     abortRef.current = controller;
 
     try {
+      const attachments = await Promise.all(
+        picked.map(async (u) => ({
+          name: u.name,
+          contentType: u.contentType,
+          data: await toBase64(files.get(u.key)!),
+        })),
+      );
+
       const res = await fetch("/api/assistant/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -298,6 +451,7 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
           // is the whole point of it.
           ...(credentialMode === "key" && relayKey.trim() ? { relayKey: relayKey.trim() } : {}),
           credentialMode,
+          ...(attachments.length ? { attachments } : {}),
         }),
         signal: controller.signal,
       });
@@ -516,10 +670,26 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
                   downloadLabel={t("assistant.artifact.download")}
                 />
               ) : m.role === "user" ? (
-                <div key={m.id} className="flex justify-end">
-                  <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl bg-muted px-4 py-2.5 text-sm">
-                    {m.content}
-                  </div>
+                <div key={m.id} className="flex flex-col items-end gap-2">
+                  {m.attachments && m.attachments.length > 0 && (
+                    <div className="max-w-[85%]">
+                      <MediaArtifacts
+                        artifacts={m.attachments.map((a) => ({
+                          id: a.id,
+                          kind: a.kind,
+                          contentType: a.contentType,
+                          url: a.url,
+                          bytes: a.bytes,
+                        }))}
+                        downloadLabel={t("assistant.artifact.download")}
+                      />
+                    </div>
+                  )}
+                  {m.content && (
+                    <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl bg-muted px-4 py-2.5 text-sm">
+                      {m.content}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div key={m.id} className="flex gap-3">
@@ -575,7 +745,58 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
             <p className="mb-2 text-xs text-muted-foreground">{t("assistant.pendingAction")}</p>
           )}
 
+          {uploads.length > 0 && (
+            <div className="flex flex-wrap gap-2 pb-2">
+              {uploads.map((u) => (
+                <div
+                  key={u.key}
+                  className="flex max-w-[16rem] items-center gap-2 rounded-lg border border-border bg-muted/40 py-1 pl-1.5 pr-1 text-xs"
+                >
+                  {u.contentType.startsWith("image/") ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- a local
+                    // object URL for a chip the user is about to send.
+                    <img src={u.previewUrl} alt="" className="h-9 w-9 shrink-0 rounded object-cover" />
+                  ) : (
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-muted text-[10px] uppercase">
+                      {u.contentType.split("/")[1] ?? "?"}
+                    </span>
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-foreground">{u.name}</span>
+                    <span className="text-muted-foreground">{humanSize(u.size)}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => dropUpload(u.key)}
+                    aria-label={`移除 ${u.name}`}
+                    className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="flex items-end gap-2 rounded-2xl border border-input bg-background p-2 focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
+            <label
+              className="mb-0.5 flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              title={t("assistant.attach.hint")}
+            >
+              <Paperclip className="h-4 w-4" aria-hidden />
+              <span className="sr-only">{t("assistant.attach.hint")}</span>
+              <input
+                type="file"
+                multiple
+                accept="image/*,audio/*,video/mp4,video/webm"
+                className="sr-only"
+                onChange={(e) => {
+                  addFiles(e.target.files);
+                  // Reset so picking the same file twice in a row still fires.
+                  e.target.value = "";
+                }}
+              />
+            </label>
             <textarea
               id="assistant-input"
               ref={inputRef}
@@ -588,7 +809,11 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
                 }
               }}
               rows={1}
-              placeholder={t("assistant.placeholderHint")}
+              placeholder={
+                uploads.length > 0
+                  ? t("assistant.placeholderHint.withFiles")
+                  : t("assistant.placeholderHint")
+              }
               className="max-h-40 min-h-[2.25rem] flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none"
             />
             {busy ? (
@@ -601,7 +826,7 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
               <Button
                 size="icon"
                 onClick={send}
-                disabled={!input.trim() || !configured}
+                disabled={(!input.trim() && uploads.length === 0) || !configured}
                 aria-label={t("assistant.send")}
               >
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>

@@ -23,7 +23,6 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
-import { useT } from "@/components/i18n/I18nProvider";
 import { CredentialChoice, type Mode } from "@/lib/assistant/CredentialPanel";
 
 export interface MediaModelOption {
@@ -116,7 +115,6 @@ function extractItems(body: unknown): { urls: string[]; b64: number } {
 }
 
 export function MediaTester({ models, labels }: Props) {
-  const t = useT();
   const [relayKey, setRelayKey] = useState("");
   const [model, setModel] = useState(models[0]?.id ?? "");
   const [prompt, setPrompt] = useState("");
@@ -150,25 +148,34 @@ export function MediaTester({ models, labels }: Props) {
       let res: Response;
       if (credentialMode === "account") {
         // No bearer token exists on this path, so the call goes through the
-        // server. The panel keeps the account option disabled for speech
-        // recognition, which is why that capability cannot arrive here.
-        res = await fetch("/api/assistant/test-media", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            capability,
-            model,
-            prompt,
-            ...(size ? { size } : {}),
-            ...(capability === "video.generate"
-              ? {
-                  duration: Number(duration) || DEFAULT_VIDEO_DURATION,
-                  ...(ratio ? { ratio } : {}),
-                }
-              : {}),
-            ...(voice ? { voice } : {}),
-          }),
-        });
+        // server. Speech recognition is the one capability that carries a file,
+        // and the route takes multipart for it — the same shape the public
+        // endpoint takes — so every capability can spend the account.
+        if (isStt && file) {
+          const form = new FormData();
+          form.append("model", model);
+          form.append("file", file);
+          if (language) form.append("language", language);
+          res = await fetch("/api/assistant/test-media", { method: "POST", body: form });
+        } else {
+          res = await fetch("/api/assistant/test-media", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              capability,
+              model,
+              prompt,
+              ...(size ? { size } : {}),
+              ...(capability === "video.generate"
+                ? {
+                    duration: Number(duration) || DEFAULT_VIDEO_DURATION,
+                    ...(ratio ? { ratio } : {}),
+                  }
+                : {}),
+              ...(voice ? { voice } : {}),
+            }),
+          });
+        }
       } else if (capability === "image.generate") {
         res = await fetch(`${base}/v1/images/generations`, {
           method: "POST",
@@ -271,12 +278,6 @@ export function MediaTester({ models, labels }: Props) {
           onModeChange={setCredentialMode}
           relayKey={relayKey}
           onRelayKeyChange={setRelayKey}
-          // Speech recognition needs an uploaded file, and the account route
-          // speaks JSON - so it stays on the key path, and says so instead of
-          // pretending otherwise.
-          accountBlockedReason={
-            isStt ? t("dashboard.models.credential.sttNeedsKey") : null
-          }
         />
 
         <div className="space-y-1.5">

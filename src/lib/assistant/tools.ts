@@ -304,7 +304,7 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
     function: {
       name: "propose_provider_update",
       description:
-        "提出一次聊天服务商配置变更。这不会立刻生效 —— 它生成一份 before/after 对比，等管理员在界面上确认后才执行。baseUrl、优先级、模型映射、Anthropic 面、启用开关都可以改。",
+        "提出一次聊天服务商配置变更。这不会立刻生效 —— 它生成一份 before/after 对比，等管理员在界面上确认后才执行。baseUrl、优先级、模型映射、Anthropic 面、启用开关都可以改。只能改已存在的服务商，不能新建。",
       parameters: {
         type: "object",
         properties: {
@@ -321,7 +321,8 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
           },
           modelMapping: {
             type: "object",
-            description: "客户端模型名 → 上游模型名 的完整替换表",
+            description:
+              "客户端模型名 → 上游模型名 的【完整】替换表。注意：整份替换，不是增量。想只加一个映射就必须先用 list_providers 拿到现状、合并、再把整张表传回来 —— 只传新增的那一条会把其余所有模型删掉。",
             additionalProperties: { type: "string" },
           },
         },
@@ -335,15 +336,25 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
     function: {
       name: "propose_media_provider_update",
       description:
-        "提出一次媒体服务商配置变更，同样需要管理员确认才执行。可以整份替换 models 与 specs。",
+        "提出一次媒体服务商配置变更，同样需要管理员确认才执行。可以整份替换 models 与 specs。只能改已存在的媒体服务商，不能新建。",
       parameters: {
         type: "object",
         properties: {
           providerId: { type: "string" },
           summary: { type: "string", description: "一句话说明这次变更的目的" },
           baseUrl: { type: "string" },
-          models: { type: "object", additionalProperties: true },
-          specs: { type: "array", items: { type: "object" } },
+          models: {
+            type: "object",
+            description:
+              "模型表的【完整】替换。整份替换，不是增量：想加一个模型必须先 list_media_providers 取回现状、合并、再整份传回，否则其余模型会被删掉。",
+            additionalProperties: true,
+          },
+          specs: {
+            type: "array",
+            description:
+              "能力 spec 数组，【完整】替换。整份替换，不是增量：只传一条会让其余能力全部失效。改之前务必先 list_media_providers 取回现状并合并。",
+            items: { type: "object" },
+          },
           enabled: { type: "boolean" },
         },
         required: ["providerId", "summary"],

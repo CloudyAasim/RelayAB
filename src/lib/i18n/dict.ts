@@ -813,6 +813,8 @@ const zhCN: Dict = {
   "assistant.deleteThread": "删除",
   "assistant.confirmDeleteThread": "删除对话「{title}」？里面的消息会一起删掉，无法恢复。",
   "assistant.placeholderHint": "问点什么，Enter 发送，Shift+Enter 换行",  "assistant.messageLabel": "消息",
+  "assistant.attach.hint": "添加图片、音频或视频",
+  "assistant.placeholderHint.withFiles": "可以只发文件不写文字",
   "assistant.emptyTitle": "有什么可以帮你的？",
   "assistant.composerHint": "Enter 发送 · Shift+Enter 换行",
   "assistant.openSettings": "去设置",
@@ -1701,6 +1703,8 @@ const en: Dict = {
   "assistant.confirmDeleteThread":
     "Delete the conversation \"{title}\"? Its messages go with it, and this cannot be undone.",
   "assistant.placeholderHint": "Ask something — Enter to send, Shift+Enter for a new line",  "assistant.messageLabel": "Message",
+  "assistant.attach.hint": "Attach an image, audio or video file",
+  "assistant.placeholderHint.withFiles": "You can send a file without writing anything",
   "assistant.emptyTitle": "How can I help?",
   "assistant.composerHint": "Enter to send · Shift+Enter for a new line",
   "assistant.openSettings": "Open settings",
