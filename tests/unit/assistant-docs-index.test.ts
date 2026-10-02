@@ -15,12 +15,15 @@
  */
 import { describe, it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { WEB_DOC_SECTIONS } from "@/lib/assistant/docs-index.generated";
 import { docIndex, readDoc } from "@/lib/assistant/docs-reader";
 
-const GENERATOR = join(process.cwd(), "node_modules", ".tmp-relayab-test", "gen-docs-index.cjs");
+// In the repository, not in a scratch directory: this test has to run on CI
+// too, and a generator that only exists on the machine that wrote the file is
+// a guard that is not there when it is needed.
+const GENERATOR = join(process.cwd(), "scripts", "gen-docs-index.cjs");
 const GENERATED = join(process.cwd(), "src", "lib", "assistant", "docs-index.generated.ts");
 const SECTIONS = readFileSync(join(process.cwd(), "src", "lib", "docs", "sections.ts"), "utf-8");
 
@@ -32,8 +35,14 @@ describe("the index is not stale", () => {
     execFileSync("node", [GENERATOR], { stdio: "pipe" });
     expect(
       readFileSync(GENERATED, "utf-8"),
-      "docs-index.generated.ts is out of date — re-run gen-docs-index.cjs",
+      "docs-index.generated.ts is out of date — re-run scripts/gen-docs-index.cjs",
     ).toBe(committed);
+  });
+
+  it("and the generator is in the repository, not a scratch directory", () => {
+    // A guard that only exists on the machine that wrote the file is not a
+    // guard: it is absent on CI, which is where the drift is caught.
+    expect(existsSync(GENERATOR), `${GENERATOR} is missing`).toBe(true);
   });
 
   it("every section id in the outline is in the index", () => {

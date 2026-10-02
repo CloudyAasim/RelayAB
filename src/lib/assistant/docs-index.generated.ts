@@ -1,7 +1,7 @@
 /**
  * GENERATED — do not edit.
  *
- * Produced by `node_modules/.tmp-relayab-test/gen-docs-index.cjs` from the two docs
+ * Produced by `scripts/gen-docs-index.cjs` from the two docs
  * components. `tests/unit/assistant-docs-index.test.ts` re-runs that generator and
  * compares, so a doc page that gains a line fails the build rather than quietly
  * becoming unreadable to the assistant.
