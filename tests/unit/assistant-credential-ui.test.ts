@@ -28,6 +28,8 @@ const read = (relative: string): string => readFileSync(join(SRC, relative), "ut
 const CHAT_TESTER = read("app/(user)/dashboard/models/ModelTester.tsx");
 const MEDIA_TESTER = read("app/(user)/dashboard/models/MediaTester.tsx");
 const PANEL = read("lib/assistant/CredentialPanel.tsx");
+/** The assistant chat screen itself, as opposed to the two testers. */
+const CHAT = read("app/(user)/dashboard/assistant/AssistantChat.tsx");
 const STORE = read("lib/assistant/credential-store.ts");
 
 describe("credential UI: one key field, owned by the panel", () => {
@@ -49,15 +51,44 @@ describe("credential UI: one key field, owned by the panel", () => {
       ["ModelTester", CHAT_TESTER],
       ["MediaTester", MEDIA_TESTER],
     ] as const) {
-      expect(source, `${name} does not mount CredentialPanel`).toContain("<CredentialPanel");
+      expect(source, `${name} does not mount CredentialChoice`).toContain("<CredentialChoice");
     }
   });
 
   it("the media tester can actually spend the account credential", () => {
-    // Mounting the panel is not enough: without the account branch a user who
+    // Mounting the choice is not enough: without the account branch a user who
     // switched it on would still be told to paste a key.
     expect(MEDIA_TESTER).toContain("/api/assistant/test-media");
     expect(MEDIA_TESTER).toMatch(/credentialMode === "account"/);
+  });
+
+  it("keeps the account switch on the settings screen, not in a drawer", () => {
+    // It is an account-level decision - may the assistant spend my quota on my
+    // behalf - so it belongs with the other account settings, where it was
+    // previously buried under a model configuration and read as a per-screen
+    // option.
+    const settings = readFileSync(join(process.cwd(), "src", "app", "(user)", "dashboard", "settings", "page.tsx"), "utf-8");
+    expect(settings).toContain("<AccountCredentialPanel");
+    expect(CHAT, "the assistant drawer still mounts the account switch").not.toContain("<AccountCredentialPanel");
+  });
+
+  it("leaves the per-screen choice where the call is made", () => {
+    // The switch decides whether account calls are allowed; the choice decides
+    // which credential this screen spends. Collapsing the two is what put an
+    // account setting inside a conversation drawer.
+    expect(PANEL).toContain("export function AccountCredentialPanel");
+    expect(PANEL).toContain("export function CredentialChoice");
+    const accountSwitch = PANEL.slice(PANEL.indexOf("export function AccountCredentialPanel"));
+    const choice = PANEL.slice(PANEL.indexOf("export function CredentialChoice"));
+    expect(accountSwitch).toContain("assistant.credential.switch");
+    expect(choice).toContain("assistant.credential.which");
+    // And the choice does not carry the create/remove lifecycle.
+    expect(choice).not.toContain("assistant.credential.remove");
+  });
+
+  it("points at the settings screen from the drawer", () => {
+    expect(CHAT).toContain("assistant.credential.whereToEnable");
+    expect(CHAT).toContain('href="/dashboard/settings"');
   });
 
   it("says out loud that transcription stays on the key path", () => {

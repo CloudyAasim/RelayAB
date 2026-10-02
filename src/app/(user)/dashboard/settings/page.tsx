@@ -8,6 +8,7 @@ import { DisplayNameForm } from "./DisplayNameForm";
 import { TimezoneForm } from "./TimezoneForm";
 import { cachedGetUserById } from "@/lib/db/data-cache";
 import { DEFAULT_TIMEZONE } from "@/lib/db/types";
+import { AccountCredentialPanel } from "@/lib/assistant/CredentialPanel";
 
 export default async function SettingsPage() {
   const user = await getCurrentUser();
@@ -46,6 +47,15 @@ export default async function SettingsPage() {
               description={t("settings.password.desc")}
             />
             <ChangePasswordForm />
+          </Card>
+          <Card>
+            {/* An account-level decision, so it lives with the other things
+                that are about the account rather than about one screen. */}
+            <CardHeader
+              title={t("settings.assistantCredential.title")}
+              description={t("settings.assistantCredential.desc")}
+            />
+            <AccountCredentialPanel />
           </Card>
         </div>
       </SectionPageLayout.Content>

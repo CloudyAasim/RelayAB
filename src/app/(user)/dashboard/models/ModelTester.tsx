@@ -20,7 +20,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { CredentialPanel, type Mode } from "@/lib/assistant/CredentialPanel";
+import { CredentialChoice, type Mode } from "@/lib/assistant/CredentialPanel";
 
 interface Labels {
   title: string;
@@ -207,7 +207,7 @@ export function ModelTester({ chatModels, labels }: Props) {
           />
         </div>
 
-        <CredentialPanel
+        <CredentialChoice
           mode={credentialMode}
           onModeChange={setCredentialMode}
           relayKey={relayKey}

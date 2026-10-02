@@ -29,7 +29,7 @@ import {
   SheetDescription,
 } from "@/components/ui/Sheet";
 import { useT } from "@/components/i18n/I18nProvider";
-import { CredentialPanel, type Mode } from "@/lib/assistant/CredentialPanel";
+import { CredentialChoice, type Mode } from "@/lib/assistant/CredentialPanel";
 import { readPretty, writePretty } from "@/lib/assistant/pretty";
 import { MediaArtifacts, ToolResultCard, AssistantBody } from "./MediaArtifacts";
 import type { ArtifactRef } from "@/lib/db/assistant-artifacts";
@@ -756,15 +756,21 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
               </label>
             </div>
 
-            {/* Which credential the assistant spends. The account switch is the
-                zero-friction path; the pasted key stays for anyone who would
-                rather hold something they can revoke by deleting it. */}
-            <CredentialPanel
+            {/* Which credential this screen spends. Whether account calls are
+                allowed at all is a separate, account-level switch, and it lives
+                on the settings screen next to the other account settings. */}
+            <CredentialChoice
               mode={credentialMode}
               onModeChange={setCredentialMode}
               relayKey={relayKey}
               onRelayKeyChange={setRelayKey}
             />
+            <p className="text-xs text-muted-foreground">
+              {t("assistant.credential.whereToEnable")}{" "}
+              <a href="/dashboard/settings" className="underline underline-offset-2 hover:text-foreground">
+                {t("settings.assistantCredential.title")}
+              </a>
+            </p>
             {settingsPanel}
           </div>
         </SheetContent>

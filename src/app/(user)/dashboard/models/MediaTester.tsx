@@ -24,7 +24,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { useT } from "@/components/i18n/I18nProvider";
-import { CredentialPanel, type Mode } from "@/lib/assistant/CredentialPanel";
+import { CredentialChoice, type Mode } from "@/lib/assistant/CredentialPanel";
 
 export interface MediaModelOption {
   id: string;
@@ -266,7 +266,7 @@ export function MediaTester({ models, labels }: Props) {
         {/* Same reason as on the chat tester: the key belongs to the panel that
             decides which credential a call spends, and this card was showing a
             second one that the account path would quietly ignore. */}
-        <CredentialPanel
+        <CredentialChoice
           mode={credentialMode}
           onModeChange={setCredentialMode}
           relayKey={relayKey}

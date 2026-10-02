@@ -772,6 +772,8 @@ const zhCN: Dict = {
   "assistant.gatewayKeyHint": "助手实测模型、生成图片/语音时需要一把本部署的网关密钥。如果下面的 API 地址填的就是本部署，助手会自动用你配置助手时存下的那把，不用在这里重复填。",
 
   "assistant.credential.switch": "允许助手用我的账号调用",
+  "settings.assistantCredential.title": "AI 助手权限",
+  "settings.assistantCredential.desc": "决定助手能不能以你的身份调用本部署、消耗你自己的额度。",
   "assistant.credential.status.loading": "读取中…",
   "assistant.credential.status.none": "未创建",
   "assistant.credential.status.off": "已创建 · 未开启",
@@ -786,6 +788,7 @@ const zhCN: Dict = {
   "assistant.credential.remove": "移除",
   "assistant.credential.removing": "移除中…",
   "assistant.credential.which": "这次调用用哪把凭据",
+  "assistant.credential.whereToEnable": "想让助手用你的账号身份调用，先去",
   "assistant.credential.modeAccount": "用我的账号身份",
   "assistant.credential.modeAccountLocked": "需要先创建并开启助手凭据。",
   "assistant.credential.modeKey": "用我自己配置的密钥",
@@ -1648,6 +1651,9 @@ const en: Dict = {
     "Actually testing a model, or generating an image or voice, needs a gateway key for this deployment. If the API base URL below is this deployment, the assistant reuses the key you already saved here and there is nothing to paste.",
 
   "assistant.credential.switch": "Let the assistant call as me",
+  "settings.assistantCredential.title": "Assistant permissions",
+  "settings.assistantCredential.desc":
+    "Whether the assistant may call this deployment as you and spend your own quota.",
   "assistant.credential.status.loading": "Loading…",
   "assistant.credential.status.none": "Not created",
   "assistant.credential.status.off": "Created · off",
@@ -1665,6 +1671,7 @@ const en: Dict = {
   "assistant.credential.remove": "Remove",
   "assistant.credential.removing": "Removing…",
   "assistant.credential.which": "Which credential this call uses",
+  "assistant.credential.whereToEnable": "To let the assistant call as you, first turn it on under",
   "assistant.credential.modeAccount": "As my signed-in account",
   "assistant.credential.modeAccountLocked": "Create an assistant credential and switch it on first.",
   "assistant.credential.modeKey": "With a key I supply myself",
