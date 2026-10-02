@@ -30,6 +30,39 @@ export type CredentialState = {
 
 export type Mode = "account" | "key";
 
+/**
+ * Which mode the panel should show, given what is known so far.
+ *
+ * Pulled out of the component because the rule is the whole point of the
+ * panel and it is a decision, not a rendering detail: it is pure, so it can be
+ * tested directly instead of being verified by clicking something in a browser.
+ *
+ *  - Before the state has loaded, leave the initial choice alone. Guessing here
+ *    would flash the wrong thing at someone whose credential is fine.
+ *  - The account path being unavailable is not a reason to sit on it. Landing
+ *    on a disabled option, with the key field hidden because that option is
+ *    selected, is what made the page look like it had no way to run anything.
+ *  - But a choice the user actually made is theirs. Correcting it after they
+ *    picked would be a worse bug than the one this fixes.
+ */
+export function reconcileMode(state: {
+  loaded: boolean;
+  canUseAccount: boolean;
+  mode: Mode;
+  /** True once the user has picked a mode themselves. */
+  userPicked: boolean;
+  /** Whether a pasted key is already sitting in the field. */
+  hasKey: boolean;
+}): Mode {
+  const { loaded, canUseAccount, mode, userPicked, hasKey } = state;
+  if (!loaded || userPicked) return mode;
+  if (!canUseAccount && mode === "account") return "key";
+  // A credential that has just been switched on is worth following, but not at
+  // the cost of a key someone has already typed.
+  if (canUseAccount && mode === "key" && !hasKey) return "account";
+  return mode;
+}
+
 const EMPTY: CredentialState = { created: false, enabled: false, keyPrefix: null, createdAt: null, usable: false };
 
 interface Props {
@@ -97,23 +130,19 @@ export function CredentialPanel({
   const canUseAccount = state.created && state.enabled && !blockedReason;
 
   /**
-   * Never leave the page resting on an option that cannot be chosen.
-   *
-   * The initial mode is "account" because that is the path worth taking, but
-   * for someone who has not created a credential it is disabled - and because
-   * the key field is hidden while it is selected, the page came up looking like
-   * it had no way to run anything at all. Once the real state is known, fall
-   * back to the key path, unless the user has already chosen for themselves:
-   * their choice is not ours to second-guess when it is still available.
+   * Never leave the page resting on an option that cannot be chosen. The rule
+   * itself lives in `reconcileMode`, which is a pure function so the decision
+   * can be tested without a browser.
    */
   useEffect(() => {
-    if (!loaded) return;
-    if (!canUseAccount && mode === "account" && !userPickedRef.current) onModeChange("key");
-    // Once the account path becomes available again, follow it - that is the
-    // point of creating it.
-    if (canUseAccount && mode === "key" && !relayKey.trim() && !userPickedRef.current) {
-      onModeChange("account");
-    }
+    const next = reconcileMode({
+      loaded,
+      canUseAccount,
+      mode,
+      userPicked: userPickedRef.current,
+      hasKey: Boolean(relayKey.trim()),
+    });
+    if (next !== mode) onModeChange(next);
   }, [loaded, canUseAccount, mode, onModeChange, relayKey]);
 
   const choose = useCallback(
