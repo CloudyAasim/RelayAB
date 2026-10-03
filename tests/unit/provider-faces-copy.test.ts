@@ -32,33 +32,33 @@ const FIELD = readFileSync(join(SRC, "app/(admin)/admin/providers/ProviderFacesF
 const LOCALES = Object.keys(DICTS) as (keyof typeof DICTS)[];
 const text = (locale: (typeof LOCALES)[number], key: string): string => DICTS[locale][key] ?? "";
 
-/** The same idea in either language: "shared by both sides". */
+/** Wording that says the two modes pool their fields. Wrong, on purpose. */
 const SHARES = /共用|共享|shared/i;
 
 describe("protocol-face section copy", () => {
-  it("states the sharing rule exactly once", () => {
+  it("does not tell the reader the two modes share anything", () => {
+    // The hint used to say the key, model mapping and model configs are "shared
+    // with advanced mode, not entered twice" — which describes two halves of one
+    // job. They are two complete configurations: whichever you pick, you fill
+    // that one in from top to bottom and never have to open the other.
     for (const locale of LOCALES) {
-      // It lives in the face block's own hint, which is the only place the
-      // simple form mentions that advanced shares these fields.
-      expect(text(locale, "admin.providers.faces.hint"), `${locale} section hint`).toMatch(SHARES);
-      // The per-face hints say what each toggle controls. Restating the sharing
-      // rule there is what produced three sentences for one idea.
-      expect(text(locale, "admin.providers.faces.openai.hint"), `${locale} OpenAI hint`).not.toMatch(SHARES);
-      expect(text(locale, "admin.providers.faces.anthropic.hint"), `${locale} Anthropic hint`).not.toMatch(SHARES);
+      const hint = text(locale, "admin.providers.faces.hint");
+      expect(hint, `${locale} claims the modes share fields`).not.toMatch(SHARES);
+      expect(hint, `${locale} says the fields are only entered once`).not.toMatch(
+        /不需要重复填写|not entered twice|only once/i,
+      );
     }
   });
 
-  it("says the faces are for simple mode, so the two read as alternatives", () => {
-    // They are two halves of one provider and are never on screen together. The
-    // hint is the only place that can say so, so it has to.
+  it("says the faces belong to simple mode, so advanced does not look incomplete", () => {
     const perLocale: Record<string, RegExp> = {
-      "zh-CN": /高级模式/,
-      en: /advanced/i,
+      "zh-CN": /简易模式/,
+      en: /simple mode/i,
     };
     for (const locale of LOCALES) {
       expect(
         text(locale, "admin.providers.faces.hint"),
-        `${locale} section hint does not mention the other mode`,
+        `${locale} hint does not say which mode it belongs to`,
       ).toMatch(perLocale[locale] ?? /$^/);
     }
   });
