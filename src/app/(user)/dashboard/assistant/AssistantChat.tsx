@@ -250,14 +250,59 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
     else setMessages([]);
   }, [threadId, busy, loadThread]);
 
-  // Follow the tail as tokens arrive, but only when the reader is already near
-  // the bottom. Yanking someone back down while they re-read an earlier answer
-  // is its own bug.
-  useEffect(() => {
+  /**
+   * Follow the tail as tokens arrive, but only when the reader is already at it.
+   *
+   * The position has to be recorded **before** the new content lands. The
+   * previous version measured it inside the same effect that was about to grow
+   * the element: `scrollHeight - scrollTop - clientHeight < 160`. For a reply
+   * shorter than the viewport that is true and it scrolls; the moment a reply is
+   * taller than the viewport the distance is already past the threshold, so the
+   * condition is false and the view stops following — permanently, for the rest
+   * of that reply and every one after it, because the list is now further from
+   * the bottom than 160px. Small replies scrolled, long ones did not, which is
+   * what made it look intermittent.
+   *
+   * So the reader's position is tracked on the element's own scroll event — a
+   * drag or a keyboard scroll counts, not just the ones React caused — and the
+   * growth effect trusts that instead of re-measuring.
+   *
+   * The scroll is deferred a frame: at effect time the DOM holds the new nodes
+   * but may not have laid them out, and `scrollHeight` of an unlaid-out element
+   * is the old one.
+   */
+  const stickToBottom = useRef(true);
+  const onScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    if (el.scrollHeight - el.scrollTop - el.clientHeight < 160) el.scrollTop = el.scrollHeight;
-  }, [messages]);
+    stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const frame = requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  // As tokens arrive, follow the tail — but only while the reader is at it.
+  useEffect(() => {
+    if (!stickToBottom.current) return;
+    return scrollToBottom();
+  }, [messages, scrollToBottom]);
+
+  useEffect(() => {
+    // Landing on the assistant page with a thread already loaded: the transcript
+    // was fetched before this element existed, so the growth effect never saw it
+    // change. Show the newest message, not the oldest.
+    stickToBottom.current = true;
+    return scrollToBottom();
+    // Once, on mount. Re-running it on every message would yank the reader back
+    // down mid-scroll, which is the bug the flag above exists to prevent.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /**
    * "New chat" is a client-side state change; the server creates the thread
@@ -654,7 +699,7 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
       </div>
 
       {/* ---- conversation ---- */}
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+      <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
         {messages.length === 0 ? (
           /* Tighter than it looks: on a short window this block is a quarter of
              the message area, and it is the one thing on screen that is

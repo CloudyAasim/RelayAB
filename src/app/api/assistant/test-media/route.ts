@@ -238,6 +238,15 @@ async function runJsonMedia(
   const input: MediaRequestInput = {
     model: data.model,
     prompt,
+    // **And** the capability's own text field, where it has one. Text-to-speech
+    // is that capability: `MINIMAX_TTS_SPEC` reads `$.input`, the public
+    // `/v1/audio/speech` route sends `input`, and this route sent only `prompt`
+    // — so a TTS test through the assistant account went upstream with no `text`
+    // at all and came back `invalid params, binding: expr_path=text, cause=
+    // missing required parameter`. The two paths were calling the same engine
+    // with the same spec and disagreeing about the name of the field holding
+    // the sentence.
+    ...(capability === "audio.tts" ? { input: prompt } : {}),
     ...(data.size ? { size: data.size } : {}),
     // The vendor-mandated extras are carried through as the routes do, so the
     // same spec decides what they mean rather than this route guessing.

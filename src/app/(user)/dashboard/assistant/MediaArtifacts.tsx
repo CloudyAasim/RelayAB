@@ -142,23 +142,74 @@ export function splitLinks(text: string): Segment[] {
 }
 
 /**
- * Split a model answer into its reasoning and the part it meant for the reader.
+ * One piece of an assistant message, in the order the model wrote it.
+ */
+export interface AssistantPart {
+  kind: "thinking" | "text";
+  value: string;
+}
+
+/**
+ * Split a model answer into its reasoning and the prose, **in place**.
  *
  * Reasoning arrives inline in the same text as the answer, so without this it
  * sits in the middle of every reply as a wall of first-person deliberation. It
- * is kept - deleting it would be taking the model's words away - just put out
- * of the way until asked for.
+ * is kept — deleting it would be taking the model's words away — just folded
+ * away until asked for.
+ *
+ * The parts stay in the order they arrived. This used to collect the blocks
+ * into an array and hand back one answer string, which threw away where each
+ * block had been: the renderer then had to choose, and it put all of them at
+ * the top. A model that thinks, answers, thinks again and answers again had its
+ * second answer rendered above the first question it was answering.
+ */
+export function splitThinkingParts(text: string): AssistantPart[] {
+  const parts: AssistantPart[] = [];
+  // Scanned rather than `replace`d, because `replace` runs the whole string
+  // before returning and by then the positions are gone. `exec` in a loop keeps
+  // the offset of every match, so each piece of prose stays attached to the
+  // reasoning that preceded it.
+  const re = /<think>([\s\S]*?)(?:<\/think>|$)/gi;
+  let cursor = 0;
+  let m: RegExpExecArray | null;
+
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > cursor) {
+      const before = text.slice(cursor, m.index).trim();
+      if (before) parts.push({ kind: "text", value: before });
+    }
+    const inner = m[1].trim();
+    if (inner) parts.push({ kind: "thinking", value: inner });
+    // `m[0]` is at least "<think>", so this always advances.
+    cursor = m.index + m[0].length;
+  }
+
+  if (cursor < text.length) {
+    const after = text.slice(cursor).trim();
+    if (after) parts.push({ kind: "text", value: after });
+  }
+
+  return parts;
+}
+
+/**
+ * The same split, flattened: every block of reasoning, and the prose with the
+ * reasoning removed.
+ *
+ * Kept for callers that genuinely want the two pools — a transcript search, a
+ * test — and not for rendering, which has to use {@link splitThinkingParts} or
+ * it will stack the reasoning at the top again.
  */
 export function splitThinking(text: string): { thinking: string[]; answer: string } {
-  const thinking: string[] = [];
-  const answer = text
-    .replace(/<think>([\s\S]*?)(?:<\/think>|$)/gi, (_match, inner: string) => {
-      const trimmed = inner.trim();
-      if (trimmed) thinking.push(trimmed);
-      return "\n\n";
-    })
-    .trim();
-  return { thinking, answer };
+  const parts = splitThinkingParts(text);
+  return {
+    thinking: parts.filter((p) => p.kind === "thinking").map((p) => p.value),
+    answer: parts
+      .filter((p) => p.kind === "text")
+      .map((p) => p.value)
+      .join("\n\n")
+      .trim(),
+  };
 }
 
 /**
@@ -241,23 +292,34 @@ export function AssistantBody({
     return <div className="whitespace-pre-wrap break-words">{text}</div>;
   }
 
-  const { thinking, answer } = splitThinking(text);
+  // In the order the model wrote it, so a second block of reasoning sits above
+  // the paragraph it was reasoning about rather than above the whole reply.
+  const parts = splitThinkingParts(text);
+  const hasThinking = parts.some((p) => p.kind === "thinking");
+  const hasProse = parts.some((p) => p.kind === "text" && p.value.trim());
+
+  if (!hasThinking && !hasProse) {
+    return <div className="whitespace-pre-wrap">{text}</div>;
+  }
+
   return (
     <div className="space-y-2 break-words">
-      {thinking.map((block, i) => (
-        <details key={i} className="rounded-md border border-border/60 bg-muted/40">
-          <summary className="cursor-pointer list-none px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground">
-            <span className="font-medium">{thinkingLabel}</span>
-          </summary>
-          <div className="border-t border-border/60 px-2.5 py-2 text-xs text-muted-foreground">
-            <Prose text={block} />
-          </div>
-        </details>
-      ))}
-      {answer ? (
-        <Prose text={answer} />
-      ) : thinking.length ? null : (
-        <div className="whitespace-pre-wrap">{text}</div>
+      {parts.map((part, i) =>
+        part.kind === "thinking" ? (
+          <details
+            key={`t-${i}`}
+            className="rounded-md border border-border/60 bg-muted/40"
+          >
+            <summary className="cursor-pointer list-none px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground">
+              <span className="font-medium">{thinkingLabel}</span>
+            </summary>
+            <div className="border-t border-border/60 px-2.5 py-2 text-xs text-muted-foreground">
+              <Prose text={part.value} />
+            </div>
+          </details>
+        ) : part.value.trim() ? (
+          <Prose key={`p-${i}`} text={part.value} />
+        ) : null,
       )}
     </div>
   );
