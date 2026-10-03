@@ -36,6 +36,14 @@ import { markdownToHtml } from "@/lib/markdown";
 const SECTIONS = readFileSync(join(process.cwd(), "src", "lib", "docs", "sections.ts"), "utf-8");
 const CUSTOM = readFileSync(join(process.cwd(), "src", "lib", "docs", "custom.ts"), "utf-8");
 const SHELL = readFileSync(join(process.cwd(), "src", "components", "docs", "DocsShell.tsx"), "utf-8");
+const APP = readFileSync(
+  join(process.cwd(), "src", "components", "docs", "UserDocsApp.tsx"),
+  "utf-8",
+);
+const FRAME = readFileSync(
+  join(process.cwd(), "src", "components", "docs", "PublicDocsFrame.tsx"),
+  "utf-8",
+);
 const NEXT_CONFIG = readFileSync(join(process.cwd(), "next.config.mjs"), "utf-8");
 const NOTES = readFileSync(
   join(process.cwd(), "src", "app", "(user)", "dashboard", "docs", "DocsNotes.tsx"),
@@ -168,28 +176,83 @@ describe("the outline", () => {
   });
 
   it("and the page renders at the end of its own chapter", () => {
-    expect(INTEGRATION).toMatch(/const here = pagesForSection\(docPages, section\)/);
-    expect(INTEGRATION).toMatch(/\{here\.length > 0 && <DocsNotes pages=\{here\} \/>\}/);
+    expect(APP).toMatch(/const here = pagesBySection\(pages\)\.get\(active\)/);
+    expect(APP).toMatch(/\{here\.length > 0 && <DocsNotes pages=\{here\} \/>\}/);
+  });
+});
+
+describe("the document is one page, not one route per chapter", () => {
+  /**
+   * The reported bug: a page filed under a chapter was on that chapter and
+   * nowhere else, so moving to a neighbouring chapter made it look gone — and
+   * reloading did not bring it back, because it genuinely was not on that page.
+   * The data was never lost; navigating was the defect.
+   *
+   * So the chapters are tabs over content that is already in memory. There is
+   * no request to be stale, nothing to prefetch and nothing to wait for, which
+   * removes the whole class rather than one instance of it.
+   */
+  it("the tab bar contains no links at all, so switching cannot navigate", () => {
+    // A `<Link>` or an `<a href>` here would be a route change wearing a tab's
+    // clothes, and the whole guarantee would be gone.
+    const tablist = APP.slice(APP.indexOf('role="tablist"'), APP.indexOf('role="tabpanel"'));
+    expect(tablist, "no tab bar found").not.toMatch(/<Link\b/);
+    expect(tablist).not.toMatch(/<a\b/);
+    expect(tablist).toMatch(/<button\b/);
+  });
+
+  it("switching updates the url without entering it in the history", () => {
+    // `pushState` would put every tab in the history and make the back button
+    // walk the document instead of leaving it.
+    expect(APP).toMatch(/window\.history\.replaceState\(null, "", `\$\{basePath\}\/\$\{id\}`\)/);
+    expect(APP).not.toMatch(/window\.history\.pushState/);
+  });
+
+  it("a deep link still opens the right chapter, and a stale one lands somewhere real", () => {
+    expect(APP).toMatch(/sections\.some\(\(s\) => s\.id === initial\) \? initial : first/);
+  });
+
+  it("and the back button moves between chapters", () => {
+    expect(APP).toMatch(/window\.addEventListener\("popstate"/);
+  });
+
+  it("a chapter the operator has written in says so on its own tab", () => {
+    // Otherwise "where did my page go" can only be answered by opening every
+    // chapter in turn, which is the question the redesign exists to remove. A
+    // count, not a dot: a dot says "something", and sends them looking anyway.
+    expect(APP).toMatch(/const count = s\.children\?\.length \?\? 0;/);
+    expect(APP).toMatch(/\{count > 0 && \(/);
+    expect(APP).toMatch(/aria-label=\{s\.children!\.map\(\(c\) => c\.label\)\.join\(", "\)\}/);
+  });
+
+  it("the catalogue sits above the tabs, so it survives a chapter switch", () => {
+    // It used to live on the index page alone, which meant it was on screen
+    // until the first switch and gone after it.
+    expect(APP.indexOf("{catalogue}")).toBeGreaterThan(-1);
+    expect(APP.indexOf("{catalogue}")).toBeLessThan(APP.indexOf('role="tablist"'));
+  });
+
+  it("and the chapter slug is still a real route, so old links are not dead", () => {
+    expect(APP).toMatch(/basePath: string/);
+    expect(FRAME).toMatch(/section: string/);
   });
 });
 
 describe("the outline is never stale", () => {
   /**
-   * The bug this pins: a page saved in the admin form vanished when the reader
-   * moved between documentation pages. The outline is rendered from the
-   * settings table, and `next.config.mjs` keeps a 30-second Client Router Cache
-   * for the app — so a payload fetched *before* the save was served after it,
-   * and the page the operator had just published was gone.
+   * The reader's documentation no longer navigates at all — see the tabbed
+   * document above. What is left here is the admin reference, which is still
+   * paged, and the server side of both.
    */
-  it("the docs links do not prefetch, so no payload is cached ahead of a save", () => {
+  it("the paged shell's links do not prefetch, so no payload is cached ahead of a save", () => {
     const links = [...SHELL.matchAll(/<Link\b[\s\S]*?>/g)].map((m) => m[0]);
-    expect(links.length, "no docs links found to check").toBeGreaterThan(0);
+    expect(links.length, "no links found to check").toBeGreaterThan(0);
     for (const link of links) {
       expect(link, "a docs link can still be prefetched").toMatch(/prefetch=\{false\}/);
     }
   });
 
-  it("and the sub-entries are plain anchors, which the browser cannot cache stale", () => {
+  it("and the paged shell's sub-entries are plain anchors", () => {
     // They point into the page you are already on, so there is no navigation to
     // serve from a cache at all.
     expect(SHELL).toMatch(/<a\s+href=\{`\$\{hrefOf\(section\.id\)\}#\$\{child\.id\}`\}/);
@@ -265,6 +328,29 @@ describe("what a page may be called, and where it may go", () => {
     // half-typed page cannot vanish on the way past.
     expect(FORM).toMatch(/if \(!pagesOk\)/);
     expect(FORM).toMatch(/pageProblems\.every/);
+  });
+
+  it("but a row nobody filled in does not block the other pages", () => {
+    // `addPage` opens a blank row. Someone who adds three pages and fills in
+    // one has left two blanks, and under the old rule those two made every
+    // other page unsaveable — with the offending row scrolled off the top of a
+    // long list and the only symptom a save button that does nothing. Which
+    // reads as "my page disappeared", not as "there is a problem".
+    expect(FORM).toMatch(/function isBlank\(p: DocPageInput\): boolean/);
+    expect(FORM).toMatch(/if \(isBlank\(p\)\) return null;/);
+  });
+
+  it("and a new page is published unless you say otherwise", () => {
+    // It used to default to draft, which meant a page could save correctly and
+    // then be invisible — the same thing, from the other end. The object
+    // literal, not the comment above it, which explains exactly this.
+    const added = FORM.slice(
+      FORM.indexOf("const addPage"),
+      FORM.indexOf("const removePage"),
+    );
+    const literal = added.match(/\{[^{}]*id: ""[^{}]*\}/)?.[0] ?? "";
+    expect(literal, "the new-page literal was not found").not.toBe("");
+    expect(literal).not.toMatch(/hidden/);
   });
 
   it("an abandoned row is not published as an unlinkable entry", () => {

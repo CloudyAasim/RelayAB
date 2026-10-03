@@ -34,6 +34,11 @@ const pageFields = (p: DocPageInput): DocPage => ({
   ...(p.order === undefined ? {} : { order: p.order }),
 });
 
+/** A row somebody opened and never filled in. */
+function isBlank(p: DocPageInput): boolean {
+  return !p.id?.trim() && !p.title?.trim() && !p.body?.trim();
+}
+
 export interface DocSettingsModel {
   id: string;
   kind: "chat" | "media";
@@ -90,7 +95,13 @@ export function DocsSettingsForm({ initial, models }: Props) {
   const addPage = () =>
     setPages((prev) => [
       ...prev,
-      { id: "", title: "", body: "", hidden: true, order: prev.length },
+      // Published, not a draft. The previous default was `hidden: true`, on the
+      // theory that a half-written page should not be published — but the
+      // checkbox is small, the label is a line of small text, and the result was
+      // a page that saved correctly and was then invisible, which reads as "it
+      // disappeared" rather than "it is a draft". Drafting is now something you
+      // switch on deliberately.
+      { id: "", title: "", body: "", order: prev.length },
     ]);
 
   const removePage = (index: number) =>
@@ -105,8 +116,19 @@ export function DocsSettingsForm({ initial, models }: Props) {
       return next.map((p, i) => ({ ...p, order: i }));
     });
 
-  /** Local, so an unusable page is refused here rather than by a round trip. */
+  /**
+   * Local, so an unusable page is refused here rather than by a round trip.
+   *
+   * A row nobody typed into is not a problem to report. `addPage` opens one, and
+   * someone who adds three pages and fills in one has left two blanks; blocking
+   * the whole save on those made every other page unsaveable, with the
+   * offending row scrolled off the top of a long list and the only symptom a
+   * save button that appears to do nothing. A blank is dropped on the way out;
+   * a row with *something* in it and something *wrong* is still refused, because
+   * that one is somebody's work.
+   */
   const pageProblem = (p: DocPageInput, index: number): string | null => {
+    if (isBlank(p)) return null;
     const reason = validatePage(pageFields(p));
     if (reason) return reason;
     const clash = pages.some(
@@ -169,8 +191,9 @@ export function DocsSettingsForm({ initial, models }: Props) {
                 order: f.order ?? i,
               };
             })
-            // A page with no id is a row someone started and abandoned. Keeping
-            // it would put an unlinkable entry in the outline.
+            // A row nobody filled in is not published as an unlinkable entry.
+            // See `isBlank`: these are dropped silently rather than blocking the
+            // save, because a blocked save looks exactly like a broken one.
             .filter((p) => p.id && p.title),
         }),
       });

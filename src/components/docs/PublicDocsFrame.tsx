@@ -3,21 +3,36 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { getSettings } from "@/lib/db/settings";
 import { ThemeToggle } from "@/components/layouts";
 import { IntegrationDocs } from "./IntegrationDocs";
-import type { UserDocId } from "@/lib/docs/sections";
+import { buildModelCatalog } from "@/lib/docs/catalog";
+import { resolvePublicUrl } from "@/lib/public-url";
+import { ModelCatalogPanel } from "./ModelCatalogPanel";
 
-/** Public (no-login) docs frame: brand header + the multi-page docs body. */
+/**
+ * Public (no-login) docs frame: brand header + the whole docs body.
+ *
+ * The catalogue is decided here rather than at each of the two call sites. It
+ * used to hang off the index page alone, so it was on screen until the first
+ * chapter switch and gone after it — the same "it disappeared" the chapters
+ * had. One place decides, and every route gets the same answer.
+ */
 export async function PublicDocsFrame({
   basePath,
   section,
 }: {
   basePath: string;
-  section: UserDocId;
+  section: string;
 }) {
   const { t } = await getT();
   const user = await getCurrentUser().catch(() => null);
-  // Read here rather than at each call site: four pages render this frame and
-  // the operator's chapter has to be known before the outline is built.
-  const { docPages } = await getSettings();
+  // Read here rather than at each call site: the operator's chapter has to be
+  // known before the outline is built.
+  const { docPages, publicCatalog } = await getSettings();
+
+  // A relay that publishes its catalogue is normal and the public docs are
+  // where someone evaluating it looks first, but a private self-hosted relay
+  // may not want its vendor list readable by anyone. That call is the
+  // operator's, so it is a setting rather than a default.
+  const catalogue = publicCatalog ? <PublicCatalogue /> : null;
 
   return (
     // The root layout already owns `min-h-screen` and appends the site footer
@@ -68,10 +83,28 @@ export async function PublicDocsFrame({
           <h1 className="text-2xl font-semibold tracking-tight">{t("docs.title")}</h1>
           <p className="mt-2 text-muted-foreground">{t("docs.intro")}</p>
           <div className="mt-6">
-            <IntegrationDocs basePath={basePath} section={section} docPages={docPages} />
+            <IntegrationDocs
+              basePath={basePath}
+              section={section}
+              docPages={docPages}
+              catalogue={catalogue}
+            />
           </div>
         </div>
       </main>
     </div>
+  );
+}
+
+/** The catalogue, read live. Its own component so the frame stays cheap. */
+async function PublicCatalogue() {
+  const [catalog, publicUrl] = await Promise.all([buildModelCatalog(), resolvePublicUrl()]);
+  return (
+    <ModelCatalogPanel
+      models={catalog.models}
+      providers={catalog.providers}
+      site={catalog.site}
+      publicUrl={publicUrl}
+    />
   );
 }
