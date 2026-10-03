@@ -33,7 +33,6 @@ import { CredentialChoice, type Mode } from "@/lib/assistant/CredentialPanel";
 import { readPretty, writePretty } from "@/lib/assistant/pretty";
 import { latestRead } from "@/lib/assistant/latest-read";
 import { MediaArtifacts, ToolResultCard, AssistantBody } from "./MediaArtifacts";
-import { VoiceFileButton } from "./VoiceFileButton";
 import type { ArtifactRef } from "@/lib/db/assistant-artifacts";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";
 import { Pencil, Trash2, Paperclip, X } from "lucide-react";
@@ -212,6 +211,36 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
     if (!transcriptReadRef.current.accept(token)) return;
     setMessages(json?.data?.messages ?? []);
   }, []);
+
+  /**
+   * Coming back from a locked screen.
+   *
+   * The stream is a long-lived fetch, and a phone that has been asleep — or a
+   * tab the OS decided to freeze — can end it without the page ever seeing an
+   * abort. The turn still completes on the server, but the screen is left
+   * showing the partial answer it froze on, and the send button stays disabled
+   * because this page still believes it is busy. It reads as the assistant
+   * having stopped.
+   *
+   * So on returning to the foreground, if a turn is in flight, take the
+   * transcript from the server rather than from the wire. The server's version
+   * is the truth; this page's is a guess that a sleep interrupted.
+   */
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      if (!busy || !threadId) return;
+      abortRef.current?.abort();
+      setBusy(false);
+      void loadThread(threadId);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [busy, threadId, loadThread]);
 
   const loadPendingCount = useCallback(async () => {
     if (!pendingPanel) return;
@@ -870,16 +899,6 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
                 }}
               />
             </label>
-            <VoiceFileButton
-              onTranscribed={(text) => {
-                // Appended, not replaced: a half-written thought followed by a
-                // dictated one is still one message to send.
-                setInput((prev) => (prev ? `${prev.replace(/\s*$/, "")} ${text}` : text));
-                inputRef.current?.focus();
-              }}
-              onError={setError}
-              disabled={busy}
-            />
             <textarea
               id="assistant-input"
               ref={inputRef}

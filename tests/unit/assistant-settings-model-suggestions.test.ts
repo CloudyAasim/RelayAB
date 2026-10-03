@@ -63,6 +63,27 @@ describe("the assistant's model field suggests what the upstream serves", () => 
     expect(popover, "Popover does not carry the app's own tokens").toMatch(/bg-popover/);
   });
 
+  it("the anchor is inside the popover root, which is where Radix needs it", () => {
+    /**
+     * This one took the whole site down.
+     *
+     * The anchor was a sibling of the root, not a child. Radix resolves it
+     * against context, so rendering it outside threw during render and the page
+     * came up as "a client-side exception has occurred" — not a broken field,
+     * a broken product. `next build` and every unit test passed: a provider
+     * misuse that only fails at runtime, in the browser, on a page the tests
+     * never render.
+     */
+    const root = COMBOBOX.indexOf("<Popover open=");
+    const anchor = COMBOBOX.indexOf("<PopoverAnchor asChild>");
+    const close = COMBOBOX.indexOf("</Popover>", root);
+    expect(root, "no popover root").toBeGreaterThan(-1);
+    expect(anchor, "no popover anchor").toBeGreaterThan(-1);
+    expect(close, "the popover root is never closed").toBeGreaterThan(root);
+    expect(anchor, "the anchor is outside the popover root").toBeGreaterThan(root);
+    expect(anchor, "the anchor is outside the popover root").toBeLessThan(close);
+  });
+
   it("is usable without the mouse", () => {
     // Enter sends the message, so with the list open it has to pick instead —
     // otherwise an option that is visible cannot be chosen.

@@ -79,14 +79,19 @@ export function ModelCombobox({
       </label>
 
       {/*
-        An `Anchor`, not a `Trigger`. A trigger would put a focusable control
+        An `Anchor`, not a `Trigger`. A trigger would put a focusable field
         inside a `role="button"` — two interactive elements nested in each
-        other — and the arrow would take focus from the field. The anchor gives
+        other — and the arrow would take focus away from it. The anchor gives
         the popover something to position against, and the width to match,
         without adding a control.
+
+        It has to be *inside* `Popover`. Radix's anchor resolves against its
+        context, and used outside the root it throws on render — which took the
+        whole page down rather than just this field.
       */}
-      <PopoverAnchor asChild>
-        <div className="relative">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverAnchor asChild>
+          <div className="relative">
           <Input
             id={id}
             value={value}
@@ -127,10 +132,9 @@ export function ModelCombobox({
           >
             <ChevronsUpDown className="h-4 w-4" />
           </button>
-        </div>
-      </PopoverAnchor>
+          </div>
+        </PopoverAnchor>
 
-      <Popover open={open} onOpenChange={setOpen}>
         <PopoverContent
           id={`${id}-list`}
           align="start"
