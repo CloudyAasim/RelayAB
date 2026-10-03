@@ -12,7 +12,14 @@
  * It is markdown, put through the same escaping path as the built-in pages —
  * `markdownToHtml` escapes before it emits anything — so an admin writing prose
  * cannot introduce markup that runs.
+ *
+ * A client component, like `DocsContent` beside it: it reads the dictionary
+ * through `useT`, and a server component calling a client hook throws at render
+ * time rather than at build time. The whole chapter silently 500s, which is a
+ * bad way to find out.
  */
+"use client";
+
 import { Card, CardHeader } from "@/components/ui/Card";
 import { useT } from "@/components/i18n/I18nProvider";
 import { markdownToHtml } from "@/lib/markdown";

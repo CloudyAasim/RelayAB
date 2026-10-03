@@ -17,7 +17,7 @@
  *    than a page that never appeared.
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   validatePage,
@@ -53,6 +53,22 @@ const API = readFileSync(join(process.cwd(), "src", "app", "api", "admin", "sett
 
 /** The outline only ever needs to know labels, not real translations. */
 const t = (key: string) => key;
+
+const ROOT = process.cwd();
+
+/** Every source file under `dir`, as repo-relative posix paths. */
+function sourceFiles(dir: string): string[] {
+  const out: string[] = [];
+  const walk = (rel: string): void => {
+    for (const entry of readdirSync(join(ROOT, rel), { withFileTypes: true })) {
+      const child = `${rel}/${entry.name}`;
+      if (entry.isDirectory()) walk(child);
+      else if (/\.tsx?$/.test(entry.name)) out.push(child);
+    }
+  };
+  walk(dir);
+  return out;
+}
 
 describe("where a page goes", () => {
   const pages = [
@@ -295,6 +311,30 @@ describe("editing it", () => {
 
   it("sends the pages to the same endpoint as everything else", () => {
     expect(FORM).toMatch(/docPages: pages/);
+  });
+});
+
+describe("a client hook needs a client component", () => {
+  /**
+   * Found the hard way: `DocsNotes` lost its `"use client"` while gaining a
+   * `useT()` call, and every documentation chapter that had an operator page
+   * answered 500. Nothing fails at build time, nothing fails in review, and the
+   * page still *looks* fine in any test that reads the html — the outline's own
+   * json is in the flight payload, so a string search finds the page's title
+   * whether or not the page rendered.
+   */
+  it("every file that calls useT declares \"use client\"", () => {
+    const offenders: string[] = [];
+    for (const file of sourceFiles("src")) {
+      const src = readFileSync(join(ROOT, file), "utf-8");
+      if (!/\buseT\b/.test(src)) continue;
+      if (!/^\s*["']use client["']/m.test(src)) offenders.push(file);
+    }
+    expect(offenders, "a server component calling a client hook throws at render time").toEqual([]);
+  });
+
+  it("and DocsNotes specifically renders on a server, as its siblings do", () => {
+    expect(NOTES).toMatch(/^\s*["']use client["']/m);
   });
 });
 
