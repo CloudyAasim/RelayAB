@@ -1,19 +1,18 @@
 /**
  * tests/unit/model-tester-model-picker.test.ts
  *
- * The model pickers were closed.
+ * What the model pickers are allowed to be.
  *
- * Both testers rendered a `<select>`, whose value can only be one of its
- * options. So a model the catalog did not list could not be tested at all:
- * not one from a vendor added after the last catalog rebuild, not an id you
- * wanted to reproduce a failure with, not a typo on purpose. And the probe
- * beside them — the one tool that can ask a vendor what models it serves —
- * showed its result as text with nowhere to go, so a freshly listed model was
- * visible and untestable in the same breath.
+ * They were a closed `<select>`, then briefly an `<input list>` so a model the
+ * catalogue does not know could be typed by hand, then a closed `<select>`
+ * again. The middle version was reverted: the tester works off the list entry it
+ * finds for the chosen value — its capability, its endpoint — and a typed id has
+ * no entry, so there was nothing to send it to.
  *
- * The ask was a dropdown that can be filled in automatically while still
- * allowing manual entry. An `<input list>` plus a `<datalist>` is both halves
- * in one control, and the probe now hands its ids up into the lists.
+ * What the probe added is kept, because it survives a closed picker: the probe
+ * can ask a vendor what it serves, and those ids now land in both lists, so a
+ * model added since the catalogue was built becomes selectable instead of merely
+ * visible.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
@@ -34,16 +33,22 @@ const TESTERS = [
   ["MediaTester", MEDIA],
 ] as const;
 
-describe("a model can be picked or typed", () => {
-  it.each(TESTERS)("%s offers a list and still takes free text", (_name, src) => {
-    // The regression: a closed `<select>` renders the same options but cannot
-    // hold a value that is not one of them.
-    expect(src).toMatch(/<input[\s\S]{0,200}list="/);
-    expect(src).toMatch(/<datalist id="/);
-    expect(src).not.toMatch(/<select\s+id="(model-tester-model|media-model)"/);
+describe("a model is chosen from the list", () => {
+  it.each(TESTERS)("%s is a closed select, not a typeable combobox", (_name, src) => {
+    // An `<input list>` was tried so an unknown model id could be typed. It was
+    // worse: the tester works off the entry it finds in the list — its
+    // capability, its endpoint — and a typed id has no entry, so the tester had
+    // nothing to send it to. Reverted to the closed list.
+    //
+    // The cost is honest and worth stating: a model the catalogue does not
+    // list cannot be tested from here. The probe below can list one, and it
+    // does land in these lists.
+    expect(src).toMatch(/<select\s+id="(model-tester-model|media-model)"/);
+    expect(src).not.toMatch(/<datalist/);
+    expect(src).not.toMatch(/\blist="[^"]*options"/);
   });
 
-  it.each(TESTERS)("%s still offers every known model as an option", (_name, src) => {
+  it.each(TESTERS)("%s still offers every model it knows as an option", (_name, src) => {
     expect(src).toMatch(/<option key=/);
   });
 });
@@ -54,10 +59,14 @@ describe("the probe's models reach the pickers", () => {
     expect(PROBE).toMatch(/onFetched\?\.\(json\.data\.models\)/);
   });
 
-  it("the workspace merges them into both lists, without losing the catalogue", () => {
-    expect(WORKSPACE).toMatch(/const \[probed, setProbed\] = useState<string\[\]>\(\[\]\)/);
-    expect(WORKSPACE).toMatch(/\[\.\.\.new Set\(\[\.\.\.catalogChatModels, \.\.\.probed\]\)\]/);
+  it("the probe's models land in those closed lists", () => {
+    // Which is what the probe wiring is *for*: the picker is closed, so the
+    // only way a newly listed model becomes testable is for the probe to hand
+    // it to the list.
+    expect(PROBE).toMatch(/onFetched\?: \(models: string\[\]\) => void/);
+    expect(PROBE).toMatch(/onFetched\?\.\(json\.data\.models\)/);
     expect(WORKSPACE).toMatch(/onFetched=\{onFetched\}/);
+    expect(WORKSPACE).toMatch(/\[\.\.\.new Set\(\[\.\.\.catalogChatModels, \.\.\.probed\]\)\]/);
   });
 
   it("the page passes the catalogue down, unprobed", () => {
@@ -70,15 +79,6 @@ describe("the probe's models reach the pickers", () => {
     // The catalogue does not know it yet, so there is nothing honest to label
     // it with. An empty capability renders as no badge instead of a wrong badge.
     expect(WORKSPACE).toMatch(/probed\.map\(\(id\) => \(\{ id, capability: "", provider: "" \}\)\)/);
-  });
-});
-
-describe("the media pickers do not regress on the probe shape", () => {
-  it("the capability label map is still there for catalogued models", () => {
-    // A datalist option can carry a label; the tester still resolves the badge
-    // below the field from the model list it was given.
-    expect(MEDIA).toMatch(/CAP_LABEL\[m\.capability\]/);
-    expect(MEDIA).toMatch(/current\.capability/);
   });
 });
 

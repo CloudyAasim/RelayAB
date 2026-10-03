@@ -284,27 +284,22 @@ export function MediaTester({ models, labels }: Props) {
           <label htmlFor="media-model" className="block text-sm font-medium text-foreground">
             {labels.model}
           </label>
-          {/*
-            A list you can type past, not a closed one — see the note in
-            ModelTester. The capability badge below still resolves for a model
-            the catalog knows; one typed in by hand simply has no badge, which is
-            honest about it being unspec'd rather than guessing.
-          */}
-          <input
+          {/* Closed, like the chat tester's. See the note in ModelTester: the
+              datalist version let a model be typed that this list has no
+              capability for, and the tester has nothing to send it to. */}
+          <select
             id="media-model"
-            list="media-model-options"
             value={model}
             onChange={(e) => setModel(e.target.value)}
-            placeholder={models[0]?.id ?? "model-id"}
             className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-          />
-          <datalist id="media-model-options">
+          >
+            {models.length === 0 && <option value="">—</option>}
             {models.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.id} · {CAP_LABEL[m.capability] ?? m.capability}
               </option>
             ))}
-          </datalist>
+          </select>
           {current && (
             <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
               <Badge tone="purple">{CAP_LABEL[current.capability] ?? current.capability}</Badge>

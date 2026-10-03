@@ -251,29 +251,23 @@ const [governedBy, setGovernedBy] = useState<string | null>(null);
           <label htmlFor="model-tester-model" className="block text-sm font-medium text-foreground">
             model
           </label>
-          {/*
-            A list you can type past, not a closed one.
-            *
-            This was a `<select>`, which meant a model the catalog did not know
-            about could not be tested at all: not a model from a vendor added
-            after the last catalog rebuild, not a typo you wanted to reproduce
-            on purpose, not an internal id. An `<input list>` is the same
-            dropdown with the text field still there — the browser offers the
-            options, the value is not required to be one of them.
-            */}
-          <input
+          {/* A closed list, back again. An `<input list>` was tried so a model
+              the catalogue does not know could be typed by hand; it made the
+              tester worse to use and was reverted. A typed id has no entry in
+              `chatModels`, so the tester has no idea what to ask for. */}
+          <select
             id="model-tester-model"
-            list="model-tester-model-options"
             value={model}
             onChange={(e) => setModel(e.target.value)}
-            placeholder={chatModels[0] ?? "model-id"}
             className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-          />
-          <datalist id="model-tester-model-options">
+          >
+            {chatModels.length === 0 && <option value="">—</option>}
             {chatModels.map((m) => (
-              <option key={m} value={m} />
+              <option key={m} value={m}>
+                {m}
+              </option>
             ))}
-          </datalist>
+          </select>
         </div>
 
         <div className="space-y-1.5">
