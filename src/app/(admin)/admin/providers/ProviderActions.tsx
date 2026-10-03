@@ -353,10 +353,14 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
           })}
         />
 
-        {mode === "advanced" ? (
-          <TextProtocolField value={textSpecs} onChange={setTextSpecs} />
-        ) : (
-          <>
+        {mode === "advanced" && (
+          <TextProtocolField
+            value={textSpecs}
+            onChange={setTextSpecs}
+            faces={{ openai: faces.openaiEnabled, anthropic: faces.anthropicEnabled }}
+          />
+        )}
+
         <div className="grid grid-cols-2 gap-4">
           <Input
             label={t("admin.providers.create.name")}
@@ -396,8 +400,6 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
           placeholder="••••••••"
         />
 
-        <ProviderFacesField value={faces} onChange={setFaces} />
-
         <div className="grid grid-cols-2 gap-4">
           <Input
             label={t("admin.providers.create.priority")}
@@ -435,8 +437,6 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
             </Button>
           }
         />
-          </>
-        )}
 
         {error && <p className="text-sm text-destructive">{error}</p>}
 

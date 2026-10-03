@@ -58,8 +58,10 @@ describe("the all-configured sentence", () => {
 
   it("agrees with the list it is describing", () => {
     // Guards the two halves together: the sentence says "all N", and the
-    // button that reveals it disappears exactly when all N are present.
-    const filter = FIELD.match(/CONFIGURABLE_PROTOCOLS\.filter\(\(p\) => !used\.has\(p\)\)/);
+    // buttons that reveal it disappear exactly when all N are present. The
+    // filter is by what is used AND by which face is on, because an interface
+    // under a switched-off face is not offered at all.
+    const filter = FIELD.match(/CONFIGURABLE_PROTOCOLS\.filter\(\(p\) => !used\.has\(p\) && faceOn\(p\)\)/);
     expect(filter, "the add-buttons filter is gone; this guard needs updating").toBeTruthy();
     expect(CONFIGURABLE_PROTOCOLS.length).toBeGreaterThan(0);
   });

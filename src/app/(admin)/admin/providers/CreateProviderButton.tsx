@@ -307,7 +307,13 @@ export function CreateProviderButton({ onCreated }: Props) {
               }
             })}
           />
-          {mode === "advanced" && <TextProtocolField value={textSpecs} onChange={setTextSpecs} />}
+          {mode === "advanced" && (
+            <TextProtocolField
+              value={textSpecs}
+              onChange={setTextSpecs}
+              faces={{ openai: faces.openaiEnabled, anthropic: faces.anthropicEnabled }}
+            />
+          )}
           {/* Template selection */}
           <div>
             <label className="block text-sm font-medium mb-1.5">{t("admin.providers.create.template")}</label>

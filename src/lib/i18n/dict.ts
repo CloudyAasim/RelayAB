@@ -254,7 +254,7 @@ const zhCN: Dict = {
     "OpenAI 侧关着，但已经给它写了参数规则 —— 规则会被保存，但不会有请求走到它。",
   "admin.providers.faces.orphanAnthropic":
     "Anthropic 侧关着，但已经给它写了参数规则 —— 规则会被保存，但不会有请求走到它。",
-  "admin.textSpec.modeHint": "二选一。两种方式配置的是同一个服务商的不同部分，保存时都会一起写入。",
+  "admin.textSpec.modeHint": "两种模式填的东西一样，高级模式只多一块「每个接口怎么处理参数」。密钥、地址、模型映射两种模式都要填，保存时一起写入。",
   "admin.textSpec.mode.simple": "简易模式",
   "admin.textSpec.mode.simpleBody": "选端点、面开关和模型。绝大多数 OpenAI 兼容中转选这个。",
   "admin.textSpec.mode.advanced": "高级模式（协议）",
@@ -263,6 +263,8 @@ const zhCN: Dict = {
   "admin.textSpec.mode.configured": "已配置 {n} 个接口",
   "admin.textSpec.mode.brokenEntry": "这条有问题",
   "admin.textSpec.add": "添加一个兼容接口",
+  "admin.textSpec.faceOffBadge": "所属协议面已关闭",
+  "admin.textSpec.faceOff": "上面关掉的协议面下的接口，不会出现在这里。",
   "admin.textSpec.allAdded": "全部 {n} 个兼容接口都已配置。",
   "admin.textSpec.title": "上游协议",
   "admin.textSpec.desc": "声明这个服务商说什么协议、每个请求参数怎么处理。留空则原样透传——这是中转站该有的默认。",
@@ -1224,7 +1226,7 @@ const en: Dict = {
   "admin.providers.faces.orphanAnthropic":
     "The Anthropic side is off, but parameter rules have been written for it. They are saved, and no request will ever reach them.",
   "admin.textSpec.modeHint":
-    "One of the two. They configure different parts of the same provider, and both are saved together.",
+    "Both modes fill in the same things; advanced adds one block for how each interface handles parameters. The key, the URL and the model mapping are required either way, and everything is saved together.",
   "admin.textSpec.mode.simple": "Simple",
   "admin.textSpec.mode.simpleBody":
     "Pick the endpoint, the faces and the models. Right for nearly every OpenAI-compatible vendor.",
@@ -1235,6 +1237,8 @@ const en: Dict = {
   "admin.textSpec.mode.configured": "{n} interfaces configured",
   "admin.textSpec.mode.brokenEntry": "this one is wrong",
   "admin.textSpec.add": "Add a compatibility interface",
+  "admin.textSpec.faceOffBadge": "its protocol face is off",
+  "admin.textSpec.faceOff": "Interfaces under a face you switched off above are not offered here.",
   "admin.textSpec.allAdded": "All {n} compatibility interfaces are configured.",
   "admin.textSpec.title": "Upstream protocol",
   "admin.textSpec.desc": "Declare which protocol this provider speaks and what happens to each request parameter. Leave it empty and everything is forwarded as sent, which is the right default for a relay.",

@@ -31,7 +31,7 @@ import {
   isTextProtocol,
   type TextProtocol,
 } from "@/lib/protocol/text-spec";
-import { SURFACES, validateTextSpecs } from "@/lib/protocol/text-specs";
+import { SURFACES, faceOf, validateTextSpecs } from "@/lib/protocol/text-specs";
 import {
   CONFIGURABLE_PROTOCOLS,
   TEXT_PROTOCOL_LABELS,
@@ -135,13 +135,31 @@ export function ProviderModeSwitch({
 export function TextProtocolField({
   value,
   onChange,
+  faces,
 }: {
   /** The stored list, each entry a JSON document. */
   value: string[];
   onChange: (next: string[]) => void;
+  /**
+   * Which protocol faces are switched on.
+   *
+   * The list is the detail *within* a face, so it follows the toggles above it:
+   * with the OpenAI face off there is nothing to declare for `/v1/responses`,
+   * and offering the button anyway put two controls in the same form answering
+   * the same question with opposite answers. An entry that already exists is
+   * kept rather than dropped — turning a face off is not a reason to lose
+   * typing — and marked instead.
+   */
+  faces: { openai: boolean; anthropic: boolean };
 }) {
   const t = useT();
   const [openIndex, setOpenIndex] = useState<number | null>(0);
+
+  const faceOn = (protocol: string): boolean => {
+    const face = faceOf(protocol);
+    if (face === null) return true; // Unknown protocol: the row already says so.
+    return face === "openai" ? faces.openai : faces.anthropic;
+  };
 
   const used = new Set(
     value.map((raw) => {
@@ -218,6 +236,11 @@ export function TextProtocolField({
                     {t("admin.textSpec.mode.brokenEntry")}
                   </span>
                 )}
+                {entry.kind !== "bad" && !faceOn(protocol) && (
+                  <span className="ml-auto shrink-0 text-[10px] text-warning-foreground dark:text-warning">
+                    {t("admin.textSpec.faceOffBadge")}
+                  </span>
+                )}
               </button>
               <Button
                 type="button"
@@ -233,7 +256,9 @@ export function TextProtocolField({
             {isOpen && (
               <div className="space-y-2 border-t border-border px-3 py-3">
                 <div className="flex flex-wrap gap-1.5">
-                  {CONFIGURABLE_PROTOCOLS.filter((p) => p !== protocol || value.length === 1).map((p) => (
+                  {CONFIGURABLE_PROTOCOLS.filter(
+                    (p) => faceOn(p) && (p !== protocol || value.length === 1),
+                  ).map((p) => (
                     <Button
                       key={p}
                       type="button"
@@ -285,14 +310,16 @@ export function TextProtocolField({
       <div>
         <p className="mb-1.5 text-xs font-medium text-foreground">{t("admin.textSpec.add")}</p>
         <div className="flex flex-wrap gap-1.5">
-          {CONFIGURABLE_PROTOCOLS.filter((p) => !used.has(p)).map((p) => (
+          {CONFIGURABLE_PROTOCOLS.filter((p) => !used.has(p) && faceOn(p)).map((p) => (
             <Button key={p} type="button" size="sm" variant="outline" onClick={() => add(p)} title={TEXT_PROTOCOL_LABELS[p].hint}>
               + {TEXT_PROTOCOL_LABELS[p].zh}
             </Button>
           ))}
-          {CONFIGURABLE_PROTOCOLS.every((p) => used.has(p)) && (
+          {CONFIGURABLE_PROTOCOLS.filter((p) => !used.has(p) && faceOn(p)).length === 0 && (
             <p className="text-xs text-muted-foreground">
-              {t("admin.textSpec.allAdded", { n: CONFIGURABLE_PROTOCOLS.length })}
+              {CONFIGURABLE_PROTOCOLS.some((p) => !used.has(p))
+                ? t("admin.textSpec.faceOff")
+                : t("admin.textSpec.allAdded", { n: CONFIGURABLE_PROTOCOLS.length })}
             </p>
           )}
         </div>

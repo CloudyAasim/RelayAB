@@ -232,7 +232,17 @@ describe("the modes configure different fields of the same row", () => {
   });
 
   it("so the mode only decides what is *shown*, never what is sent", () => {
-    expect(EDIT).toMatch(/\{mode === "advanced" \? \(/);
+    // This used to assert the opposite — that the edit form wraps its fields in
+    // a `mode === "advanced" ? ... : ...` ternary. That is how the form got
+    // hidden: the branch is a statement about what exists, and the "else" side
+    // was the name, base URL, API key and the entire model table. The name of
+    // this test was right and its assertion enforced the bug.
+    //
+    // Additive spelling: the protocol list appears in advanced, everything
+    // else is unconditional. The fields that must be on screen either way are
+    // pinned in provider-edit-form-fields.test.ts.
+    expect(EDIT).toMatch(/mode === "advanced" &&/);
+    expect(EDIT).not.toMatch(/mode === "advanced" \?/);
   });
 
   it("an invalid spec blocks the save and sends you to the mode that shows it", () => {

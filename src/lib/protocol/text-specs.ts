@@ -30,13 +30,31 @@ import { parseTextSpec, isTextProtocol, type TextProtocol, type TextSpec } from 
  * `v1beta/models/*:generateContent` — so nothing would ever have selected it,
  * and offering it would have been a field that saves and does nothing.
  */
+/** The two switches on the provider itself: which endpoints answer. */
+export type ProviderFaceId = "openai" | "anthropic";
+
 export const SURFACES = [
-  { id: "openai-chat", clientPath: "/v1/chat/completions" },
-  { id: "openai-responses", clientPath: "/v1/responses" },
-  { id: "anthropic-messages", clientPath: "/anthropic/v1/messages" },
-] as const satisfies ReadonlyArray<{ id: string; clientPath: string }>;
+  { id: "openai-chat", clientPath: "/v1/chat/completions", face: "openai" },
+  { id: "openai-responses", clientPath: "/v1/responses", face: "openai" },
+  { id: "anthropic-messages", clientPath: "/anthropic/v1/messages", face: "anthropic" },
+] as const satisfies ReadonlyArray<{ id: string; clientPath: string; face: ProviderFaceId }>;
 
 export type SurfaceId = (typeof SURFACES)[number]["id"];
+
+/**
+ * Which face a surface belongs to.
+ *
+ * This is the join between the two controls that otherwise look unrelated and
+ * answer the same question differently. The face toggle says "this provider
+ * does not answer /v1/responses"; the protocol list offered to add an entry
+ * for `/v1/responses` in the same breath. Declaring the mapping here means the
+ * editor can offer only the surfaces a switched-on face can actually reach,
+ * instead of leaving the operator to notice the contradiction themselves.
+ */
+export function faceOf(protocol: string): ProviderFaceId | null {
+  if (!isTextProtocol(protocol)) return null;
+  return SURFACES.find((s) => s.id === protocol)?.face ?? null;
+}
 
 /** One surface, as the stored string identifies it. */
 export interface ProtocolEntry {
