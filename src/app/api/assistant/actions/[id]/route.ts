@@ -29,6 +29,7 @@
  *     have to make the model do the whole thing again.
  */
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getCurrentUser, requireAdmin, AuthGuardError, type AuthedUser } from "@/lib/auth/session";
 import {
@@ -38,6 +39,8 @@ import {
 } from "@/lib/db/assistant";
 import { createProvider, updateProvider } from "@/lib/db/providers";
 import { createMediaProvider, updateMediaProvider, MediaProviderValidationError } from "@/lib/db/media-providers";
+import { updateSettings } from "@/lib/db/settings";
+import { validatePage } from "@/lib/docs/custom";
 
 export const dynamic = "force-dynamic";
 
@@ -81,6 +84,32 @@ const ProviderArgsSchema = z
     priority: z.number().int().optional(),
     modelMapping: z.record(z.string(), z.string()).optional(),
     modelConfigs: z.record(z.string(), ModelConfigSchema).optional(),
+    /**
+     * The provider's protocol document, as a string.
+     *
+     * A string rather than an object because that is what the column holds, and
+     * re-parsing on write is one line. `null` clears it, which puts the provider
+     * back to forwarding the client's request as sent — so the tool can also
+     * propose undoing a protocol without needing a separate verb.
+     */
+    textSpec: z.string().max(200_000).nullable().optional(),
+  })
+  .strict();
+
+/** The operator's documentation chapter, as one replacement list. */
+const DocPagesArgsSchema = z
+  .object({
+    docPages: z
+      .array(
+        z.object({
+          id: z.string().min(1).max(60).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+          title: z.string().min(1).max(120),
+          body: z.string().max(60_000),
+          hidden: z.boolean().optional(),
+          order: z.number().int().min(0).max(10_000).optional(),
+        }),
+      )
+      .max(30),
   })
   .strict();
 
@@ -262,6 +291,32 @@ export async function POST(
         `已更新媒体服务商 ${updated.name}（${Object.keys(patch).join(", ") || "无字段"}）`,
       );
       return NextResponse.json({ ok: true, data: { status: "applied", providerId: updated.id } });
+    }
+
+    if (claimed.kind === "doc_pages.update") {
+      const parsedPages = DocPagesArgsSchema.parse(args);
+      // Re-validated on apply, not just on propose. The proposal and the
+      // approval can be a day apart, and the rule that makes an id safe
+      // (a routable slug a reader can bookmark) is worth checking twice.
+      for (const page of parsedPages.docPages) {
+        const result = validatePage(page);
+        if (result) throw new Error(`页面 ${page.id} 不合法：${result}`);
+      }
+      const seen = new Set<string>();
+      for (const page of parsedPages.docPages) {
+        if (seen.has(page.id)) throw new Error(`页面标识「${page.id}」重复了`);
+        seen.add(page.id);
+      }
+      await updateSettings({ docPages: parsedPages.docPages });
+      await revalidatePath("/docs", "layout");
+      await revalidatePath("/dashboard/docs", "layout");
+      await setAssistantActionStatus(
+        me.id,
+        claimed.id,
+        "applied",
+        `已更新自定义文档，共 ${parsedPages.docPages.length} 页`,
+      );
+      return NextResponse.json({ ok: true, data: { status: "applied", pages: parsedPages.docPages.length } });
     }
 
     if (claimed.kind === "media_provider.create") {

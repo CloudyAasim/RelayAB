@@ -11,6 +11,7 @@
  */
 import type { Provider } from "../db/types";
 import type { MediaProvider } from "../media/spec";
+import type { DocPage } from "../docs/custom";
 
 function line(field: string, before: unknown, after: unknown): string | null {
   const b = format(before);
@@ -173,4 +174,56 @@ export function renderMediaDiff(
 
 function fmtNum(n: unknown): string {
   return typeof n === "number" ? n.toLocaleString() : "(未设置)";
+}
+
+/**
+ * Same shape, for the operator's documentation chapter.
+ *
+ * The removal list is the part that matters here. `propose_doc_pages` is a
+ * whole-list replacement, so an admin approving a diff that quietly shows
+ * "新增 x" while dropping four pages has been shown a lie by omission — and
+ * those four pages are the operator's own writing.
+ */
+export function renderDocPagesDiff(
+  before: readonly DocPage[],
+  after: readonly DocPage[],
+  summary?: string,
+): string {
+  const out: string[] = [
+    `用户文档自定义页面：${before.length} → ${after.length} 页`,
+    `变更摘要：${summary ?? "(未填写)"}`,
+    "",
+  ];
+
+  const beforeById = new Map(before.map((p) => [p.id, p]));
+  const afterById = new Map(after.map((p) => [p.id, p]));
+
+  const added = after.filter((p) => !beforeById.has(p.id));
+  const removed = before.filter((p) => !afterById.has(p.id));
+  const changed = after.filter((p) => {
+    const prev = beforeById.get(p.id);
+    return prev && (prev.title !== p.title || prev.body !== p.body || Boolean(prev.hidden) !== Boolean(p.hidden));
+  });
+
+  out.push("字段变更：");
+  if (!added.length && !removed.length && !changed.length) out.push("    （无）");
+  for (const p of added) {
+    out.push(`    + 新增 ${p.id}「${p.title}」${p.hidden ? "（草稿，读者看不到）" : ""}`);
+  }
+  for (const p of changed) {
+    out.push(`    ~ 修改 ${p.id} 标题或正文`);
+  }
+  for (const p of removed) {
+    out.push(`    - 删除 ${p.id}「${p.title}」`);
+  }
+  out.push("");
+
+  if (removed.length) {
+    out.push(
+      `提醒：这一次会真的删掉上面 ${removed.length} 个页面。它们是站长自己写的文字，删了不会留在任何地方。`,
+      "",
+    );
+  }
+  out.push("注意：id 是读者能收藏的锚点，发布后不要再改。");
+  return out.join("\n");
 }

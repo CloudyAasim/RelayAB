@@ -34,7 +34,10 @@ import { createAssistantAction } from "../db/assistant";
 import { getPublicUrl } from "../config";
 import { knownModelOrDefault } from "../providers/known-models";
 import { decryptSecret } from "../crypto/secrets";
-import { renderProviderDiff, renderMediaDiff } from "./diff";
+import { renderProviderDiff, renderMediaDiff, renderDocPagesDiff } from "./diff";
+import { getSettings } from "../db/settings";
+import { parseTextSpec, readTextSpec } from "../protocol/text-spec";
+import { TEXT_PROTOCOL_PRESETS, TEXT_PROTOCOL_LABELS } from "../protocol/text-protocols";
 import { DEPLOYMENT_NOTES } from "./deployment-notes";
 import { fetchPage, WebFetchError } from "./web-fetch";
 import { createDocReader } from "./docs-reader";
@@ -431,10 +434,112 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
               "客户端模型名 → 上游模型名 的【完整】替换表。注意：整份替换，不是增量。想只加一个映射就必须先用 list_providers 拿到现状、合并、再把整张表传回来 —— 只传新增的那一条会把其余所有模型删掉。",
             additionalProperties: { type: "string" },
           },
+          textSpec: {
+            type: "object",
+            description:
+              "上游协议文档：说明这个服务商说什么协议、每个请求参数怎么处理。" +
+              "不确定就先调 list_text_protocols 看四个预设。" +
+              "只有厂商确实和 OpenAI 兼容接口不一样时才需要写；'大多数厂商什么都不用配'。",
+            properties: {
+              specVersion: { type: "integer" },
+              protocol: { type: "string" },
+              parameters: { type: "object" },
+              request: { type: "object" },
+              response: { type: "object" },
+              errors: { type: "array", items: { type: "object" } },
+              limits: { type: "object" },
+            },
+            required: ["specVersion", "protocol"],
+            additionalProperties: true,
+          },
         },
         required: ["providerId", "summary"],
         additionalProperties: false,
       },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_text_protocols",
+      description:
+        "列出四个内置的文本协议预设和参数策略的六种模式，配使用建议。\n" +
+        "配置服务商前如果不确定该选哪个协议、或者不知道某个参数该 passthrough 还是 clamp，先调这个 —— 不要凭印象写 protocol。\n" +
+        "绝大多数 OpenAI 兼容中转选 openai-chat 就够了，什么都不用改。",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "propose_model_config_update",
+      description:
+        "提出一次【单个模型】的配置变更，需要管理员确认才执行。\n" +
+        "改的是网关真实生效的东西：上下文长度、最大输出、积分价格、是否启用、显示名、上游模型名。\n" +
+        "文档里显示的上下文和价格读的就是这些值，所以改这里等于同时改文档。\n" +
+        "媒体模型（图片/视频/语音）由 spec 驱动，这里改不了，请用 propose_media_provider_update。",
+      parameters: {
+        type: "object",
+        properties: {
+          providerId: { type: "string", description: "该模型所属的服务商 id，用 list_providers 查" },
+          clientId: { type: "string", description: "客户端在 model 字段里填的模型名" },
+          summary: { type: "string", description: "一句话说明这次变更的目的" },
+          displayName: { type: "string" },
+          upstreamId: { type: "string" },
+          contextLength: { type: "integer", description: "上下文长度（输入 token 上限）" },
+          maxOutputTokens: { type: "integer" },
+          inputCost: { type: "number", description: "每 100 万输入 token 的积分" },
+          outputCost: { type: "number", description: "每 100 万输出 token 的积分" },
+          enabled: { type: "boolean", description: "false = 网关不再路由到这个模型，客户端会 404" },
+        },
+        required: ["providerId", "clientId", "summary"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "propose_doc_pages",
+      description:
+        "提出一次【用户文档自定义页面】的变更，需要管理员确认才执行。\n" +
+        "这些页面作为文档的最后一章「站长补充」出现在读者面前，适合写限流、推荐用哪个模型、使用约定这类只有站长知道的事。\n" +
+        "pages 是【完整】替换，不是增量：只发新加的那一页会把其余所有页面删掉。想加一页必须先用 list_doc_pages 拿回现状、合并、再整份传回。\n" +
+        "id 会变成读者能收藏的锚点，一旦发布就不要改；id 只能是小写字母、数字和中划线。",
+      parameters: {
+        type: "object",
+        properties: {
+          summary: { type: "string", description: "一句话说明这次变更的目的" },
+          pages: {
+            type: "array",
+            description: "完整的页面列表。顺序就是读者看到的顺序。",
+            items: {
+              type: "object",
+              properties: {
+                id: { type: "string", description: "URL 锚点，小写字母/数字/中划线，发布后不要改" },
+                title: { type: "string" },
+                body: { type: "string", description: "Markdown 正文" },
+                hidden: { type: "boolean", description: "true = 草稿，读者看不到" },
+                order: { type: "integer" },
+              },
+              required: ["id", "title", "body"],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ["summary", "pages"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_doc_pages",
+      description:
+        "读回当前的自定义文档页面（站长的那一章）。改之前必须先调这个 —— " +
+        "propose_doc_pages 是整份替换，不知道现状就改会把页面全删掉。",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
     },
   },
   {
@@ -602,6 +707,9 @@ export async function executeTool(
     case "list_providers":
       if (!isAdmin) return fail("这是管理员功能。");
       return listProvidersTool();
+    case "list_text_protocols":
+      if (!isAdmin) return fail("这是管理员功能。");
+      return listTextProtocolsTool();
     case "probe_provider_host":
       if (!isAdmin) return fail("这是管理员功能。");
       return probeProviderHost(args);
@@ -611,6 +719,15 @@ export async function executeTool(
     case "propose_provider_update":
       if (!isAdmin) return fail("这是管理员功能。");
       return proposeProviderUpdate(args, ctx);
+    case "propose_model_config_update":
+      if (!isAdmin) return fail("这是管理员功能。");
+      return proposeModelConfigUpdate(args, ctx);
+    case "list_doc_pages":
+      if (!isAdmin) return fail("这是管理员功能。");
+      return listDocPagesTool();
+    case "propose_doc_pages":
+      if (!isAdmin) return fail("这是管理员功能。");
+      return proposeDocPages(args, ctx);
     case "propose_media_provider_update":
       if (!isAdmin) return fail("这是管理员功能。");
       return proposeMediaProviderUpdate(args, ctx);
@@ -1156,13 +1273,221 @@ async function listProvidersTool(): Promise<ToolResult> {
         // Never the key itself: the model has no need for it and the transcript
         // is persisted and re-sent on every subsequent turn.
         headers: p.headers,
+        // The protocol document, if one is set. The model has to see what is
+        // there before it can change it, and "it did not tell me" is the shape
+        // of every conversation where an assistant quietly re-derives a
+        // provider's configuration and gets it wrong.
+        textSpec: readTextSpec(p),
       };
     }),
   );
 }
 
-async function probeProviderHost(args: Record<string, unknown>): Promise<ToolResult> {
+/**
+ * The four protocols and the six parameter modes, with the advice that decides
+ * between them.
+ *
+ * Returned rather than described in a tool description because the model has to
+ * choose, and a choice made from a tool description is a choice made from
+ * whichever example happened to be nearest. The presets are the whole answer to
+ * "how do I configure a vendor" for the ninety percent of vendors that need
+ * nothing.
+ */
+function listTextProtocolsTool(): ToolResult {
+  return ok({
+    defaultIfUnset: "不配协议时，客户端的请求体原样送到上游。这是中转站该有的默认。",
+    protocols: Object.entries(TEXT_PROTOCOL_LABELS).map(([protocol, label]) => ({
+      protocol,
+      name: label.zh,
+      whenToUse: label.hint,
+      preset: TEXT_PROTOCOL_PRESETS[protocol as keyof typeof TEXT_PROTOCOL_PRESETS],
+    })),
+    parameterModes: {
+      passthrough: "默认。没列出的参数一律走这个 —— 转发客户端传的值。",
+      drop: "客户端传了也不送。用于上游会 400 的参数。",
+      default: "客户端没传时才用 value。传了就用它的，对客户端完全透明。",
+      force: "不管客户端传没传都用 value。这是唯一能让客户端拿到它没要求的行为的模式，慎用。",
+      clamp: "保留客户端的值，但限制在 min/max 之间。",
+      rename: "换个名字或位置送，to 可以是点号路径（如 extra_body.thinking）。",
+    },
+    order: "裁决顺序固定：drop 最先且不可被后面的规则捡回，然后 default、clamp、force、rename。",
+  });
+}
+
+/**
+ * One model's gateway configuration.
+ *
+ * Merges into the stored config rather than replacing it: a model row carries
+ * a context window and prices that an operator may have corrected by hand, and a
+ * proposal that silently resets them is worse than no proposal.
+ */
+async function proposeModelConfigUpdate(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<ToolResult> {
   const providerId = z.string().min(1).safeParse(args.providerId);
+  const clientId = z.string().min(1).safeParse(args.clientId);
+  if (!providerId.success || !clientId.success) return fail("需要 providerId 和 clientId。");
+
+  const provider = await getProviderById(providerId.data);
+  if (!provider) return fail(`找不到服务商 ${providerId.data}。`);
+
+  const existing = (provider.modelConfigs ?? {})[clientId.data];
+  if (!existing) {
+    return fail(
+      `服务商 ${provider.name} 里没有名为 ${clientId.data} 的模型配置。` +
+        `现有的：${Object.keys(provider.modelConfigs ?? {}).join(", ") || "（无）"}。` +
+        `如果这是一个新模型，先用 propose_provider_update 改 modelMapping。`,
+    );
+  }
+
+  const patch: Record<string, unknown> = {};
+  if (typeof args.displayName === "string" && args.displayName.trim()) {
+    patch.displayName = args.displayName.trim();
+  }
+  if (typeof args.upstreamId === "string" && args.upstreamId.trim()) {
+    patch.upstreamId = args.upstreamId.trim();
+  }
+  for (const [key, label] of [
+    ["contextLength", "上下文长度"],
+    ["maxOutputTokens", "最大输出"],
+    ["inputCost", "输入价格"],
+    ["outputCost", "输出价格"],
+  ] as const) {
+    const value = args[key];
+    if (value === undefined) continue;
+    const n = typeof value === "number" ? value : Number(value);
+    if (!Number.isFinite(n) || n < 0) return fail(`${label}必须是一个非负数字。`);
+    if (key !== "inputCost" && key !== "outputCost" && !Number.isInteger(n)) {
+      return fail(`${label}必须是整数。`);
+    }
+    patch[key] = n;
+  }
+  if (typeof args.enabled === "boolean") patch.enabled = args.enabled;
+
+  if (Object.keys(patch).length === 0) return fail("没有提供任何要修改的字段。");
+
+  const merged = { ...(provider.modelConfigs ?? {}) };
+  merged[clientId.data] = { ...existing, ...patch };
+  const summary =
+    typeof args.summary === "string" && args.summary.trim() ? args.summary.trim() : "未说明的变更";
+
+  const action = await createAssistantAction({
+    userId: ctx.user.id,
+    kind: "provider.update",
+    targetId: provider.id,
+    summary,
+    args: { modelConfigs: merged },
+    diff: renderProviderDiff(provider, { modelConfigs: merged }, summary),
+  });
+
+  return ok({
+    actionId: action.id,
+    summary,
+    provider: provider.name,
+    model: clientId.data,
+    before: {
+      displayName: existing.displayName,
+      upstreamId: existing.upstreamId,
+      contextLength: existing.contextLength,
+      maxOutputTokens: existing.maxOutputTokens,
+      inputCost: existing.inputCost,
+      outputCost: existing.outputCost,
+      enabled: existing.enabled,
+    },
+    after: { ...existing, ...patch },
+  });
+}
+
+/** The operator's own chapter, as it stands. */
+async function listDocPagesTool(): Promise<ToolResult> {
+  const { docPages } = await getSettings();
+  return ok({
+    pages: docPages ?? [],
+    note: "propose_doc_pages 是整份替换。改之前一定要先读这里，否则会把现有页面全删掉。",
+  });
+}
+
+/**
+ * The operator's documentation pages.
+ *
+ * Whole-list replacement, like `modelMapping`, and for the same reason: a
+ * partial write is indistinguishable from "the operator wanted only this one
+ * page" until somebody notices the others are gone. The tool says so in its
+ * description and in the list tool's own output, because the failure happens
+ * silently otherwise.
+ */
+async function proposeDocPages(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<ToolResult> {
+  if (!Array.isArray(args.pages)) return fail("pages 必须是数组。");
+
+  const pages: DocPage[] = [];
+  const problems: string[] = [];
+  for (const [i, raw] of args.pages.entries()) {
+    if (!raw || typeof raw !== "object") {
+      problems.push(`pages[${i}] 不是对象`);
+      continue;
+    }
+    const page = raw as Record<string, unknown>;
+    const id = typeof page.id === "string" ? page.id.trim() : "";
+    const title = typeof page.title === "string" ? page.title.trim() : "";
+    const body = typeof page.body === "string" ? page.body : "";
+    if (!id) {
+      problems.push(`pages[${i}] 缺少 id`);
+      continue;
+    }
+    // Same rule the endpoint enforces, checked here so the administrator reads
+    // it before approving rather than after.
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id)) {
+      problems.push(`pages[${i}].id「${id}」只能用小写字母、数字和中划线`);
+      continue;
+    }
+    if (!title) {
+      problems.push(`pages[${i}] 缺少标题`);
+      continue;
+    }
+    if (body.length > 60_000) {
+      problems.push(`pages[${i}] 正文超过 60000 字符`);
+      continue;
+    }
+    pages.push({
+      id,
+      title,
+      body,
+      ...(page.hidden === true ? { hidden: true } : {}),
+      order: typeof page.order === "number" ? page.order : i,
+    });
+  }
+  const dupes = pages.map((p) => p.id).filter((id, i, all) => all.indexOf(id) !== i);
+  for (const dupe of new Set(dupes)) problems.push(`id「${dupe}」重复了`);
+  if (problems.length) return fail(`这些页面不能用：\n- ${problems.join("\n- ")}`);
+
+  const { docPages } = await getSettings();
+  const summary =
+    typeof args.summary === "string" && args.summary.trim() ? args.summary.trim() : "未说明的变更";
+  const before = docPages ?? [];
+
+  const action = await createAssistantAction({
+    userId: ctx.user.id,
+    kind: "doc_pages.update",
+    targetId: "docPages",
+    summary,
+    args: { docPages: pages },
+    diff: renderDocPagesDiff(before, pages, summary),
+  });
+
+  return ok({
+    actionId: action.id,
+    summary,
+    removed: before.filter((b) => !pages.some((p) => p.id === b.id)).map((b) => b.id),
+    kept: before.filter((b) => pages.some((p) => p.id === b.id)).map((b) => b.id),
+    added: pages.filter((p) => !before.some((b) => b.id === p.id)).map((p) => p.id),
+  });
+}
+
+async function probeProviderHost(args: Record<string, unknown>): Promise<ToolResult> {  const providerId = z.string().min(1).safeParse(args.providerId);
   const baseUrl = z.string().min(1).safeParse(args.baseUrl);
   if (!providerId.success || !baseUrl.success) return fail("需要 providerId 和 baseUrl。");
 
@@ -1276,10 +1601,26 @@ async function listMediaProvidersTool(): Promise<ToolResult> {
     patch.modelConfigs = configs;
   }
 
+  if (args.textSpec !== undefined) {
+    // Validated here, at proposal time, rather than at apply time.
+    //
+    // The whole point of a proposal is that the administrator sees a truthful
+    // before/after before anything happens. A spec that would be rejected on
+    // apply is a spec the administrator approves, and then does not get.
+    if (args.textSpec === null) {
+      patch.textSpec = null;
+    } else {
+      const parsed = parseTextSpec(args.textSpec);
+      if (!parsed.ok) {
+        return fail(`这份协议不能用，已列出问题：\n- ${parsed.errors.join("\n- ")}`);
+      }
+      patch.textSpec = JSON.stringify(parsed.spec);
+    }
+  }
+
   if (Object.keys(patch).length === 0) {
     return fail("没有提供任何要修改的字段。");
   }
-
   const summary =
     typeof args.summary === "string" && args.summary.trim() ? args.summary.trim() : "未说明的变更";
   const diff = renderProviderDiff(provider, patch, summary);

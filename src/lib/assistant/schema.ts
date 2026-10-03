@@ -113,6 +113,10 @@ export const AssistantActionKindSchema = z.enum([
   "provider.create",
   "media_provider.update",
   "media_provider.create",
+  // The operator's own documentation chapter. A whole-list replacement like the
+  // others, and for the same reason: the diff is the only thing between the
+  // model and somebody's own writing disappearing.
+  "doc_pages.update",
 ]);
 export type AssistantActionKind = z.infer<typeof AssistantActionKindSchema>;
 
