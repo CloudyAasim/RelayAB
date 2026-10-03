@@ -35,6 +35,18 @@ export function AssistantSettingsPanel({ initial }: { initial: AssistantSettings
   const [apiKey, setApiKey] = useState("");
   const [busy, setBusy] = useState<"probe" | "save" | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  /**
+   * What the upstream last said it serves, as suggestions for the model field.
+   *
+   * The probe was already fetching these and then dropping them on the floor
+   * bar one: it set the field to the first id and kept nothing else, so a
+   * vendor with twelve models gave the operator one choice and no way to see
+   * the other eleven. The field stays a text box — it is sent as typed, with
+   * the base URL and key next to it, so an id this list does not know is still
+   * a legitimate thing to type — and the list becomes the dropdown the browser
+   * offers while you type.
+   */
+  const [knownModels, setKnownModels] = useState<string[]>([]);
 
   async function probe() {
     if (!baseUrl.trim() || !apiKey.trim()) {
@@ -61,7 +73,10 @@ export function AssistantSettingsPanel({ initial }: { initial: AssistantSettings
             ? { ok: true, text: `${t("assistant.settings.probeOk")} (${probe.models.length})` }
             : { ok: false, text: `${t("assistant.settings.probeFail")} HTTP ${probe.status}: ${probe.error ?? ""}` },
         );
-        if (probe.ok && probe.models.length > 0 && !model.trim()) setModel(probe.models[0]);
+        if (probe.ok && probe.models.length > 0) {
+          setKnownModels(probe.models);
+          if (!model.trim()) setModel(probe.models[0]);
+        }
       } else {
         setMessage({
           ok: false,
@@ -132,12 +147,29 @@ export function AssistantSettingsPanel({ initial }: { initial: AssistantSettings
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
         />
+        {/*
+          A text field with suggestions, not a select.
+
+          This value is sent as typed, alongside the base URL and key beside it,
+          to an upstream the operator chose — so an id this deployment has never
+          heard of is a legitimate thing to type, and closing the field would
+          make it unreachable. The datalist is the browser's own dropdown over
+          whatever `测试连通` last reported, which is what the probe fetched it
+          for.
+        */}
         <Input
+          id="assistant-model"
+          list="assistant-model-options"
           label={t("assistant.settings.model")}
           placeholder="model-name"
           value={model}
           onChange={(e) => setModel(e.target.value)}
         />
+        <datalist id="assistant-model-options">
+          {knownModels.map((m) => (
+            <option key={m} value={m} />
+          ))}
+        </datalist>
 
         <div className="flex flex-wrap items-center gap-2">
           <Button

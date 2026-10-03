@@ -5,9 +5,17 @@
  *
  * They were a closed `<select>`, then briefly an `<input list>` so a model the
  * catalogue does not know could be typed by hand, then a closed `<select>`
- * again. The middle version was reverted: the tester works off the list entry it
- * finds for the chosen value — its capability, its endpoint — and a typed id has
- * no entry, so there was nothing to send it to.
+ * again. The middle version was reverted **here**: the tester does not take a
+ * model id and go, it looks the chosen value up in the list it was given and
+ * uses that entry's capability and endpoint, and a typed id has no entry — so
+ * it traded a closed list for an empty one.
+ *
+ * That is a property of the tester, not of `<input list>`. The assistant's
+ * settings panel takes the other shape: its model id is sent as typed, to an
+ * upstream the operator chose, so a list it has never heard of is a legitimate
+ * value and closing the field would make it unreachable. That one keeps a text
+ * field with a datalist over whatever the probe reported — see
+ * assistant-settings-model-suggestions.test.ts.
  *
  * What the probe added is kept, because it survives a closed picker: the probe
  * can ask a vendor what it serves, and those ids now land in both lists, so a
