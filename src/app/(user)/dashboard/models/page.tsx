@@ -1,35 +1,18 @@
-/**
- * app/(user)/dashboard/models/page.tsx
- *
- * The model testing page.
- *
- * Two ways in, deliberately kept separate because their trust models differ:
- *
- *  1. **Test a model this gateway serves**, using the caller's own `sk-relay-…`
- *     key. That key stays in the browser and is sent per request, so the test
- *     exercises the same path a real client would, including the caller's own
- *     quota and model permissions.
- *  2. **Test an arbitrary model** the caller found elsewhere, by pasting a base
- *     URL and key. That key is used for one request and never stored — see
- *     `/api/models/probe`.
- *
- * The model list is rendered server-side from the provider table so the page is
- * useful on first paint and cannot be used to enumerate models the caller is
- * not entitled to (the API is the one that enforces the filter).
- */
 import { redirect } from "next/navigation";
-import { useState } from "react";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getUserById } from "@/lib/db/users";
 import { cachedBuildModelCatalog } from "@/lib/db/data-cache";
 import { getT } from "@/lib/i18n/server";
 import { SectionPageLayout } from "@/components/layouts";
-import { ModelTester } from "./ModelTester";
-import { MediaTester } from "./MediaTester";
-import { CustomModelProbe } from "./CustomModelProbe";
+import { ModelsWorkspace } from "./ModelsWorkspace";
 
-export const dynamic = "force-dynamic";
-
+/**
+ * **A server component.** It reads the session and builds the catalogue, so it
+ * must not hold React state. An earlier version collected the ids the probe
+ * lists right here; every type checked, the whole unit suite passed, and
+ * `next build` refused it — the client/server boundary is not a type rule.
+ * That state now lives in `ModelsWorkspace`, which is the client half.
+ */
 export default async function ModelsPage() {
   const sessionUser = await getCurrentUser();
   if (!sessionUser) redirect("/login");
@@ -45,33 +28,12 @@ export default async function ModelsPage() {
   const allowed = fullUser?.allowedModels ?? [];
   const visible = (id: string) => allowed.length === 0 || allowed.includes(id);
 
-  /**
-   * Models a vendor listed through the probe, for this page view only.
-   *
-   * The catalog is the two testers' default list. It is a snapshot of what was
-   * configured when the page was rendered, so a vendor added since — or one
-   * still only reachable by its own key — is not in it. The probe can list
-   * those, and this is where they become selectable. Kept in state rather than
-   * persisted: it is a lookup aid, and a list of ids nobody chose to keep
-   * should not outlive the page.
-   */
-  const [probed, setProbed] = useState<string[]>([]);
-  const onFetched = (ids: string[]) => setProbed((prev) => [...new Set([...prev, ...ids])]);
-
-  const chatModels = [
-    ...new Set([
-      ...catalog.models.filter((m) => m.kind === "chat" && visible(m.id)).map((m) => m.id),
-      ...probed,
-    ]),
-  ];
-  const mediaModels = [
-    ...catalog.models
-      .filter((m) => m.kind === "media" && visible(m.id))
-      .map((m) => ({ id: m.id, capability: m.capability ?? "", provider: m.provider })),
-    // A probed id has no capability or provider until the catalog catches up;
-    // the tester copes with that (no badge rather than a wrong one).
-    ...probed.map((id) => ({ id, capability: "", provider: "" })),
-  ];
+  const catalogChatModels = catalog.models
+    .filter((m) => m.kind === "chat" && visible(m.id))
+    .map((m) => m.id);
+  const catalogMediaModels = catalog.models
+    .filter((m) => m.kind === "media" && visible(m.id))
+    .map((m) => ({ id: m.id, capability: m.capability ?? "", provider: m.provider }));
 
   return (
     <SectionPageLayout>
@@ -81,88 +43,79 @@ export default async function ModelsPage() {
           other child — a page without this wrapper shows its title and nothing
           else. */}
       <SectionPageLayout.Content>
-        <div className="space-y-4">
-          <ModelTester
-            chatModels={chatModels}
-            labels={{
-              title: t("dashboard.models.gateway.title"),
-              desc: t("dashboard.models.gateway.desc"),
-              keyLabel: t("dashboard.models.gateway.keyLabel"),
-              keyHint: t("dashboard.models.gateway.keyHint"),
-              keyPlaceholder: t("dashboard.models.gateway.keyPlaceholder"),
-              prompt: t("dashboard.models.gateway.prompt"),
-              send: t("dashboard.models.gateway.send"),
-              stop: t("dashboard.models.gateway.stop"),
-              empty: t("dashboard.models.gateway.empty"),
-              needsKey: t("dashboard.models.gateway.needsKey"),
-              parameters: t("dashboard.models.gateway.parameters"),
-              parametersHint: t("dashboard.models.gateway.parametersHint"),
-              extraParameters: t("dashboard.models.gateway.extraParameters"),
-              extraParametersHint: t("dashboard.models.gateway.extraParametersHint"),
-              decisionAction: {
-                kept: t("dashboard.models.gateway.action.kept"),
-                dropped: t("dashboard.models.gateway.action.dropped"),
-                defaulted: t("dashboard.models.gateway.action.defaulted"),
-                forced: t("dashboard.models.gateway.action.forced"),
-                clamped: t("dashboard.models.gateway.action.clamped"),
-                renamed: t("dashboard.models.gateway.action.renamed"),
-              },
-              decidedBy: t("dashboard.models.tester.decidedBy"),
-            }}
-          />
-
-          <MediaTester
-            models={mediaModels}
-            labels={{
-              title: t("dashboard.models.media.title"),
-              desc: t("dashboard.models.media.desc"),
-              keyLabel: t("dashboard.models.media.keyLabel"),
-              keyHint: t("dashboard.models.media.keyHint"),
-              keyPlaceholder: t("dashboard.models.gateway.keyPlaceholder"),
-              model: t("dashboard.models.media.model"),
-              prompt: t("dashboard.models.media.prompt"),
-              promptPlaceholder: t("dashboard.models.media.promptPlaceholder"),
-              size: t("dashboard.models.media.size"),
-              voice: t("dashboard.models.media.voice"),
-              voiceHint: t("dashboard.models.media.voiceHint"),
-              duration: t("dashboard.models.media.duration"),
-              durationHint: t("dashboard.models.media.durationHint"),
-              ratio: t("dashboard.models.media.ratio"),
-              language: t("dashboard.models.media.language"),
-              audioFile: t("dashboard.models.media.audioFile"),
-              run: t("dashboard.models.media.run"),
-              running: t("dashboard.models.media.running"),
-              needsKey: t("dashboard.models.media.needsKey"),
-              needsPrompt: t("dashboard.models.media.needsPrompt"),
-              needsFile: t("dashboard.models.media.needsFile"),
-              imageResult: t("dashboard.models.media.imageResult"),
-              audioResult: t("dashboard.models.media.audioResult"),
-              videoResult: t("dashboard.models.media.videoResult"),
-              textResult: t("dashboard.models.media.textResult"),
-              failed: t("dashboard.models.media.failed"),
-              empty: t("dashboard.models.media.empty"),
-              unsupported: t("dashboard.models.media.unsupported"),
-            }}
-          />
-
-          <CustomModelProbe
-            labels={{
-              title: t("dashboard.models.custom.title"),
-              desc: t("dashboard.models.custom.desc"),
-              ephemeral: t("dashboard.models.custom.ephemeral"),
-              baseUrl: t("dashboard.models.custom.baseUrl"),
-              apiKey: t("dashboard.models.custom.apiKey"),
-              model: t("dashboard.models.custom.model"),
-              listModels: t("dashboard.models.custom.listModels"),
-              testChat: t("dashboard.models.custom.testChat"),
-              testing: t("dashboard.models.custom.testing"),
-              ok: t("dashboard.models.custom.ok"),
-              failed: t("dashboard.models.custom.failed"),
-              foundModels: t("dashboard.models.custom.foundModels"),
-            }}
-            onFetched={onFetched}
-          />
-        </div>
+        <ModelsWorkspace
+          catalogChatModels={catalogChatModels}
+          catalogMediaModels={catalogMediaModels}
+          gatewayLabels={{
+            title: t("dashboard.models.gateway.title"),
+            desc: t("dashboard.models.gateway.desc"),
+            keyLabel: t("dashboard.models.gateway.keyLabel"),
+            keyHint: t("dashboard.models.gateway.keyHint"),
+            keyPlaceholder: t("dashboard.models.gateway.keyPlaceholder"),
+            prompt: t("dashboard.models.gateway.prompt"),
+            send: t("dashboard.models.gateway.send"),
+            stop: t("dashboard.models.gateway.stop"),
+            empty: t("dashboard.models.gateway.empty"),
+            needsKey: t("dashboard.models.gateway.needsKey"),
+            parameters: t("dashboard.models.gateway.parameters"),
+            parametersHint: t("dashboard.models.gateway.parametersHint"),
+            extraParameters: t("dashboard.models.gateway.extraParameters"),
+            extraParametersHint: t("dashboard.models.gateway.extraParametersHint"),
+            decisionAction: {
+              kept: t("dashboard.models.gateway.action.kept"),
+              dropped: t("dashboard.models.gateway.action.dropped"),
+              defaulted: t("dashboard.models.gateway.action.defaulted"),
+              forced: t("dashboard.models.gateway.action.forced"),
+              clamped: t("dashboard.models.gateway.action.clamped"),
+              renamed: t("dashboard.models.gateway.action.renamed"),
+            },
+            decidedBy: t("dashboard.models.tester.decidedBy"),
+          }}
+          mediaLabels={{
+            title: t("dashboard.models.media.title"),
+            desc: t("dashboard.models.media.desc"),
+            keyLabel: t("dashboard.models.media.keyLabel"),
+            keyHint: t("dashboard.models.media.keyHint"),
+            keyPlaceholder: t("dashboard.models.gateway.keyPlaceholder"),
+            model: t("dashboard.models.media.model"),
+            prompt: t("dashboard.models.media.prompt"),
+            promptPlaceholder: t("dashboard.models.media.promptPlaceholder"),
+            size: t("dashboard.models.media.size"),
+            voice: t("dashboard.models.media.voice"),
+            voiceHint: t("dashboard.models.media.voiceHint"),
+            duration: t("dashboard.models.media.duration"),
+            durationHint: t("dashboard.models.media.durationHint"),
+            ratio: t("dashboard.models.media.ratio"),
+            language: t("dashboard.models.media.language"),
+            audioFile: t("dashboard.models.media.audioFile"),
+            run: t("dashboard.models.media.run"),
+            running: t("dashboard.models.media.running"),
+            needsKey: t("dashboard.models.media.needsKey"),
+            needsPrompt: t("dashboard.models.media.needsPrompt"),
+            needsFile: t("dashboard.models.media.needsFile"),
+            imageResult: t("dashboard.models.media.imageResult"),
+            audioResult: t("dashboard.models.media.audioResult"),
+            videoResult: t("dashboard.models.media.videoResult"),
+            textResult: t("dashboard.models.media.textResult"),
+            failed: t("dashboard.models.media.failed"),
+            empty: t("dashboard.models.media.empty"),
+            unsupported: t("dashboard.models.media.unsupported"),
+          }}
+          probeLabels={{
+            title: t("dashboard.models.custom.title"),
+            desc: t("dashboard.models.custom.desc"),
+            ephemeral: t("dashboard.models.custom.ephemeral"),
+            baseUrl: t("dashboard.models.custom.baseUrl"),
+            apiKey: t("dashboard.models.custom.apiKey"),
+            model: t("dashboard.models.custom.model"),
+            listModels: t("dashboard.models.custom.listModels"),
+            testChat: t("dashboard.models.custom.testChat"),
+            testing: t("dashboard.models.custom.testing"),
+            ok: t("dashboard.models.custom.ok"),
+            failed: t("dashboard.models.custom.failed"),
+            foundModels: t("dashboard.models.custom.foundModels"),
+          }}
+        />
       </SectionPageLayout.Content>
     </SectionPageLayout>
   );

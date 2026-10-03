@@ -27,6 +27,7 @@ const CHAT = read("src", "app", "(user)", "dashboard", "models", "ModelTester.ts
 const MEDIA = read("src", "app", "(user)", "dashboard", "models", "MediaTester.tsx");
 const PROBE = read("src", "app", "(user)", "dashboard", "models", "CustomModelProbe.tsx");
 const PAGE = read("src", "app", "(user)", "dashboard", "models", "page.tsx");
+const WORKSPACE = read("src", "app", "(user)", "dashboard", "models", "ModelsWorkspace.tsx");
 
 const TESTERS = [
   ["ModelTester", CHAT],
@@ -53,17 +54,22 @@ describe("the probe's models reach the pickers", () => {
     expect(PROBE).toMatch(/onFetched\?\.\(json\.data\.models\)/);
   });
 
-  it("the page merges them into both lists, without losing the catalog", () => {
-    expect(PAGE).toMatch(/const \[probed, setProbed\] = useState<string\[\]>\(\[\]\)/);
-    expect(PAGE).toMatch(/\.\.\.catalog\.models\.filter\(\(m\) => m\.kind === "chat"/);
-    expect(PAGE).toMatch(/\.\.\.probed,/);
-    expect(PAGE).toMatch(/onFetched=\{onFetched\}/);
+  it("the workspace merges them into both lists, without losing the catalogue", () => {
+    expect(WORKSPACE).toMatch(/const \[probed, setProbed\] = useState<string\[\]>\(\[\]\)/);
+    expect(WORKSPACE).toMatch(/\[\.\.\.new Set\(\[\.\.\.catalogChatModels, \.\.\.probed\]\)\]/);
+    expect(WORKSPACE).toMatch(/onFetched=\{onFetched\}/);
+  });
+
+  it("the page passes the catalogue down, unprobed", () => {
+    // The page is a server component; it can only supply the snapshot.
+    expect(PAGE).toMatch(/catalogChatModels=\{catalogChatModels\}/);
+    expect(PAGE).toMatch(/catalogMediaModels=\{catalogMediaModels\}/);
   });
 
   it("a probed id carries no capability rather than a wrong one", () => {
-    // The catalog does not know it yet, so there is nothing honest to label it
-    // with. An empty capability renders as no badge instead of a wrong badge.
-    expect(PAGE).toMatch(/probed\.map\(\(id\) => \(\{ id, capability: "", provider: "" \}\)\)/);
+    // The catalogue does not know it yet, so there is nothing honest to label
+    // it with. An empty capability renders as no badge instead of a wrong badge.
+    expect(WORKSPACE).toMatch(/probed\.map\(\(id\) => \(\{ id, capability: "", provider: "" \}\)\)/);
   });
 });
 
@@ -73,6 +79,35 @@ describe("the media pickers do not regress on the probe shape", () => {
     // below the field from the model list it was given.
     expect(MEDIA).toMatch(/CAP_LABEL\[m\.capability\]/);
     expect(MEDIA).toMatch(/current\.capability/);
+  });
+});
+
+describe("the page holding the shared state is a client component", () => {
+  it("models/page.tsx uses no hooks and no client directive", () => {
+    /**
+     * Found by `next build`, not by anything else.
+     *
+     * The probe's result has to reach the testers, so something has to hold
+     * state, so `useState` went into `models/page.tsx` — which is a server
+     * component. Every type checked. The whole unit suite passed. The build
+     * refused it: "You're importing a component that needs `useState`." The
+     * client/server boundary is not a type rule and `tsc` will never see it.
+     *
+     * So the state is asserted to live in the client workspace instead, and
+     * the page is asserted to be free of hooks. The build remains the real
+     * check; this is what makes the failure cheap next time.
+     */
+    expect(PAGE).not.toMatch(/^\s*"use client"/m);
+    expect(PAGE).not.toMatch(/\buse(State|Effect|Memo|Callback|Ref|Reducer|Transition)\b/);
+    expect(PAGE).toMatch(/<ModelsWorkspace/);
+  });
+
+  it("ModelsWorkspace is the client boundary, and it owns the merge", () => {
+    expect(WORKSPACE).toMatch(/^\s*"use client"/m);
+    expect(WORKSPACE).toMatch(/const \[probed, setProbed\] = useState<string\[\]>\(\[\]\)/);
+    expect(WORKSPACE).toMatch(/\.\.\.catalogChatModels, \.\.\.probed/);
+    expect(WORKSPACE).toMatch(/probed\.map\(\(id\) => \(\{ id, capability: "", provider: "" \}\)\)/);
+    expect(WORKSPACE).toMatch(/onFetched=\{onFetched\}/);
   });
 });
 
