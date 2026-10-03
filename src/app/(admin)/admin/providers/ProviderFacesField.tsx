@@ -90,6 +90,9 @@ export function ProviderFacesField({
           </p>
           {openaiOn && (
             <div className="mt-2 pl-6">
+              <p className="mb-1 text-xs font-medium text-foreground">
+                {t("admin.providers.format.label")}
+              </p>
               <select
                 value={openaiFormat}
                 onChange={(e) =>
@@ -165,8 +168,14 @@ export function ProviderFacesField({
 }
 
 /**
- * Checklist shown while the Anthropic face is on. The usual mistake is pointing
- * it at the vendor's OpenAI base URL, which makes `<base>/v1/messages` 404.
+ * Where the Anthropic face actually sends requests.
+ *
+ * The usual mistake is pointing the base URL at the vendor's OpenAI one, which
+ * makes `<base>/v1/messages` 404. That advice now sits in the field's own hint,
+ * where the field is; what is left here is the one fact a hint cannot state
+ * about itself — where a request to this face ends up. The two items that used
+ * to be here repeated the section hint and the field hint verbatim, three lines
+ * apart, which made the box read as more instructions than it was.
  */
 export function AnthropicFaceTip() {
   const t = useT();
@@ -177,11 +186,9 @@ export function AnthropicFaceTip() {
         <AlertCircle className="h-3.5 w-3.5 shrink-0" />
         {t("admin.providers.faces.anthropicTip.title")}
       </p>
-      <ul className="mt-1.5 list-disc space-y-1 pl-4 text-muted-foreground">
-        <li>{t("admin.providers.faces.anthropicTip.baseUrl")}</li>
-        <li>{t("admin.providers.faces.anthropicTip.endpoint")}</li>
-        <li>{t("admin.providers.faces.anthropicTip.mapping")}</li>
-      </ul>
+      <p className="mt-1 pl-4 text-muted-foreground">
+        {t("admin.providers.faces.anthropicTip.endpoint")}
+      </p>
     </div>
   );
 }

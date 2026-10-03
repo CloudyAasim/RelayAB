@@ -17,8 +17,6 @@
  */
 import { describe, it, expect, vi } from "vitest";
 
-type Config = { experimental: { cpus?: unknown } };
-
 async function loadCpus(value: string | undefined): Promise<unknown> {
   const previous = process.env.NEXT_BUILD_CPUS;
   if (value === undefined) {
@@ -28,8 +26,8 @@ async function loadCpus(value: string | undefined): Promise<unknown> {
   }
   try {
     vi.resetModules();
-    const mod = (await import("../../next.config.mjs")) as { default: Config };
-    return mod.default.experimental.cpus;
+    const mod = await import("../../next.config.mjs");
+    return mod.default.experimental?.cpus;
   } finally {
     if (previous === undefined) {
       delete process.env.NEXT_BUILD_CPUS;
