@@ -138,6 +138,7 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
     openaiEnabled: input.openaiEnabled ?? faceDefaults.openaiEnabled,
     anthropicEnabled: input.anthropicEnabled ?? faceDefaults.anthropicEnabled,
     anthropicBaseUrl: input.anthropicBaseUrl ?? null,
+    textSpec: input.textSpec ?? null,
     createdAt: now,
     updatedAt: now,
   });
@@ -150,9 +151,9 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
     `INSERT INTO providers
        (id, name, kind, base_url, encrypted_api_key, model_mapping,
         model_configs, enabled, priority, headers, upstream_format,
-        openai_enabled, anthropic_enabled, anthropic_base_url,
+        openai_enabled, anthropic_enabled, anthropic_base_url, text_spec,
         created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       provider.id,
       provider.name,
@@ -172,6 +173,7 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
       toDbBool(provider.openaiEnabled),
       toDbBool(provider.anthropicEnabled),
       provider.anthropicBaseUrl ?? null,
+      provider.textSpec ?? null,
       provider.createdAt,
       provider.updatedAt,
     ],

@@ -106,9 +106,23 @@ describe("the endpoint refuses an invalid spec on both verbs", () => {
   });
 
   it("and a create actually stores it", () => {
-    // The bug this file's neighbour was written for: the schema accepted it, the
-    // merge did not, and a save returned 200 with nothing in the column.
+    // The bug this file's neighbour was written for, twice. The schema
+    // accepted it, the route passed it on, and `createProvider` had no column
+    // for it — so a create answered 200 and the protocol was not there. The
+    // first fix patched `updateProvider` only; this asserts the *other* verb.
     expect(API_POST).toMatch(/textSpec: parsed\.data\.textSpec \?\? null/);
+
+    const db = read("src", "lib", "db", "providers.ts");
+    expect(db).toMatch(/textSpec: input\.textSpec \?\? null,/);
+    // The column, in the statement — a value in the object that no INSERT names
+    // is the exact shape of the original defect.
+    expect(db).toMatch(/anthropic_base_url, text_spec,\n\s+created_at, updated_at\)/);
+    expect(db).toMatch(/provider\.textSpec \?\? null,\n\s+provider\.createdAt,/);
+  });
+
+  it("and a patch still writes the column", () => {
+    const db = read("src", "lib", "db", "providers.ts");
+    expect(db).toMatch(/anthropic_enabled = \?, anthropic_base_url = \?, text_spec = \?/);
   });
 });
 
