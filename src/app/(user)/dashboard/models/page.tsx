@@ -84,6 +84,7 @@ export default async function ModelsPage() {
                 clamped: t("dashboard.models.gateway.action.clamped"),
                 renamed: t("dashboard.models.gateway.action.renamed"),
               },
+              decidedBy: t("dashboard.models.tester.decidedBy"),
             }}
           />
 

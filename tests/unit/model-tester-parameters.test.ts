@@ -47,9 +47,24 @@ describe("the tester can send parameters", () => {
 describe("and it reports what the protocol did to them", () => {
   it("from the same helper the proxy uses, so the two cannot disagree", () => {
     expect(ROUTE).toMatch(/import \{ applyParameterPolicy \} from "@\/lib\/protocol\/parameter-policy"/);
-    expect(ROUTE).toMatch(/import \{ readTextSpec \} from "@\/lib\/protocol\/text-spec"/);
+    // The same lookup the proxy does, *for the same surface*. The test goes out
+    // through Chat Completions, so it is the `openai-chat` rule and no other:
+    // `readTextSpec` folded a list down to whichever entry came first, which on
+    // a provider serving both surfaces is the wrong one — the tester reported
+    // drops and clamps that had not happened.
+    expect(ROUTE).toMatch(
+      /import \{ readTextSpecs, specForSurface \} from "@\/lib\/protocol\/text-specs"/,
+    );
+    expect(ROUTE).toMatch(/specForSurface\(readTextSpecs\(provider\), "openai-chat"\)/);
     // Not a re-implementation: the answer must come from the real thing.
     expect(ROUTE).not.toMatch(/function .*[Pp]olicy\s*\(/);
+  });
+
+  it("and says which interface's rule it is reporting", () => {
+    // A provider carries one rule per interface. Without the label, the lines
+    // in the panel belong to nobody and a tester cannot act on them.
+    expect(ROUTE).toMatch(/governedBy/);
+    expect(ROUTE).toMatch(/provider\.openaiEnabled === false/);
   });
 
   it("looked up on the same provider the request will be routed to", () => {

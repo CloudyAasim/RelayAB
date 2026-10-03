@@ -54,7 +54,11 @@ export function AdminDocsContent({ section, t }: { section: AdminDocId; t: TFn }
         <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
           <li>{t("admin.docs.provider.kind")}</li>
           <li>{t("admin.docs.provider.baseUrl")}</li>
+          <li>{t("admin.docs.provider.headers")}</li>
           <li>{t("admin.docs.provider.format")}</li>
+          <li>{t("admin.docs.provider.formatTrap")}</li>
+          <li>{t("admin.docs.provider.modes")}</li>
+          <li>{t("admin.docs.provider.specs")}</li>
         </ul>
       </Card>
     );

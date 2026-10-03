@@ -38,6 +38,8 @@ interface Labels {
   extraParameters: string;
   extraParametersHint: string;
   decisionAction: Record<string, string>;
+  /** Names the interface whose rule produced the decisions below it. */
+  decidedBy: string;
 }
 
 interface Props {
@@ -59,6 +61,7 @@ export function ModelTester({ chatModels, labels }: Props) {
   const [extraJson, setExtraJson] = useState("");
   const [extraError, setExtraError] = useState<string | null>(null);
   const [decisions, setDecisions] = useState<Array<{ name: string; action: string; note?: string }>>([]);
+const [governedBy, setGovernedBy] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const setParam = (key: string, value: string) =>
@@ -153,6 +156,7 @@ export function ModelTester({ chatModels, labels }: Props) {
             latencyMs?: number;
             totalTokens?: number | null;
             parameterDecisions?: Array<{ name: string; action: string; note?: string }>;
+            governedBy?: string | null;
           };
           error?: { message?: string };
         } | null;
@@ -163,6 +167,10 @@ export function ModelTester({ chatModels, labels }: Props) {
         setAnswer(json.data?.answer ?? "");
         setLatency(json.data?.latencyMs ?? Date.now() - started);
         setDecisions(json.data?.parameterDecisions ?? []);
+        // Which interface's rule explained the request. A provider carries one
+        // rule per interface, and the test goes out through Chat Completions —
+        // without this the panel cannot say which rule it is reporting.
+        setGovernedBy(json.data?.governedBy ?? null);
         return;
       }
 
@@ -341,6 +349,14 @@ export function ModelTester({ chatModels, labels }: Props) {
         */}
         {decisions.length > 0 && (
           <ul className="space-y-0.5 rounded-md bg-muted/50 p-2 text-xs text-muted-foreground">
+            {/* Which interface's rule did this. A provider carries one per
+                interface and the test goes out through Chat Completions, so
+                without the label these lines belong to nobody. */}
+            {governedBy && (
+              <li className="text-[10px] opacity-80">
+                {labels.decidedBy} <code className="text-foreground">{governedBy}</code>
+              </li>
+            )}
             {decisions.map((d) => (
               <li key={d.name}>
                 <code className="text-foreground">{d.name}</code> · {labels.decisionAction[d.action] ?? d.action}

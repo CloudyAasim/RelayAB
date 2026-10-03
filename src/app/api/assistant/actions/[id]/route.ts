@@ -85,14 +85,19 @@ const ProviderArgsSchema = z
     modelMapping: z.record(z.string(), z.string()).optional(),
     modelConfigs: z.record(z.string(), ModelConfigSchema).optional(),
     /**
-     * The provider's protocol document, as a string.
+     * The provider's protocol documents, one per compatibility interface.
      *
-     * A string rather than an object because that is what the column holds, and
-     * re-parsing on write is one line. `null` clears it, which puts the provider
-     * back to forwarding the client's request as sent — so the tool can also
-     * propose undoing a protocol without needing a separate verb.
+     * **A list, merged by `protocol`** — the tool sends the entries it wants to
+     * change and the ones it omits are kept, so adding a rule for one interface
+     * does not mean resending the other two in full.
+     *
+     * This was `textSpec`, a single string, and it did not work: the schema
+     * accepted the key, `updateProvider` read `patch.textSpecs` (plural), so the
+     * proposal was approved, the diff showed it, and nothing was written. A
+     * proposal that is silently discarded is worse than a rejected one — it
+     * spends the administrator's approval on nothing.
      */
-    textSpec: z.string().max(200_000).nullable().optional(),
+    textSpecs: z.array(z.string().max(200_000)).nullable().optional(),
   })
   .strict();
 
@@ -248,14 +253,20 @@ export async function POST(
   try {
     if (claimed.kind === "provider.update") {
       if (!claimed.targetId) throw new Error("变更缺少目标服务商 id");
-      const patch = ProviderArgsSchema.parse(args);
-      const updated = await updateProvider(claimed.targetId, patch);
+      const { textSpecs, ...rest } = ProviderArgsSchema.parse(args);
+      // `null` on the protocol list means "no protocols at all" — the same
+      // thing the editor sends as `[]`. Normalised here so the database layer
+      // keeps one shape.
+      const updated = await updateProvider(claimed.targetId, {
+        ...rest,
+        ...(textSpecs !== undefined ? { textSpecs: textSpecs ?? [] } : {}),
+      });
       if (!updated) throw new Error("找不到该服务商，可能已被删除");
       await setAssistantActionStatus(
         me.id,
         id,
         "applied",
-        `已更新服务商 ${updated.name}（${Object.keys(patch).join(", ") || "无字段"}）`,
+        `已更新服务商 ${updated.name}（${Object.keys(args as object).join(", ") || "无字段"}）`,
       );
       return NextResponse.json({ ok: true, data: { status: "applied", providerId: updated.id } });
     }

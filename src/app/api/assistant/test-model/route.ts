@@ -20,7 +20,7 @@ import { consumeAssistantTurn } from "@/lib/assistant/rate-limit";
 import { proxyChatCompletion } from "@/lib/proxy/openai";
 import { findProvidersForModel } from "@/lib/db/providers";
 import { applyParameterPolicy } from "@/lib/protocol/parameter-policy";
-import { readTextSpec } from "@/lib/protocol/text-spec";
+import { readTextSpecs, specForSurface } from "@/lib/protocol/text-specs";
 
 export const dynamic = "force-dynamic";
 
@@ -46,22 +46,50 @@ const BodySchema = z.object({
  * rather than leaving the operator to wonder why the answer is wrong. It is
  * computed from the same helper the proxy uses, so it cannot disagree with it.
  */
+/**
+ * Which rule governs this test, and what it did to the parameters.
+ *
+ * The test goes out through `proxyChatCompletion`, so the surface is
+ * `openai-chat` and only that surface's rule applies. This used to call
+ * `readTextSpec`, the single-document reader, which folds a list down to one
+ * entry — whichever came first. On a provider configured for both Chat
+ * Completions and Responses, the tester explained the answer with the *other*
+ * interface's rule, reporting drops and clamps that had not happened.
+ */
 async function explainParameters(
   model: string,
   parameters: Record<string, unknown>,
   maxTokens: number,
-): Promise<{ applied: Record<string, unknown>; decisions: Array<{ name: string; action: string; note?: string }> }> {
+): Promise<{
+  applied: Record<string, unknown>;
+  decisions: Array<{ name: string; action: string; note?: string }>;
+  governedBy: string | null;
+}> {
   const providers = await findProvidersForModel(model);
   const provider = providers[0];
-  if (!provider) return { applied: { ...parameters, max_tokens: maxTokens }, decisions: [] };
+  if (!provider) {
+    return { applied: { ...parameters, max_tokens: maxTokens }, decisions: [], governedBy: null };
+  }
 
+  // The face decides whether the request is answered at all; say so rather than
+  // showing a rule that will never be consulted.
+  if (provider.openaiEnabled === false) {
+    return {
+      applied: { ...parameters, max_tokens: maxTokens },
+      decisions: [],
+      governedBy: null,
+    };
+  }
+
+  const spec = specForSurface(readTextSpecs(provider), "openai-chat");
   const { body, decisions } = applyParameterPolicy(
     { ...parameters, max_tokens: maxTokens },
-    readTextSpec(provider) ?? undefined,
+    spec ?? undefined,
   );
   return {
     applied: body,
     decisions: decisions.map((d) => ({ name: d.name, action: d.action, note: d.note })),
+    governedBy: spec ? spec.protocol : null,
   };
 }
 
@@ -188,9 +216,12 @@ export async function POST(req: Request): Promise<Response> {
       answer: (data.choices?.[0]?.message?.content ?? "").slice(0, 4000),
       // The parameters, before and after, so a tester can see the difference
       // the operator's protocol made rather than inferring it from the answer.
+      // `governedBy` names the rule that decided: a provider can carry one per
+      // interface, and without this the panel cannot say which one it is showing.
       parametersAsked: asked,
       parametersSent: explained.applied,
       parameterDecisions: explained.decisions,
+      governedBy: explained.governedBy,
     },
   });
 }

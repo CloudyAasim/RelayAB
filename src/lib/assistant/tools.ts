@@ -37,7 +37,12 @@ import { decryptSecret } from "../crypto/secrets";
 import { renderProviderDiff, renderMediaDiff, renderDocPagesDiff } from "./diff";
 import { getSettings } from "../db/settings";
 import { parseTextSpec, readTextSpec } from "../protocol/text-spec";
-import { TEXT_PROTOCOL_PRESETS, TEXT_PROTOCOL_LABELS } from "../protocol/text-protocols";
+import { validateTextSpecs, SURFACES, faceOf } from "../protocol/text-specs";
+import {
+  TEXT_PROTOCOL_PRESETS,
+  TEXT_PROTOCOL_LABELS,
+  CONFIGURABLE_PROTOCOLS,
+} from "../protocol/text-protocols";
 import { DEPLOYMENT_NOTES } from "./deployment-notes";
 import { fetchPage, WebFetchError } from "./web-fetch";
 import { createDocReader } from "./docs-reader";
@@ -413,7 +418,9 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
     function: {
       name: "propose_provider_update",
       description:
-        "提出一次聊天服务商配置变更。这不会立刻生效 —— 它生成一份 before/after 对比，等管理员在界面上确认后才执行。baseUrl、优先级、模型映射、Anthropic 面、启用开关都可以改。只能改已存在的服务商，不能新建。",
+        "提出一次聊天服务商配置变更。这不会立刻生效 —— 它生成一份 before/after 对比，等管理员在界面上确认后才执行。" +
+        "可改：API 地址、上游格式（responses/chat）、请求头、优先级、模型映射、两个协议面、启用开关、每个兼容接口的参数规则（textSpecs）。" +
+        "只能改已存在的服务商，不能新建。",
       parameters: {
         type: "object",
         properties: {
@@ -434,23 +441,42 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
               "客户端模型名 → 上游模型名 的【完整】替换表。注意：整份替换，不是增量。想只加一个映射就必须先用 list_providers 拿到现状、合并、再把整张表传回来 —— 只传新增的那一条会把其余所有模型删掉。",
             additionalProperties: { type: "string" },
           },
-          textSpec: {
+          textSpecs: {
+            type: "array",
+            description:
+              "上游协议文档列表，【按 protocol 合并】：同名的替换、没提到的保留、" +
+              "传 null 清空全部。所以给某一个接口加规则不用重发另外两个。\n" +
+              "不确定该选哪个 protocol，先调 list_text_protocols，不要凭印象写。\n" +
+              "只有厂商确实和 OpenAI 兼容接口不一样时才需要写；'大多数厂商什么都不用配'。\n" +
+              "protocol 只能取那三个接口之一，而且对应协议面必须是开的，否则规则不会生效。",
+            items: {
+              type: "object",
+              properties: {
+                specVersion: { type: "integer" },
+                protocol: { type: "string" },
+                parameters: { type: "object" },
+                request: { type: "object" },
+                response: { type: "object" },
+                errors: { type: "array", items: { type: "object" } },
+                limits: { type: "object" },
+              },
+              required: ["specVersion", "protocol"],
+              additionalProperties: true,
+            },
+          },
+          headers: {
             type: "object",
             description:
-              "上游协议文档：说明这个服务商说什么协议、每个请求参数怎么处理。" +
-              "不确定就先调 list_text_protocols 看四个预设。" +
-              "只有厂商确实和 OpenAI 兼容接口不一样时才需要写；'大多数厂商什么都不用配'。",
-            properties: {
-              specVersion: { type: "integer" },
-              protocol: { type: "string" },
-              parameters: { type: "object" },
-              request: { type: "object" },
-              response: { type: "object" },
-              errors: { type: "array", items: { type: "object" } },
-              limits: { type: "object" },
-            },
-            required: ["specVersion", "protocol"],
-            additionalProperties: true,
+              "附在上游请求上的固定请求头，整份替换，传 null 清空。" +
+              "例如 {\"api-version\": \"2024-08-01-preview\"}。" +
+              "只有 Azure 一类要求固定头的厂商才需要。",
+            additionalProperties: { type: "string" },
+          },
+          upstreamFormat: {
+            type: "string",
+            description:
+              "OpenAI 侧上游说的是哪种协议：responses（原生，/v1/responses 原样透传）或 chat。" +
+              "注意 chat→responses 没有请求转换：客户端调 /v1/chat/completions 时永远发往 <API 地址>/chat/completions。",
           },
         },
         required: ["providerId", "summary"],
@@ -463,7 +489,7 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
     function: {
       name: "list_text_protocols",
       description:
-        "列出四个内置的文本协议预设和参数策略的六种模式，配使用建议。\n" +
+        "列出可配置的文本协议预设和参数策略的六种模式，配使用建议。\n" +
         "配置服务商前如果不确定该选哪个协议、或者不知道某个参数该 passthrough 还是 clamp，先调这个 —— 不要凭印象写 protocol。\n" +
         "绝大多数 OpenAI 兼容中转选 openai-chat 就够了，什么都不用改。",
       parameters: { type: "object", properties: {}, additionalProperties: false },
@@ -1273,35 +1299,57 @@ async function listProvidersTool(): Promise<ToolResult> {
         // Never the key itself: the model has no need for it and the transcript
         // is persisted and re-sent on every subsequent turn.
         headers: p.headers,
-        // The protocol document, if one is set. The model has to see what is
-        // there before it can change it, and "it did not tell me" is the shape
-        // of every conversation where an assistant quietly re-derives a
-        // provider's configuration and gets it wrong.
-        textSpec: readTextSpec(p),
+        // The protocol documents, one per interface. The model has to see what
+        // is there before it can change it, and "it did not tell me" is the
+        // shape of every conversation where an assistant quietly re-derives a
+        // provider's configuration and gets it wrong. Shown as the list it is:
+        // a singular `textSpec` hid two of the three possible entries.
+        textSpecs: p.textSpecs ?? [],
       };
     }),
   );
 }
 
 /**
- * The four protocols and the six parameter modes, with the advice that decides
- * between them.
+ * The configurable protocols and the six parameter modes, with the advice that
+ * decides between them.
  *
  * Returned rather than described in a tool description because the model has to
  * choose, and a choice made from a tool description is a choice made from
  * whichever example happened to be nearest. The presets are the whole answer to
  * "how do I configure a vendor" for the ninety percent of vendors that need
  * nothing.
+ *
+ * **`CONFIGURABLE_PROTOCOLS`, not every preset.** This used to walk
+ * `TEXT_PROTOCOL_LABELS`, which still carries `gemini-generate` — the gateway
+ * has no `v1beta/models/*:generateContent` route, so a rule for it would be
+ * saved and never selected. Offering it here is the same lie the editor stopped
+ * telling, told to the one caller with no UI to notice.
  */
 function listTextProtocolsTool(): ToolResult {
   return ok({
     defaultIfUnset: "不配协议时，客户端的请求体原样送到上游。这是中转站该有的默认。",
-    protocols: Object.entries(TEXT_PROTOCOL_LABELS).map(([protocol, label]) => ({
-      protocol,
-      name: label.zh,
-      whenToUse: label.hint,
-      preset: TEXT_PROTOCOL_PRESETS[protocol as keyof typeof TEXT_PROTOCOL_PRESETS],
-    })),
+    protocols: CONFIGURABLE_PROTOCOLS.map((protocol) => {
+      const surface = SURFACES.find((s) => s.id === protocol);
+      return {
+        protocol,
+        name: TEXT_PROTOCOL_LABELS[protocol].zh,
+        // Which client endpoint this rule governs, and which toggle has to be on
+        // for it to ever run. Without both, the model writes a rule for an
+        // interface nothing calls.
+        clientPath: surface?.clientPath ?? null,
+        requiresFace: surface?.face ?? null,
+        whenToUse: TEXT_PROTOCOL_LABELS[protocol].hint,
+        preset: TEXT_PROTOCOL_PRESETS[protocol],
+      };
+    }),
+    faces: {
+      openai: "openaiEnabled：决定这条服务商是否响应 /v1/chat/completions 与 /v1/responses",
+      anthropic: "anthropicEnabled：决定这条服务商是否响应 /v1/messages 与 /anthropic/v1/messages",
+      note:
+        "给某个接口写规则之前，它所属的协议面必须是开的，否则规则会保存但不会有请求走到它。" +
+        "（编辑器里关掉的面不会出现在添加按钮中。）",
+    },
     parameterModes: {
       passthrough: "默认。没列出的参数一律走这个 —— 转发客户端传的值。",
       drop: "客户端传了也不送。用于上游会 400 的参数。",
@@ -1567,6 +1615,42 @@ async function listMediaProvidersTool(): Promise<ToolResult> {
   if (typeof args.priority === "number" && Number.isInteger(args.priority)) {
     patch.priority = args.priority;
   }
+  if (typeof args.upstreamFormat === "string") {
+    if (args.upstreamFormat !== "chat" && args.upstreamFormat !== "responses") {
+      return fail('upstreamFormat 只能是 "chat" 或 "responses"。');
+    }
+    // The trap worth naming: `responses` means /v1/responses reaches the vendor
+    // untouched, but a /v1/chat/completions request still goes to
+    // `<base>/chat/completions` — there is no chat-to-responses conversion. A
+    // vendor that only serves /v1/responses will 404 a chat client no matter
+    // what this is set to, so the proposal says so instead of letting the
+    // administrator find out in production.
+    if (args.upstreamFormat === "responses" && (patch.openaiEnabled ?? provider.openaiEnabled ?? true)) {
+      return ok({
+        status: "needs_attention",
+        message:
+          "上游格式设为 responses 后，客户端调 /v1/responses 时会原样透传；" +
+          "但客户端调 /v1/chat/completions 时仍然发往 <API 地址>/chat/completions，" +
+          "网关没有 chat→responses 的转换。该厂商如果不提供这个端点，Chat 客户端会拿到 404。" +
+          "确认它提供，再把这项一起提交。",
+        patch: { upstreamFormat: args.upstreamFormat },
+      });
+    }
+    patch.upstreamFormat = args.upstreamFormat;
+  }
+  if (args.headers !== undefined) {
+    if (args.headers === null) {
+      patch.headers = {};
+    } else if (typeof args.headers === "object") {
+      const headers: Record<string, string> = {};
+      for (const [k, v] of Object.entries(args.headers as Record<string, unknown>)) {
+        if (typeof v === "string" && k.trim()) headers[k.trim()] = v;
+      }
+      patch.headers = headers;
+    } else {
+      return fail("headers 必须是一个字符串键值对对象，例如 {\"api-version\": \"2024-08-01-preview\"}。");
+    }
+  }
   if (args.modelMapping && typeof args.modelMapping === "object") {
     const mapping: Record<string, string> = {};
     for (const [k, v] of Object.entries(args.modelMapping as Record<string, unknown>)) {
@@ -1601,20 +1685,82 @@ async function listMediaProvidersTool(): Promise<ToolResult> {
     patch.modelConfigs = configs;
   }
 
-  if (args.textSpec !== undefined) {
+  if (args.textSpecs !== undefined) {
     // Validated here, at proposal time, rather than at apply time.
     //
     // The whole point of a proposal is that the administrator sees a truthful
     // before/after before anything happens. A spec that would be rejected on
     // apply is a spec the administrator approves, and then does not get.
-    if (args.textSpec === null) {
-      patch.textSpec = null;
+    if (args.textSpecs === null) {
+      patch.textSpecs = [];
+    } else if (!Array.isArray(args.textSpecs)) {
+      return fail("textSpecs 必须是数组，每一项是一份协议文档。");
     } else {
-      const parsed = parseTextSpec(args.textSpec);
-      if (!parsed.ok) {
-        return fail(`这份协议不能用，已列出问题：\n- ${parsed.errors.join("\n- ")}`);
+      // Merged by `protocol` rather than replaced: a provider can carry up to
+      // three, one per interface, and asking the model to resend all of them to
+      // change one is the same trap `modelMapping` warns about above.
+      //
+      // Read from the raw column rather than through `readTextSpecs`, which
+      // returns the parsed spec: re-serialising would rewrite stored bytes and
+      // lose anything the parser normalised away.
+      const byProtocol = new Map<string, string>();
+      for (const raw of provider.textSpecs ?? []) {
+        try {
+          const protocol = (JSON.parse(raw) as { protocol?: string }).protocol;
+          if (typeof protocol === "string") byProtocol.set(protocol, raw);
+        } catch {
+          // A stored entry that no longer parses is replaced by whatever the
+          // model sends for that interface, or left alone if it sends none.
+        }
       }
-      patch.textSpec = JSON.stringify(parsed.spec);
+
+      for (const entry of args.textSpecs as unknown[]) {
+        const parsed = parseTextSpec(entry);
+        if (!parsed.ok) {
+          return fail(`这份协议不能用，已列出问题：\n- ${parsed.errors.join("\n- ")}`);
+        }
+        byProtocol.set(parsed.spec.protocol, JSON.stringify(parsed.spec));
+      }
+
+      const list = [...byProtocol.values()];
+      const check = validateTextSpecs(list);
+      if (!check.ok) {
+        return fail(`这组协议不能同时生效：\n- ${check.errors.join("\n- ")}`);
+      }
+
+      // A rule for an interface nothing calls is saved, looks configured, and
+      // never runs. The editor hides the add-button for it; the assistant has to
+      // say so out loud, because there is no UI to click here.
+      //
+      // Read the faces off the *merged* result, not the stored row: a proposal
+      // that turns a face off and adds a rule for it in the same breath is
+      // exactly the case where the stored value is the wrong one to check.
+      const openaiOn =
+        typeof patch.openaiEnabled === "boolean" ? patch.openaiEnabled : (provider.openaiEnabled ?? true);
+      const anthropicOn =
+        typeof patch.anthropicEnabled === "boolean"
+          ? patch.anthropicEnabled
+          : (provider.anthropicEnabled ?? false);
+      const faces: Record<string, boolean> = {
+        "openai-chat": openaiOn,
+        "openai-responses": openaiOn,
+        "anthropic-messages": anthropicOn,
+      };
+      const offFace = list
+        .map((raw) => (JSON.parse(raw) as { protocol: string }).protocol)
+        .filter((p) => faces[p] === false);
+
+      patch.textSpecs = list;
+      if (offFace.length > 0) {
+        return ok({
+          status: "needs_attention",
+          message:
+            `协议已经写好，但 ${offFace.join("、")} 所属的协议面是关着的：` +
+            `规则会被保存，可不会有请求走到它。要让它生效，请同时把对应的协议面打开` +
+            `（openaiEnabled / anthropicEnabled），再提交一次。`,
+          patch,
+        });
+      }
     }
   }
 

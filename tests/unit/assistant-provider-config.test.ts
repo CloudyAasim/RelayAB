@@ -24,34 +24,53 @@ const SCHEMA = readFileSync(join(ROOT, "src", "lib", "assistant", "schema.ts"), 
 const APPLY = readFileSync(join(ROOT, "src", "app", "api", "assistant", "actions", "[id]", "route.ts"), "utf-8");
 
 describe("the assistant can see and set the protocol", () => {
-  it("list_providers reports the current one", () => {
+  it("list_providers reports all of them", () => {
     // A model that cannot see what is configured will re-derive it, and get it
-    // wrong in a way nobody notices.
-    expect(TOOLS).toMatch(/textSpec: readTextSpec\(p\)/);
+    // wrong in a way nobody notices. A provider can carry one rule per
+    // interface, so a single document hides the other two.
+    expect(TOOLS).toMatch(/textSpecs: p\.textSpecs \?\? \[\]/);
   });
 
-  it("propose_provider_update accepts one", () => {
-    expect(TOOLS).toMatch(/textSpec: \{[\s\S]*?specVersion/);
+  it("propose_provider_update accepts a list", () => {
+    expect(TOOLS).toMatch(/textSpecs: \{[\s\S]*?specVersion/);
   });
 
   it("and validates it at proposal time, not at apply time", () => {
     // The proposal is the thing the admin reads. A spec that would be rejected
     // on apply must never get that far, or the admin approves a change and then
     // nothing happens.
-    expect(TOOLS).toMatch(/const parsed = parseTextSpec\(args\.textSpec\);[\s\S]*?if \(!parsed\.ok\)/);
+    expect(TOOLS).toMatch(/const parsed = parseTextSpec\(entry\);[\s\S]*?if \(!parsed\.ok\)/);
+    // The whole list, not just the new entry: two rules for one interface means
+    // one of them never runs.
+    expect(TOOLS).toMatch(/const check = validateTextSpecs\(list\)/);
   });
 
   it("and it can be cleared, to put a provider back to forwarding as sent", () => {
-    expect(TOOLS).toMatch(/if \(args\.textSpec === null\)[\s\S]*?patch\.textSpec = null;/);
+    expect(TOOLS).toMatch(/if \(args\.textSpecs === null\)[\s\S]*?patch\.textSpecs = \[\];/);
   });
 
-  it("there is a tool that says which four protocols exist and when to use each", () => {
+  it("it refuses to quietly write a rule for an interface that is switched off", () => {
+    // A rule for a face that is off is saved, looks configured, and never
+    // runs. There is no UI to notice it here, so the tool has to say it.
+    expect(TOOLS).toMatch(/needs_attention/);
+    expect(TOOLS).toMatch(/所属的协议面是关着的/);
+  });
+
+  it("there is a tool that says which protocols exist and when to use each", () => {
     // A choice made from a tool description is a choice made from whichever
     // example was nearest. The presets are the answer for ninety percent of
     // vendors, so they have to be fetchable, not described.
+    //
+    // It used to walk `TEXT_PROTOCOL_LABELS` and say "four". `gemini-generate`
+    // is still a label, and it has no route that would ever select it — the
+    // same lie the editor stopped telling, handed to the one caller with no UI
+    // to notice.
     expect(TOOLS).toContain("list_text_protocols");
-    expect(TOOLS).toMatch(/protocols: Object\.entries\(TEXT_PROTOCOL_LABELS\)/);
+    expect(TOOLS).toMatch(/protocols: CONFIGURABLE_PROTOCOLS\.map\(/);
     expect(TOOLS).toContain("preset:");
+    // And it says which endpoint each rule governs, and which toggle gates it.
+    expect(TOOLS).toContain("clientPath");
+    expect(TOOLS).toContain("requiresFace");
   });
 });
 

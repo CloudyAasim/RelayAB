@@ -94,7 +94,7 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     surface: "admin",
     id: "providers",
     summary: "服务商配置：新增、编辑、启用、优先级、格式",
-    keys: ["admin.docs.provider.title","admin.docs.provider.desc","admin.docs.provider.kind","admin.docs.provider.baseUrl","admin.docs.provider.format"],
+    keys: ["admin.docs.provider.title","admin.docs.provider.desc","admin.docs.provider.kind","admin.docs.provider.baseUrl","admin.docs.provider.headers","admin.docs.provider.format","admin.docs.provider.formatTrap","admin.docs.provider.modes","admin.docs.provider.specs"],
   },
   {
     surface: "admin",

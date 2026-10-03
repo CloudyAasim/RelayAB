@@ -12,6 +12,22 @@
 import type { Provider } from "../db/types";
 import type { MediaProvider } from "../media/spec";
 import type { DocPage } from "../docs/custom";
+import { surfaceOf } from "../protocol/text-specs";
+
+/** Stored documents keyed by the interface they govern, for a before/after. */
+function byProtocol(raws: readonly string[]): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const raw of raws) {
+    try {
+      const protocol = (JSON.parse(raw) as { protocol?: string }).protocol;
+      if (typeof protocol === "string") out.set(protocol, raw);
+    } catch {
+      // Unparseable stored bytes are listed as absent, which is how the editor
+      // treats them too: kept in the row, not shown as a working rule.
+    }
+  }
+  return out;
+}
 
 function line(field: string, before: unknown, after: unknown): string | null {
   const b = format(before);
@@ -79,6 +95,44 @@ export function renderProviderDiff(
       patchedLine(patch, "upstreamFormat", provider.upstreamFormat),
     ]),
   );
+
+  if (patch.headers !== undefined) {
+    const before = provider.headers ?? {};
+    const after = (patch.headers as Record<string, string>) ?? {};
+    const keys = [...new Set([...Object.keys(before), ...Object.keys(after)])].sort();
+    out.push("请求头：");
+    if (keys.length === 0) {
+      out.push("  （无）");
+    }
+    for (const k of keys) {
+      if (before[k] === after[k]) out.push(`  = ${k}: ${after[k]}`);
+      else if (!(k in after)) out.push(`  - ${k}: ${before[k]}`);
+      else if (!(k in before)) out.push(`  + ${k}: ${after[k]}`);
+      else out.push(`  ~ ${k}: ${before[k]} → ${after[k]}`);
+    }
+  }
+
+  // The protocols, by interface.
+  //
+  // This was missing entirely, which is part of why a protocol proposal could
+  // be approved without anything showing: the diff said a field changed and
+  // listed no field, because `textSpec` was never rendered here. A diff the
+  // administrator reads to decide is the last place a change can be invisible.
+  if (patch.textSpecs !== undefined) {
+    const before = byProtocol(provider.textSpecs ?? []);
+    const after = byProtocol((patch.textSpecs as string[]) ?? []);
+    const added = [...after.keys()].filter((p) => !before.has(p));
+    const removed = [...before.keys()].filter((p) => !after.has(p));
+    const changed = [...after.keys()].filter(
+      (p) => before.has(p) && before.get(p) !== after.get(p),
+    );
+    out.push("");
+    out.push("上游协议（按兼容接口）：");
+    for (const p of added) out.push(`  + ${p}${surfaceOf(p) ? `  (${surfaceOf(p)})` : ""}`);
+    for (const p of changed) out.push(`  ~ ${p}  参数规则已改写`);
+    for (const p of removed) out.push(`  - ${p}  已删除，回到原样透传`);
+    if (!added.length && !changed.length && !removed.length) out.push("  （无变化）");
+  }
 
   if (patch.modelMapping) {
     const before = new Set(Object.keys(provider.modelMapping ?? {}));
