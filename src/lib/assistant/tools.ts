@@ -359,6 +359,34 @@ const USER_TOOLS: AssistantToolDef[] = [
   {
     type: "function",
     function: {
+      name: "transcribe_audio",
+      description:
+        "把一段语音转成文字。传 attachment（用户这一条消息里附的音频）、一个 http(s) 音频网址，" +
+        "或一个 data URL。走 /v1/audio/transcriptions，消耗用户自己的配额，返回识别出的文本。\n" +
+        "如果用户发来的是音频而你在找别的办法，先用这个 —— 网关已经配好了 ASR 模型，" +
+        "不需要让用户自己去发请求。",
+      parameters: {
+        type: "object",
+        properties: {
+          model: { type: "string", description: "语音识别模型名，例如 asr-1.0" },
+          audio: {
+            type: "string",
+            description:
+              "attachment、http(s) 音频网址，或 data URL。",
+          },
+          language: {
+            type: "string",
+            description: "音频主要语言，可留空。中文例如 zh。",
+          },
+        },
+        required: ["audio"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "generate_video",
       description:
         "提交一个视频生成任务。视频是异步的：这里只返回任务 id 和当前状态，产物要稍后由上游查询，不要在这里反复重试。",
@@ -726,6 +754,8 @@ export async function executeTool(
       return mediaGenerate(args, ctx, "image");
     case "generate_speech":
       return mediaGenerate(args, ctx, "speech");
+    case "transcribe_audio":
+      return transcribeAudio(args, ctx);
     case "generate_video":
       return mediaGenerate(args, ctx, "video");
 
@@ -1054,6 +1084,147 @@ export async function resolveReferenceImage(
 const ARTIFACT_NOTE =
   "图片/音频已经渲染在工具结果里了。不要把 artifacts 里的地址写进回答，多个地址更不要连在一起写。" +
   "像素尺寸这里没有给，界面上会显示，不要猜，也不要把 spec 里的请求尺寸当成出图结果。";
+
+/**
+ * The audio a caller means, as a data URL.
+ *
+ * The same three shapes `resolveReferenceImage` takes, for the same reason: a
+ * model should be able to say "the audio the user just sent" rather than paste
+ * a megabyte of base64 into a tool call.
+ */
+async function resolveReferenceAudio(
+  value: string,
+  ctx: ToolContext,
+): Promise<{ ok: true; dataUrl: string; name: string } | { ok: false; reason: string }> {
+  const raw = value.trim();
+  if (!raw) return { ok: false, reason: "audio 是空的。" };
+  if (raw.startsWith("data:") || /^https?:\/\//i.test(raw)) {
+    return { ok: true, dataUrl: raw, name: "音频" };
+  }
+  if (!ATTACHMENT_ALIASES.has(raw)) {
+    return {
+      ok: false,
+      reason:
+        "audio 只接受三种写法：attachment（用用户这一条消息里附的音频）、一个 http(s) 音频网址、或者一个 data URL。",
+    };
+  }
+
+  const clips = (ctx.attachments ?? []).filter((a) => a.kind === "audio");
+  if (clips.length === 0) {
+    return {
+      ok: false,
+      reason:
+        "这一条消息里没有附上音频。如果用户是用文件选的（而不是麦克风），请让他用输入框旁边的语音按钮再发一次。",
+    };
+  }
+  // Newest wins, same as the picture case: the user may have sent a correction.
+  const attachment = clips[clips.length - 1];
+  const stored = await getAssistantArtifact(attachment.id, ctx.user.id);
+  if (!stored?.bytes) {
+    return { ok: false, reason: `附件 ${attachment.name} 已经读不出来了，请重新发一次。` };
+  }
+  return {
+    ok: true,
+    name: attachment.name,
+    dataUrl: `data:${stored.contentType || attachment.contentType || "audio/mpeg"};base64,${Buffer.from(stored.bytes).toString("base64")}`,
+  };
+}
+
+/**
+ * Speech to text.
+ *
+ * The assistant could already generate images, speech and video, and was asked
+ * to read an audio file it had been handed. It had no tool for it, so it
+ * explained the endpoint to the user and told them to post it themselves — while
+ * the gateway already had an `audio.stt` spec configured and the file was
+ * sitting in the message it was reading.
+ */
+async function transcribeAudio(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<ToolResult> {
+  if (!ctx.relayKey && !ctx.account) return fail(NO_CREDENTIAL_MESSAGE);
+  const model = z.string().min(1).safeParse(args.model);
+  if (!model.success) {
+    // A missing model is a question with an answer in this deployment, not
+    // something to send upstream and read a 400 about.
+    const stt = await listSttModels();
+    if (stt.length === 0) {
+      return fail(
+        "这个网关还没有配置语音识别模型。请在「媒体服务商」里给某个服务商加一个 audio.stt 的协议（例如 MiniMax 的 asr-1.0）。",
+      );
+    }
+    return fail(`请指定语音识别模型。可选：${stt.join("、")}。`);
+  }
+
+  const resolved = await resolveReferenceAudio(
+    typeof args.audio === "string" ? args.audio : "attachment",
+    ctx,
+  );
+  if (!resolved.ok) return fail(resolved.reason);
+
+  if (!ctx.account) {
+    // The account path is the only one that can read a stored attachment
+    // without a bearer token, and every other media tool resolves the same way.
+    return fail(NO_CREDENTIAL_MESSAGE);
+  }
+
+  const language = typeof args.language === "string" ? args.language.trim() : "";
+  const started = Date.now();
+  const outcome = await executeMediaRequest({
+    capability: "audio.stt",
+    input: {
+      model: model.data,
+      // The same slot and the same data URL the public
+      // `/v1/audio/transcriptions` route uses, so a spec resolves this the same
+      // way whichever door the request came through.
+      image: resolved.dataUrl,
+      extra: { audio: resolved.dataUrl, filename: resolved.name, ...(language ? { language } : {}) },
+    },
+    apiKey: ctx.account.apiKey,
+    user: ctx.account.user,
+    signal: AbortSignal.timeout(240_000),
+  });
+  const latencyMs = Date.now() - started;
+
+  if (!outcome.ok) {
+    return ok({
+      ok: false,
+      via: "account",
+      httpStatus: outcome.error.status,
+      latencyMs,
+      response: JSON.stringify(outcome.error).slice(0, 1000),
+      hint: mediaFailureHint(outcome.error.status),
+    });
+  }
+
+  const text = (outcome.value.result.text ?? "").trim();
+  return ok({
+    ok: true,
+    via: "account",
+    httpStatus: 200,
+    latencyMs,
+    model: model.data,
+    source: resolved.name,
+    text,
+    // So the caller can put it in a message rather than describe it.
+    message: text || "没有识别到内容。",
+  });
+}
+
+/** The speech-to-text models this deployment can actually reach. */
+async function listSttModels(): Promise<string[]> {
+  const rows = await listMediaProviders();
+  const ids = new Set<string>();
+  for (const p of rows) {
+    for (const spec of p.specs ?? []) {
+      if (spec.capability === "audio.stt") {
+        for (const m of spec.models ?? []) ids.add(m);
+      }
+    }
+  }
+  return [...ids];
+}
 
 async function mediaGenerate(
   args: Record<string, unknown>,
