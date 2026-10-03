@@ -27,7 +27,10 @@ import { join } from "node:path";
 import { DICTS } from "@/lib/i18n/dict";
 
 const SRC = join(process.cwd(), "src");
-const FIELD = readFileSync(join(SRC, "app/(admin)/admin/providers/ProviderFacesField.tsx"), "utf-8");
+const FIELD = readFileSync(
+  join(SRC, "app/(admin)/admin/providers/ProviderInterfacesField.tsx"),
+  "utf-8",
+);
 
 const LOCALES = Object.keys(DICTS) as (keyof typeof DICTS)[];
 const text = (locale: (typeof LOCALES)[number], key: string): string => DICTS[locale][key] ?? "";
@@ -38,11 +41,28 @@ const SHARES = /共用|共享|shared/i;
 describe("protocol-face section copy", () => {
   it("states the sharing rule exactly once", () => {
     for (const locale of LOCALES) {
-      expect(text(locale, "admin.providers.faces.hint"), `${locale} section hint`).toMatch(SHARES);
-      // The card hints say what each toggle controls. Restating the sharing
+      // It lives in the block's own hint, which is now the single place the
+      // interface switches and the per-interface rules are both described.
+      expect(text(locale, "admin.interfaces.hint"), `${locale} block hint`).toMatch(SHARES);
+      // The per-face hints say what each toggle controls. Restating the sharing
       // rule there is what produced three sentences for one idea.
       expect(text(locale, "admin.providers.faces.openai.hint"), `${locale} OpenAI hint`).not.toMatch(SHARES);
       expect(text(locale, "admin.providers.faces.anthropic.hint"), `${locale} Anthropic hint`).not.toMatch(SHARES);
+    }
+  });
+
+  it("says the block covers both questions, not one of them", () => {
+    // The block replaced two sections, so it has to say it holds both — or the
+    // rules underneath read as a sub-setting of the toggles.
+    const perLocale: Record<string, [RegExp, RegExp]> = {
+      "zh-CN": [/接口/, /参数/],
+      en: [/endpoint/i, /parameter/i],
+    };
+    for (const locale of LOCALES) {
+      const [endpoints, parameters] = perLocale[locale] ?? [/$^/, /$^/];
+      const hint = text(locale, "admin.interfaces.hint");
+      expect(hint, `${locale} block hint names the endpoints`).toMatch(endpoints);
+      expect(hint, `${locale} block hint names the parameters`).toMatch(parameters);
     }
   });
 

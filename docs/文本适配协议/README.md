@@ -234,5 +234,5 @@
 | 读取存储 | `readTextSpecs` / `specForSurface` — `src/lib/protocol/text-specs.ts` |
 | 列表校验 | `validateTextSpecs` — `src/lib/protocol/text-specs.ts` |
 | 写入校验 | `textSpecs` 的 `superRefine` — `src/app/api/admin/providers/route.ts`（新建）与 `src/app/api/admin/providers/[id]/route.ts`（修改） |
-| 后台编辑器 | `src/app/(admin)/admin/providers/TextProtocolField.tsx`（服务商编辑器的「高级模式」） |
+| 后台编辑器 | `src/app/(admin)/admin/providers/ProviderInterfacesField.tsx`（「接口与参数规则」区块：开关与其下的规则同处一块） |
 | 代理接入 | `src/lib/proxy/openai.ts`、`src/lib/proxy/anthropic.ts` |

@@ -187,56 +187,73 @@ describe("neither modal keeps its own copy of the form", () => {
     expect(src, `${_name} does not call the shared builder`).toMatch(/buildPayload\(/);
   });
 
-  it("the fields and the mode branch live in the shared form, once", () => {
-    // The mode switch and the interface selector are now properties of the form
+  it("the fields and the interface block live in the shared form, once", () => {
+    // The mode switch and the interface block are now properties of the form
     // rather than of a modal, so neither modal can hide them.
     expect(FORM, "the shared form lost the mode switch").toMatch(/<ProviderModeSwitch\b/);
-    expect(FORM, "the shared form lost the interface selector").toMatch(/<ProviderFacesField\b/);
-    expect(FORM, "the shared form lost the protocol list").toMatch(/<TextProtocolField\b/);
+    expect(FORM, "the shared form lost the interface block").toMatch(/<ProviderInterfacesField\b/);
     expect(FORM, "the shared form lost the headers field").toMatch(/patch\(\{ headers:/);
     expect(HOOK, "the hook no longer validates the protocol list").toMatch(/validateTextSpecs/);
   });
 
-  it("the mode adds the protocol list and takes nothing away", () => {
+  it("the mode adds the rules and takes nothing away", () => {
     // A ternary hides one branch of the form. The "else" side used to be the
     // name, base URL, API key and the model table, so advanced mode had no key
-    // field. The shared form's only mode branch is additive.
-    expect(FORM).toMatch(/mode === "advanced" &&/);
+    // field. The shared form's only mode branch is additive, and it now decides
+    // one thing: whether the per-interface rules are shown.
+    expect(FORM).toMatch(/showRules=\{mode === "advanced"\}/);
     expect(FORM).not.toMatch(/mode === "advanced" \?/);
-    // One selector, one list — in the file both modals share.
-    expect((FORM.match(/<ProviderFacesField[\s>]/g) ?? []).length).toBe(1);
+    expect((FORM.match(/<ProviderInterfacesField[\s>]/g) ?? []).length).toBe(1);
   });
 });
 
-describe("the protocol list follows the face switches", () => {
-  it("the add-buttons are filtered by the face, not just by what is used", () => {
-    // Without this, switching the OpenAI face off still offered to add
-    // `/v1/chat/completions` and `/v1/responses` — two controls in one form
-    // answering "which interfaces does this provider speak" with opposite
-    // answers, and nothing on screen connected them.
-    //
-    // Anchored on `.map(` so it pins the add-buttons specifically: the "is
-    // anything left to add" line below them uses the same predicate, and a
-    // looser match kept passing when only the buttons lost the filter.
+describe("the interface switches and the rules are one control", () => {
+  /**
+   * These were two blocks: a pair of checkboxes over the same three interfaces
+   * a sibling list then offered to edit, with its own vocabulary. Switching the
+   * OpenAI side off still left "add /v1/responses" on offer, and the plumbing
+   * that reconciled them — a filter, an "inert" badge, a warning, a count — grew
+   * a guard for every rule.
+   *
+   * The rules now live inside the face that gates them, so none of that is
+   * reachable. These assert the absence rather than the presence of a filter,
+   * because a filter is the thing that should no longer be needed.
+   */
+  it("one component renders the switches and the rules together", () => {
     const field = read(
-      "src", "app", "(admin)", "admin", "providers", "TextProtocolField.tsx",
+      "src", "app", "(admin)", "admin", "providers", "ProviderInterfacesField.tsx",
     );
-    expect(field).toMatch(
-      /CONFIGURABLE_PROTOCOLS\.filter\(\(p\) => !used\.has\(p\) && faceOn\(p\)\)\.map\(/,
-    );
+    expect(field).toMatch(/<SurfaceRule/);
+    // The surfaces come from SURFACES, filtered by the face they belong to —
+    // the join is structural, not a runtime check.
+    expect(field).toMatch(/SURFACES\.filter\(\(s\) => s\.face === face\)/);
   });
 
-  it("an entry whose face is off is marked, not dropped", () => {
-    // Switching a face off is not a reason to lose typing.
+  it("there is no reconciliation left to reconcile", () => {
     const field = read(
-      "src", "app", "(admin)", "admin", "providers", "TextProtocolField.tsx",
+      "src", "app", "(admin)", "admin", "providers", "ProviderInterfacesField.tsx",
     );
-    expect(field).toMatch(/faceOffBadge/);
+    // A rule for a face that is off cannot be written, so nothing has to mark
+    // one as inert.
+    expect(field).not.toMatch(/faceOn/);
+    expect(field).not.toMatch(/faceOffBadge/);
+    // And no "all N configured" line: each face counts its own, from the
+    // surfaces it actually owns, so the number cannot go stale.
+    expect(field).not.toMatch(/allAdded/);
   });
 
-  it("the shared form hands the live faces down", () => {
-    expect(FORM).toMatch(
-      /faces=\{\{\s*openai: values\.faces\.openaiEnabled,\s*anthropic: values\.faces\.anthropicEnabled,?\s*\}\}/,
-    );
+  it("the two old components are gone rather than left unused", () => {
+    for (const name of ["ProviderFacesField.tsx", "TextProtocolField.tsx"]) {
+      expect(
+        () => read("src", "app", "(admin)", "admin", "providers", name),
+        `${name} still exists`,
+      ).toThrow();
+    }
+  });
+
+  it("the shared form hands the live values down in one call", () => {
+    expect(FORM).toMatch(/<ProviderInterfacesField[\s\S]*?value=\{values\.faces\}/);
+    expect(FORM).toMatch(/<ProviderInterfacesField[\s\S]*?textSpecs=\{values\.textSpecs\}/);
+    expect(FORM).toMatch(/<ProviderInterfacesField[\s\S]*?onTextSpecsChange=\{setTextSpecs\}/);
   });
 });

@@ -21,7 +21,7 @@ import {
   type ProviderRecord,
 } from "@/lib/admin/provider-payload";
 import { rowsFromProvider, type ProviderModelRow } from "@/app/(admin)/admin/providers/model-rows";
-import type { ProviderFacesValue } from "@/app/(admin)/admin/providers/ProviderFacesField";
+import type { ProviderFacesValue } from "@/app/(admin)/admin/providers/ProviderInterfacesField";
 import { validateTextSpecs } from "@/lib/protocol/text-specs";
 
 const EMPTY_MODEL_ROWS: ProviderModelRow[] = [];

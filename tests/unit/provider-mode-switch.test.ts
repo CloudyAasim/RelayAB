@@ -32,7 +32,8 @@ const read = (...p: string[]) => readFileSync(join(ROOT, ...p), "utf-8");
 const EDIT = read("src", "app", "(admin)", "admin", "providers", "ProviderActions.tsx");
 const CREATE = read("src", "app", "(admin)", "admin", "providers", "CreateProviderButton.tsx");
 const PAGE = read("src", "app", "(admin)", "admin", "providers", "page.tsx");
-const FIELD = read("src", "app", "(admin)", "admin", "providers", "TextProtocolField.tsx");
+const FIELD = read("src", "app", "(admin)", "admin", "providers", "ProviderInterfacesField.tsx");
+const MODE = read("src", "app", "(admin)", "admin", "providers", "ProviderModeSwitch.tsx");
 /**
  * The two modals stopped spelling the form out in the refactor: they render
  * this, and it renders the switch, the interface selector and the protocol
@@ -56,13 +57,13 @@ describe("which interfaces are on is not a mode's business", () => {
     // This predates the two modes and is the actual answer to "can one provider
     // take OpenAI-compatible and Anthropic calls": one row, two faces, one key
     // and one model table shared between them.
-    const FACES = read("src", "app", "(admin)", "admin", "providers", "ProviderFacesField.tsx");
-    expect(FACES).toMatch(/openaiEnabled: boolean;/);
-    expect(FACES).toMatch(/anthropicEnabled: boolean;/);
-    expect(FACES).toMatch(/const openaiOn = value\.openaiEnabled && !legacyAnthropicOnly;/);
+    const IF = read("src", "app", "(admin)", "admin", "providers", "ProviderInterfacesField.tsx");
+    expect(IF).toMatch(/openaiEnabled: boolean;/);
+    expect(IF).toMatch(/anthropicEnabled: boolean;/);
+    expect(IF).toMatch(/const openaiOn = value\.openaiEnabled && !legacyAnthropicOnly;/);
     // "Neither on" is warned about, which is only worth doing because "both on"
     // is legitimate.
-    expect(FACES).toMatch(/admin\.providers\.faces\.noneWarning/);
+    expect(IF).toMatch(/admin\.providers\.faces\.noneWarning/);
   });
 
   it("and it is rendered outside the mode branch, in both places", () => {
@@ -73,40 +74,34 @@ describe("which interfaces are on is not a mode's business", () => {
     // them disagree — the edit modal's ternary put the selector on one side and
     // the whole form on the other. There is now one form to check, and both
     // modals are required to render it.
-    const branchAt = FORM.search(/mode === "advanced" &&/);
-    // Boundary-aware: `indexOf("<ProviderFacesField")` also finds
-    // `<ProviderFacesFieldGone`, so renaming the tag to hide it would sail
+    //
+    // The mode no longer gates the block at all: it is one switch, then a
+    // `showRules` prop. The rules are part of the block, not a sibling of it.
+    expect(FORM).toMatch(/showRules=\{mode === "advanced"\}/);
+    // Boundary-aware: `indexOf("<ProviderInterfacesField")` also finds
+    // `<ProviderInterfacesFieldGone`, so renaming the tag to hide it would sail
     // straight past a plain substring search.
     const at = (src: string, tag: string) => src.search(new RegExp(`${tag}[\\s>]`));
     const switchAt = at(FORM, "<ProviderModeSwitch");
-    const facesAt = at(FORM, "<ProviderFacesField");
-    expect(facesAt, "no interface selector").toBeGreaterThan(-1);
-    expect(branchAt, "no mode branch").toBeGreaterThan(-1);
-    expect(
-      switchAt < facesAt && facesAt < branchAt,
-      "the selector must sit between the mode switch and the branch",
-    ).toBe(true);
+    const blockAt = at(FORM, "<ProviderInterfacesField");
+    expect(blockAt, "no interface block").toBeGreaterThan(-1);
+    expect(switchAt < blockAt, "the block must sit after the mode switch").toBe(true);
 
     for (const src of [EDIT, CREATE]) {
       expect(src, "this modal does not render the shared form").toMatch(/<ProviderForm\b/);
-      expect(at(src, "<ProviderFacesField"), "a modal keeps its own interface selector").toBe(-1);
+      expect(at(src, "<ProviderInterfacesField"), "a modal keeps its own interface block").toBe(-1);
     }
   });
 
-  it("and a rule for a face that is off says so", () => {
-    // The trap this closes: a rule written for an interface nothing calls is
-    // saved, looks configured, and never runs. Same shape as offering a protocol
-    // nothing can select.
-    const FACES = read("src", "app", "(admin)", "admin", "providers", "ProviderFacesField.tsx");
-    expect(FACES).toMatch(/configured\?: string\[\]/);
-    expect(FACES).toMatch(/const orphanFor = \(protocol: string\): boolean/);
-    expect(FACES).toMatch(/orphanFor\("openai-chat"\)/);
-    expect(FACES).toMatch(/orphanFor\("anthropic-messages"\)/);
-    // And the call site passes what is configured, so the warning is not
-    // permanently on. The interface selector moved into the shared form, so
-    // there is one call site to check rather than two that can disagree.
-    expect(FORM).toMatch(/<ProviderFacesField[\s\S]*?configured=\{configuredProtocols\}/);
-    expect(HOOK).toMatch(/configuredProtocols/);
+  it("a rule for a face that is off cannot be written, so nothing has to warn", () => {
+    // The trap this used to close by warning: a rule written for an interface
+    // nothing calls is saved, looks configured, and never runs. The rules now
+    // live inside the face that gates them, so the state is unreachable — the
+    // warning and the "inert" badge that used to explain it are gone with it.
+    const IF = read("src", "app", "(admin)", "admin", "providers", "ProviderInterfacesField.tsx");
+    expect(IF).toMatch(/surfacesOf\(id\)/);
+    expect(IF).toMatch(/showRules && on &&/);
+    expect(IF).not.toMatch(/orphanFor/);
   });
 });
 
@@ -118,21 +113,21 @@ describe("the two modes are exclusive, and say so", () => {
       expect(src).toMatch(/<ProviderForm\b/);
     }
     expect(FORM).toContain("ProviderModeSwitch");
-    expect(FORM).toContain("TextProtocolField");
+    expect(FORM).toContain("ProviderInterfacesField");
   });
 
   it("as cards with a written state, not a pressed tint", () => {
     // "Which mode am I in" is a question the operator asked out loud, so the
     // answer is a word on the card, not a background colour.
-    expect(FIELD).toMatch(/aria-pressed=\{on\}/);
-    expect(FIELD).toMatch(/mode === "simple" \? t\("admin\.textSpec\.mode\.current"\)/);
-    expect(FIELD).toMatch(/mode === "advanced" \? t\("admin\.textSpec\.mode\.current"\)/);
-    expect(FIELD).toMatch(/admin\.textSpec\.mode\.simpleBody/);
-    expect(FIELD).toMatch(/admin\.textSpec\.mode\.advancedBody/);
+    expect(MODE).toMatch(/aria-pressed=\{on\}/);
+    expect(MODE).toMatch(/mode === "simple"[\s\S]{0,80}t\("admin\.textSpec\.mode\.current"\)/);
+    expect(MODE).toMatch(/mode === "advanced"[\s\S]{0,80}t\("admin\.textSpec\.mode\.current"\)/);
+    expect(MODE).toMatch(/admin\.textSpec\.mode\.simpleBody/);
+    expect(MODE).toMatch(/admin\.textSpec\.mode\.advancedBody/);
   });
 
   it("with a hint that they configure the same provider", () => {
-    expect(FIELD).toMatch(/admin\.textSpec\.modeHint/);
+    expect(MODE).toMatch(/admin\.textSpec\.modeHint/);
   });
 
   it("and the switch is inside the form in both places", () => {
@@ -141,9 +136,12 @@ describe("the two modes are exclusive, and say so", () => {
     expect(CREATE).toMatch(/<form onSubmit=\{onSubmit\}[\s\S]*?<ProviderForm\b/);
   });
 
-  it("the protocol is no longer a separate block under the table", () => {
+  it("the protocol is not a separate block, anywhere", () => {
+    // It used to be a panel under the table, then a sibling list beside the
+    // switches, and each arrangement needed something to reconcile the two.
     expect(PAGE).not.toContain("TextProtocolPanel");
     expect(PAGE).not.toMatch(/<TextProtocolField/);
+    expect(PAGE).not.toMatch(/<ProviderInterfacesField/);
   });
 });
 
@@ -161,7 +159,10 @@ describe("the advanced half is a list, one entry per interface", () => {
     expect(SURFACES.some((s) => s.id === ("gemini-generate" as string))).toBe(false);
     const protocols = read("src", "lib", "protocol", "text-protocols.ts");
     expect(protocols).toMatch(/CONFIGURABLE_PROTOCOLS = \[\s*"openai-chat",\s*"openai-responses",\s*"anthropic-messages",\s*\]/);
-    expect(FIELD).toMatch(/CONFIGURABLE_PROTOCOLS/);
+    // The editor no longer reads that list: a row *is* a surface, so it renders
+    // whatever SURFACES declares, grouped by the face each one belongs to. A
+    // second list of "what can be configured" is the thing that drifted.
+    expect(FIELD).toMatch(/SURFACES\.filter\(\(s\) => s\.face === face\)/);
     // And the gateway really has those three client surfaces.
     for (const route of ["v1/chat/completions", "v1/responses", "anthropic/v1/messages"]) {
       expect(() => read("src", "app", "api", ...route.split("/"), "route.ts"), route).not.toThrow();
@@ -254,9 +255,9 @@ describe("the modes configure different fields of the same row", () => {
     // was the name, base URL, API key and the entire model table. The name of
     // this test was right and its assertion enforced the bug.
     //
-    // Additive spelling, in the shared form: the protocol list appears in
-    // advanced, everything else is unconditional.
-    expect(FORM).toMatch(/mode === "advanced" &&/);
+    // Additive spelling, and now it decides exactly one thing: whether the
+    // per-interface rules are shown. The fields are unconditional.
+    expect(FORM).toMatch(/showRules=\{mode === "advanced"\}/);
     expect(FORM).not.toMatch(/mode === "advanced" \?/);
   });
 
@@ -292,9 +293,10 @@ describe("the editor opens on the mode the provider is actually configured in", 
   });
 
   it("and the card reports how many interfaces are configured", () => {
-    // The count comes from the shared form, so both modals show the same one.
+    // The count is computed by the shared form from the list it holds, so both
+    // modals show the same one.
     expect(FORM).toMatch(/interfaceCount=\{values\.textSpecs\.length\}/);
-    expect(FIELD).toMatch(/admin\.textSpec\.mode\.configured/);
+    expect(MODE).toMatch(/admin\.textSpec\.mode\.configured/);
   });
 
   it("while a new provider starts simple, because that is right for almost all of them", () => {

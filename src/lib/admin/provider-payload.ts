@@ -11,7 +11,7 @@
  *  - the edit modal branched on the mode and took the name, base URL, API key
  *    and the whole model table off the screen in advanced mode;
  *  - `create` had a `headers` field the edit modal never sent, so a request
- *    header set at creation could not be changed afterwards — not by any UI,
+ *    header set at creation could not be changed afterwards 鈥?not by any UI,
  *    at all;
  *  - the create path once forgot to persist `textSpecs`, leaving a protocol
  *    configured in the UI that was never written.
@@ -24,7 +24,7 @@
  * {@link ProviderPayloadOptions} rather than re-forked at each call site.
  */
 
-import type { ProviderFacesValue, UpstreamFormat } from "@/app/(admin)/admin/providers/ProviderFacesField";
+import type { ProviderFacesValue, UpstreamFormat } from "@/app/(admin)/admin/providers/ProviderInterfacesField";
 import { rowsToPayload, type ProviderModelRow } from "@/app/(admin)/admin/providers/model-rows";
 
 /** The stored shape the edit form reads back. */
@@ -84,7 +84,7 @@ export interface ProviderPayloadOptions {
   /**
    * Create omits an empty key, which the API reads as "no key". Edit must send
    * `undefined` for a blank field, which the API reads as "keep the stored one"
-   * — the two mean opposite things, so this cannot be defaulted.
+   * 鈥?the two mean opposite things, so this cannot be defaulted.
    */
   apiKey?: string;
   /**

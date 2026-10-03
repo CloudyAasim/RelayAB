@@ -21,8 +21,11 @@
 import type { ReactNode } from "react";
 import { Input } from "@/components/ui/Input";
 import { useT } from "@/components/i18n/I18nProvider";
-import { ProviderModeSwitch, TextProtocolField } from "@/app/(admin)/admin/providers/TextProtocolField";
-import { ProviderFacesField } from "@/app/(admin)/admin/providers/ProviderFacesField";
+import { ProviderModeSwitch } from "@/app/(admin)/admin/providers/ProviderModeSwitch";
+import {
+  ProviderInterfacesField,
+  judgeTextSpec,
+} from "@/app/(admin)/admin/providers/ProviderInterfacesField";
 import { ProviderModelsEditor } from "@/app/(admin)/admin/providers/ProviderModelsEditor";
 import type { ProviderModelRow } from "@/app/(admin)/admin/providers/model-rows";
 import type { ProviderForm } from "./use-provider-form";
@@ -49,35 +52,27 @@ export function ProviderForm({
   apiKeyRequired?: boolean;
 }) {
   const t = useT();
-  const { values, patch, setFaces, setModelRows, setTextSpecs, mode, setMode, specVerdict, configuredProtocols } =
-    form;
+  const { values, patch, setFaces, setModelRows, setTextSpecs, mode, setMode, specVerdict } = form;
 
   return (
     <>
       <ProviderModeSwitch mode={mode} onChange={setMode} interfaceCount={values.textSpecs.length} />
 
       {/*
-        Which interfaces this provider answers on, and then the rules for each —
-        adjacent on purpose, because they answer the same question at two levels
-        of detail. The protocol list is filtered by the face toggles above it, so
-        the two cannot disagree.
+        One block for "which interfaces answer" and "what happens to their
+        parameters". These were a pair of checkboxes and a sibling list over
+        the same three interfaces, which is how the OpenAI side could be
+        switched off while the list still offered to add /v1/responses. The
+        rules now live inside the face that gates them, so that state is not
+        expressible.
       */}
-      <ProviderFacesField
+      <ProviderInterfacesField
         value={values.faces}
         onChange={setFaces}
-        configured={configuredProtocols}
+        textSpecs={values.textSpecs}
+        onTextSpecsChange={setTextSpecs}
+        showRules={mode === "advanced"}
       />
-
-      {mode === "advanced" && (
-        <TextProtocolField
-          value={values.textSpecs}
-          onChange={setTextSpecs}
-          faces={{
-            openai: values.faces.openaiEnabled,
-            anthropic: values.faces.anthropicEnabled,
-          }}
-        />
-      )}
 
       {aboveFields}
 
