@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 /**
  * src/app/(admin)/admin/providers/form/use-provider-form.ts
@@ -21,7 +21,7 @@ import {
   type ProviderRecord,
 } from "@/lib/admin/provider-payload";
 import { rowsFromProvider, type ProviderModelRow } from "@/app/(admin)/admin/providers/model-rows";
-import type { ProviderFacesValue } from "@/app/(admin)/admin/providers/ProviderInterfacesField";
+import type { ProviderFacesValue } from "@/app/(admin)/admin/providers/ProviderFacesField";
 import { validateTextSpecs } from "@/lib/protocol/text-specs";
 
 const EMPTY_MODEL_ROWS: ProviderModelRow[] = [];

@@ -22,10 +22,8 @@ import type { ReactNode } from "react";
 import { Input } from "@/components/ui/Input";
 import { useT } from "@/components/i18n/I18nProvider";
 import { ProviderModeSwitch } from "@/app/(admin)/admin/providers/ProviderModeSwitch";
-import {
-  ProviderInterfacesField,
-  judgeTextSpec,
-} from "@/app/(admin)/admin/providers/ProviderInterfacesField";
+import { ProviderFacesField } from "@/app/(admin)/admin/providers/ProviderFacesField";
+import { ProviderInterfacesList } from "@/app/(admin)/admin/providers/ProviderInterfacesList";
 import { ProviderModelsEditor } from "@/app/(admin)/admin/providers/ProviderModelsEditor";
 import type { ProviderModelRow } from "@/app/(admin)/admin/providers/model-rows";
 import type { ProviderForm } from "./use-provider-form";
@@ -59,20 +57,22 @@ export function ProviderForm({
       <ProviderModeSwitch mode={mode} onChange={setMode} interfaceCount={values.textSpecs.length} />
 
       {/*
-        One block for "which interfaces answer" and "what happens to their
-        parameters". These were a pair of checkboxes and a sibling list over
-        the same three interfaces, which is how the OpenAI side could be
-        switched off while the list still offered to add /v1/responses. The
-        rules now live inside the face that gates them, so that state is not
-        expressible.
+        Two modes, two different halves of the same provider.
+
+        Simple: the interface switches — which endpoints answer. Advanced: the
+        per-interface parameter rules. They are alternatives, so neither can
+        contradict the other on screen: there is no switch to contradict while
+        you are writing rules, and no rule list to re-read while you are
+        switching a face.
+
+        The face flags are stored either way and saved either way — they are
+        columns the proxy routes on and cannot be derived from the rules.
       */}
-      <ProviderInterfacesField
-        value={values.faces}
-        onChange={setFaces}
-        textSpecs={values.textSpecs}
-        onTextSpecsChange={setTextSpecs}
-        showRules={mode === "advanced"}
-      />
+      {mode === "simple" ? (
+        <ProviderFacesField value={values.faces} onChange={setFaces} />
+      ) : (
+        <ProviderInterfacesList textSpecs={values.textSpecs} onTextSpecsChange={setTextSpecs} />
+      )}
 
       {aboveFields}
 
