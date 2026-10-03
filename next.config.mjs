@@ -27,6 +27,23 @@
  *
  * @type {import("next").NextConfig}
  */
+
+/**
+ * Build worker count, overridable from the environment so the host can tune
+ * it without a code change.
+ *
+ * `Number()` rather than `parseInt()` on purpose: `parseInt("1.5.2")` is `1`,
+ * so a mistyped value would quietly become a valid-looking worker count
+ * instead of falling back to the default. `Number()` rejects trailing garbage
+ * outright, and the guard below turns anything non-integer or non-positive
+ * into the safe default instead of handing Next.js `undefined` — which would
+ * restore the core-derived worker count this setting exists to cap.
+ *
+ * @type {number}
+ */
+const parsedBuildCpus = Number(process.env.NEXT_BUILD_CPUS);
+const buildCpus = Number.isInteger(parsedBuildCpus) && parsedBuildCpus > 0 ? parsedBuildCpus : 2;
+
 const baseConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
@@ -54,6 +71,39 @@ const baseConfig = {
   },
 
   experimental: {
+    /**
+     * Concurrent build workers.
+     *
+     * Next.js sizes its static-generation worker pool from the CPU count:
+     * `cpus` defaults to `os.cpus().length - 1`, and each worker is a
+     * separate Node process that loads the compiled server bundle.
+     *
+     * Measured on this repository (Next 15.5.25, 22 routes), peak resident
+     * memory across the whole build, sampled every 700ms:
+     *
+     *   workers   peak resident
+     *       15    2491.8 MiB
+     *        3    1646.8 / 1739.9 MiB   <- what a 4-core host already did
+     *        2    1731.1 / 1650.9 MiB
+     *        1    1715.4 MiB
+     *
+     * The cliff is between 15 and 3. Below three the figure is flat — two
+     * runs of 2 and two of 3 average within 3 MiB of each other, which is
+     * inside the run-to-run spread — so on the current 4-core production host
+     * this setting changes nothing measurable. It is here to stop the peak
+     * from following the host's core count if the box is ever resized: 15
+     * workers cost ~800 MiB more than 3, and the host has 3.8 GiB of RAM with
+     * no swap.
+     *
+     * `NEXT_BUILD_CPUS` lets the host operator override the value without a
+     * code change.
+     *
+     * Note: `experimental.memoryBasedWorkersCount` is deliberately NOT used.
+     * It is `Math.max(Math.min(cpus, floor(freemem / 1e9)), 4)` — the `max`
+     * enforces a *minimum* of 4 workers, so on a memory-starved box it raises
+     * the worker count instead of lowering it.
+     */
+    cpus: buildCpus,
     serverActions: {
       bodySizeLimit: "2mb",
     },
