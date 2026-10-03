@@ -1,19 +1,20 @@
 /**
  * tests/unit/operator-docs.test.ts
  *
- * The operator's own documentation: a chapter that is theirs, not bolted on.
+ * The operator's own documentation, filed *inside* the document.
  *
- * Three things have to hold at once, and each of them has a way of quietly
- * failing:
+ * Four things have to hold at once, and each has a way of quietly failing:
  *
- *  - the chapter is **absent** from the outline until there is something in it,
- *    so a deployment with no custom pages looks exactly like one that never
- *    heard of the feature;
- *  - a page is **markdown, rendered through the same escaping path** as the
- *    built-in pages, because an admin writing prose is not an admin writing
- *    markup;
- *  - an id is **fixed once published**, because it is the anchor every shared
- *    link points at.
+ *  - a page belongs to a **chapter**, and appears at the end of it, because an
+ *    appendix nobody finds is the same as not writing it;
+ *  - the fallback chapter is **absent** until something lands in it, so a
+ *    deployment with no custom pages looks exactly like one that never heard of
+ *    the feature;
+ *  - the body is **markdown through the same escaping path** as the built-in
+ *    pages, because an admin writing prose is not an admin writing markup;
+ *  - the outline must never be **served from a cache that predates the save**,
+ *    because a page that appears on one visit and is gone on the next is worse
+ *    than a page that never appeared.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
@@ -23,16 +24,23 @@ import {
   sortDocPages,
   visibleDocPages,
   hasVisibleDocPages,
+  pageSection,
+  pagesBySection,
+  pagesForSection,
+  sectionsWithPages,
+  userDocOutline,
   NOTES_SECTION,
 } from "@/lib/docs/custom";
 import { markdownToHtml } from "@/lib/markdown";
 
 const SECTIONS = readFileSync(join(process.cwd(), "src", "lib", "docs", "sections.ts"), "utf-8");
+const CUSTOM = readFileSync(join(process.cwd(), "src", "lib", "docs", "custom.ts"), "utf-8");
+const SHELL = readFileSync(join(process.cwd(), "src", "components", "docs", "DocsShell.tsx"), "utf-8");
+const NEXT_CONFIG = readFileSync(join(process.cwd(), "next.config.mjs"), "utf-8");
 const NOTES = readFileSync(
   join(process.cwd(), "src", "app", "(user)", "dashboard", "docs", "DocsNotes.tsx"),
   "utf-8",
 );
-const FRAME = readFileSync(join(process.cwd(), "src", "components", "docs", "PublicDocsFrame.tsx"), "utf-8");
 const INTEGRATION = readFileSync(
   join(process.cwd(), "src", "components", "docs", "IntegrationDocs.tsx"),
   "utf-8",
@@ -43,46 +51,147 @@ const FORM = readFileSync(
 );
 const API = readFileSync(join(process.cwd(), "src", "app", "api", "admin", "settings", "route.ts"), "utf-8");
 
-describe("the chapter is in the outline, last", () => {
-  it("has a slug of its own", () => {
+/** The outline only ever needs to know labels, not real translations. */
+const t = (key: string) => key;
+
+describe("where a page goes", () => {
+  const pages = [
+    { id: "limits", title: "限流", body: "…", section: "endpoints" },
+    { id: "pick", title: "选型建议", body: "…", section: "models" },
+    { id: "loose", title: "杂记", body: "…" },
+    { id: "draft", title: "草稿", body: "…", section: "openai", hidden: true },
+  ];
+
+  it("is the chapter the operator filed it under", () => {
+    expect(pageSection(pages[0])).toBe("endpoints");
+  });
+
+  it("and a page filed under nothing falls back to the last chapter", () => {
+    expect(pageSection(pages[2])).toBe(NOTES_SECTION);
     expect(NOTES_SECTION).toBe("notes");
-    expect(SECTIONS).toContain('"notes"');
   });
 
-  it("is the last entry, after every built-in page", () => {
-    // First would read as a section of the protocol; last reads as an appendix
-    // the operator added, which is what it is.
-    const body = SECTIONS.slice(SECTIONS.indexOf("export function userDocSections"));
-    expect(body.lastIndexOf('id: "notes"')).toBeGreaterThan(body.indexOf('id: "media"'));
+  it("a chapter that does not exist falls back too, rather than rendering nowhere", () => {
+    // A chapter can be renamed out from under a stored page. Rendering it in the
+    // fallback is wrong; not rendering it at all, while the operator believes it
+    // is published, is worse.
+    expect(pageSection({ id: "x", title: "X", body: "", section: "gone" })).toBe(NOTES_SECTION);
   });
 
-  it("is optional, and the outline is told so", () => {
-    expect(SECTIONS).toMatch(/OPTIONAL_USER_SECTION_IDS = \["notes"\]/);
-    // Rendered conditionally, and only when the caller says it has something.
-    expect(SECTIONS).toMatch(/\.\.\.\(has\("notes"\) \? \[/);
+  it("drafts are not in any chapter's list", () => {
+    expect(pagesForSection(pages, "openai")).toEqual([]);
+  });
+
+  it("pages group under the chapter they were filed under", () => {
+    const grouped = pagesBySection(pages);
+    expect(grouped.get("endpoints")?.map((p) => p.id)).toEqual(["limits"]);
+    expect(grouped.get("models")?.map((p) => p.id)).toEqual(["pick"]);
+    expect(grouped.get(NOTES_SECTION)?.map((p) => p.id)).toEqual(["loose"]);
+    expect(grouped.has("openai")).toBe(false);
+  });
+
+  it("and only chapters with something in them are reported", () => {
+    expect(sectionsWithPages(pages).sort()).toEqual(["endpoints", "models", "notes"].sort());
+  });
+
+  it("a deployment with nothing written has no chapter at all", () => {
+    expect(pagesBySection(undefined).size).toBe(0);
+    expect(pagesBySection([{ id: "x", title: "X", body: "…", hidden: true }]).size).toBe(0);
+    expect(sectionsWithPages([{ id: "x", title: "X", body: "…" }])).toEqual([NOTES_SECTION]);
   });
 });
 
-describe("a deployment with nothing written looks untouched", () => {
-  it("reports no chapter", () => {
-    expect(hasVisibleDocPages(undefined)).toBe(false);
-    expect(hasVisibleDocPages([])).toBe(false);
-    expect(hasVisibleDocPages([{ id: "x", title: "X", body: "…", hidden: true }])).toBe(false);
+describe("the outline", () => {
+  const pages = [
+    { id: "limits", title: "限流", body: "…", section: "endpoints" },
+    { id: "loose", title: "杂记", body: "…" },
+  ];
+
+  it("carries a page as an indented child of its chapter, not a chapter of its own", () => {
+    const outline = userDocOutline(t, pages);
+    const endpoints = outline.find((s) => s.id === "endpoints");
+    expect(endpoints?.children?.map((c) => c.id)).toEqual(["limits"]);
+    // The thing being fixed: a note about rate limits is not its own chapter.
+    expect(outline.filter((s) => s.id === "limits")).toEqual([]);
   });
 
-  it("reports a chapter as soon as one page is published", () => {
-    expect(hasVisibleDocPages([{ id: "x", title: "X", body: "…" }])).toBe(true);
+  it("the chapter it is filed under keeps its position among the built-ins", () => {
+    const ids = userDocOutline(t, pages).map((s) => s.id);
+    expect(ids).toEqual([
+      "start",
+      "endpoints",
+      "openai",
+      "anthropic",
+      "responses",
+      "models",
+      "sdks",
+      "media",
+      "notes",
+    ]);
   });
 
-  it("the frame passes what exists rather than the reader deciding", () => {
-    // The outline has to be built with the answer already in hand; a reader
-    // that discovers the chapter afterwards is a reader who saw it vanish.
-    expect(INTEGRATION).toMatch(/userDocSections\(t, withNotes \? \[NOTES_SECTION\] : \[\]\)/);
-    expect(INTEGRATION).toMatch(/const withNotes = hasVisibleDocPages\(docPages\)/);
+  it("the fallback chapter disappears when nothing is filed in it", () => {
+    const onlyFiled = userDocOutline(t, [{ id: "limits", title: "限流", body: "…", section: "endpoints" }]);
+    expect(onlyFiled.map((s) => s.id)).not.toContain(NOTES_SECTION);
+    expect(onlyFiled.find((s) => s.id === "endpoints")?.children).toHaveLength(1);
   });
 
-  it("and the custom page is only rendered when it has something", () => {
-    expect(INTEGRATION).toMatch(/section === NOTES_SECTION && withNotes/);
+  it("and a deployment with nothing written is exactly the built-in outline", () => {
+    for (const nothing of [undefined, [], [{ id: "x", title: "X", body: "…", hidden: true }]]) {
+      const outline = userDocOutline(t, nothing as never);
+      expect(outline.every((s) => !s.children)).toBe(true);
+      expect(outline.map((s) => s.id)).not.toContain(NOTES_SECTION);
+    }
+  });
+
+  it("it is drawn from the document's own chapter list, not a second one", () => {
+    // The outline has to be built with the answer already in hand; a reader that
+    // discovers the page afterwards is a reader who saw it vanish.
+    expect(CUSTOM).toMatch(/for \(const section of userDocSections\(t\)\)/);
+    expect(INTEGRATION).toMatch(/sections=\{userDocOutline\(t, docPages\)\}/);
+  });
+
+  it("and the page renders at the end of its own chapter", () => {
+    expect(INTEGRATION).toMatch(/const here = pagesForSection\(docPages, section\)/);
+    expect(INTEGRATION).toMatch(/\{here\.length > 0 && <DocsNotes pages=\{here\} \/>\}/);
+  });
+});
+
+describe("the outline is never stale", () => {
+  /**
+   * The bug this pins: a page saved in the admin form vanished when the reader
+   * moved between documentation pages. The outline is rendered from the
+   * settings table, and `next.config.mjs` keeps a 30-second Client Router Cache
+   * for the app — so a payload fetched *before* the save was served after it,
+   * and the page the operator had just published was gone.
+   */
+  it("the docs links do not prefetch, so no payload is cached ahead of a save", () => {
+    const links = [...SHELL.matchAll(/<Link\b[\s\S]*?>/g)].map((m) => m[0]);
+    expect(links.length, "no docs links found to check").toBeGreaterThan(0);
+    for (const link of links) {
+      expect(link, "a docs link can still be prefetched").toMatch(/prefetch=\{false\}/);
+    }
+  });
+
+  it("and the sub-entries are plain anchors, which the browser cannot cache stale", () => {
+    // They point into the page you are already on, so there is no navigation to
+    // serve from a cache at all.
+    expect(SHELL).toMatch(/<a\s+href=\{`\$\{hrefOf\(section\.id\)\}#\$\{child\.id\}`\}/);
+  });
+
+  it("the save invalidates the docs trees on the server as well", () => {
+    // The other half: prefetch off stops the client from holding a stale
+    // payload; this stops anything else from doing the same.
+    expect(API).toMatch(/revalidatePath/);
+    for (const path of ["/docs", "/dashboard/docs", "/admin/docs"]) {
+      expect(API, `${path} is not invalidated`).toContain(`"${path}"`);
+    }
+  });
+
+  it("and the cache window the bug came from is still there, deliberately", () => {
+    // If this is ever set to 0 the two guards above stop being load-bearing and
+    // should be revisited; the assertion is here so the change is a decision.
+    expect(NEXT_CONFIG).toMatch(/dynamic: 30/);
   });
 });
 
@@ -92,7 +201,7 @@ describe("the body is prose, not markup", () => {
     // that the operator's page and the built-in ones share a path. A second
     // renderer would be a second set of escaping rules to get wrong.
     expect(NOTES).toContain("markdownToHtml");
-    expect(NOTES).not.toMatch(/dangerouslySetInnerHTML=\{\{ __html: page\.body \}\}/);
+    expect(NOTES).not.toMatch(/__html: page\.body/);
   });
 
   it("so a script tag in an admin's page is text", () => {
@@ -105,9 +214,15 @@ describe("the body is prose, not markup", () => {
     expect(html).toContain("<strong>30</strong>");
     expect(html).toContain("<li>");
   });
+
+  it("filed under a chapter it is set off by a rule, not boxed like another document", () => {
+    // A box announces "a different document starts here", which is the opposite
+    // of what filing it under this chapter is for.
+    expect(NOTES).toMatch(/border-l-2/);
+  });
 });
 
-describe("what a page may be called", () => {
+describe("what a page may be called, and where it may go", () => {
   it("a bare, routable slug", () => {
     expect(validatePage({ id: "rate-limits", title: "限流", body: "" })).toBeNull();
     expect(validatePage({ id: "a1", title: "x" })).toBeNull();
@@ -123,6 +238,12 @@ describe("what a page may be called", () => {
     expect(validatePage({ id: "ok", title: "", body: "…" })).toMatch(/title/);
   });
 
+  it("a chapter that exists, or none at all", () => {
+    expect(validatePage({ id: "ok", title: "x", section: "endpoints" })).toBeNull();
+    expect(validatePage({ id: "ok", title: "x", section: NOTES_SECTION })).toBeNull();
+    expect(validatePage({ id: "ok", title: "x", section: "nope" })).toMatch(/chapter/);
+  });
+
   it("the editor refuses to save while a page is unusable", () => {
     // Refusing the whole save, rather than dropping the broken page, so a
     // half-typed page cannot vanish on the way past.
@@ -135,26 +256,37 @@ describe("what a page may be called", () => {
   });
 
   it("the server refuses two pages with one id", () => {
-    // Two chapters at one anchor means the second is unreachable, silently.
+    // Two entries at one anchor means the second is unreachable, silently.
     expect(API).toMatch(/seen\.has\(page\.id\)/);
     expect(API).toMatch(/重复/);
   });
 
-  it("and the server re-checks the id shape, not just the editor", () => {
+  it("and the server re-checks the id shape and the chapter, not just the editor", () => {
     // The editor refusing is a convenience; the endpoint is the boundary. A
     // caller that is not the editor form — a script, an older tab — must be
     // stopped here too.
     expect(API).toMatch(/\.regex\(\/\^\[a-z0-9\]/);
     expect(API).toMatch(/DocPageIdSchema/);
+    expect(API).toMatch(/refine\(isUserDocId/);
   });
 });
 
 describe("editing it", () => {
-  it("offers a body, a title, a slug, a draft flag and an order", () => {
-    for (const field of ["pageBody", "pageTitle", "pageId", "pageHidden"]) {
+  it("offers a body, a title, a slug, a chapter, a draft flag and an order", () => {
+    for (const field of ["pageBody", "pageTitle", "pageId", "pageSection", "pageHidden"]) {
       expect(FORM, `no ${field}`).toContain(`admin.docsSettings.${field}`);
     }
     expect(FORM).toContain("movePage");
+  });
+
+  it("the chapter choices come from the document's own outline", () => {
+    // A second hand-written list would drift from the docs the first time a
+    // chapter is renamed, and would offer a page that renders nowhere.
+    expect(FORM).toMatch(/userDocSections\(t\)\.filter\(\(s\) => s\.id !== NOTES_SECTION\)/);
+  });
+
+  it("and the chosen chapter is sent with the page", () => {
+    expect(FORM).toMatch(/\.\.\.\(f\.section \? \{ section: f\.section \} : \{\}\)/);
   });
 
   it("locks the slug once published, because readers link to it", () => {
@@ -184,5 +316,17 @@ describe("reading order", () => {
   it("and a draft is not in the list a reader sees", () => {
     const withDraft = [...pages, { id: "d", title: "D", body: "", hidden: true }];
     expect(visibleDocPages(withDraft).map((p) => p.id)).not.toContain("d");
+    expect(hasVisibleDocPages(withDraft)).toBe(true);
+    expect(hasVisibleDocPages([{ id: "d", title: "D", body: "", hidden: true }])).toBe(false);
+  });
+
+  it("the fallback chapter is last, after every built-in", () => {
+    // The behaviour is pinned by the outline test above; this pins the source of
+    // that order, so a chapter added to the array cannot land in the wrong place
+    // without turning something red.
+    const body = SECTIONS.slice(SECTIONS.indexOf("const USER_LABEL_KEYS"));
+    // Quoted, because `admin.docs.nav.media` contains `docs.nav.media`.
+    expect(body.lastIndexOf('"docs.nav.media"')).toBeGreaterThan(-1);
+    expect(body.lastIndexOf('"docs.nav.media"')).toBeLessThan(body.lastIndexOf('"docs.nav.notes"'));
   });
 });

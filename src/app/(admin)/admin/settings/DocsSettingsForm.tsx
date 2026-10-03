@@ -18,7 +18,8 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { useT } from "@/components/i18n/I18nProvider";
-import { validatePage, type DocPage } from "@/lib/docs/custom";
+import { validatePage, NOTES_SECTION, type DocPage } from "@/lib/docs/custom";
+import { userDocSections } from "@/lib/docs/sections";
 
 /** The editable shape of a page, before it is trimmed on the way to the API. */
 type DocPageInput = Partial<DocPage>;
@@ -28,6 +29,7 @@ const pageFields = (p: DocPageInput): DocPage => ({
   id: p.id ?? "",
   title: p.title ?? "",
   body: p.body ?? "",
+  ...(p.section && p.section !== NOTES_SECTION ? { section: p.section } : {}),
   ...(p.hidden ? { hidden: true } : {}),
   ...(p.order === undefined ? {} : { order: p.order }),
 });
@@ -116,6 +118,11 @@ export function DocsSettingsForm({ initial, models }: Props) {
   const pageProblems = pages.map((p, i) => pageProblem(p, i));
   const pagesOk = pageProblems.every((p) => p === null);
 
+  // Built from the document's own outline rather than a second list written
+  // here, so a chapter that is renamed in the docs is renamed in this dropdown
+  // too, and a chapter that does not exist cannot be offered.
+  const sectionChoices = userDocSections(t).filter((s) => s.id !== NOTES_SECTION);
+
   const visible = models.filter(
     (m) => !query.trim() || m.id.toLowerCase().includes(query.trim().toLowerCase()),
   );
@@ -157,6 +164,7 @@ export function DocsSettingsForm({ initial, models }: Props) {
                 id: f.id.trim(),
                 title: f.title.trim(),
                 body: f.body,
+                ...(f.section ? { section: f.section } : {}),
                 ...(f.hidden ? { hidden: true } : {}),
                 order: f.order ?? i,
               };
@@ -272,6 +280,35 @@ export function DocsSettingsForm({ initial, models }: Props) {
                       {t("admin.docsSettings.pageDelete")}
                     </Button>
                   </div>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor={`page-section-${i}`}
+                    className="block text-xs font-medium text-foreground"
+                  >
+                    {t("admin.docsSettings.pageSection")}
+                  </label>
+                  <select
+                    id={`page-section-${i}`}
+                    value={p.section ?? NOTES_SECTION}
+                    onChange={(e) =>
+                      patchPage(i, {
+                        section: e.target.value === NOTES_SECTION ? "" : e.target.value,
+                      })
+                    }
+                    className="mt-1 h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                  >
+                    <option value={NOTES_SECTION}>{t("admin.docsSettings.pageSectionEnd")}</option>
+                    {sectionChoices.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {t("admin.docsSettings.pageSectionHint")}
+                  </p>
                 </div>
 
                 <div>

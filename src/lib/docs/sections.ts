@@ -5,13 +5,32 @@
  * split into one page per section so long, single-page walls of cards become a
  * navigable set of pages with prev/next.
  *
+ * This module knows *which chapters exist* and what they are called. It knows
+ * nothing about what the operator has written — that is `lib/docs/custom.ts`,
+ * which depends on this file and not the other way round, so there is no cycle
+ * between the two.
+ *
  * Labels are resolved through `t()` at call time — the keys are written as
  * literals so `tests/unit/i18n-usage.test.ts` still sees every one of them.
  */
 
+export interface DocChildLink {
+  /** The page id, which is also its anchor on the chapter. */
+  id: string;
+  label: string;
+}
+
 export interface DocSection {
   id: string;
   label: string;
+  /**
+   * The operator's own pages filed under this chapter.
+   *
+   * Indented under the chapter in the outline rather than given a chapter of
+   * their own, because a note about rate limits belongs where somebody looks
+   * for the rate limit, not in an appendix they have to know exists.
+   */
+  children?: DocChildLink[];
 }
 
 export type TFn = (key: string, vars?: Record<string, string | number>) => string;
@@ -25,19 +44,13 @@ const USER_SECTION_IDS = [
   "models",
   "sdks",
   "media",
-  // The operator's own chapter, and the only id here that can be absent: a
-  // deployment with no custom pages has no such chapter, and an outline entry
-  // pointing at nothing is worse than a shorter outline.
+  // The fallback chapter, for a page the operator did not file under anything.
+  // The only id here that can be absent from the outline: a deployment with
+  // nothing written has no such chapter, and an outline entry pointing at
+  // nothing is worse than a shorter outline.
   "notes",
 ] as const;
 export type UserDocId = (typeof USER_SECTION_IDS)[number];
-
-/** Sections that only appear when the operator has written something for them. */
-export const OPTIONAL_USER_SECTION_IDS = ["notes"] as const;
-
-export function isOptionalUserDocId(value: string): boolean {
-  return (OPTIONAL_USER_SECTION_IDS as readonly string[]).includes(value);
-}
 
 /** Exported for tests: the exact slugs the admin docs outline accepts. */
 export const ADMIN_SECTION_IDS = [
@@ -69,22 +82,30 @@ export function isAdminDocId(value: string): value is AdminDocId {
   return (ADMIN_SECTION_IDS as readonly string[]).includes(value);
 }
 
-export function userDocSections(t: TFn, present?: string[]): DocSection[] {
-  const has = (id: string): boolean => !present || present.includes(id);
-  return [
-    { id: "start", label: t("docs.nav.start") },
-    { id: "endpoints", label: t("docs.nav.endpoints") },
-    { id: "openai", label: t("docs.nav.openai") },
-    { id: "anthropic", label: t("docs.nav.anthropic") },
-    { id: "responses", label: t("docs.nav.responses") },
-    { id: "models", label: t("docs.nav.models") },
-    { id: "sdks", label: t("docs.nav.sdks") },
-    { id: "media", label: t("docs.nav.media") },
-    // Last, and only when it has something in it. The alternative — a permanent
-    // entry that says "there is nothing here" — is the thing that makes a
-    // customised section look bolted on rather than part of the document.
-    ...(has("notes") ? [{ id: "notes", label: t("docs.nav.notes") }] : []),
-  ];
+/** Every user-doc chapter id, in outline order. */
+export const USER_SECTION_ID_LIST: readonly string[] = USER_SECTION_IDS;
+
+/** The i18n key each built-in chapter's label comes from, in outline order. */
+const USER_LABEL_KEYS = [
+  "docs.nav.start",
+  "docs.nav.endpoints",
+  "docs.nav.openai",
+  "docs.nav.anthropic",
+  "docs.nav.responses",
+  "docs.nav.models",
+  "docs.nav.sdks",
+  "docs.nav.media",
+  "docs.nav.notes",
+] as const;
+
+/**
+ * The built-in chapters, in outline order, without any operator pages attached.
+ *
+ * `custom.ts` layers the operator's pages onto this; nothing else needs to know
+ * the two halves exist.
+ */
+export function userDocSections(t: TFn): Omit<DocSection, "children">[] {
+  return USER_LABEL_KEYS.map((key, i) => ({ id: USER_SECTION_IDS[i], label: t(key) }));
 }
 
 export function adminDocSections(t: TFn): DocSection[] {
@@ -117,4 +138,3 @@ export function isKnownDocsPath(pathname: string): boolean {
   const slug = match[1];
   return isUserDocId(slug) || isAdminDocId(slug);
 }
-

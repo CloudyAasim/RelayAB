@@ -22,11 +22,13 @@
  *   gateway. See `lib/docs/catalog.ts`.
  */
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getSettings, updateSettings } from "@/lib/db/settings";
 import { getCurrentUser } from "@/lib/auth/session";
 import { buildModelCatalog } from "@/lib/docs/catalog";
 import { loadConfig } from "@/lib/config";
+import { isUserDocId } from "@/lib/docs/sections";
 
 const ModelNoteSchema = z
   .object({
@@ -44,6 +46,18 @@ const DocPageIdSchema = z
   .max(60)
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "页面标识只能用小写字母、数字和中划线");
 
+/**
+ * Which chapter a page belongs to.
+ *
+ * Checked against the real outline rather than accepted as any string: a page
+ * filed under a chapter that does not exist would render nowhere, and a page
+ * that renders nowhere is a page the operator believes they published.
+ */
+const DocPageSectionSchema = z
+  .string()
+  .refine(isUserDocId, "只能放在文档现有的某一章里")
+  .optional();
+
 const DocPageSchema = z
   .object({
     id: DocPageIdSchema,
@@ -52,6 +66,7 @@ const DocPageSchema = z
     // docs, so it is text — but it is still a body of prose typed by a human, and
     // an unbounded one would be a body of prose nobody can finish reading.
     body: z.string().max(60_000),
+    section: DocPageSectionSchema,
     hidden: z.boolean().optional(),
     order: z.number().int().min(0).max(10_000).optional(),
   })
@@ -151,6 +166,19 @@ export async function PUT(req: Request): Promise<Response> {
 
   try {
     const settings = await updateSettings(parsed.data);
+
+    // Everything on this form is documentation, and the docs render it into
+    // their own outline. Say so to the server cache, or a reader can be served
+    // an outline that predates the save.
+    //
+    // This is the server half of the fix; the other half is in `DocsShell`,
+    // which opts its links out of prefetching, because the 30-second client
+    // router cache in `next.config.mjs` would otherwise hand back a payload
+    // fetched before the operator ever pressed save.
+    for (const path of ["/docs", "/dashboard/docs", "/admin/docs"]) {
+      revalidatePath(path, "layout");
+    }
+
     return NextResponse.json({ ok: true, data: { settings } });
   } catch (err) {
     console.error("[settings PUT]", err);
