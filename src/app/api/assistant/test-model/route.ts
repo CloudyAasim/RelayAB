@@ -18,13 +18,52 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { resolveToolCredential } from "@/lib/assistant/credentials";
 import { consumeAssistantTurn } from "@/lib/assistant/rate-limit";
 import { proxyChatCompletion } from "@/lib/proxy/openai";
+import { findProvidersForModel } from "@/lib/db/providers";
+import { applyParameterPolicy } from "@/lib/protocol/parameter-policy";
+import { readTextSpec } from "@/lib/protocol/text-spec";
 
 export const dynamic = "force-dynamic";
 
 const BodySchema = z.object({
   model: z.string().min(1).max(200),
   prompt: z.string().max(2000).optional(),
+  /**
+   * The request parameters to try, verbatim.
+   *
+   * Free-form rather than a fixed list, for the reason the proxy is: a tester
+   * that only offers the parameters this build knows about cannot answer "does
+   * this vendor accept `reasoning_effort`", which is the question a tester
+   * exists to ask. Anything here is put in the body and the vendor decides.
+   */
+  parameters: z.record(z.string(), z.unknown()).optional(),
+  maxTokens: z.number().int().positive().max(100_000).optional(),
 });
+
+/**
+ * What the provider's protocol did to the parameters, before the call.
+ *
+ * Returned so the page can say "you asked for low, the operator forces high"
+ * rather than leaving the operator to wonder why the answer is wrong. It is
+ * computed from the same helper the proxy uses, so it cannot disagree with it.
+ */
+async function explainParameters(
+  model: string,
+  parameters: Record<string, unknown>,
+  maxTokens: number,
+): Promise<{ applied: Record<string, unknown>; decisions: Array<{ name: string; action: string; note?: string }> }> {
+  const providers = await findProvidersForModel(model);
+  const provider = providers[0];
+  if (!provider) return { applied: { ...parameters, max_tokens: maxTokens }, decisions: [] };
+
+  const { body, decisions } = applyParameterPolicy(
+    { ...parameters, max_tokens: maxTokens },
+    readTextSpec(provider) ?? undefined,
+  );
+  return {
+    applied: body,
+    decisions: decisions.map((d) => ({ name: d.name, action: d.action, note: d.note })),
+  };
+}
 
 export async function POST(req: Request): Promise<Response> {
   const me = await getCurrentUser();
@@ -94,8 +133,17 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const started = Date.now();
+  const maxTokens = parsed.data.maxTokens ?? 200;
+  const asked = parsed.data.parameters ?? {};
+
+  // What the operator's protocol does to the parameters, shown before the call
+  // and independent of it: a tester that silently gets a different answer from
+  // the one it asked for is the exact failure this panel exists to prevent.
+  const explained = await explainParameters(parsed.data.model, asked, maxTokens);
+
   const result = await proxyChatCompletion({
     req: {
+      ...explained.applied,
       model: parsed.data.model,
       messages: [
         {
@@ -106,9 +154,8 @@ export async function POST(req: Request): Promise<Response> {
               : "用一句话介绍你自己。",
         },
       ],
-      max_tokens: 200,
       stream: false,
-    },
+    } as never,
     apiKey: credential.account.apiKey,
     user: credential.account.user,
     signal: AbortSignal.timeout(90_000),
@@ -139,6 +186,11 @@ export async function POST(req: Request): Promise<Response> {
       finishReason: data.choices?.[0]?.finish_reason ?? null,
       totalTokens: data.usage?.total_tokens ?? null,
       answer: (data.choices?.[0]?.message?.content ?? "").slice(0, 4000),
+      // The parameters, before and after, so a tester can see the difference
+      // the operator's protocol made rather than inferring it from the answer.
+      parametersAsked: asked,
+      parametersSent: explained.applied,
+      parameterDecisions: explained.decisions,
     },
   });
 }

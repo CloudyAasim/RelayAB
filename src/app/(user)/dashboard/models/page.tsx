@@ -72,6 +72,18 @@ export default async function ModelsPage() {
               stop: t("dashboard.models.gateway.stop"),
               empty: t("dashboard.models.gateway.empty"),
               needsKey: t("dashboard.models.gateway.needsKey"),
+              parameters: t("dashboard.models.gateway.parameters"),
+              parametersHint: t("dashboard.models.gateway.parametersHint"),
+              extraParameters: t("dashboard.models.gateway.extraParameters"),
+              extraParametersHint: t("dashboard.models.gateway.extraParametersHint"),
+              decisionAction: {
+                kept: t("dashboard.models.gateway.action.kept"),
+                dropped: t("dashboard.models.gateway.action.dropped"),
+                defaulted: t("dashboard.models.gateway.action.defaulted"),
+                forced: t("dashboard.models.gateway.action.forced"),
+                clamped: t("dashboard.models.gateway.action.clamped"),
+                renamed: t("dashboard.models.gateway.action.renamed"),
+              },
             }}
           />
 

@@ -33,6 +33,11 @@ interface Labels {
   stop: string;
   empty: string;
   needsKey: string;
+  parameters: string;
+  parametersHint: string;
+  extraParameters: string;
+  extraParametersHint: string;
+  decisionAction: Record<string, string>;
 }
 
 interface Props {
@@ -49,7 +54,52 @@ export function ModelTester({ chatModels, labels }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [latency, setLatency] = useState<number | null>(null);
+  const [paramsOpen, setParamsOpen] = useState(false);
+  const [params, setParams] = useState<Record<string, string>>({});
+  const [extraJson, setExtraJson] = useState("");
+  const [extraError, setExtraError] = useState<string | null>(null);
+  const [decisions, setDecisions] = useState<Array<{ name: string; action: string; note?: string }>>([]);
   const abortRef = useRef<AbortController | null>(null);
+
+  const setParam = (key: string, value: string) =>
+    setParams((prev) => {
+      const next = { ...prev };
+      if (value.trim() === "") delete next[key];
+      else next[key] = value;
+      return next;
+    });
+
+  const paramCount = Object.keys(params).length + (extraJson.trim() ? 1 : 0);
+
+  /**
+   * Numbers go as numbers.
+   *
+   * `"temperature": "0.5"` is a string to a vendor, and the most likely
+   * response is a 400 that looks like the model is broken. The four fields that
+   * are numbers everywhere are coerced; anything in the free-form box is left
+   * exactly as typed, because only the sender knows whether it is a number.
+   */
+  const NUMERIC = new Set(["temperature", "top_p", "max_tokens", "seed"]);
+  const buildParameters = (): { ok: true; value: Record<string, unknown> } | { ok: false; message: string } => {
+    const value: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(params)) {
+      const trimmed = v.trim();
+      value[k] = NUMERIC.has(k) && trimmed !== "" && Number.isFinite(Number(trimmed)) ? Number(trimmed) : trimmed;
+    }
+    if (extraJson.trim()) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(extraJson);
+      } catch (e) {
+        return { ok: false, message: e instanceof Error ? e.message : "JSON 解析失败" };
+      }
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        return { ok: false, message: "必须是一个 JSON 对象" };
+      }
+      Object.assign(value, parsed as Record<string, unknown>);
+    }
+    return { ok: true, value };
+  };
 
   const base = useMemo(
     () => (typeof window !== "undefined" ? window.location.origin : ""),
@@ -68,10 +118,18 @@ export function ModelTester({ chatModels, labels }: Props) {
 
   async function send() {
     if (!canSend) return;
+    const built = buildParameters();
+    if (!built.ok) {
+      setExtraError(built.message);
+      setParamsOpen(true);
+      return;
+    }
+    setExtraError(null);
     setBusy(true);
     setError(null);
     setAnswer("");
     setLatency(null);
+    setDecisions([]);
     const started = Date.now();
 
     const controller = new AbortController();
@@ -85,12 +143,17 @@ export function ModelTester({ chatModels, labels }: Props) {
         const res = await fetch("/api/assistant/test-model", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model, prompt }),
+          body: JSON.stringify({ model, prompt, parameters: built.value }),
           signal: controller.signal,
         });
         const json = (await res.json().catch(() => null)) as {
           ok?: boolean;
-          data?: { answer?: string; latencyMs?: number; totalTokens?: number | null };
+          data?: {
+            answer?: string;
+            latencyMs?: number;
+            totalTokens?: number | null;
+            parameterDecisions?: Array<{ name: string; action: string; note?: string }>;
+          };
           error?: { message?: string };
         } | null;
         if (!res.ok || !json?.ok) {
@@ -99,6 +162,7 @@ export function ModelTester({ chatModels, labels }: Props) {
         }
         setAnswer(json.data?.answer ?? "");
         setLatency(json.data?.latencyMs ?? Date.now() - started);
+        setDecisions(json.data?.parameterDecisions ?? []);
         return;
       }
 
@@ -109,6 +173,7 @@ export function ModelTester({ chatModels, labels }: Props) {
           Authorization: `Bearer ${relayKey.trim()}`,
         },
         body: JSON.stringify({
+          ...built.value,
           model,
           messages: [{ role: "user", content: prompt }],
           stream: true,
@@ -206,6 +271,84 @@ export function ModelTester({ chatModels, labels }: Props) {
             placeholder="Say PONG"
           />
         </div>
+
+        {/*
+          The request parameters, folded away.
+
+          A tester that only sends a prompt answers "is this model up", and
+          "does this vendor actually honour `reasoning_effort`" is the question
+          an operator with a text spec needs answered. Folded, because the
+          common case is one prompt and nothing else.
+        */}
+        <div className="rounded-md border border-border">
+          <button
+            type="button"
+            onClick={() => setParamsOpen((v) => !v)}
+            aria-expanded={paramsOpen}
+            className="flex w-full items-center justify-between px-3 py-2 text-left text-sm"
+          >
+            <span className="font-medium text-foreground">{labels.parameters}</span>
+            <span className="text-xs text-muted-foreground">
+              {paramCount > 0 ? `${paramCount} 项` : ""} {paramsOpen ? "▾" : "▸"}
+            </span>
+          </button>
+
+          {paramsOpen && (
+            <div className="space-y-3 border-t border-border px-3 py-3">
+              <p className="text-xs text-muted-foreground">{labels.parametersHint}</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Input
+                  label="reasoning_effort"
+                  placeholder="low / medium / high"
+                  value={params.reasoning_effort ?? ""}
+                  onChange={(e) => setParam("reasoning_effort", e.target.value)}
+                />
+                <Input
+                  label="temperature"
+                  placeholder="0 - 2"
+                  value={params.temperature ?? ""}
+                  onChange={(e) => setParam("temperature", e.target.value)}
+                />
+                <Input
+                  label="top_p"
+                  placeholder="0 - 1"
+                  value={params.top_p ?? ""}
+                  onChange={(e) => setParam("top_p", e.target.value)}
+                />
+                <Input
+                  label="max_tokens"
+                  placeholder="200"
+                  value={params.max_tokens ?? ""}
+                  onChange={(e) => setParam("max_tokens", e.target.value)}
+                />
+              </div>
+              <Input
+                label={labels.extraParameters}
+                hint={labels.extraParametersHint}
+                placeholder='{"seed":42,"thinking":{"type":"enabled","budget_tokens":4000}}'
+                value={extraJson}
+                onChange={(e) => setExtraJson(e.target.value)}
+              />
+              {extraError && <p className="text-xs text-destructive">{extraError}</p>}
+            </div>
+          )}
+        </div>
+
+        {/*
+          What the operator's protocol did to them. Without this a tester sees
+          "I asked for low reasoning and got a different answer" and has no way
+          to tell a broken model from a deliberate override.
+        */}
+        {decisions.length > 0 && (
+          <ul className="space-y-0.5 rounded-md bg-muted/50 p-2 text-xs text-muted-foreground">
+            {decisions.map((d) => (
+              <li key={d.name}>
+                <code className="text-foreground">{d.name}</code> · {labels.decisionAction[d.action] ?? d.action}
+                {d.note ? ` · ${d.note}` : ""}
+              </li>
+            ))}
+          </ul>
+        )}
 
         <CredentialChoice
           mode={credentialMode}
