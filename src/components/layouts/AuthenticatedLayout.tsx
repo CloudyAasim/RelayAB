@@ -92,6 +92,9 @@ export const ADMIN_NAV: NavSection[] = [
       { href: "/admin/usage", labelKey: "nav.usage", titleKey: "usage.title", icon: BarChart3 },
       { href: "/admin/media-providers", labelKey: "nav.mediaProviders", titleKey: "admin.mediaProviders.title", icon: ImageIcon },
       { href: "/admin/providers", labelKey: "nav.providers", titleKey: "admin.providers.title", icon: Server },
+      // Its own page, at the same level: it is a list over every model the
+      // deployment serves, not another field of the system settings.
+      { href: "/admin/model-notes", labelKey: "admin.modelNotes.nav", titleKey: "admin.modelNotes.title", icon: FileText },
       { href: "/admin/settings", labelKey: "admin.settings.title", icon: Settings },
     ],
   },

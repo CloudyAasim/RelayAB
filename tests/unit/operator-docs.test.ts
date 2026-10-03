@@ -50,7 +50,7 @@ const INTEGRATION = readFileSync(
   "utf-8",
 );
 const FORM = readFileSync(
-  join(process.cwd(), "src", "app", "(admin)", "admin", "settings", "DocsSettingsForm.tsx"),
+  join(process.cwd(), "src", "app", "(admin)", "admin", "settings", "DocsPagesForm.tsx"),
   "utf-8",
 );
 const API = readFileSync(join(process.cwd(), "src", "app", "api", "admin", "settings", "route.ts"), "utf-8");
