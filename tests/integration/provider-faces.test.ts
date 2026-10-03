@@ -91,7 +91,7 @@ function row(over: Partial<Provider>): Provider {
     openaiEnabled: true,
     anthropicEnabled: false,
     anthropicBaseUrl: null,
-    textSpec: null,
+    textSpecs: [],
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     ...over,

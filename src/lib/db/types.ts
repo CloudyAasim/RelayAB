@@ -237,22 +237,28 @@ export const ProviderSchema = z.object({
    */
   anthropicBaseUrl: z.string().nullable().default(null),
   /**
-   * The provider's wire protocol, as one declarative document.
+   * The provider's wire protocols, one entry per compatibility interface it
+   * serves.
    *
-   * `null` means "no protocol configured", and the proxy then forwards the
-   * request as sent — which is the correct default for a transparent relay and
-   * is why this is optional rather than required.
+   * **A list, not a single document.** A provider that speaks both Chat
+   * Completions and Anthropic Messages has two different parameter vocabularies
+   * and two different sets of things to rename, and one of them is usually
+   * OpenAI-shaped. A single spec could only ever describe one of them, and
+   * choosing which meant choosing which interface the gateway stopped
+   * configuring.
    *
-   * Stored as JSON text and parsed by `parseTextSpec` on read: the spec is an
-   * operator-authored document with an operator-authored shape, so a column
-   * type would only move the validation somewhere it is harder to explain. The
-   * same trade the media spec made, and for the same reason.
+   * The key is `protocol`, and the proxy picks the entry matching the surface
+   * the client actually called. No entry for that surface means no policy —
+   * the request is forwarded as sent, which is the right default and the reason
+   * a provider needs none of this to be a working one.
+   *
+   * Stored as a JSON array. Empty and absent are both read as "no policy", so a
+   * provider written before this existed needs no migration.
    */
-  textSpec: z.string().nullable().default(null),
+  textSpecs: z.array(z.string()).default([]).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
-});
-export type Provider = z.infer<typeof ProviderSchema>;
+});export type Provider = z.infer<typeof ProviderSchema>;
 
 export type PublicProvider = Omit<Provider, "encryptedApiKey">;
 

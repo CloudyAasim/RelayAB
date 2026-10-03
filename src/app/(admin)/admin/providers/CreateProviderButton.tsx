@@ -10,7 +10,8 @@
  *   - Model configuration (context length, output length, credit cost)
  */
 import { useState, useTransition } from "react";
-import { ProviderModeSwitch, TextProtocolField, judgeTextSpec } from "./TextProtocolField";
+import { ProviderModeSwitch, TextProtocolField } from "./TextProtocolField";
+import { validateTextSpecs } from "@/lib/protocol/text-specs";
 import { useRouter } from "next/navigation";
 import { LegacyModal as Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
@@ -62,8 +63,8 @@ export function CreateProviderButton({ onCreated }: Props) {
    * four protocol presets so it is also a click-and-pick.
    */
   const [mode, setMode] = useState<"simple" | "advanced">("simple");
-  const [textSpec, setTextSpec] = useState("");
-  const specVerdict = judgeTextSpec(textSpec);
+  const [textSpecs, setTextSpecs] = useState<string[]>([]);
+  const specVerdict = validateTextSpecs(textSpecs);
 
   // Fetch-models state
   const [fetchingModels, setFetchingModels] = useState(false);
@@ -219,7 +220,7 @@ export function CreateProviderButton({ onCreated }: Props) {
 
     try {
       const { modelMapping, modelConfigs } = rowsToPayload(modelRows);
-      if (specVerdict.kind === "bad") {
+      if (!specVerdict.ok) {
         setError(specVerdict.errors[0]);
         setMode("advanced");
         return;
@@ -242,9 +243,10 @@ export function CreateProviderButton({ onCreated }: Props) {
           upstreamFormat: faces.upstreamFormat === "anthropic" ? "responses" : faces.upstreamFormat,
           anthropicEnabled: faces.anthropicEnabled,
           anthropicBaseUrl: faces.anthropicBaseUrl || null,
-          // A provider created through the protocol gets its protocol. `null`
-          // is not sent: an empty box means "never configured", not "cleared".
-          ...(textSpec.trim() ? { textSpec } : {}),
+          // A provider created through the protocol gets its protocols. An
+          // empty list is not sent: "nothing configured" is the absence of the
+          // field, not an empty one.
+          ...(textSpecs.length ? { textSpecs } : {}),
         }),
       });
       
@@ -288,14 +290,24 @@ export function CreateProviderButton({ onCreated }: Props) {
       </Button>
       <Modal open={open} onClose={() => setOpen(false)} title={t("admin.providers.create")} extraWide>
         <form onSubmit={onSubmit} className="space-y-4">
-          <ProviderModeSwitch mode={mode} onChange={setMode} hasSpec={Boolean(textSpec.trim())} />
-          {mode === "advanced" && (
-            <TextProtocolField
-              value={textSpec}
-              onChange={setTextSpec}
-              providerName={name || t("admin.providers.create")}
-            />
-          )}
+          <ProviderModeSwitch mode={mode} onChange={setMode} interfaceCount={textSpecs.length} />
+          {/*
+            Which interfaces this provider answers on, outside both modes: it is a
+            property of the provider, and hiding it behind "simple" meant a rule
+            could be written for an interface that was switched off.
+          */}
+          <ProviderFacesField
+            value={faces}
+            onChange={setFaces}
+            configured={textSpecs.map((raw) => {
+              try {
+                return (JSON.parse(raw) as { protocol?: string }).protocol ?? "";
+              } catch {
+                return "";
+              }
+            })}
+          />
+          {mode === "advanced" && <TextProtocolField value={textSpecs} onChange={setTextSpecs} />}
           {/* Template selection */}
           <div>
             <label className="block text-sm font-medium mb-1.5">{t("admin.providers.create.template")}</label>
@@ -364,7 +376,8 @@ export function CreateProviderButton({ onCreated }: Props) {
           </div>
 
           {/* Protocol faces */}
-          <ProviderFacesField value={faces} onChange={setFaces} />
+          {/* The original position, now the only one: the interface selection
+              moved above the mode switch so it is visible in both modes. */}
 
           {/* Model mapping with config */}
           <ProviderModelsEditor

@@ -28,10 +28,21 @@ export function ProviderFacesField({
   value,
   onChange,
   className,
+  configured = [],
 }: {
   value: ProviderFacesValue;
   onChange: (value: ProviderFacesValue) => void;
   className?: string;
+  /**
+   * Which protocols have a rule written for them, so a face that is switched
+   * off can say so.
+   *
+   * Without this the two halves contradict each other silently: a rule written
+   * for an interface nobody calls never runs, and the only symptom is that the
+   * rule appears to do nothing. That is the same trap as offering a protocol
+   * nothing can select.
+   */
+  configured?: string[];
 }) {
   const t = useT();
   const set = (patch: Partial<ProviderFacesValue>) => onChange({ ...value, ...patch });
@@ -42,6 +53,18 @@ export function ProviderFacesField({
   const openaiFormat: OpenAIFaceFormat = value.upstreamFormat === "chat" ? "chat" : "responses";
   const openaiOn = value.openaiEnabled && !legacyAnthropicOnly;
   const noneOn = !openaiOn && !value.anthropicEnabled;
+
+  /**
+   * A rule exists for a face that is off.
+   *
+   * The OpenAI face is one checkbox covering two protocols, so either spelling
+   * counts as "this one is written for".
+   */
+  const orphanFor = (protocol: string): boolean => {
+    if (!configured.includes(protocol)) return false;
+    if (protocol === "anthropic-messages") return !value.anthropicEnabled;
+    return !openaiOn;
+  };
 
   return (
     <div className={className}>
@@ -121,6 +144,20 @@ export function ProviderFacesField({
         <p className="mt-2 flex items-start gap-1.5 text-xs text-warning-foreground dark:text-warning">
           <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           {t("admin.providers.faces.noneWarning")}
+        </p>
+      )}
+
+      {/* A rule for an interface nothing calls is written, saved, and inert. */}
+      {orphanFor("openai-chat") && (
+        <p className="mt-2 flex items-start gap-1.5 text-xs text-warning-foreground dark:text-warning">
+          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          {t("admin.providers.faces.orphanOpenai")}
+        </p>
+      )}
+      {orphanFor("anthropic-messages") && (
+        <p className="mt-2 flex items-start gap-1.5 text-xs text-warning-foreground dark:text-warning">
+          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          {t("admin.providers.faces.orphanAnthropic")}
         </p>
       )}
     </div>

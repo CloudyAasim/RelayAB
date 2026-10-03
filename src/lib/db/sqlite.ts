@@ -115,7 +115,7 @@ CREATE TABLE IF NOT EXISTS providers (
   openai_enabled     INTEGER NOT NULL DEFAULT 1,
   anthropic_enabled  INTEGER NOT NULL DEFAULT 0,
   anthropic_base_url TEXT,
-  text_spec          TEXT,
+  text_specs         TEXT,
   created_at         TEXT NOT NULL,
   updated_at         TEXT NOT NULL
 );
@@ -408,6 +408,11 @@ const ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; type: string
   // validated blob: the shape is an operator-authored tree, and `parseTextSpec`
   // is the authority on it. Null means "no protocol, forward everything".
   { table: "providers", column: "text_spec", type: "TEXT" },
+  // Replaces the single `text_spec`: one entry per compatibility interface the
+  // provider serves. Kept as a separate migration because `ADD COLUMN` cannot
+  // drop the old one, and a row that still has a single document is read as a
+  // one-entry list — so a provider configured before this is not orphaned.
+  { table: "providers", column: "text_specs", type: "TEXT" },
 ];
 
 function addColumnIfMissing(
@@ -541,7 +546,16 @@ export function rowToProvider(row: Record<string, unknown>): Provider {
     openaiEnabled: fromDbBool(row.openai_enabled),
     anthropicEnabled: fromDbBool(row.anthropic_enabled),
     anthropicBaseUrl: row.anthropic_base_url ?? null,
-    textSpec: row.text_spec ?? null,
+    // A row written before the list existed holds one document. Folded into a
+    // one-entry list here, at the boundary, so nothing downstream needs to know
+    // the old shape ever existed — and `ADD COLUMN` cannot drop the column, so
+    // it stays readable either way.
+    textSpecs: (() => {
+      const list = parseJson<string[]>(String(row.text_specs ?? "[]"), []);
+      if (list.length) return list;
+      const legacy = row.text_spec;
+      return typeof legacy === "string" && legacy ? [legacy] : [];
+    })(),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });

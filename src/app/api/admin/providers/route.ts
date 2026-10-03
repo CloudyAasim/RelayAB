@@ -9,7 +9,7 @@ import { z } from "zod";
 import { createProvider, listProviders } from "@/lib/db/providers";
 import { toPublicProvider } from "@/lib/db/types";
 import { getCurrentUser } from "@/lib/auth/session";
-import { parseTextSpec } from "@/lib/protocol/text-spec";
+import { validateTextSpecs } from "@/lib/protocol/text-specs";
 
 const PostSchema = z.object({
   name: z.string().min(1).max(64),
@@ -35,31 +35,21 @@ const PostSchema = z.object({
   anthropicEnabled: z.boolean().optional(),
   anthropicBaseUrl: z.string().nullable().optional(),
   /**
-   * The wire protocol, as a JSON document.
+   * The wire protocols, one JSON document per compatibility interface.
    *
-   * Validated here rather than on read, for the same reason the create form
-   * refuses one: a spec that parses on the way in and then does nothing on the
-   * way out is a configuration that looks set and is not.
+   * Validated here rather than on read: a spec that parses on the way in and
+   * then does nothing on the way out is a configuration that looks set and is
+   * not, and the operator is the only one who can tell.
    */
-  textSpec: z
-    .string()
-    .max(200_000)
-    .nullable()
+  textSpecs: z
+    .array(z.string().max(200_000))
+    .max(12)
     .optional()
     .superRefine((value, ctx) => {
-      if (!value) return;
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(value);
-      } catch {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "协议不是合法 JSON" });
-        return;
-      }
-      const result = parseTextSpec(parsed);
-      if (!result.ok) {
-        for (const message of result.errors) {
-          ctx.addIssue({ code: z.ZodIssueCode.custom, message });
-        }
+      const result = validateTextSpecs(value ?? []);
+      if (result.ok) return;
+      for (const message of result.errors) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message });
       }
     }),
 });
@@ -129,7 +119,7 @@ export async function POST(req: Request): Promise<Response> {
       openaiEnabled: parsed.data.openaiEnabled,
       anthropicEnabled: parsed.data.anthropicEnabled,
       anthropicBaseUrl: parsed.data.anthropicBaseUrl ?? null,
-      textSpec: parsed.data.textSpec ?? null,
+      textSpecs: parsed.data.textSpecs ?? [],
     });
     return NextResponse.json({
       ok: true,

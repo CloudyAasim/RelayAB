@@ -74,11 +74,11 @@ export interface CreateProviderInput {
   /** Base URL for the Anthropic face; empty derives it from `baseUrl`. */
   anthropicBaseUrl?: string | null;
   /**
-   * The provider's wire protocol, as a JSON document. `null` is the default and
-   * means "forward the client's request as sent" — so a new provider needs no
-   * protocol to be a working one.
+   * One protocol document per compatibility interface. An empty list is the
+   * default and means "forward the client's request as sent" — so a new
+   * provider needs none of this to be a working one.
    */
-  textSpec?: string | null;
+  textSpecs?: string[];
 }
 
 export interface UpdateProviderInput {
@@ -105,10 +105,11 @@ export interface UpdateProviderInput {
   anthropicEnabled?: boolean;
   anthropicBaseUrl?: string | null;
   /**
-   * The wire protocol, as a JSON document. `null` clears it, which puts the
-   * provider back to forwarding the client's request as sent.
+   * One protocol document per compatibility interface. An empty list is the
+   * default and means "forward the client's request as sent" — which is also how
+   * every protocol is removed.
    */
-  textSpec?: string | null;
+  textSpecs?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -138,7 +139,7 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
     openaiEnabled: input.openaiEnabled ?? faceDefaults.openaiEnabled,
     anthropicEnabled: input.anthropicEnabled ?? faceDefaults.anthropicEnabled,
     anthropicBaseUrl: input.anthropicBaseUrl ?? null,
-    textSpec: input.textSpec ?? null,
+    textSpecs: input.textSpecs ?? [],
     createdAt: now,
     updatedAt: now,
   });
@@ -151,7 +152,7 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
     `INSERT INTO providers
        (id, name, kind, base_url, encrypted_api_key, model_mapping,
         model_configs, enabled, priority, headers, upstream_format,
-        openai_enabled, anthropic_enabled, anthropic_base_url, text_spec,
+        openai_enabled, anthropic_enabled, anthropic_base_url, text_specs,
         created_at, updated_at)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
@@ -173,7 +174,7 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
       toDbBool(provider.openaiEnabled),
       toDbBool(provider.anthropicEnabled),
       provider.anthropicBaseUrl ?? null,
-      provider.textSpec ?? null,
+      JSON.stringify(provider.textSpecs ?? []),
       provider.createdAt,
       provider.updatedAt,
     ],
@@ -325,7 +326,7 @@ export async function updateProvider(
           : patch.anthropicBaseUrl,
       // `undefined` means "leave it alone"; an explicit `null` is how the
       // background page says "no protocol, forward everything as sent".
-      textSpec: patch.textSpec === undefined ? existing.textSpec : patch.textSpec,
+      textSpecs: patch.textSpecs ?? existing.textSpecs ?? [],
       updatedAt: new Date().toISOString(),
     });
 
@@ -337,7 +338,7 @@ export async function updateProvider(
          name = ?, kind = ?, base_url = ?, encrypted_api_key = ?,
          model_mapping = ?, model_configs = ?, enabled = ?, priority = ?,
          headers = ?, upstream_format = ?, openai_enabled = ?,
-         anthropic_enabled = ?, anthropic_base_url = ?, text_spec = ?,
+         anthropic_enabled = ?, anthropic_base_url = ?, text_specs = ?,
          updated_at = ?
        WHERE id = ?`,
       [
@@ -354,7 +355,7 @@ export async function updateProvider(
         toDbBool(merged.openaiEnabled),
         toDbBool(merged.anthropicEnabled),
         merged.anthropicBaseUrl,
-        merged.textSpec,
+        JSON.stringify(merged.textSpecs ?? []),
         merged.updatedAt,
         id,
       ],

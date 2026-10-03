@@ -29,7 +29,7 @@ import { settleUsage } from "./billing";
 import { ssePassthrough } from "./stream-tap";
 import { providerFaces, type ApiKey, type Provider, type User } from "../db/types";
 import { applyParameterPolicy } from "../protocol/parameter-policy";
-import { readTextSpec } from "../protocol/text-spec";
+import { readTextSpecs, specForSurface } from "../protocol/text-specs";
 
 
 // ---------------------------------------------------------------------------
@@ -676,14 +676,15 @@ export async function proxyChatCompletion(args: {
   const forwardable: Record<string, unknown> = { ...req };
   delete forwardable.stream_options;
 
-  // The provider's parameter policy, if it has one. Applied *after* the
-  // conversion, because that is the point at which the body has the shape the
-  // upstream will see: a client that sent `reasoning.effort` is now
-  // `reasoning_effort`, and a rule written against that name has to match.
-  //
-  // A provider with no spec forwards everything, which is the correct default
-  // for a transparent relay and is why an unconfigured deployment loses nothing.
-  const { body: policed } = applyParameterPolicy(forwardable, readTextSpec(provider) ?? undefined);
+  // The policy for *this* surface. A provider may carry several, one per
+  // compatibility interface it serves, and the one that applies is the one the
+  // client called — not whichever entry happens to be first in the list.
+  // No entry for this surface means no policy, which is the correct default and
+  // why an unconfigured deployment loses nothing.
+  const { body: policed } = applyParameterPolicy(
+    forwardable,
+    specForSurface(readTextSpecs(provider), "openai-chat") ?? undefined,
+  );
 
   // 5. Forward the request. Streaming clients get stream=true with the
   // `include_usage` flag so the upstream emits a final usage frame; buffered
@@ -929,9 +930,12 @@ async function proxyResponsesNative(args: {
   const forwardable: Record<string, unknown> = { ...req };
   delete forwardable.stream_options;
 
-  // The Responses surface's parameter policy, applied at the same point the
-  // OpenAI surface applies it: after the shape is what the upstream will see.
-  const { body: policed } = applyParameterPolicy(forwardable, readTextSpec(provider) ?? undefined);
+  // The Responses surface's policy, chosen the same way the OpenAI one is: the
+  // entry that governs the surface the client actually called.
+  const { body: policed } = applyParameterPolicy(
+    forwardable,
+    specForSurface(readTextSpecs(provider), "openai-responses") ?? undefined,
+  );
 
   // 5. Forward request
   // Flatten the request's input into text once: it feeds the credit

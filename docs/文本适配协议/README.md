@@ -4,13 +4,23 @@
 >
 > 后台路径：`/admin/providers`，每个服务商下方一个「上游协议」编辑器。
 >
-> **不配协议 = 原样透传。** 留空时中转站把客户端的请求体原封不动送到上游，这是
-> 透明网关该有的默认行为，也是绝大多数 OpenAI 兼容中转的正确配置。
+> **不配协议 = 原样透传。** 没有条目、空列表、或者这一条对应的接口没有配置——三种情况
+> 都是「客户端的请求体原封不动送到上游」，这是透明网关该有的默认行为。
 >
-> **在哪里配。** 服务商编辑器（`/admin/providers` → 新建或编辑）顶部的**模式切换**：
-> **简易模式**选端点和模型，**高级模式**写这份文档。已配过协议的服务商打开时
-> 默认停在高级模式。两者是同一行上的两个独立字段——简易模式的面开关决定
-> **调哪个端点**，协议决定**请求里的参数怎么办**；改一边不会清掉另一边。
+> **在哪里配。** 服务商编辑器（`/admin/providers` → 新建或编辑）顶部的**二选一**：
+>
+> | 模式 | 配什么 | 适合 |
+> |---|---|---|
+> | **简易** | 端点、面开关、模型映射 | 绝大多数 OpenAI 兼容中转 |
+> | **高级（协议）** | 见下，可配**多条** | 厂商和 OpenAI 不一样时 |
+>
+> 两者是同一行上的不同字段，**保存时一起写入**，改一边不会清掉另一边。
+>
+> **高级模式是列表，不是一份文档。** 一个同时提供 `/v1/chat/completions` 和
+> `/anthropic/v1/messages` 的厂商，参数词表是两套：后者叫 `stop_sequences`、
+> `max_tokens` 是必填。一份文档只能描述其中一个，于是「我在配哪个接口」变成了
+> 配置之前必须先回答的问题。所以**服务商说的每个兼容接口各占一条**，
+> 代理按**客户端实际调用的那个接口**挑对应的那条。
 
 **本协议只有一个版本（`specVersion: 1`）。** 没有分版本、没有厂商专用字段。
 下面第 2 节列出的每一条机制都在 `src/lib/protocol/text-spec.ts` 里有实打实的实现；
@@ -85,13 +95,22 @@
 
 ```
 1. 客户端请求体进来
-2. 读该服务商的 textSpec；没有 / 不是合法 JSON / 没通过校验 → 当作没有（不报错）
-3. 按 §1.3 对每个 parameters 规则依次裁决（顺序固定，见 §1.3.1）
-4. 剩下什么就送什么
+2. 读该服务商的 textSpecs（一个兼容接口一条文档）
+3. 按客户端调用的接口挑出对应那一条：
+     /v1/chat/completions     → protocol = "openai-chat"
+     /v1/responses           → protocol = "openai-responses"
+     /anthropic/v1/messages  → protocol = "anthropic-messages"
+   挑不到 / 列表为空 / 这条不是合法 JSON → 当作没有（不报错）
+4. 按 §1.3 对该条 parameters 的每个规则依次裁决（顺序固定，见 §1.3.1）
+5. 剩下什么就送什么
 ```
 
-**第 2 步的静默降级是刻意的。** 运营者写错一次协议不该让这个服务商下线——
-退回「原样透传」正好是接入协议之前的行为。
+**第 3 步的静默降级是刻意的。** 运营者写错一次协议不该让这个服务商下线——
+退回「原样透传」正好是接入协议之前的行为。那条坏掉的条目会在后台编辑器里
+以红色列出来，那是唯一能修它的地方。
+
+**同一个 protocol 配两条会被拒绝。** 两条里只有一条会生效，而哪一条取决于数组
+顺序——这是编辑时看不见的东西，所以宁可报错。
 
 #### 0.3.2 映射求值 `applyMapping(node, scope)`
 
@@ -212,7 +231,8 @@
 | 映射树结构门 | `isValidSpecMapping` — `src/lib/protocol/text-spec-mapping.ts` |
 | 策略裁决 | `applyParameterPolicy` — `src/lib/protocol/parameter-policy.ts` |
 | 四个预设 | `TEXT_PROTOCOL_PRESETS` — `src/lib/protocol/text-protocols.ts` |
-| 读取存储 | `readTextSpec` — `src/lib/protocol/text-spec.ts` |
-| 写入校验 | `textSpec` 的 `superRefine` — `src/app/api/admin/providers/route.ts`（新建）与 `src/app/api/admin/providers/[id]/route.ts`（修改） |
+| 读取存储 | `readTextSpecs` / `specForSurface` — `src/lib/protocol/text-specs.ts` |
+| 列表校验 | `validateTextSpecs` — `src/lib/protocol/text-specs.ts` |
+| 写入校验 | `textSpecs` 的 `superRefine` — `src/app/api/admin/providers/route.ts`（新建）与 `src/app/api/admin/providers/[id]/route.ts`（修改） |
 | 后台编辑器 | `src/app/(admin)/admin/providers/TextProtocolField.tsx`（服务商编辑器的「高级模式」） |
 | 代理接入 | `src/lib/proxy/openai.ts`、`src/lib/proxy/anthropic.ts` |

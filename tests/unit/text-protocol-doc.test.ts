@@ -57,6 +57,7 @@ describe("every mechanism the document names is in the code", () => {
   it("the paths it points at exist", () => {
     for (const path of [
       "src/lib/protocol/text-spec.ts",
+      "src/lib/protocol/text-specs.ts",
       "src/lib/protocol/text-spec-mapping.ts",
       "src/lib/protocol/parameter-policy.ts",
       "src/lib/protocol/text-protocols.ts",
@@ -229,9 +230,9 @@ describe("the document's claim that saving validates is true", () => {
   it("the write endpoint parses the spec before storing it", () => {
     // The call itself, not the import: a stub that parses nothing and accepts
     // everything leaves the import line intact and satisfies a weaker check.
-    expect(DOC).toContain("superRefine");
-    expect(ROUTE).toMatch(/parseTextSpec\(parsed\)/);
-    expect(ROUTE).toMatch(/textSpec:[\s\S]*?superRefine/);
+    expect(DOC).toContain("validateTextSpecs");
+    expect(ROUTE).toMatch(/validateTextSpecs\(value \?\? \[\]\)/);
+    expect(ROUTE).toMatch(/textSpecs: z\s*\.array[\s\S]*?superRefine/);
   });
 
   it("and the order of the rules is the one the document lists", () => {

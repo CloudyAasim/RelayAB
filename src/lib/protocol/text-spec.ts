@@ -27,6 +27,9 @@
  * providers actually speak — and `parameters`, the policy that answers the
  * question this whole file exists for: *what does the gateway do with each
  * parameter a client sends?*
+ *
+ * **One document, one surface.** A provider that serves two surfaces needs two
+ * of these; the list that holds them is `text-specs.ts`.
  */
 import { isValidSpecMapping } from "./text-spec-mapping";
 
@@ -274,22 +277,27 @@ function parameterProblem(name: string, rule: unknown): string | null {
 }
 
 /**
- * A provider's spec, or null.
+ * A provider's spec for one surface, or null.
  *
- * A row with no spec is not an error and does not disable anything: the proxy
- * forwards the request as sent, which is the correct behaviour for a
- * transparent relay. This function returning null is the signal for exactly
- * that, and it is why the storage column is a nullable string.
+ * Thin on purpose: the list lives in `text-specs.ts`. This stays so the proxy's
+ * call site reads as one thing, and so a provider written before the list
+ * existed (which stored a single document) still resolves — a lone document is
+ * read as a one-entry list, whatever it declared.
  */
-export function readTextSpec(provider: { textSpec?: string | null }): TextSpec | null {
-  const raw = provider.textSpec;
-  if (!raw) return null;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return null;
+export function readTextSpec(provider: {
+  textSpecs?: readonly string[] | null;
+  textSpec?: string | null;
+}): TextSpec | null {
+  const raws = provider.textSpecs?.length ? provider.textSpecs : provider.textSpec ? [provider.textSpec] : [];
+  for (const raw of raws) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      continue;
+    }
+    const result = parseTextSpec(parsed);
+    if (result.ok) return result.spec;
   }
-  const result = parseTextSpec(parsed);
-  return result.ok ? result.spec : null;
+  return null;
 }

@@ -19,7 +19,8 @@ import {
   type ProviderModelRow,
 } from "./model-rows";
 import { ProviderModelsEditor } from "./ProviderModelsEditor";
-import { ProviderModeSwitch, TextProtocolField, judgeTextSpec } from "./TextProtocolField";
+import { ProviderModeSwitch, TextProtocolField } from "./TextProtocolField";
+import { validateTextSpecs } from "@/lib/protocol/text-specs";
 
 interface Props {
   providerId: string;
@@ -39,8 +40,8 @@ interface Provider {
   openaiEnabled?: boolean;
   anthropicEnabled?: boolean;
   anthropicBaseUrl?: string | null;
-  /** The protocol document, if one is set. Decides which mode opens. */
-  textSpec?: string | null;
+  /** One protocol document per compatibility interface. Decides which mode opens. */
+  textSpecs?: string[];
 }
 
 /**
@@ -218,7 +219,7 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
   const [modelRows, setModelRows] = useState<ProviderModelRow[]>(() =>
     rowsFromProvider(provider.modelMapping, provider.modelConfigs),
   );
-  const [textSpec, setTextSpec] = useState(provider.textSpec ?? "");
+  const [textSpecs, setTextSpecs] = useState<string[]>(provider.textSpecs ?? []);
   /**
    * Advanced by default when a spec is already set, and simple otherwise.
    *
@@ -228,9 +229,9 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
    * without anybody touching it.
    */
   const [mode, setMode] = useState<"simple" | "advanced">(
-    provider.textSpec ? "advanced" : "simple",
+    provider.textSpecs?.length ? "advanced" : "simple",
   );
-  const specVerdict = judgeTextSpec(textSpec);
+  const specVerdict = validateTextSpecs(textSpecs);
 
   // Sync state when provider changes
   useEffect(() => {
@@ -243,8 +244,8 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
       setEnabled(provider.enabled);
       setFaces(facesFromProvider(provider));
       setModelRows(rowsFromProvider(provider.modelMapping, provider.modelConfigs));
-      setTextSpec(provider.textSpec ?? "");
-      setMode(provider.textSpec ? "advanced" : "simple");
+      setTextSpecs(provider.textSpecs ?? []);
+      setMode(provider.textSpecs?.length ? "advanced" : "simple");
       setError("");
     }
   }, [open, provider]);
@@ -283,7 +284,7 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
     // governs the parameters on the way, it does not decide which endpoint is
     // called. Saving in advanced mode must not clear the models, and saving in
     // simple mode must not clear the spec.
-    if (specVerdict.kind === "bad") {
+    if (!specVerdict.ok) {
       setError(specVerdict.errors[0]);
       setMode("advanced");
       return;
@@ -309,7 +310,7 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
           ...rowsToPayload(modelRows),
           // `null` clears it, which is the one way to go back to "forward
           // everything as sent" without a separate control.
-          textSpec: textSpec.trim() ? textSpec : null,
+          textSpecs,
         }),
       });
       const data = await res.json();
@@ -328,10 +329,32 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
   return (
     <Modal open={open} onClose={onClose} title={t("admin.providers.edit")} wide>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <ProviderModeSwitch mode={mode} onChange={setMode} hasSpec={Boolean(provider.textSpec)} />
+        <ProviderModeSwitch mode={mode} onChange={setMode} interfaceCount={textSpecs.length} />
+
+        {/*
+          Which interfaces this provider answers on. **Outside both modes on
+          purpose.**
+
+          It is a property of the provider, not of a mode, and hiding it behind
+          "simple" had two costs: you had to flip back and forth to turn a face
+          on after writing rules for it, and — worse — you could write a rule for
+          an interface that was switched off and see nothing happen, which is the
+          same trap as offering a protocol nothing can select.
+        */}
+        <ProviderFacesField
+          value={faces}
+          onChange={setFaces}
+          configured={textSpecs.map((raw) => {
+            try {
+              return (JSON.parse(raw) as { protocol?: string }).protocol ?? "";
+            } catch {
+              return "";
+            }
+          })}
+        />
 
         {mode === "advanced" ? (
-          <TextProtocolField value={textSpec} onChange={setTextSpec} providerName={provider.name} />
+          <TextProtocolField value={textSpecs} onChange={setTextSpecs} />
         ) : (
           <>
         <div className="grid grid-cols-2 gap-4">

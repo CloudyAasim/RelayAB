@@ -140,7 +140,7 @@ describe("db types - toPublic helpers", () => {
       openaiEnabled: true,
       anthropicEnabled: false,
       anthropicBaseUrl: null,
-      textSpec: null,
+      textSpecs: [],
       createdAt: "2026-09-21T08:00:00.000Z",
       updatedAt: "2025-01-01T00:00:00.000Z",
     };
