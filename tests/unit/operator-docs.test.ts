@@ -401,7 +401,17 @@ describe("editing it", () => {
   });
 
   it("locks the slug once published, because readers link to it", () => {
-    expect(FORM).toMatch(/readOnly=\{!p\.hidden\}/);
+    // The intent is unchanged: once a page has an anchor, renaming it would
+    // break every link anybody ever shared.
+    //
+    // It used to be asserted as `readOnly={!p.hidden}`, reading "published" as
+    // `!hidden`. That made the two flags mean opposite things — `hidden` is
+    // "not shown to readers" everywhere else — and `addPage` creates a
+    // published row without the flag, so every new page's slug box came up
+    // read-only. The id could not be typed, `docsPagesPayload` drops rows with
+    // no id, and the page saved and vanished: zero pages, no error.
+    expect(FORM).toMatch(/readOnly=\{idLocked\(p\)\}/);
+    expect(FORM).toMatch(/return Boolean\(p\.id\?\.trim\(\)\);/);
   });
 
   it("sends the pages to the same endpoint as everything else", () => {

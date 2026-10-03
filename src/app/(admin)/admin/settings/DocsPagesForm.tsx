@@ -42,9 +42,28 @@ const pageFields = (p: DocPageInput): DocPage => ({
   ...(p.order === undefined ? {} : { order: p.order }),
 });
 
-/** A row somebody opened and never filled in. */
+/**
+ * A row somebody opened and never filled in. */
 function isBlank(p: DocPageInput): boolean {
   return !p.id?.trim() && !p.title?.trim() && !p.body?.trim();
+}
+
+/**
+ * Whether this row's id is fixed.
+ *
+ * Fixed once the page has an id, because the id is the anchor readers link to
+ * and changing it would break every link anybody ever shared. A row with no id
+ * yet has no readers, which is the only moment it is safe to name.
+ *
+ * This was keyed on the hidden flag, negated — read-only unless hidden. That
+ * flag means "not shown to readers" everywhere else (`docs/custom.ts`,
+ * `docs/catalog.ts`), and `addPage` creates a published row without it, so
+ * every new page came up with a read-only id box. The id could not be typed,
+ * `docsPagesPayload` drops rows with no id, and the page saved and vanished:
+ * zero pages, no error, and a save button that looked like it had worked.
+ */
+function idLocked(p: DocPageInput): boolean {
+  return Boolean(p.id?.trim());
 }
 
 /** The request body for this form, and nothing else. */
@@ -74,11 +93,11 @@ export function DocsPagesForm({ initial }: { initial: readonly DocPageInput[] })
   const [pages, setPages] = useState<DocPageInput[]>([...initial]);
 
   /**
-   * A page's id is editable while it is a draft and fixed once it is published.
+   * A page's id is editable until it has one, and fixed from then on.
    *
    * The id is the anchor readers link to, so silently changing it would break
-   * every link somebody ever shared. Drafts have no readers yet, which is why
-   * that is the moment it is safe.
+   * every link somebody ever shared. A row with no id has no readers yet,
+   * which is why that is the moment it is safe to name.
    */
   const patchPage = (index: number, next: Partial<DocPageInput>) =>
     setPages((prev) => prev.map((p, i) => (i === index ? { ...p, ...next } : p)));
@@ -159,11 +178,11 @@ export function DocsPagesForm({ initial }: { initial: readonly DocPageInput[] })
                   <input
                     id={`page-id-${i}`}
                     value={p.id ?? ""}
-                    readOnly={!p.hidden}
+                    readOnly={idLocked(p)}
                     onChange={(e) => patchPage(i, { id: e.target.value })}
                     placeholder="rate-limits"
                     className={`mt-1 h-9 w-full rounded-md border border-input bg-background px-3 font-mono text-sm ${
-                      p.hidden ? "" : "opacity-70"
+                      idLocked(p) ? "opacity-70" : ""
                     }`}
                   />
                 </div>

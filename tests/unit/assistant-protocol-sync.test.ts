@@ -131,7 +131,10 @@ describe("the tester explains the call it actually made", () => {
   it("and says nothing when the OpenAI face is off", () => {
     // A face that is off means the request is never answered here, so a rule
     // attributed to this call would be a claim about something that did not run.
-    expect(TEST_MODEL).toMatch(/provider\.openaiEnabled === false/);
+    // The selection is the check now: `findOpenAIProvidersForModel` is what
+    // excludes those rows, so there is no second test of the flag to drift.
+    expect(TEST_MODEL).toMatch(/findOpenAIProvidersForModel\(model\)/);
+    expect(TEST_MODEL).toMatch(/unavailable/);
   });
 });
 

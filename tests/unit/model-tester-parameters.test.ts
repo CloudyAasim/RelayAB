@@ -64,11 +64,41 @@ describe("and it reports what the protocol did to them", () => {
     // A provider carries one rule per interface. Without the label, the lines
     // in the panel belong to nobody and a tester cannot act on them.
     expect(ROUTE).toMatch(/governedBy/);
-    expect(ROUTE).toMatch(/provider\.openaiEnabled === false/);
+  });
+
+  it("picks a provider that can actually answer this call", () => {
+    // The test goes out through `proxyChatCompletion`, so it needs an
+    // OpenAI-facing provider. It used to take `findProvidersForModel(...)[0]`,
+    // which is any provider mapping the model — including one that only has
+    // its Anthropic side on. The panel would then explain the request with that
+    // provider's `openai-chat` rule, and the call would fail for a reason the
+    // panel had just contradicted.
+    //
+    // The selection is what matters here. The unfiltered lookup still appears
+    // once, in the branch that names the providers so the refusal can list them.
+    expect(ROUTE).toMatch(/const openai = await findOpenAIProvidersForModel\(model\);/);
+    expect(ROUTE).toMatch(/const provider = openai\[0\];/);
+    expect(ROUTE).not.toMatch(/const provider = providers\[0\];/);
+    // And the two helpers that already existed for exactly this question.
+    const db = readFileSync(join(ROOT, "src", "lib", "db", "providers.ts"), "utf-8");
+    expect(db).toMatch(/export async function findOpenAIProvidersForModel/);
+    expect(db).toMatch(/export async function findAnthropicProvidersForModel/);
+  });
+
+  it("refuses up front, naming the providers that do map the model", () => {
+    // A 409 with the reason, rather than a call that fails upstream with the
+    // panel's explanation already printed above it.
+    expect(ROUTE).toMatch(/explained\.unavailable/);
+    expect(ROUTE).toMatch(/code: "no_openai_provider"/);
+    expect(ROUTE).toMatch(/anthropic_only/);
   });
 
   it("looked up on the same provider the request will be routed to", () => {
-    expect(ROUTE).toMatch(/findProvidersForModel\(model\)[\s\S]*?providers\[0\]/);
+    // The routing question is "which provider serves this call", and for an
+    // OpenAI-shaped call that is the OpenAI-facing list — not the list of
+    // everyone who maps the model. See the guard above for what the wrong
+    // version looked like.
+    expect(ROUTE).toMatch(/findOpenAIProvidersForModel\(model\)[\s\S]*?openai\[0\]/);
   });
 
   it("and the three views of it — asked, sent, decided — all come back", () => {

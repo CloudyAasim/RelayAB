@@ -18,7 +18,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { resolveToolCredential } from "@/lib/assistant/credentials";
 import { consumeAssistantTurn } from "@/lib/assistant/rate-limit";
 import { proxyChatCompletion } from "@/lib/proxy/openai";
-import { findProvidersForModel } from "@/lib/db/providers";
+import { findOpenAIProvidersForModel, findProvidersForModel } from "@/lib/db/providers";
 import { applyParameterPolicy } from "@/lib/protocol/parameter-policy";
 import { readTextSpecs, specForSurface } from "@/lib/protocol/text-specs";
 
@@ -64,23 +64,30 @@ async function explainParameters(
   applied: Record<string, unknown>;
   decisions: Array<{ name: string; action: string; note?: string }>;
   governedBy: string | null;
+  /** Why there is no rule to report, when there is no provider to report on. */
+  unavailable?: { reason: "no_provider" | "anthropic_only"; providers: string[] };
 }> {
-  const providers = await findProvidersForModel(model);
-  const provider = providers[0];
-  if (!provider) {
-    return { applied: { ...parameters, max_tokens: maxTokens }, decisions: [], governedBy: null };
-  }
-
-  // The face decides whether the request is answered at all; say so rather than
-  // showing a rule that will never be consulted.
-  if (provider.openaiEnabled === false) {
+  // The test goes out through `proxyChatCompletion`, so it is the OpenAI-facing
+  // providers that can serve it — not any provider that happens to map the
+  // model. A row that only has its Anthropic side on maps the model too, and
+  // this used to pick that one: the panel then explained the request with the
+  // `openai-chat` rule of a provider that cannot answer it, and the call failed
+  // for a reason the panel had just contradicted.
+  const openai = await findOpenAIProvidersForModel(model);
+  if (openai.length === 0) {
+    const all = await findProvidersForModel(model);
     return {
       applied: { ...parameters, max_tokens: maxTokens },
       decisions: [],
       governedBy: null,
+      unavailable: {
+        reason: all.length > 0 ? "anthropic_only" : "no_provider",
+        providers: all.map((p) => p.name),
+      },
     };
   }
 
+  const provider = openai[0];
   const spec = specForSurface(readTextSpecs(provider), "openai-chat");
   const { body, decisions } = applyParameterPolicy(
     { ...parameters, max_tokens: maxTokens },
@@ -168,6 +175,27 @@ export async function POST(req: Request): Promise<Response> {
   // and independent of it: a tester that silently gets a different answer from
   // the one it asked for is the exact failure this panel exists to prevent.
   const explained = await explainParameters(parsed.data.model, asked, maxTokens);
+
+  // Nothing on the OpenAI side can serve this model, so the call would fail for
+  // a reason the panel had just described. Say which providers do map it and
+  // where they do serve it, instead.
+  if (explained.unavailable) {
+    const { reason, providers } = explained.unavailable;
+    return NextResponse.json(
+      {
+        ok: false,
+        error: {
+          code: "no_openai_provider",
+          message:
+            reason === "anthropic_only"
+              ? `模型 ${parsed.data.model} 只被 Anthropic 侧的服务商映射（${providers.join("、")}），本测试走的是 /v1/chat/completions。要测它，请在该服务商的协议面里打开 OpenAI 侧。`
+              : `没有任何已启用的服务商映射这个模型（${parsed.data.model}）。`,
+        },
+        data: { reason, providers },
+      },
+      { status: 409 },
+    );
+  }
 
   const result = await proxyChatCompletion({
     req: {
