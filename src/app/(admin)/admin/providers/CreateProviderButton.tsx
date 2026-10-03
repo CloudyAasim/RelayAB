@@ -3,37 +3,33 @@
 /**
  * src/app/(admin)/admin/providers/CreateProviderButton.tsx
  *
- * Provider creation modal with model configuration:
- *   - Template selection (OpenAI / Anthropic / Azure / MiniMax / etc.)
- *   - Auto-fetch models from upstream
- *   - Model mapping editor (client model → upstream model)
- *   - Model configuration (context length, output length, credit cost)
+ * Provider creation.
+ *
+ * What is left here after the refactor is the three things that are genuinely
+ * about *creating*: the template picker, fetching models with the key being
+ * typed in right now, and POSTing. The fields, the state and the request body
+ * all come from `ProviderForm` / `useProviderForm` — the same ones the edit
+ * modal uses, which is the point: the two used to be separate hand-written
+ * forms and they drifted apart in ways only one of them noticed.
  */
 import { useState, useTransition } from "react";
-import { ProviderModeSwitch, TextProtocolField } from "./TextProtocolField";
-import { validateTextSpecs } from "@/lib/protocol/text-specs";
 import { useRouter } from "next/navigation";
 import { LegacyModal as Modal } from "@/components/ui/Modal";
-import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { useT } from "@/components/i18n/I18nProvider";
 import { PROVIDER_TEMPLATES } from "@/lib/providers/templates";
-import { ProviderFacesField, type ProviderFacesValue } from "./ProviderFacesField";
 import {
   DEFAULT_CONTEXT_LENGTH,
   DEFAULT_MAX_OUTPUT_TOKENS,
   mergeFetchedModels,
   newModelRow,
-  rowsToPayload,
-  type ProviderModelRow,
 } from "./model-rows";
-import { ProviderModelsEditor } from "./ProviderModelsEditor";
+import { ProviderForm } from "./form/ProviderForm";
+import { useProviderForm } from "./form/use-provider-form";
 
 interface Props {
   onCreated?: () => void;
 }
-
-type Kind = "openai" | "anthropic" | "custom-openai";
 
 export function CreateProviderButton({ onCreated }: Props) {
   const t = useT();
@@ -41,34 +37,18 @@ export function CreateProviderButton({ onCreated }: Props) {
   const [isPending, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
 
-  // Form state
   const [templateId, setTemplateId] = useState("openai");
-  const [name, setName] = useState("");
-  const [kind, setKind] = useState<Kind>("openai");
-  const [baseUrl, setBaseUrl] = useState("");
-  const [apiKey, setApiKey] = useState("");
-  const [priority, setPriority] = useState("0");
-  const [enabled, setEnabled] = useState(true);
-  const [headers, setHeaders] = useState("");
-  const [faces, setFaces] = useState<ProviderFacesValue>({
-    openaiEnabled: true,
-    upstreamFormat: "responses",
-    anthropicEnabled: false,
-    anthropicBaseUrl: "",
-  });
-  const [modelRows, setModelRows] = useState<ProviderModelRow[]>([]);
-  /**
-   * Simple by default, because it is right for almost every OpenAI-compatible
-   * vendor and needs no reading. Advanced is one click away, and comes with the
-   * four protocol presets so it is also a click-and-pick.
-   */
-  const [mode, setMode] = useState<"simple" | "advanced">("simple");
-  const [textSpecs, setTextSpecs] = useState<string[]>([]);
-  const specVerdict = validateTextSpecs(textSpecs);
+  const form = useProviderForm();
+  const { values, patch, setModelRows, specVerdict, setMode, buildPayload, reset } = form;
 
   // Fetch-models state
   const [fetchingModels, setFetchingModels] = useState(false);
-  const [fetchResult, setFetchResult] = useState<{ count: number; status: number; latencyMs: number; error?: string } | null>(null);
+  const [fetchResult, setFetchResult] = useState<{
+    count: number;
+    status: number;
+    latencyMs: number;
+    error?: string;
+  } | null>(null);
 
   // Submit state
   const [error, setError] = useState<string | null>(null);
@@ -76,7 +56,7 @@ export function CreateProviderButton({ onCreated }: Props) {
 
   // Context/output defaults for rows added by hand follow the selected template.
   const activeTemplateModelDefaults = (() => {
-    const tpl = PROVIDER_TEMPLATES.find((t) => t.id === templateId);
+    const tpl = PROVIDER_TEMPLATES.find((x) => x.id === templateId);
     return {
       contextLength: tpl?.defaultContextLength ?? DEFAULT_CONTEXT_LENGTH,
       maxOutputTokens: tpl?.defaultMaxOutput ?? DEFAULT_MAX_OUTPUT_TOKENS,
@@ -84,12 +64,13 @@ export function CreateProviderButton({ onCreated }: Props) {
   })();
 
   function applyTemplate(id: string) {
-    const tpl = PROVIDER_TEMPLATES.find((tpl) => tpl.id === id);
+    const tpl = PROVIDER_TEMPLATES.find((x) => x.id === id);
     if (!tpl) return;
     setTemplateId(id);
-    setKind(tpl.kind === "azure" ? "custom-openai" : (tpl.kind as Kind));
-    if (tpl.defaultBaseUrl) setBaseUrl(tpl.defaultBaseUrl);
-    
+    patch({
+      kind: tpl.kind === "azure" ? "custom-openai" : tpl.kind,
+      ...(tpl.defaultBaseUrl ? { baseUrl: tpl.defaultBaseUrl } : {}),
+    });
     setModelRows(
       Object.entries(tpl.defaultModelMapping).map(([clientId, upstreamId]) =>
         newModelRow({
@@ -100,50 +81,21 @@ export function CreateProviderButton({ onCreated }: Props) {
         }),
       ),
     );
-    
-    setName(tpl.label);
-    if (tpl.defaultHeaders) {
-      setHeaders(Object.entries(tpl.defaultHeaders).map(([k, v]) => `${k}: ${v}`).join("\n"));
-    }
-    // Always reset this: otherwise switching from the Anthropic template back
-    // to an OpenAI-compatible one would leave the Anthropic face on. The
-    // template's `anthropic` format means "Anthropic face only".
-    const templateFormat = tpl.defaultUpstreamFormat ?? "responses";
-    setFaces({
-      openaiEnabled: templateFormat !== "anthropic",
-      upstreamFormat: templateFormat === "anthropic" ? "responses" : templateFormat,
-      anthropicEnabled: templateFormat === "anthropic",
-      anthropicBaseUrl: "",
-    });
-    setFetchResult(null);
-  }
-
-  function reset() {
-    setName(""); setBaseUrl(""); setApiKey("");
-    setPriority("0"); setEnabled(true); setHeaders("");
-    setModelRows([]); setError(null); setFetchResult(null);
-    setFaces({
-      openaiEnabled: true,
-      upstreamFormat: "responses",
-      anthropicEnabled: false,
-      anthropicBaseUrl: "",
-    });
-    setTemplateId("openai");
   }
 
   async function fetchModels() {
-    if (!baseUrl || !apiKey) return;
-    
+    if (!values.baseUrl || !values.apiKey) return;
     setFetchingModels(true);
-    setFetchResult(null);
     try {
-      const res = await fetch(`/api/admin/providers/probe`, {
+      const res = await fetch("/api/admin/providers/probe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ baseUrl, apiKey, kind, path: PROVIDER_TEMPLATES.find(t => t.id === templateId)?.modelsListPath }),
+        body: JSON.stringify({
+          baseUrl: values.baseUrl,
+          apiKey: values.apiKey,
+          kind: values.kind,
+        }),
       });
-      
-      // Handle empty or non-JSON responses
       const text = await res.text();
       if (!text) {
         setFetchResult({
@@ -152,11 +104,15 @@ export function CreateProviderButton({ onCreated }: Props) {
           latencyMs: 0,
           error: t("common.networkError") + " (empty response)",
         });
-        setFetchingModels(false);
         return;
       }
-      
-      let data;
+      let data: {
+        ok?: boolean;
+        models?: string[];
+        status?: number;
+        latencyMs?: number;
+        error?: string;
+      };
       try {
         data = JSON.parse(text);
       } catch {
@@ -166,21 +122,15 @@ export function CreateProviderButton({ onCreated }: Props) {
           latencyMs: 0,
           error: t("common.networkError") + " (invalid JSON: " + text.slice(0, 100) + ")",
         });
-        setFetchingModels(false);
         return;
       }
       if (data.ok) {
-        const ids: string[] = data.models ?? [];
-        setFetchResult({ count: ids.length, status: data.status, latencyMs: data.latencyMs });
-        
-        // Add new models that aren't already in the list
-        const currentTemplate = PROVIDER_TEMPLATES.find(t => t.id === templateId);
-        setModelRows((prev) =>
-          mergeFetchedModels(prev, ids, {
-            contextLength: currentTemplate?.defaultContextLength ?? DEFAULT_CONTEXT_LENGTH,
-            maxOutputTokens: currentTemplate?.defaultMaxOutput ?? DEFAULT_MAX_OUTPUT_TOKENS,
-          }),
-        );
+        setFetchResult({
+          count: data.models?.length ?? 0,
+          status: data.status ?? 0,
+          latencyMs: data.latencyMs ?? 0,
+        });
+        setModelRows((prev) => mergeFetchedModels(prev, data.models ?? [], activeTemplateModelDefaults));
       } else {
         setFetchResult({
           count: 0,
@@ -201,72 +151,43 @@ export function CreateProviderButton({ onCreated }: Props) {
     }
   }
 
-  function parseHeaders(): Record<string, string> | undefined {
-    const out: Record<string, string> = {};
-    for (const line of headers.split("\n")) {
-      const idx = line.indexOf(":");
-      if (idx < 0) continue;
-      const k = line.slice(0, idx).trim();
-      const v = line.slice(idx + 1).trim();
-      if (k && v) out[k] = v;
-    }
-    return Object.keys(out).length > 0 ? out : undefined;
-  }
-
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!specVerdict.ok) {
+      setError(specVerdict.errors[0]);
+      setMode("advanced");
+      return;
+    }
     setLoading(true);
     setError(null);
 
     try {
-      const { modelMapping, modelConfigs } = rowsToPayload(modelRows);
-      if (!specVerdict.ok) {
-        setError(specVerdict.errors[0]);
-        setMode("advanced");
-        return;
-      }
-
       const res = await fetch("/api/admin/providers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name || templateId,
-          kind,
-          baseUrl: baseUrl || null,
-          apiKey,
-          modelMapping,
-          modelConfigs,
-          enabled,
-          priority: Number(priority) || 0,
-          headers: parseHeaders(),
-          openaiEnabled: faces.openaiEnabled,
-          upstreamFormat: faces.upstreamFormat === "anthropic" ? "responses" : faces.upstreamFormat,
-          anthropicEnabled: faces.anthropicEnabled,
-          anthropicBaseUrl: faces.anthropicBaseUrl || null,
-          // A provider created through the protocol gets its protocols. An
-          // empty list is not sent: "nothing configured" is the absence of the
-          // field, not an empty one.
-          ...(textSpecs.length ? { textSpecs } : {}),
-        }),
+        body: JSON.stringify(
+          buildPayload({
+            // An unnamed provider falls back to the template it was built from.
+            nameFallback: templateId,
+            // "Nothing configured" is the absence of the field, not an empty
+            // list — unlike edit, where `[]` is how a list gets cleared.
+            textSpecs: values.textSpecs.length ? values.textSpecs : undefined,
+          }),
+        ),
       });
-      
-      // Handle empty or non-JSON responses
+
       const text = await res.text();
       if (!text) {
         setError(t("common.networkError") + " (empty response)");
-        setLoading(false);
         return;
       }
-      
-      let data;
+      let data: { ok?: boolean; error?: { message?: string } };
       try {
         data = JSON.parse(text);
       } catch {
         setError(t("common.networkError") + " (invalid server response)");
-        setLoading(false);
         return;
       }
-
       if (!data.ok) {
         setError(data.error?.message ?? t("common.failed"));
         return;
@@ -285,124 +206,55 @@ export function CreateProviderButton({ onCreated }: Props) {
 
   return (
     <>
-      <Button onClick={() => { reset(); setOpen(true); }}>
+      <Button
+        onClick={() => {
+          reset();
+          setTemplateId("openai");
+          setError(null);
+          setOpen(true);
+        }}
+      >
         {t("admin.providers.create")}
       </Button>
       <Modal open={open} onClose={() => setOpen(false)} title={t("admin.providers.create")} extraWide>
         <form onSubmit={onSubmit} className="space-y-4">
-          <ProviderModeSwitch mode={mode} onChange={setMode} interfaceCount={textSpecs.length} />
-          {/*
-            Which interfaces this provider answers on, outside both modes: it is a
-            property of the provider, and hiding it behind "simple" meant a rule
-            could be written for an interface that was switched off.
-          */}
-          <ProviderFacesField
-            value={faces}
-            onChange={setFaces}
-            configured={textSpecs.map((raw) => {
-              try {
-                return (JSON.parse(raw) as { protocol?: string }).protocol ?? "";
-              } catch {
-                return "";
-              }
-            })}
-          />
-          {mode === "advanced" && (
-            <TextProtocolField
-              value={textSpecs}
-              onChange={setTextSpecs}
-              faces={{ openai: faces.openaiEnabled, anthropic: faces.anthropicEnabled }}
-            />
-          )}
-          {/* Template selection */}
-          <div>
-            <label className="block text-sm font-medium mb-1.5">{t("admin.providers.create.template")}</label>
-            <select
-              value={templateId}
-              onChange={(e) => applyTemplate(e.target.value)}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            >
-              {PROVIDER_TEMPLATES.map((tpl) => (
-                <option key={tpl.id} value={tpl.id}>
-                  {tpl.label}
-                </option>
-              ))}
-            </select>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {PROVIDER_TEMPLATES.find((t) => t.id === templateId)?.description}
-            </p>
-          </div>
-
-          {/* Name */}
-          <Input
-            label={t("admin.providers.create.name")}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={t("admin.providers.create.namePlaceholder")}
-          />
-
-          {/* Base URL */}
-          <Input
-            label={t("admin.providers.create.baseUrl")}
-            value={baseUrl}
-            onChange={(e) => setBaseUrl(e.target.value)}
-            placeholder="https://api.openai.com/v1"
-            required
-          />
-
-          {/* API Key */}
-          <Input
-            label={t("admin.providers.create.apiKey")}
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="sk-..."
-            required
-          />
-
-          {/* Priority */}
-          <Input
-            label={t("admin.providers.create.priority")}
-            type="number"
-            value={priority}
-            onChange={(e) => setPriority(e.target.value)}
-          />
-
-          {/* Headers */}
-          <div>
-            <label className="block text-sm font-medium mb-1.5">{t("admin.providers.create.headers")}</label>
-            <textarea
-              value={headers}
-              onChange={(e) => setHeaders(e.target.value)}
-              rows={2}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
-              placeholder="api-version: 2024-08-01-preview"
-            />
-            <p className="mt-1 text-xs text-muted-foreground">{t("admin.providers.create.headersHint")}</p>
-          </div>
-
-          {/* Protocol faces */}
-          {/* The original position, now the only one: the interface selection
-              moved above the mode switch so it is visible in both modes. */}
-
-          {/* Model mapping with config */}
-          <ProviderModelsEditor
-            rows={modelRows}
-            onChange={setModelRows}
+          <ProviderForm
+            form={form}
             newRowDefaults={activeTemplateModelDefaults}
-            actions={
+            aboveFields={
+              <div>
+                <label className="block text-sm font-medium mb-1.5">
+                  {t("admin.providers.create.template")}
+                </label>
+                <select
+                  value={templateId}
+                  onChange={(e) => applyTemplate(e.target.value)}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  {PROVIDER_TEMPLATES.map((tpl) => (
+                    <option key={tpl.id} value={tpl.id}>
+                      {tpl.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {PROVIDER_TEMPLATES.find((x) => x.id === templateId)?.description}
+                </p>
+              </div>
+            }
+            modelsActions={
               <Button
                 type="button"
                 size="sm"
                 variant="ghost"
                 onClick={fetchModels}
                 loading={fetchingModels}
-                disabled={!baseUrl || !apiKey}
+                disabled={!values.baseUrl || !values.apiKey}
               >
                 ↻ {t("admin.providers.create.autoFetch")}
               </Button>
             }
-            hint={
+            modelsHint={
               <>
                 {t("admin.providers.models.costHint")}
                 {fetchingModels && <span className="ml-2">{t("admin.providers.create.fetching")}</span>}
@@ -416,17 +268,6 @@ export function CreateProviderButton({ onCreated }: Props) {
               </>
             }
           />
-
-          {/* Enabled */}
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={enabled}
-              onChange={(e) => setEnabled(e.target.checked)}
-              className="rounded"
-            />
-            {t("admin.providers.create.enabled")}
-          </label>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
 

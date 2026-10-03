@@ -171,9 +171,14 @@ describe("UI invariants for the model editor", () => {
 
 describe("the edit modal persists model configs", () => {
   it("sends mapping + configs built from the same rows", () => {
-    const modal = read("app/(admin)/admin/providers/ProviderActions.tsx");
-    expect(modal).toContain("...rowsToPayload(modelRows)");
-    expect(modal).toContain("rowsFromProvider(provider.modelMapping, provider.modelConfigs)");
+    // The rows are turned into the body by the shared builder now, so the
+    // assertion follows the work rather than the file it used to live in. The
+    // point is unchanged: one `rowsToPayload` call feeds both halves, so they
+    // cannot describe different model sets.
+    const payload = read("lib/admin/provider-payload.ts");
+    expect(payload).toContain("rowsToPayload(values.modelRows)");
+    const form = read("app/(admin)/admin/providers/form/use-provider-form.ts");
+    expect(form).toContain("rowsFromProvider(provider.modelMapping, provider.modelConfigs)");
   });
 
   it("lets PATCH accept modelConfigs", () => {

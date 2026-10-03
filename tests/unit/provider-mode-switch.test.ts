@@ -33,6 +33,15 @@ const EDIT = read("src", "app", "(admin)", "admin", "providers", "ProviderAction
 const CREATE = read("src", "app", "(admin)", "admin", "providers", "CreateProviderButton.tsx");
 const PAGE = read("src", "app", "(admin)", "admin", "providers", "page.tsx");
 const FIELD = read("src", "app", "(admin)", "admin", "providers", "TextProtocolField.tsx");
+/**
+ * The two modals stopped spelling the form out in the refactor: they render
+ * this, and it renders the switch, the interface selector and the protocol
+ * list. Assertions about "the form" point here now — which is also the stronger
+ * claim, because a modal can no longer differ without failing.
+ */
+const FORM = read("src", "app", "(admin)", "admin", "providers", "form", "ProviderForm.tsx");
+const HOOK = read("src", "app", "(admin)", "admin", "providers", "form", "use-provider-form.ts");
+const PAYLOAD = read("src", "lib", "admin", "provider-payload.ts");
 const API_PATCH = read("src", "app", "api", "admin", "providers", "[id]", "route.ts");
 const API_POST = read("src", "app", "api", "admin", "providers", "route.ts");
 const DB = read("src", "lib", "db", "providers.ts");
@@ -60,28 +69,27 @@ describe("which interfaces are on is not a mode's business", () => {
     // It is a property of the provider. Behind "simple" you had to flip back and
     // forth to turn a face on after writing rules for it.
     //
-    // The two forms spell the branch differently — the edit modal hides one half
-    // with a ternary, the create form shows one with `&&` — so the branch is
-    // named per file rather than assumed.
-    const branchOf = (src: string) =>
-      Math.max(
-        src.indexOf('mode === "advanced" ?'),
-        src.indexOf('mode === "advanced" &&'),
-      );
+    // This used to check the ordering separately in each modal, which is what let
+    // them disagree — the edit modal's ternary put the selector on one side and
+    // the whole form on the other. There is now one form to check, and both
+    // modals are required to render it.
+    const branchAt = FORM.search(/mode === "advanced" &&/);
     // Boundary-aware: `indexOf("<ProviderFacesField")` also finds
     // `<ProviderFacesFieldGone`, so renaming the tag to hide it would sail
     // straight past a plain substring search.
     const at = (src: string, tag: string) => src.search(new RegExp(`${tag}[\\s>]`));
+    const switchAt = at(FORM, "<ProviderModeSwitch");
+    const facesAt = at(FORM, "<ProviderFacesField");
+    expect(facesAt, "no interface selector").toBeGreaterThan(-1);
+    expect(branchAt, "no mode branch").toBeGreaterThan(-1);
+    expect(
+      switchAt < facesAt && facesAt < branchAt,
+      "the selector must sit between the mode switch and the branch",
+    ).toBe(true);
+
     for (const src of [EDIT, CREATE]) {
-      const switchAt = at(src, "<ProviderModeSwitch");
-      const facesAt = at(src, "<ProviderFacesField");
-      const branchAt = branchOf(src);
-      expect(facesAt, "no interface selector").toBeGreaterThan(-1);
-      expect(branchAt, "no mode branch").toBeGreaterThan(-1);
-      expect(
-        switchAt < facesAt && facesAt < branchAt,
-        "the selector must sit between the mode switch and the branch",
-      ).toBe(true);
+      expect(src, "this modal does not render the shared form").toMatch(/<ProviderForm\b/);
+      expect(at(src, "<ProviderFacesField"), "a modal keeps its own interface selector").toBe(-1);
     }
   });
 
@@ -94,19 +102,23 @@ describe("which interfaces are on is not a mode's business", () => {
     expect(FACES).toMatch(/const orphanFor = \(protocol: string\): boolean/);
     expect(FACES).toMatch(/orphanFor\("openai-chat"\)/);
     expect(FACES).toMatch(/orphanFor\("anthropic-messages"\)/);
-    // And the call sites pass what is configured, so the warning is not
-    // permanently on.
-    expect(EDIT).toMatch(/<ProviderFacesField[\s\S]*?configured=\{/);
-    expect(CREATE).toMatch(/<ProviderFacesField[\s\S]*?configured=\{/);
+    // And the call site passes what is configured, so the warning is not
+    // permanently on. The interface selector moved into the shared form, so
+    // there is one call site to check rather than two that can disagree.
+    expect(FORM).toMatch(/<ProviderFacesField[\s\S]*?configured=\{configuredProtocols\}/);
+    expect(HOOK).toMatch(/configuredProtocols/);
   });
 });
 
 describe("the two modes are exclusive, and say so", () => {
   it("both the editor and the create form offer them", () => {
+    // Via the shared form, so "both" is now structural rather than a promise
+    // about two files staying in step.
     for (const src of [EDIT, CREATE]) {
-      expect(src).toContain("ProviderModeSwitch");
-      expect(src).toContain("TextProtocolField");
+      expect(src).toMatch(/<ProviderForm\b/);
     }
+    expect(FORM).toContain("ProviderModeSwitch");
+    expect(FORM).toContain("TextProtocolField");
   });
 
   it("as cards with a written state, not a pressed tint", () => {
@@ -125,8 +137,8 @@ describe("the two modes are exclusive, and say so", () => {
 
   it("and the switch is inside the form in both places", () => {
     // Outside the form, switching would be a separate transaction from saving.
-    expect(EDIT).toMatch(/<form onSubmit=\{handleSubmit\}[\s\S]*?<ProviderModeSwitch/);
-    expect(CREATE).toMatch(/<form onSubmit=\{onSubmit\}[\s\S]*?<ProviderModeSwitch/);
+    expect(EDIT).toMatch(/<form onSubmit=\{handleSubmit\}[\s\S]*?<ProviderForm\b/);
+    expect(CREATE).toMatch(/<form onSubmit=\{onSubmit\}[\s\S]*?<ProviderForm\b/);
   });
 
   it("the protocol is no longer a separate block under the table", () => {
@@ -227,8 +239,12 @@ describe("the advanced half is a list, one entry per interface", () => {
 
 describe("the modes configure different fields of the same row", () => {
   it("the simple form's fields are sent whichever mode is open", () => {
-    expect(EDIT).toMatch(/\.\.\.rowsToPayload\(modelRows\),[\s\S]*?textSpecs,/);
-    expect(CREATE).toMatch(/modelMapping,\n\s+modelConfigs,[\s\S]*?textSpecs/);
+    // The mode no longer wraps any field: the protocol list is additive. What
+    // is sent is the shared builder's body in both cases.
+    expect(PAYLOAD).toMatch(/export function buildProviderPayload/);
+    for (const src of [EDIT, CREATE]) {
+      expect(src).toMatch(/buildPayload\(/);
+    }
   });
 
   it("so the mode only decides what is *shown*, never what is sent", () => {
@@ -238,11 +254,10 @@ describe("the modes configure different fields of the same row", () => {
     // was the name, base URL, API key and the entire model table. The name of
     // this test was right and its assertion enforced the bug.
     //
-    // Additive spelling: the protocol list appears in advanced, everything
-    // else is unconditional. The fields that must be on screen either way are
-    // pinned in provider-edit-form-fields.test.ts.
-    expect(EDIT).toMatch(/mode === "advanced" &&/);
-    expect(EDIT).not.toMatch(/mode === "advanced" \?/);
+    // Additive spelling, in the shared form: the protocol list appears in
+    // advanced, everything else is unconditional.
+    expect(FORM).toMatch(/mode === "advanced" &&/);
+    expect(FORM).not.toMatch(/mode === "advanced" \?/);
   });
 
   it("an invalid spec blocks the save and sends you to the mode that shows it", () => {
@@ -255,30 +270,36 @@ describe("the modes configure different fields of the same row", () => {
 
   it("an empty list is how you go back to plain forwarding", () => {
     // `""` is not a valid spec; `[]` is the documented "no policy" state.
-    expect(EDIT).toMatch(/textSpecs,/);
+    expect(EDIT).toMatch(/textSpecs: values\.textSpecs/);
     expect(API_PATCH).toMatch(/textSpecs: z\s*\.array/);
   });
 
   it("a create with no protocol does not send the field at all", () => {
-    expect(CREATE).toMatch(/\.\.\.\(textSpecs\.length \? \{ textSpecs \} : \{\}\)/);
+    // Two calls on one builder, differing only in this option — which is why
+    // the two cannot drift: there is one body, and the difference is named.
+    expect(CREATE).toMatch(/textSpecs: values\.textSpecs\.length \? values\.textSpecs : undefined/);
+    expect(PAYLOAD).toMatch(/\.\.\.\(options\.textSpecs \? \{ textSpecs: options\.textSpecs \} : \{\}\)/);
   });
 });
 
 describe("the editor opens on the mode the provider is actually configured in", () => {
   it("advanced when a list has entries, simple when it is empty", () => {
-    expect(EDIT).toMatch(/provider\.textSpecs\?\.length \? "advanced" : "simple"/);
-    expect(EDIT).toMatch(/setMode\(provider\.textSpecs\?\.length \? "advanced" : "simple"\)/);
+    // Owned by the hook now, and derived from the values rather than re-spelled
+    // by each modal — the edit modal used to compute this twice (once for the
+    // initial state, once in the open effect) and the create modal a third time.
+    expect(HOOK).toMatch(/return start\.textSpecs\.length \? "advanced" : "simple"/);
+    expect(PAYLOAD).toMatch(/export function modeForProvider/);
   });
 
   it("and the card reports how many interfaces are configured", () => {
-    // The count is passed in at the call sites and printed on the card.
-    expect(EDIT).toMatch(/interfaceCount=\{textSpecs\.length\}/);
-    expect(CREATE).toMatch(/interfaceCount=\{textSpecs\.length\}/);
+    // The count comes from the shared form, so both modals show the same one.
+    expect(FORM).toMatch(/interfaceCount=\{values\.textSpecs\.length\}/);
     expect(FIELD).toMatch(/admin\.textSpec\.mode\.configured/);
   });
 
   it("while a new provider starts simple, because that is right for almost all of them", () => {
-    expect(CREATE).toMatch(/useState<"simple" \| "advanced">\("simple"\)/);
+    // An empty list, which is what the hook reads to pick the mode.
+    expect(HOOK).toMatch(/textSpecs: \[\]/);
   });
 });
 
@@ -312,8 +333,12 @@ describe("the panel it replaced is gone", () => {
   });
 
   it("and one judge serves the editor, the create form and the endpoint", () => {
+    // The per-entry judge is shared with the endpoint; the whole-list verdict
+    // is shared by both modals through the hook. One of each, not one per form.
     expect(FIELD).toMatch(/export function judgeTextSpec/);
-    expect(EDIT).toMatch(/validateTextSpecs/);
-    expect(CREATE).toMatch(/validateTextSpecs/);
+    expect(HOOK).toMatch(/validateTextSpecs/);
+    for (const src of [EDIT, CREATE]) {
+      expect(src, "a modal judges the list on its own").not.toMatch(/validateTextSpecs/);
+    }
   });
 });
