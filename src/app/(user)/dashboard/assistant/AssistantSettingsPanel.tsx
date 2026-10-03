@@ -27,7 +27,21 @@ export interface AssistantSettingsView {
   hasApiKey: boolean;
 }
 
-export function AssistantSettingsPanel({ initial }: { initial: AssistantSettingsView | null }) {
+export function AssistantSettingsPanel({
+  initial,
+  suggestedModels = [],
+}: {
+  initial: AssistantSettingsView | null;
+  /**
+   * Models to offer before anything is probed.
+   *
+   * Without these the field has a datalist and no entries, which looks exactly
+   * like no dropdown at all. The probe's own list replaces them when it runs —
+   * it is the authoritative answer for this key, these are only a starting
+   * list.
+   */
+  suggestedModels?: string[];
+}) {
   const t = useT();
   const router = useRouter();
   const [baseUrl, setBaseUrl] = useState(initial?.baseUrl ?? "");
@@ -46,7 +60,7 @@ export function AssistantSettingsPanel({ initial }: { initial: AssistantSettings
    * a legitimate thing to type — and the list becomes the dropdown the browser
    * offers while you type.
    */
-  const [knownModels, setKnownModels] = useState<string[]>([]);
+  const [knownModels, setKnownModels] = useState<string[]>(suggestedModels);
 
   async function probe() {
     if (!baseUrl.trim() || !apiKey.trim()) {
@@ -170,6 +184,11 @@ export function AssistantSettingsPanel({ initial }: { initial: AssistantSettings
             <option key={m} value={m} />
           ))}
         </datalist>
+        <p className="text-xs text-muted-foreground">
+          {knownModels.length > 0 && knownModels !== suggestedModels
+            ? t("assistant.settings.modelHintProbed", { n: knownModels.length })
+            : t("assistant.settings.modelHint")}
+        </p>
 
         <div className="flex flex-wrap items-center gap-2">
           <Button

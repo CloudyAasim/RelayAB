@@ -27,6 +27,7 @@ import { resolveToolCredential, type ResolvedCredential } from "@/lib/assistant/
 import { consumeAssistantTurn } from "@/lib/assistant/rate-limit";
 import {
   executeMediaRequest,
+  audioDelivery,
   fileToDataUrl,
   resultItems,
   type MediaExecutionOutcome,
@@ -268,18 +269,34 @@ async function respondToMedia(
   ms: number,
 ): Promise<Response> {
   if (capability === "audio.tts") {
-    const binary = outcome.value.result.binary;
-    if (!binary) {
+    /**
+     * The same helper `/v1/audio/speech` uses, and for the same reason.
+     *
+     * This used to read `outcome.value.result.binary` directly, which is only
+     * set when a spec declares `responseMode: "binary"`. `MINIMAX_TTS_SPEC` has
+     * no such mode — it maps the audio to a base64 item — so the engine ran,
+     * the upstream answered, and this route reported `no_audio` over a result
+     * that carried the audio the whole time. Two paths into the same engine,
+     * disagreeing about where audio lives.
+     */
+    const delivery = audioDelivery(outcome.value.result);
+    if (!delivery || delivery.kind !== "bytes") {
       return NextResponse.json(
-        { ok: false, error: { code: "no_audio", message: "上游没有返回音频" } },
+        {
+          ok: false,
+          error: {
+            code: "no_audio",
+            message: "上游没有返回音频（该协议的响应映射里没取到可用的音频）",
+          },
+        },
         { status: 502 },
       );
     }
-    const bytes = new Uint8Array(binary.body);
+    const bytes = delivery.bytes;
     return new Response(bytes as unknown as BodyInit, {
       status: 200,
       headers: {
-        "Content-Type": binary.contentType ?? "audio/mpeg",
+        "Content-Type": delivery.contentType,
         "Content-Length": String(bytes.byteLength),
         "X-Relay-Ms": String(ms),
         "X-Relay-Via": "account",

@@ -37,7 +37,7 @@ describe("the assistant's model field suggests what the upstream serves", () => 
   });
 
   it("offers exactly what the probe reported", () => {
-    expect(PANEL).toMatch(/const \[knownModels, setKnownModels\] = useState<string\[\]>\(\[\]\)/);
+    expect(PANEL).toMatch(/const \[knownModels, setKnownModels\] = useState<string\[\]>\(suggestedModels\)/);
     expect(PANEL).toMatch(/setKnownModels\(probe\.models\)/);
     expect(PANEL).toMatch(/knownModels\.map\(\(m\) => \(\s*<option key=\{m\} value=\{m\} \/>/);
   });
@@ -48,11 +48,28 @@ describe("the assistant's model field suggests what the upstream serves", () => 
     expect(PANEL).toMatch(/if \(probe\.ok && probe\.models\.length > 0\)[\s\S]{0,200}if \(!model\.trim\(\)\) setModel\(probe\.models\[0\]\)/);
   });
 
-  it("does not overwrite a model the operator already typed", () => {
-    // The `!model.trim()` guard asserted above is the whole behaviour, and it is
-    // the one most likely to be broken by a future edit — it is the difference
-    // between "convenience" and "loses what you typed".
-    expect(PANEL).toMatch(/!model\.trim\(\)\)\s*setModel/);
-    expect(PANEL).not.toMatch(/\}\s*setModel\(probe\.models\[0\]\)/);
+  it("is not empty before anything is probed", () => {
+    // The bug this is here for: the datalist was fed only by `测试连通`, which
+    // needs the key retyped. On a fresh visit the list was empty, and an empty
+    // datalist renders as an ordinary text box — indistinguishable from no
+    // dropdown having been built. The page now passes this deployment's own
+    // chat models, and the probe replaces them with its own answer.
+    expect(PANEL).toMatch(/suggestedModels\?: string\[\]/);
+    expect(PANEL).toMatch(/useState<string\[\]>\(suggestedModels\)/);
+
+    const page = readFileSync(
+      join(ROOT, "src", "app", "(user)", "dashboard", "assistant", "page.tsx"),
+      "utf-8",
+    );
+    expect(page).toMatch(/cachedBuildModelCatalog\(\)/);
+    expect(page).toMatch(/suggestedModels=\{suggestedModels\}/);
+    expect(page).toMatch(/filter\(\(m\) => m\.kind === "chat"\)/);
+  });
+
+  it("and it says where the suggestions come from", () => {
+    // A dropdown with no explanation looks like the field is only allowed to
+    // hold what it lists, which is the opposite of the truth here.
+    expect(PANEL).toMatch(/assistant\.settings\.modelHint"/);
+    expect(PANEL).toMatch(/assistant\.settings\.modelHintProbed/);
   });
 });
