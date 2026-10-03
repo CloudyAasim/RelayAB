@@ -20,6 +20,7 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useT } from "@/components/i18n/I18nProvider";
+import { ModelCombobox } from "./ModelCombobox";
 
 export interface AssistantSettingsView {
   baseUrl: string;
@@ -167,28 +168,22 @@ export function AssistantSettingsPanel({
           This value is sent as typed, alongside the base URL and key beside it,
           to an upstream the operator chose — so an id this deployment has never
           heard of is a legitimate thing to type, and closing the field would
-          make it unreachable. The datalist is the browser's own dropdown over
-          whatever `测试连通` last reported, which is what the probe fetched it
-          for.
+          make it unreachable. The list is what `测试连通` last reported, which
+          is what the probe was fetching it for.
         */}
-        <Input
+        <ModelCombobox
           id="assistant-model"
-          list="assistant-model-options"
           label={t("assistant.settings.model")}
           placeholder="model-name"
           value={model}
-          onChange={(e) => setModel(e.target.value)}
+          options={knownModels}
+          onChange={setModel}
+          hint={
+            knownModels.length > 0 && knownModels !== suggestedModels
+              ? t("assistant.settings.modelHintProbed", { n: knownModels.length })
+              : t("assistant.settings.modelHint")
+          }
         />
-        <datalist id="assistant-model-options">
-          {knownModels.map((m) => (
-            <option key={m} value={m} />
-          ))}
-        </datalist>
-        <p className="text-xs text-muted-foreground">
-          {knownModels.length > 0 && knownModels !== suggestedModels
-            ? t("assistant.settings.modelHintProbed", { n: knownModels.length })
-            : t("assistant.settings.modelHint")}
-        </p>
 
         <div className="flex flex-wrap items-center gap-2">
           <Button

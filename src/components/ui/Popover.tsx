@@ -15,6 +15,16 @@ import { cn } from "@/lib/utils";
 const Popover = PopoverPrimitive.Root;
 const PopoverTrigger = PopoverPrimitive.Trigger;
 
+/**
+ * Positioning only, no behaviour.
+ *
+ * For a control that is *already* a button or a field and should not have a
+ * second interactive element wrapped around it: use this so the content has
+ * something to align to and a width to match. `Trigger` would add
+ * `role="button"` and a focus stop.
+ */
+const PopoverAnchor = PopoverPrimitive.Anchor;
+
 const PopoverContent = React.forwardRef<
   React.ElementRef<typeof PopoverPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>
@@ -35,4 +45,4 @@ const PopoverContent = React.forwardRef<
 ));
 PopoverContent.displayName = PopoverPrimitive.Content.displayName;
 
-export { Popover, PopoverTrigger, PopoverContent };
+export { Popover, PopoverTrigger, PopoverAnchor, PopoverContent };
