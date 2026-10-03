@@ -263,7 +263,7 @@ const zhCN: Dict = {
   "admin.textSpec.mode.configured": "已配置 {n} 个接口",
   "admin.textSpec.mode.brokenEntry": "这条有问题",
   "admin.textSpec.add": "添加一个兼容接口",
-  "admin.textSpec.allAdded": "四个接口都已配置。",
+  "admin.textSpec.allAdded": "全部 {n} 个兼容接口都已配置。",
   "admin.textSpec.title": "上游协议",
   "admin.textSpec.desc": "声明这个服务商说什么协议、每个请求参数怎么处理。留空则原样透传——这是中转站该有的默认。",
   "admin.textSpec.none": "尚未配置：客户端传的参数原样送到上游。",
@@ -574,8 +574,10 @@ const zhCN: Dict = {
   "admin.providers.format.short.responses": "Responses",
   "admin.providers.format.short.chat": "Chat",
   "admin.providers.format.short.anthropic": "Messages",
-  "admin.providers.format.hint.responses": "使用 OpenAI Responses API，原生直连不转换格式",
-  "admin.providers.format.hint.chat": "使用 OpenAI Chat Completions 协议",
+  "admin.providers.format.hint.responses":
+    "客户端调 /v1/responses 时原样送到上游，不转换。注意：客户端调 /v1/chat/completions 时仍然发往 <API 地址>/chat/completions，上游若只提供 Responses 端点就会 404。",
+  "admin.providers.format.hint.chat":
+    "客户端调 /v1/responses 时，网关先把请求降级成 Chat Completions 发给上游，再把响应转回 Responses。",
   "admin.providers.faces.title": "协议面",
   "admin.providers.faces.hint": "同一个供应商只需配置一次：API Key、模型映射、模型参数由两个协议面共用，各自只需要开关（Anthropic 侧还可单独填基址）。",
   "admin.providers.faces.openai.label": "OpenAI 侧 — /v1/chat/completions、/v1/responses",
@@ -1235,7 +1237,7 @@ const en: Dict = {
   "admin.textSpec.mode.configured": "{n} interfaces configured",
   "admin.textSpec.mode.brokenEntry": "this one is wrong",
   "admin.textSpec.add": "Add a compatibility interface",
-  "admin.textSpec.allAdded": "All four interfaces are configured.",
+  "admin.textSpec.allAdded": "All {n} compatibility interfaces are configured.",
   "admin.textSpec.title": "Upstream protocol",
   "admin.textSpec.desc": "Declare which protocol this provider speaks and what happens to each request parameter. Leave it empty and everything is forwarded as sent, which is the right default for a relay.",
   "admin.textSpec.none": "Not configured: the client's parameters are forwarded to the upstream as sent.",
@@ -1546,8 +1548,10 @@ const en: Dict = {
   "admin.providers.format.short.responses": "Responses",
   "admin.providers.format.short.chat": "Chat",
   "admin.providers.format.short.anthropic": "Messages",
-  "admin.providers.format.hint.responses": "Uses the OpenAI Responses API, passed through without conversion",
-  "admin.providers.format.hint.chat": "Uses the OpenAI Chat Completions protocol",
+  "admin.providers.format.hint.responses":
+    "A client calling /v1/responses is forwarded as sent. Note: /v1/chat/completions still posts to <API URL>/chat/completions, so an upstream that only serves Responses will 404.",
+  "admin.providers.format.hint.chat":
+    "A client calling /v1/responses is downgraded to Chat Completions on the way up, and the reply is converted back to Responses.",
   "admin.providers.faces.title": "Protocol faces",
   "admin.providers.faces.hint": "One entry per vendor: the API key, model mapping and model configs are shared by both faces. Each face only needs a toggle (the Anthropic side can also set its own base URL).",
   "admin.providers.faces.openai.label": "OpenAI side — /v1/chat/completions, /v1/responses",

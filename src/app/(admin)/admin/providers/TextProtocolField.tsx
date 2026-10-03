@@ -291,7 +291,9 @@ export function TextProtocolField({
             </Button>
           ))}
           {CONFIGURABLE_PROTOCOLS.every((p) => used.has(p)) && (
-            <p className="text-xs text-muted-foreground">{t("admin.textSpec.allAdded")}</p>
+            <p className="text-xs text-muted-foreground">
+              {t("admin.textSpec.allAdded", { n: CONFIGURABLE_PROTOCOLS.length })}
+            </p>
           )}
         </div>
       </div>
