@@ -56,6 +56,47 @@ function recordingSupported(): boolean {
 }
 
 /**
+ * Why the microphone would not open, in the operator's words.
+ *
+ * The browser names four failures that need four different responses, and only
+ * the first two are about permission. This version of the button threw that
+ * away on the press path and answered "press it again" to all of them — which
+ * is advice for the one case where repeating might help, and nothing at all
+ * for a machine with no microphone in it.
+ *
+ * Anything unrecognised is reported as the browser's own `name` and `message`
+ * rather than as a guess. Guessing is what produced two rounds of confident
+ * messages that were wrong on arrival.
+ */
+function explainFailure(err: unknown, t: (key: string, vars?: Record<string, string | number>) => string): string {
+  const name =
+    typeof err === "object" && err && "name" in err ? String((err as Error).name) : "";
+  const message =
+    typeof err === "object" && err && "message" in err ? String((err as Error).message) : "";
+
+  switch (name) {
+    case "NotFoundError":
+    case "OverconstrainedError":
+      return t("assistant.voice.noDevice");
+    case "NotAllowedError":
+    case "SecurityError":
+      return t("assistant.voice.refused");
+    case "NotReadableError":
+    case "TrackStartError":
+      return t("assistant.voice.busy");
+    case "AbortError":
+      return t("assistant.voice.aborted");
+    case "OverconstrainedError":
+      return t("assistant.voice.noDevice");
+    default:
+      // The raw pair, so a report can be acted on rather than guessed about.
+      return name || message
+        ? t("assistant.voice.unknown", { detail: `${name}${message ? `: ${message}` : ""}` })
+        : t("assistant.voice.failed");
+  }
+}
+
+/**
  * How long an unanswered prompt is waited out before saying anything.
  *
  * Long enough for somebody who is reading the page to find and click the
@@ -122,13 +163,7 @@ export function MicButton({
       })
       .catch((err) => {
         clearTimer();
-        // Two failures the operator can act on differently, and they are the
-        // only two the browser reliably names. Everything else is one sentence
-        // that tells them what to try, rather than a claim about why.
-        const name = typeof err === "object" && err && "name" in err ? String((err as Error).name) : "";
-        if (name === "NotFoundError" || name === "OverconstrainedError") {
-          setDeviceError(t("assistant.voice.noDevice"));
-        }
+        setDeviceError(explainFailure(err, t));
         setState("waiting");
       });
   }, [clearTimer, t]);
@@ -174,18 +209,25 @@ export function MicButton({
 
   const start = useCallback(async () => {
     onError(null);
+    setDeviceError(null);
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch {
-      // Pressing the button is an explicit ask, so re-raise it rather than
-      // explaining: whatever went wrong last time may not be true now, and
-      // asking again is what the operator just asked for.
+    } catch (err) {
+      /**
+       * The same explanation as the mount path, so a button press and a mount
+       * cannot report different reasons for the same failure. This used to
+       * answer "press it again" to everything, which is advice for one case and
+       * silence for a machine with no microphone in it.
+       */
+      const reason = explainFailure(err, t);
+      setDeviceError(reason);
+      // Ask again anyway: pressing the button is an explicit request, and if the
+      // cause was transient — something holding the device a moment ago — this
+      // is the cheapest way to find out.
       ask();
-      onError(t("assistant.voice.askAgain"));
       return;
     }
-    setDeviceError(null);
     setState("recording");
     chunksRef.current = [];
     const recorder = new MediaRecorder(stream);

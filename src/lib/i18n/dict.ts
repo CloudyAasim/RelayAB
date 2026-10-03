@@ -881,7 +881,10 @@ const zhCN: Dict = {
   "assistant.voice.waiting": "还没有拿到麦克风权限",
   "assistant.voice.waitingHint":
     "浏览器地址栏附近那个权限提示还在等选择。选「允许」就能用；选过「拒绝」的话，点地址栏左侧的图标 → 网站设置 → 麦克风改为「允许」，再刷新本页。",
-  "assistant.voice.askAgain": "这次还是没拿到，再点一次麦克风重新请求。",
+  "assistant.voice.refused": "浏览器拒绝了麦克风请求。点地址栏左侧的图标 → 网站设置 → 麦克风改成「允许」，然后刷新本页。",
+  "assistant.voice.busy": "麦克风打不开：可能没有麦克风设备，或被别的程序（会议软件、录音软件）占用。关掉占用它的程序后刷新再试。",
+  "assistant.voice.aborted": "麦克风被中断了，再点一次试试。",
+  "assistant.voice.unknown": "麦克风打不开，浏览器给的原因不明：{detail}",
   "assistant.voice.failed": "语音转写失败",
   "assistant.voice.empty": "没有识别到内容。",
   "assistant.voice.noDevice": "没有找到麦克风设备。",
@@ -1882,7 +1885,10 @@ const en: Dict = {
   "assistant.voice.waiting": "Still waiting for the microphone",
   "assistant.voice.waitingHint":
     "The browser's permission prompt is still open, near the address bar. Choose Allow and it works; if you chose Deny, use the icon left of the address bar → Site settings → Microphone → Allow, then reload.",
-  "assistant.voice.askAgain": "Still nothing. Press the microphone again to re-ask.",
+  "assistant.voice.refused": "The browser refused the microphone. Use the icon left of the address bar → Site settings → Microphone → Allow, then reload.",
+  "assistant.voice.busy": "The microphone could not be opened: there may be no device, or another program (a meeting app, a recorder) is holding it. Close that and reload.",
+  "assistant.voice.aborted": "The microphone was interrupted. Press it again.",
+  "assistant.voice.unknown": "The microphone could not be opened, and the browser gave no usable reason: {detail}",
   "assistant.voice.failed": "Transcription failed",
   "assistant.voice.empty": "Nothing was recognised.",
   "assistant.voice.noDevice": "No microphone device was found.",

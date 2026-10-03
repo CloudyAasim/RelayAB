@@ -48,10 +48,41 @@ describe("it asks, then it waits", () => {
   });
 
   it("pressing the button asks again immediately", () => {
-    // Strictly more than the timer offers, and it is what the operator asked
-    // for by pressing it.
     expect(MIC).toMatch(/await navigator\.mediaDevices\.getUserMedia\(\{ audio: true \}\)/);
-    expect(MIC).toMatch(/ask\(\);\s*\n\s*onError\(t\("assistant\.voice\.askAgain"\)\);/);
+    // The press path re-raises the request even when it just failed, because
+    // pressing it is an explicit ask and a transient cause — a device another
+    // program was holding a moment ago — is the cheapest thing to rule out.
+    expect(MIC).toMatch(/const reason = explainFailure\(err, t\);[\s\S]{0,400}ask\(\);/);
+  });
+});
+
+describe("it says why, and says the browser's reason when it has none of ours", () => {
+  it("both paths use one explanation", () => {
+    /**
+     * The mount path classified failures and the press path answered "press it
+     * again" to all of them — so a machine with no microphone in it was told to
+     * try again, which is advice for a different case. Two paths into one
+     * `getUserMedia` had become two different vocabularies, again.
+     */
+    const uses = MIC.match(/explainFailure\(/g) ?? [];
+    expect(uses.length, "explainFailure is defined and used").toBeGreaterThanOrEqual(3);
+    expect(MIC).not.toMatch(/assistant\.voice\.askAgain/);
+  });
+
+  it("covers the failures the browser names that are not about permission", () => {
+    // A device that is missing, and a device another program is holding, look
+    // identical from the page if it only reports "no microphone".
+    expect(MIC).toMatch(/NotReadableError/);
+    expect(MIC).toMatch(/NotFoundError/);
+    expect(MIC).toMatch(/NotAllowedError/);
+    expect(MIC).toMatch(/AbortError/);
+  });
+
+  it("passes an unrecognised failure through instead of guessing", () => {
+    // Everything this file's earlier versions got wrong ended here: a confident
+    // sentence that could not be checked. The raw name and message can be.
+    expect(MIC).toMatch(/assistant\.voice\.unknown", \{ detail:/);
+    expect(DICT).toMatch(/assistant\.voice\.unknown/);
   });
 });
 
@@ -87,9 +118,22 @@ describe("it makes no claim it cannot check", () => {
 });
 
 describe("each string exists in both languages", () => {
-  it.each(["start", "stop", "working", "asking", "waiting", "waitingHint", "askAgain", "failed", "empty", "noDevice", "unsupportedContext"])(
-    "assistant.voice.%s",
-    (key) => {
+  it.each([
+    "start",
+    "stop",
+    "working",
+    "asking",
+    "waiting",
+    "waitingHint",
+    "refused",
+    "busy",
+    "aborted",
+    "unknown",
+    "failed",
+    "empty",
+    "noDevice",
+    "unsupportedContext",
+  ])("assistant.voice.%s", (key) => {
       // A key present in one locale and missing in the other renders as the
       // raw key string in the interface.
       const hits = DICT.match(new RegExp(`"assistant\\.voice\\.${key}":`, "g")) ?? [];
