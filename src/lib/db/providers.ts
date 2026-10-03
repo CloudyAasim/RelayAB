@@ -73,6 +73,12 @@ export interface CreateProviderInput {
   anthropicEnabled?: boolean;
   /** Base URL for the Anthropic face; empty derives it from `baseUrl`. */
   anthropicBaseUrl?: string | null;
+  /**
+   * The provider's wire protocol, as a JSON document. `null` is the default and
+   * means "forward the client's request as sent" — so a new provider needs no
+   * protocol to be a working one.
+   */
+  textSpec?: string | null;
 }
 
 export interface UpdateProviderInput {

@@ -61,7 +61,8 @@ describe("every mechanism the document names is in the code", () => {
       "src/lib/protocol/parameter-policy.ts",
       "src/lib/protocol/text-protocols.ts",
       "src/app/api/admin/providers/[id]/route.ts",
-      "src/app/(admin)/admin/providers/TextProtocolPanel.tsx",
+      "src/app/api/admin/providers/route.ts",
+      "src/app/(admin)/admin/providers/TextProtocolField.tsx",
       "src/lib/proxy/openai.ts",
       "src/lib/proxy/anthropic.ts",
     ]) {

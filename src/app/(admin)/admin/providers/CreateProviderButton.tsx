@@ -10,6 +10,7 @@
  *   - Model configuration (context length, output length, credit cost)
  */
 import { useState, useTransition } from "react";
+import { ProviderModeSwitch, TextProtocolField, judgeTextSpec } from "./TextProtocolField";
 import { useRouter } from "next/navigation";
 import { LegacyModal as Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
@@ -55,6 +56,14 @@ export function CreateProviderButton({ onCreated }: Props) {
     anthropicBaseUrl: "",
   });
   const [modelRows, setModelRows] = useState<ProviderModelRow[]>([]);
+  /**
+   * Simple by default, because it is right for almost every OpenAI-compatible
+   * vendor and needs no reading. Advanced is one click away, and comes with the
+   * four protocol presets so it is also a click-and-pick.
+   */
+  const [mode, setMode] = useState<"simple" | "advanced">("simple");
+  const [textSpec, setTextSpec] = useState("");
+  const specVerdict = judgeTextSpec(textSpec);
 
   // Fetch-models state
   const [fetchingModels, setFetchingModels] = useState(false);
@@ -210,6 +219,11 @@ export function CreateProviderButton({ onCreated }: Props) {
 
     try {
       const { modelMapping, modelConfigs } = rowsToPayload(modelRows);
+      if (specVerdict.kind === "bad") {
+        setError(specVerdict.errors[0]);
+        setMode("advanced");
+        return;
+      }
 
       const res = await fetch("/api/admin/providers", {
         method: "POST",
@@ -228,6 +242,9 @@ export function CreateProviderButton({ onCreated }: Props) {
           upstreamFormat: faces.upstreamFormat === "anthropic" ? "responses" : faces.upstreamFormat,
           anthropicEnabled: faces.anthropicEnabled,
           anthropicBaseUrl: faces.anthropicBaseUrl || null,
+          // A provider created through the protocol gets its protocol. `null`
+          // is not sent: an empty box means "never configured", not "cleared".
+          ...(textSpec.trim() ? { textSpec } : {}),
         }),
       });
       
@@ -271,6 +288,14 @@ export function CreateProviderButton({ onCreated }: Props) {
       </Button>
       <Modal open={open} onClose={() => setOpen(false)} title={t("admin.providers.create")} extraWide>
         <form onSubmit={onSubmit} className="space-y-4">
+          <ProviderModeSwitch mode={mode} onChange={setMode} hasSpec={Boolean(textSpec.trim())} />
+          {mode === "advanced" && (
+            <TextProtocolField
+              value={textSpec}
+              onChange={setTextSpec}
+              providerName={name || t("admin.providers.create")}
+            />
+          )}
           {/* Template selection */}
           <div>
             <label className="block text-sm font-medium mb-1.5">{t("admin.providers.create.template")}</label>

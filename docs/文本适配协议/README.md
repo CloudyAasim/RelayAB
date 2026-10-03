@@ -6,6 +6,11 @@
 >
 > **不配协议 = 原样透传。** 留空时中转站把客户端的请求体原封不动送到上游，这是
 > 透明网关该有的默认行为，也是绝大多数 OpenAI 兼容中转的正确配置。
+>
+> **在哪里配。** 服务商编辑器（`/admin/providers` → 新建或编辑）顶部的**模式切换**：
+> **简易模式**选端点和模型，**高级模式**写这份文档。已配过协议的服务商打开时
+> 默认停在高级模式。两者是同一行上的两个独立字段——简易模式的面开关决定
+> **调哪个端点**，协议决定**请求里的参数怎么办**；改一边不会清掉另一边。
 
 **本协议只有一个版本（`specVersion: 1`）。** 没有分版本、没有厂商专用字段。
 下面第 2 节列出的每一条机制都在 `src/lib/protocol/text-spec.ts` 里有实打实的实现；
@@ -208,6 +213,6 @@
 | 策略裁决 | `applyParameterPolicy` — `src/lib/protocol/parameter-policy.ts` |
 | 四个预设 | `TEXT_PROTOCOL_PRESETS` — `src/lib/protocol/text-protocols.ts` |
 | 读取存储 | `readTextSpec` — `src/lib/protocol/text-spec.ts` |
-| 写入校验 | `textSpec` 的 `superRefine` — `src/app/api/admin/providers/[id]/route.ts` |
-| 后台编辑器 | `src/app/(admin)/admin/providers/TextProtocolPanel.tsx` |
+| 写入校验 | `textSpec` 的 `superRefine` — `src/app/api/admin/providers/route.ts`（新建）与 `src/app/api/admin/providers/[id]/route.ts`（修改） |
+| 后台编辑器 | `src/app/(admin)/admin/providers/TextProtocolField.tsx`（服务商编辑器的「高级模式」） |
 | 代理接入 | `src/lib/proxy/openai.ts`、`src/lib/proxy/anthropic.ts` |

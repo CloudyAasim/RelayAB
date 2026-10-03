@@ -19,6 +19,7 @@ import {
   type ProviderModelRow,
 } from "./model-rows";
 import { ProviderModelsEditor } from "./ProviderModelsEditor";
+import { ProviderModeSwitch, TextProtocolField, judgeTextSpec } from "./TextProtocolField";
 
 interface Props {
   providerId: string;
@@ -38,6 +39,8 @@ interface Provider {
   openaiEnabled?: boolean;
   anthropicEnabled?: boolean;
   anthropicBaseUrl?: string | null;
+  /** The protocol document, if one is set. Decides which mode opens. */
+  textSpec?: string | null;
 }
 
 /**
@@ -215,6 +218,19 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
   const [modelRows, setModelRows] = useState<ProviderModelRow[]>(() =>
     rowsFromProvider(provider.modelMapping, provider.modelConfigs),
   );
+  const [textSpec, setTextSpec] = useState(provider.textSpec ?? "");
+  /**
+   * Advanced by default when a spec is already set, and simple otherwise.
+   *
+   * Keyed on what the row already carries rather than on what the operator last
+   * clicked: reopening the editor on a provider you have configured through the
+   * protocol and being shown the simple form is how a spec gets overwritten
+   * without anybody touching it.
+   */
+  const [mode, setMode] = useState<"simple" | "advanced">(
+    provider.textSpec ? "advanced" : "simple",
+  );
+  const specVerdict = judgeTextSpec(textSpec);
 
   // Sync state when provider changes
   useEffect(() => {
@@ -227,6 +243,8 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
       setEnabled(provider.enabled);
       setFaces(facesFromProvider(provider));
       setModelRows(rowsFromProvider(provider.modelMapping, provider.modelConfigs));
+      setTextSpec(provider.textSpec ?? "");
+      setMode(provider.textSpec ? "advanced" : "simple");
       setError("");
     }
   }, [open, provider]);
@@ -261,11 +279,17 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // The simple form's fields are always sent, in either mode: a protocol
+    // governs the parameters on the way, it does not decide which endpoint is
+    // called. Saving in advanced mode must not clear the models, and saving in
+    // simple mode must not clear the spec.
+    if (specVerdict.kind === "bad") {
+      setError(specVerdict.errors[0]);
+      setMode("advanced");
+      return;
+    }
     setLoading(true);
     setError("");
-
-    // Debug: log what we're about to send
-    console.log("[EditProviderModal] Submitting with enabled:", enabled, "type:", typeof enabled);
 
     try {
       const res = await fetch(`/api/admin/providers/${provider.id}`, {
@@ -283,10 +307,12 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
           anthropicEnabled: faces.anthropicEnabled,
           anthropicBaseUrl: faces.anthropicBaseUrl || null,
           ...rowsToPayload(modelRows),
+          // `null` clears it, which is the one way to go back to "forward
+          // everything as sent" without a separate control.
+          textSpec: textSpec.trim() ? textSpec : null,
         }),
       });
       const data = await res.json();
-      console.log("[EditProviderModal] PATCH response:", JSON.stringify(data));
       if (!data.ok) {
         setError(data.error?.message ?? t("common.saveFailed"));
         return;
@@ -302,6 +328,12 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
   return (
     <Modal open={open} onClose={onClose} title={t("admin.providers.edit")} wide>
       <form onSubmit={handleSubmit} className="space-y-4">
+        <ProviderModeSwitch mode={mode} onChange={setMode} hasSpec={Boolean(provider.textSpec)} />
+
+        {mode === "advanced" ? (
+          <TextProtocolField value={textSpec} onChange={setTextSpec} providerName={provider.name} />
+        ) : (
+          <>
         <div className="grid grid-cols-2 gap-4">
           <Input
             label={t("admin.providers.create.name")}
@@ -380,6 +412,8 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
             </Button>
           }
         />
+          </>
+        )}
 
         {error && <p className="text-sm text-destructive">{error}</p>}
 

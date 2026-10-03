@@ -9,6 +9,7 @@ import { z } from "zod";
 import { createProvider, listProviders } from "@/lib/db/providers";
 import { toPublicProvider } from "@/lib/db/types";
 import { getCurrentUser } from "@/lib/auth/session";
+import { parseTextSpec } from "@/lib/protocol/text-spec";
 
 const PostSchema = z.object({
   name: z.string().min(1).max(64),
@@ -33,6 +34,34 @@ const PostSchema = z.object({
   openaiEnabled: z.boolean().optional(),
   anthropicEnabled: z.boolean().optional(),
   anthropicBaseUrl: z.string().nullable().optional(),
+  /**
+   * The wire protocol, as a JSON document.
+   *
+   * Validated here rather than on read, for the same reason the create form
+   * refuses one: a spec that parses on the way in and then does nothing on the
+   * way out is a configuration that looks set and is not.
+   */
+  textSpec: z
+    .string()
+    .max(200_000)
+    .nullable()
+    .optional()
+    .superRefine((value, ctx) => {
+      if (!value) return;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(value);
+      } catch {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "协议不是合法 JSON" });
+        return;
+      }
+      const result = parseTextSpec(parsed);
+      if (!result.ok) {
+        for (const message of result.errors) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+        }
+      }
+    }),
 });
 
 export async function GET(): Promise<Response> {
@@ -100,6 +129,7 @@ export async function POST(req: Request): Promise<Response> {
       openaiEnabled: parsed.data.openaiEnabled,
       anthropicEnabled: parsed.data.anthropicEnabled,
       anthropicBaseUrl: parsed.data.anthropicBaseUrl ?? null,
+      textSpec: parsed.data.textSpec ?? null,
     });
     return NextResponse.json({
       ok: true,
