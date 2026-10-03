@@ -44,13 +44,28 @@ const USER_SECTION_IDS = [
   "models",
   "sdks",
   "media",
-  // The fallback chapter, for a page the operator did not file under anything.
-  // The only id here that can be absent from the outline: a deployment with
-  // nothing written has no such chapter, and an outline entry pointing at
-  // nothing is worse than a shorter outline.
+  // The live catalogue: what this deployment serves, read from the provider
+  // tables on every request. It is a chapter rather than a wall above the
+  // document, because a wall is the first thing every reader scrolls past and
+  // the last thing they come back to.
+  "catalog",
+  // The operator's own chapter. The only id here that can be absent from the
+  // outline: a deployment with nothing written has no such chapter, and an
+  // outline entry pointing at nothing is worse than a shorter outline.
   "notes",
 ] as const;
 export type UserDocId = (typeof USER_SECTION_IDS)[number];
+
+/**
+ * The chapters `DocsContent` renders.
+ *
+ * Excludes the two that are not a `section === "…"` branch of that component:
+ * the catalogue is its own component, and the operator's chapter has no
+ * built-in prose at all. Naming the difference is what stops a `catalog` that
+ * reaches `DocsContent` from falling through to the last branch and rendering
+ * the media page under a heading about models.
+ */
+export type ProseUserDocId = Exclude<UserDocId, "catalog" | "notes">;
 
 /** Exported for tests: the exact slugs the admin docs outline accepts. */
 export const ADMIN_SECTION_IDS = [
@@ -95,6 +110,7 @@ const USER_LABEL_KEYS = [
   "docs.nav.models",
   "docs.nav.sdks",
   "docs.nav.media",
+  "docs.nav.catalog",
   "docs.nav.notes",
 ] as const;
 

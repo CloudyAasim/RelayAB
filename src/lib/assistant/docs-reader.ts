@@ -16,7 +16,7 @@
  */
 import { translate, type Locale } from "../i18n/dict";
 import type { DocPage } from "../db/settings";
-import { pageSection, pagesBySection, NOTES_SECTION } from "../docs/custom";
+import { visibleDocPages, NOTES_SECTION } from "../docs/custom";
 import { WEB_DOC_SECTIONS } from "./docs-index.generated";
 
 /**
@@ -55,29 +55,24 @@ export type DocRead =
  * conversations are in flight.
  */
 export function createDocReader(pages: readonly DocPage[] | undefined): DocReader {
-  const grouped = pagesBySection(pages);
-  // Every published page, flattened, so `read` can find one by its slug without
-  // caring which chapter it was filed under.
-  const operator = [...grouped.values()].flat();
-  const operatorById = new Map(operator.map((p) => [p.id, p]));
+  // One chapter, everything in it — the same place a reader looks.
+  const operator = visibleDocPages(pages);
 
   const index: DocIndexEntry[] = [
     ...WEB_DOC_SECTIONS.filter(
       // The generated index always carries the operator's chapter, because the
       // drift guard compares it against the outline and the outline owns the
       // id. Whether a reader is *offered* it is a separate question, and the
-      // answer is no when nothing was filed under it.
-      (s) => !(s.surface === "user" && s.id === NOTES_SECTION) || grouped.has(NOTES_SECTION),
+      // answer is no when the operator has written nothing.
+      (s) => !(s.surface === "user" && s.id === NOTES_SECTION) || operator.length > 0,
     ).map((s) => ({
       topic: `${s.surface}:${s.id}`,
       surface: s.surface,
       summary: s.summary,
       lines: s.keys.length,
     })),
-    // One entry per published page, under the chapter it renders in — the same
-    // place a reader would look for it, and where the model should look too.
     ...operator.map((p) => ({
-      topic: `user:${pageSection(p)}#${p.id}`,
+      topic: `user:${NOTES_SECTION}#${p.id}`,
       surface: "user" as const,
       summary: p.title,
       lines: 1,
@@ -86,34 +81,24 @@ export function createDocReader(pages: readonly DocPage[] | undefined): DocReade
 
   const ofSurface = (surface: "user" | "admin") => index.filter((e) => e.surface === surface);
 
-  /** The operator's text for one chapter, as a labelled block. */
-  const notesBlock = (section: string): string =>
-    (grouped.get(section) ?? [])
-      .map((p) => `## ${p.title}（站长补充）\n${p.body}`)
-      .join("\n\n");
+  /** The whole operator chapter, as one labelled block. */
+  const notesBlock = (): string =>
+    operator.map((p) => `## ${p.title}\n${p.body}`).join("\n\n");
 
   function read(topic: string, locale: Locale, visibleSurface: "user" | "admin"): DocRead {
     const want = topic.trim().toLowerCase();
     const [rawSurface, rest] = want.includes(":") ? [want.slice(0, want.indexOf(":")), want.slice(want.indexOf(":") + 1)] : [visibleSurface, want];
     const surface = rawSurface === "admin" ? "admin" : "user";
 
-    // `user:endpoints#rate-limits` — one page of the operator's own prose,
-    // whichever chapter it was filed under.
-    if (surface === "user" && rest.includes("#")) {
-      const [section, slug] = rest.split("#");
-      const page = operatorById.get(slug);
+    // `user:notes#rate-limits` — one page of the operator's chapter.
+    if (rest.startsWith(`${NOTES_SECTION}#`)) {
+      const slug = rest.slice(NOTES_SECTION.length + 1);
+      const page = operator.find((p) => p.id === slug);
       if (!page) {
         return {
           ok: false,
           topic,
-          reason: `没有 id 为「${slug}」的自定义页面。可用的是：${operator.map((p) => p.id).join(", ") || "（还没有自定义页面）"}`,
-        };
-      }
-      if (section && pageSection(page) !== section) {
-        return {
-          ok: false,
-          topic,
-          reason: `「${page.title}」不在 ${section} 这一章，而在 ${pageSection(page)}。正确写法是 user:${pageSection(page)}#${page.id}。`,
+          reason: `站长补充里没有 id 为「${slug}」的页面。可用的是：${operator.map((p) => p.id).join(", ") || "（这一章还是空的）"}`,
         };
       }
       const body =
@@ -122,7 +107,7 @@ export function createDocReader(pages: readonly DocPage[] | undefined): DocReade
           : page.body;
       return {
         ok: true,
-        topic: `user:${pageSection(page)}#${page.id}`,
+        topic: `user:${NOTES_SECTION}#${page.id}`,
         title: page.title,
         text: body,
         truncated: body.length < page.body.length,
@@ -144,13 +129,21 @@ export function createDocReader(pages: readonly DocPage[] | undefined): DocReade
       };
     }
 
-    // The operator's notes filed under this chapter are part of this chapter as
-    // far as a reader is concerned, so they are part of what the model reads.
-    const notes =
-      section.surface === "user" && grouped.has(section.id) ? `\n\n---\n\n${notesBlock(section.id)}` : "";
+    // The operator's own chapter is a chapter like any other: it is read by its
+    // own topic, not folded into a built-in one.
+    if (section.surface === "user" && section.id === NOTES_SECTION) {
+      const text = notesBlock();
+      return {
+        ok: true,
+        topic: `user:${NOTES_SECTION}`,
+        title: section.summary,
+        text,
+        truncated: text.length > MAX_PAGE_CHARS ? false : text.length < MAX_PAGE_CHARS,
+      };
+    }
 
     if (section.note) {
-      return { ok: true, topic: `${section.surface}:${section.id}`, title: section.summary, text: section.note + notes, truncated: false };
+      return { ok: true, topic: `${section.surface}:${section.id}`, title: section.summary, text: section.note, truncated: false };
     }
 
     if (section.keys.length === 0) {
@@ -175,8 +168,6 @@ export function createDocReader(pages: readonly DocPage[] | undefined): DocReade
     if (text.length > MAX_PAGE_CHARS) {
       text = `${text.slice(0, MAX_PAGE_CHARS)}\n…（这一页很长，已截断；需要后面的部分请按 topic 再问一次）`;
       truncated = true;
-    } else if (notes) {
-      text += notes;
     }
 
     return { ok: true, topic: `${section.surface}:${section.id}`, title: section.summary, text, truncated };

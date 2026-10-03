@@ -1,24 +1,27 @@
 /**
  * src/lib/docs/custom.ts
  *
- * The operator's own documentation, and where it goes in the reader's document.
+ * The operator's own documentation: one chapter of their own.
  *
  * Small enough to be a pure module with no I/O, which is deliberate: the rules
- * about which page belongs under which chapter, in what order, and what a page
- * may be called are the part worth testing, and they are the part that would
- * otherwise be spread across a component, a schema and a query.
+ * about which pages a reader may see, in what order, and what a page may be
+ * called are the part worth testing, and they are the part that would otherwise
+ * be spread across a component, a schema and a query.
  *
- * The one idea here: an operator's page is *filed under a chapter*, not appended
- * after one. A rate limit belongs on the page where somebody goes looking for
- * the rate limit. A page parked in an appendix at the end of the outline is
- * documentation nobody finds, which is the same as not writing it.
+ * The one decision here, and it is a decision the previous version got wrong:
+ * the operator's pages all live in **one** chapter, together, at the end. A
+ * version of this let each page name a chapter to be filed under, so the pages
+ * were scattered through the document. That reads worse than an appendix does
+ * — the reader looking for the rate limit has to know which chapter somebody
+ * filed it under, and the operator has to decide that every time. One chapter,
+ * everything in it, one place to look.
  */
 import type { DocPage } from "@/lib/db/settings";
-import { isUserDocId, userDocSections, type DocSection, type TFn } from "./sections";
+import { userDocSections, type DocSection, type TFn } from "./sections";
 
 export type { DocPage };
 
-/** The fallback chapter, for a page that was not filed under anything. */
+/** The chapter the operator's pages live in. Its own id, so the outline can carry it. */
 export const NOTES_SECTION = "notes";
 
 const ID_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -31,21 +34,7 @@ export function validatePage(page: Partial<DocPage>): string | null {
   if (!page.title || !page.title.trim()) return "page needs a title";
   if (page.title.trim().length > 120) return "title is too long";
   if (page.body !== undefined && page.body.length > 60_000) return "body is too long";
-  if (page.section !== undefined && page.section && !isUserDocId(page.section)) {
-    return "that is not a chapter of these docs";
-  }
   return null;
-}
-
-/**
- * Which chapter a page belongs to, whatever was stored.
- *
- * Anything that is not a real chapter of these docs lands in `notes`, so a page
- * saved against a chapter that has since been renamed reads as an appendix
- * entry instead of vanishing from the outline.
- */
-export function pageSection(page: DocPage): string {
-  return page.section && isUserDocId(page.section) ? page.section : NOTES_SECTION;
 }
 
 /**
@@ -70,73 +59,27 @@ export function visibleDocPages(pages: readonly DocPage[] | undefined): DocPage[
 }
 
 /**
- * The visible pages, bucketed by the chapter they were filed under.
+ * Does this deployment have a chapter of its own to show?
  *
- * Only chapters that actually received a page are in the map. That absence is
- * what the outline consults before it draws anything: a chapter entry with no
- * pages under it is the thing that makes custom documentation look bolted on.
- */
-export function pagesBySection(pages: readonly DocPage[] | undefined): Map<string, DocPage[]> {
-  const grouped = new Map<string, DocPage[]>();
-  for (const page of visibleDocPages(pages)) {
-    const key = pageSection(page);
-    const bucket = grouped.get(key);
-    if (bucket) bucket.push(page);
-    else grouped.set(key, [page]);
-  }
-  return grouped;
-}
-
-/** The pages one chapter shows, or none. */
-export function pagesForSection(
-  pages: readonly DocPage[] | undefined,
-  section: string,
-): DocPage[] {
-  return pagesBySection(pages).get(section) ?? [];
-}
-
-/** The chapters that have at least one page to show. */
-export function sectionsWithPages(pages: readonly DocPage[] | undefined): string[] {
-  return [...pagesBySection(pages).keys()];
-}
-
-/**
- * Does this deployment have anything to say beyond the built-in pages?
- *
- * A deployment with nothing written has no extra outline entries and no extra
- * chapter, so the document reads exactly as it did before custom docs existed.
+ * A deployment with nothing written has no such chapter, so the document reads
+ * exactly as it did before custom docs existed. A permanent entry saying
+ * "there is nothing here" is what makes a custom section look bolted on.
  */
 export function hasVisibleDocPages(pages: readonly DocPage[] | undefined): boolean {
   return visibleDocPages(pages).length > 0;
 }
 
 /**
- * The reader's outline: the built-in chapters, each carrying the operator's
- * pages filed under it.
+ * The reader's outline: the built-in chapters, plus the operator's own when
+ * there is something in it.
  *
- * A page filed under a chapter becomes an indented sub-entry under that
- * chapter's own link. Unfiled pages fall into `notes`, and that chapter appears
- * only when something landed in it — a permanent entry saying "there is
- * nothing here" is what makes a custom section look bolted on.
+ * `notes` is stripped from the built-in list first. It is in `USER_SECTION_IDS`
+ * so that `/docs/notes` is a real route and the generated index has an id to
+ * compare against — but the outline only offers it when there is something in
+ * it, and appending it without stripping first would offer it twice.
  */
-export function userDocOutline(
-  t: TFn,
-  pages: readonly DocPage[] | undefined,
-): DocSection[] {
-  const grouped = pagesBySection(pages);
-  const out: DocSection[] = [];
-
-  for (const section of userDocSections(t)) {
-    const children = grouped.get(section.id) ?? [];
-    const empty = section.id === NOTES_SECTION && children.length === 0;
-    if (empty) continue;
-    out.push(children.length ? { ...section, children: children.map(toLink) } : section);
-  }
-
-  return out;
-}
-
-/** An outline sub-entry. The href is built by the shell, which knows the base. */
-function toLink(page: DocPage): { id: string; label: string } {
-  return { id: page.id, label: page.title };
+export function userDocOutline(t: TFn, pages: readonly DocPage[] | undefined): DocSection[] {
+  const built = userDocSections(t).filter((s) => s.id !== NOTES_SECTION);
+  if (!hasVisibleDocPages(pages)) return built;
+  return [...built, { id: NOTES_SECTION, label: t("docs.nav.notes") }];
 }

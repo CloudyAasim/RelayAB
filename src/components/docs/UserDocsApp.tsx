@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 import { Check, Copy } from "lucide-react";
 import { DocsContent } from "@/app/(user)/dashboard/docs/DocsContent";
 import { DocsNotes } from "@/app/(user)/dashboard/docs/DocsNotes";
-import { pagesBySection, type DocPage } from "@/lib/docs/custom";
-import type { DocSection, UserDocId } from "@/lib/docs/sections";
+import type { DocSection } from "@/lib/docs/sections";
+import { visibleDocPages, type DocPage } from "@/lib/docs/custom";
+import type { ProseUserDocId, UserDocId } from "@/lib/docs/sections";
 
 /**
  * The reader-facing documentation, as one page with tabs.
@@ -54,10 +55,11 @@ export function UserDocsApp({
   /**
    * The live model catalogue, when this deployment shows one.
    *
-   * Above the tabs rather than inside one of them, and therefore on every
-   * route: it used to live on the index page, which meant it was on screen
-   * until the first chapter switch and gone after it. It is the answer to "what
-   * can I actually call here", so it cannot belong to a chapter.
+   * A chapter, not a wall above the tabs. It was on every route before, which
+   * meant the first thing every reader saw was a table of every model — and the
+   * first thing they had to scroll past to reach the chapter they came for. It
+   * is the answer to "what can I actually call here", and that is a question
+   * somebody asks deliberately, not something to put in front of them.
    */
   catalogue?: ReactNode;
   outlineLabel: string;
@@ -65,12 +67,21 @@ export function UserDocsApp({
   copiedLabel: string;
   copyFailedLabel: string;
 }) {
+  // The catalogue tab exists only where there is a catalogue. A public
+  // deployment can switch its vendor list off — deliberately, for a private
+  // relay — and a tab that opens onto an empty panel is worse than no tab.
+  const tabs = useMemo(
+    () => sections.filter((s) => s.id !== "catalog" || catalogue),
+    [sections, catalogue],
+  );
+
   // A deep link can name a chapter this deployment has nothing to show — the
-  // operator's chapter, before they wrote anything in it. Land on the first
-  // real chapter rather than an empty tab.
-  const first = sections[0]?.id ?? "start";
+  // catalogue on a deployment that does not publish it, or the operator's
+  // chapter before they wrote anything in it. Land on the first real chapter
+  // rather than an empty tab.
+  const first = tabs[0]?.id ?? "start";
   const [active, setActive] = useState<string>(
-    sections.some((s) => s.id === initial) ? initial : first,
+    tabs.some((s) => s.id === initial) ? initial : first,
   );
   const [copied, setCopied] = useState(false);
   const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -79,11 +90,11 @@ export function UserDocsApp({
   useEffect(() => {
     const sync = () => {
       const slug = window.location.pathname.split("/").filter(Boolean).pop() ?? "";
-      setActive((current) => (sections.some((s) => s.id === slug) ? slug : current));
+      setActive((current) => (tabs.some((s) => s.id === slug) ? slug : current));
     };
     window.addEventListener("popstate", sync);
     return () => window.removeEventListener("popstate", sync);
-  }, [sections]);
+  }, [tabs]);
 
   function select(id: string) {
     setActive(id);
@@ -106,32 +117,25 @@ export function UserDocsApp({
     }
   }
 
-  // Grouped by the same helper the outline is built from, so the dot on a tab
-  // and the prose under it can never disagree about where a page went.
-  const here = pagesBySection(pages).get(active) ?? [];
-  const section = active as UserDocId;
+  // The operator's own chapter, in one place, in reading order.
+  const here = active === "notes" ? visibleDocPages(pages) : [];
 
   return (
-    <div className="space-y-6">
-      {catalogue}
-
-      <div className="space-y-5">
+    <div className="space-y-5">
       {/*
         The outline, as tabs.
 
-        A count, not a dot. The question a reader actually has is "where did the
-        operator's page go", and a bare dot answers "something is here" without
-        saying how much — which sends them opening every chapter anyway. The
-        number is on the tab they are looking at, before they click anything.
+        The document opens on the tabs. Nothing is stacked above them: a wall of
+        models in front of the chapter list meant the first thing every reader
+        saw was a table they had not come for yet.
       */}
       <div
         role="tablist"
         aria-label={outlineLabel}
         className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1"
       >
-        {sections.map((s) => {
+        {tabs.map((s) => {
           const on = s.id === active;
-          const count = s.children?.length ?? 0;
           return (
             <button
               key={s.id}
@@ -147,15 +151,6 @@ export function UserDocsApp({
               )}
             >
               {s.label}
-              {count > 0 && (
-                <span
-                  aria-label={s.children!.map((c) => c.label).join(", ")}
-                  title={s.children!.map((c) => c.label).join("、")}
-                  className="ml-1.5 rounded-full bg-primary/15 px-1.5 py-0.5 align-middle text-[10px] font-medium leading-none text-primary"
-                >
-                  {count}
-                </span>
-              )}
             </button>
           );
         })}
@@ -178,21 +173,27 @@ export function UserDocsApp({
       </div>
 
       <div ref={bodyRef} role="tabpanel" className="scroll-mt-20 space-y-5">
-        {active === "notes" ? (
-          <DocsNotes pages={here} variant="chapter" />
+        {/*
+          The catalogue is a chapter, so it is rendered only when its tab is
+          open. Passing it as a node rather than reading it here keeps this
+          component free of the provider tables, and keeps the catalogue out of
+          the copy-this-page text for every other chapter.
+        */}
+        {active === "catalog" ? (
+          catalogue ?? null
+        ) : active === "notes" ? (
+          <DocsNotes pages={here} />
         ) : (
-          <>
-            <DocsContent
-              section={section}
-              baseUrl={base}
-              openaiBase={openaiBase}
-              anthropicBase={anthropicBase}
-              responsesBase={responsesBase}
-            />
-            {here.length > 0 && <DocsNotes pages={here} />}
-          </>
+          <DocsContent
+            // `catalog` and `notes` are handled above, so whatever is left is
+            // a chapter this component actually renders.
+            section={active as ProseUserDocId}
+            baseUrl={base}
+            openaiBase={openaiBase}
+            anthropicBase={anthropicBase}
+            responsesBase={responsesBase}
+          />
         )}
-      </div>
       </div>
     </div>
   );

@@ -56,13 +56,22 @@ const adminSections = extractSections("src/app/(admin)/admin/docs/AdminDocsConte
 // ---------------------------------------------------------------------------
 
 /**
- * The user `media` page renders `<ModelCatalog>`, so its text lives in another
- * component entirely. It is added explicitly rather than left empty, because an
- * empty section reads as "this page says nothing" and the model would say so.
+ * The two chapters that are not a branch of i18n prose in `DocsContent`.
+ *
+ * `media` renders `<ModelCatalog>`, so its text lives in another component
+ * entirely. `catalog` renders the same component on its own, as a chapter of
+ * its own. Both are added explicitly rather than left empty, because an empty
+ * section reads as "this page says nothing" and the model would say so.
  */
-const catalogSrc = fs.readFileSync(path.join(ROOT, "src/components/docs/ModelCatalog.tsx"), "utf8");
+const catalogSrc = [
+  "src/components/docs/ModelCatalog.tsx",
+  "src/components/docs/ModelCatalogPanel.tsx",
+]
+  .map((f) => fs.readFileSync(path.join(ROOT, f), "utf8"))
+  .join("\n");
 const catalogKeys = [...new Set([...catalogSrc.matchAll(/t\("([^"]+)"/g)].map((m) => m[1]))];
 userSections.set("media", catalogKeys);
+userSections.set("catalog", catalogKeys);
 
 // The admin `ops` page renders two reference components that read repository
 // files at request time — the adapter protocol and the spec-check script. They
@@ -115,6 +124,7 @@ const TITLES = {
   "user:models": "有哪些模型可用：模型名、上下文长度、计价",
   "user:sdks": "官方 SDK 接法：Python / Node / CLI",
   "user:media": "媒体能力总览与模型目录：图片、视频、语音、音乐",
+  "user:catalog": "本部署的模型目录：实时读取服务商表，分对话与媒体两张表",
   "user:notes": "站长自己写的补充说明（如果管理员写了的话）",
   "admin:overview": "管理员文档总览",
   "admin:providers": "服务商配置：新增、编辑、启用、优先级、格式",

@@ -73,6 +73,12 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
   },
   {
     surface: "user",
+    id: "catalog",
+    summary: "本部署的模型目录：实时读取服务商表，分对话与媒体两张表",
+    keys: ["\\n","docs.catalog.baseUrl","docs.catalog.chatModels","docs.catalog.mediaModels","docs.catalog.support","docs.catalog.search","docs.catalog.searchPlaceholder","docs.catalog.filter","docs.catalog.all","docs.catalog.chat","docs.catalog.media","docs.catalog.count","docs.catalog.groupChat","docs.catalog.groupMedia","docs.catalog.groupChatDesc","docs.catalog.groupMediaDesc","docs.catalog.model","docs.catalog.providerOf","docs.catalog.context","docs.catalog.maxOutput","docs.catalog.kind","docs.catalog.endpoint","docs.catalog.price","docs.catalog.pricePerItem","docs.catalog.empty","docs.catalog.priority","docs.catalog.detail","docs.catalog.base","docs.catalog.format","docs.catalog.upstream","docs.catalog.modes","docs.catalog.maxReference","docs.catalog.sizes","docs.catalog.detailEmpty","docs.catalog.providerGroup","docs.catalog.enabled","docs.catalog.disabled","docs.catalog.modelCount"],
+  },
+  {
+    surface: "user",
     id: "notes",
     summary: "站长自己写的补充说明（如果管理员写了的话）",
     note: "站长自己写的补充说明。这一章不属于内置文档，是管理员在后台自己写的，每次提问都按当时的版本读取。",

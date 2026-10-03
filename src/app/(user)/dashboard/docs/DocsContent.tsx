@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { useT } from "@/components/i18n/I18nProvider";
-import type { UserDocId } from "@/lib/docs/sections";
+import type { ProseUserDocId } from "@/lib/docs/sections";
 import {
   Link2,
   Server,
@@ -17,7 +17,12 @@ import {
 } from "lucide-react";
 
 interface Props {
-  section: UserDocId;
+  /**
+   * Narrower than `UserDocId` on purpose: this component's last `return` is the
+   * media chapter, so a type that let `catalog` or `notes` through would render
+   * media prose under the wrong heading rather than fail to compile.
+   */
+  section: ProseUserDocId;
   baseUrl: string;
   openaiBase: string;
   anthropicBase: string;

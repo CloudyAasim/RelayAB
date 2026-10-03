@@ -24,10 +24,6 @@ import {
   sortDocPages,
   visibleDocPages,
   hasVisibleDocPages,
-  pageSection,
-  pagesBySection,
-  pagesForSection,
-  sectionsWithPages,
   userDocOutline,
   NOTES_SECTION,
 } from "@/lib/docs/custom";
@@ -80,66 +76,45 @@ function sourceFiles(dir: string): string[] {
 
 describe("where a page goes", () => {
   const pages = [
-    { id: "limits", title: "限流", body: "…", section: "endpoints" },
-    { id: "pick", title: "选型建议", body: "…", section: "models" },
+    { id: "limits", title: "限流", body: "…" },
+    { id: "pick", title: "选型建议", body: "…" },
     { id: "loose", title: "杂记", body: "…" },
-    { id: "draft", title: "草稿", body: "…", section: "openai", hidden: true },
+    { id: "draft", title: "草稿", body: "…", hidden: true },
   ];
 
-  it("is the chapter the operator filed it under", () => {
-    expect(pageSection(pages[0])).toBe("endpoints");
+  it("all of them, in one chapter, in the order they were written", () => {
+    // The version that let each page name a built-in chapter scattered the
+    // operator's prose through the document. Then a reader looking for the rate
+    // limit had to know which chapter somebody had filed it under, and the
+    // operator had to decide that on every page. One chapter, one place to look.
+    expect(visibleDocPages(pages).map((p) => p.id)).toEqual(["limits", "pick", "loose"]);
   });
 
-  it("and a page filed under nothing falls back to the last chapter", () => {
-    expect(pageSection(pages[2])).toBe(NOTES_SECTION);
+  it("a draft is in none of it", () => {
+    expect(visibleDocPages(pages).map((p) => p.id)).not.toContain("draft");
+  });
+
+  it("and the chapter has a slug of its own, so the outline can carry it", () => {
     expect(NOTES_SECTION).toBe("notes");
   });
 
-  it("a chapter that does not exist falls back too, rather than rendering nowhere", () => {
-    // A chapter can be renamed out from under a stored page. Rendering it in the
-    // fallback is wrong; not rendering it at all, while the operator believes it
-    // is published, is worse.
-    expect(pageSection({ id: "x", title: "X", body: "", section: "gone" })).toBe(NOTES_SECTION);
-  });
-
-  it("drafts are not in any chapter's list", () => {
-    expect(pagesForSection(pages, "openai")).toEqual([]);
-  });
-
-  it("pages group under the chapter they were filed under", () => {
-    const grouped = pagesBySection(pages);
-    expect(grouped.get("endpoints")?.map((p) => p.id)).toEqual(["limits"]);
-    expect(grouped.get("models")?.map((p) => p.id)).toEqual(["pick"]);
-    expect(grouped.get(NOTES_SECTION)?.map((p) => p.id)).toEqual(["loose"]);
-    expect(grouped.has("openai")).toBe(false);
-  });
-
-  it("and only chapters with something in them are reported", () => {
-    expect(sectionsWithPages(pages).sort()).toEqual(["endpoints", "models", "notes"].sort());
-  });
-
-  it("a deployment with nothing written has no chapter at all", () => {
-    expect(pagesBySection(undefined).size).toBe(0);
-    expect(pagesBySection([{ id: "x", title: "X", body: "…", hidden: true }]).size).toBe(0);
-    expect(sectionsWithPages([{ id: "x", title: "X", body: "…" }])).toEqual([NOTES_SECTION]);
+  it("the type has no chapter field, so the decision cannot be re-made by accident", () => {
+    // Not a behaviour test: a type that no longer has the field is what stops
+    // this coming back. If a page can be filed under a chapter again, the whole
+    // argument above starts over.
+    const TYPES = readFileSync(join(ROOT, "src", "lib", "db", "settings.ts"), "utf-8");
+    const docPage = TYPES.slice(TYPES.indexOf("export interface DocPage"));
+    expect(docPage.slice(0, docPage.indexOf("}"))).not.toMatch(/\bsection\??:/);
   });
 });
 
 describe("the outline", () => {
   const pages = [
-    { id: "limits", title: "限流", body: "…", section: "endpoints" },
-    { id: "loose", title: "杂记", body: "…" },
+    { id: "limits", title: "限流", body: "…" },
+    { id: "pick", title: "选型建议", body: "…" },
   ];
 
-  it("carries a page as an indented child of its chapter, not a chapter of its own", () => {
-    const outline = userDocOutline(t, pages);
-    const endpoints = outline.find((s) => s.id === "endpoints");
-    expect(endpoints?.children?.map((c) => c.id)).toEqual(["limits"]);
-    // The thing being fixed: a note about rate limits is not its own chapter.
-    expect(outline.filter((s) => s.id === "limits")).toEqual([]);
-  });
-
-  it("the chapter it is filed under keeps its position among the built-ins", () => {
+  it("puts every operator page in one chapter, after the built-ins", () => {
     const ids = userDocOutline(t, pages).map((s) => s.id);
     expect(ids).toEqual([
       "start",
@@ -150,43 +125,55 @@ describe("the outline", () => {
       "models",
       "sdks",
       "media",
+      "catalog",
       "notes",
     ]);
+    // One chapter, however many pages. Two pages must not become two chapters.
+    expect(ids.filter((id) => id === NOTES_SECTION)).toHaveLength(1);
   });
 
-  it("the fallback chapter disappears when nothing is filed in it", () => {
-    const onlyFiled = userDocOutline(t, [{ id: "limits", title: "限流", body: "…", section: "endpoints" }]);
-    expect(onlyFiled.map((s) => s.id)).not.toContain(NOTES_SECTION);
-    expect(onlyFiled.find((s) => s.id === "endpoints")?.children).toHaveLength(1);
-  });
-
-  it("and a deployment with nothing written is exactly the built-in outline", () => {
+  it("the chapter disappears when the operator has written nothing", () => {
+    // A permanent entry saying "there is nothing here" is what makes a custom
+    // section look bolted on, and a deployment with nothing written should look
+    // exactly as it did before the feature existed.
     for (const nothing of [undefined, [], [{ id: "x", title: "X", body: "…", hidden: true }]]) {
       const outline = userDocOutline(t, nothing as never);
-      expect(outline.every((s) => !s.children)).toBe(true);
       expect(outline.map((s) => s.id)).not.toContain(NOTES_SECTION);
+      expect(outline.every((s) => !s.children)).toBe(true);
     }
   });
 
   it("it is drawn from the document's own chapter list, not a second one", () => {
     // The outline has to be built with the answer already in hand; a reader that
     // discovers the page afterwards is a reader who saw it vanish.
-    expect(CUSTOM).toMatch(/for \(const section of userDocSections\(t\)\)/);
+    expect(CUSTOM).toMatch(/const built = userDocSections\(t\)\.filter\(\(s\) => s\.id !== NOTES_SECTION\)/);
     expect(INTEGRATION).toMatch(/sections=\{userDocOutline\(t, docPages\)\}/);
   });
 
-  it("and the page renders at the end of its own chapter", () => {
-    expect(APP).toMatch(/const here = pagesBySection\(pages\)\.get\(active\)/);
-    expect(APP).toMatch(/\{here\.length > 0 && <DocsNotes pages=\{here\} \/>\}/);
+  it("and the built-in list is not offered its own notes chapter as well", () => {
+    // `notes` is in the id list so `/docs/notes` is a real route, but appending
+    // it without stripping it first put two identically-labelled tabs in the
+    // outline.
+    const ids = userDocOutline(t, [{ id: "x", title: "X", body: "…" }]).map((s) => s.id);
+    expect(ids.filter((id) => id === NOTES_SECTION)).toHaveLength(1);
+  });
+
+  it("and the pages render only in that chapter, never inside a built-in one", () => {
+    // The version that let a page name its own chapter rendered the operator's
+    // prose at the bottom of a built-in chapter, which is how it came to look
+    // like it had vanished when the reader moved tab. One chapter, or none.
+    expect(APP).toMatch(/active === "notes" \? visibleDocPages\(pages\) : \[\]/);
+    // There is no branch that renders them alongside `<DocsContent>`.
+    expect(APP).not.toMatch(/<DocsContent[\s\S]{0,400}<DocsNotes/);
   });
 });
 
 describe("the document is one page, not one route per chapter", () => {
   /**
-   * The reported bug: a page filed under a chapter was on that chapter and
-   * nowhere else, so moving to a neighbouring chapter made it look gone — and
-   * reloading did not bring it back, because it genuinely was not on that page.
-   * The data was never lost; navigating was the defect.
+   * The reported bug: chapters were separate routes, so moving between them was
+   * a navigation — a server round trip, a loading boundary, and whatever the
+   * router had already fetched. The data was never lost; navigating was the
+   * defect.
    *
    * So the chapters are tabs over content that is already in memory. There is
    * no request to be stale, nothing to prefetch and nothing to wait for, which
@@ -209,27 +196,34 @@ describe("the document is one page, not one route per chapter", () => {
   });
 
   it("a deep link still opens the right chapter, and a stale one lands somewhere real", () => {
-    expect(APP).toMatch(/sections\.some\(\(s\) => s\.id === initial\) \? initial : first/);
+    // Against the offered tabs, not the configured ones: a deep link to the
+    // catalogue on a deployment that does not publish it has to land somewhere.
+    expect(APP).toMatch(/tabs\.some\(\(s\) => s\.id === initial\) \? initial : first/);
   });
 
   it("and the back button moves between chapters", () => {
     expect(APP).toMatch(/window\.addEventListener\("popstate"/);
   });
 
-  it("a chapter the operator has written in says so on its own tab", () => {
-    // Otherwise "where did my page go" can only be answered by opening every
-    // chapter in turn, which is the question the redesign exists to remove. A
-    // count, not a dot: a dot says "something", and sends them looking anyway.
-    expect(APP).toMatch(/const count = s\.children\?\.length \?\? 0;/);
-    expect(APP).toMatch(/\{count > 0 && \(/);
-    expect(APP).toMatch(/aria-label=\{s\.children!\.map\(\(c\) => c\.label\)\.join\(", "\)\}/);
+  it("the catalogue is a chapter, not a wall in front of the tabs", () => {
+    // Fifteen models of table above the outline meant the first thing every
+    // reader saw was a table they had not come for yet, and the first thing
+    // they had to scroll past to reach the chapter they wanted.
+    expect(APP).toMatch(/active === "catalog" \? \(/);
+    expect(APP).toMatch(/catalogue \?\? null/);
+    // Inside the tab panel, so it is not in the document at all until its own
+    // tab is opened — and absent from every other chapter.
+    expect(APP.indexOf('active === "catalog"')).toBeGreaterThan(APP.indexOf('role="tabpanel"'));
+    expect(APP.indexOf('role="tablist"')).toBeLessThan(APP.indexOf('role="tabpanel"'));
   });
 
-  it("the catalogue sits above the tabs, so it survives a chapter switch", () => {
-    // It used to live on the index page alone, which meant it was on screen
-    // until the first switch and gone after it.
-    expect(APP.indexOf("{catalogue}")).toBeGreaterThan(-1);
-    expect(APP.indexOf("{catalogue}")).toBeLessThan(APP.indexOf('role="tablist"'));
+  it("and the tab only exists where there is a catalogue to open", () => {
+    // A public deployment can switch its vendor list off, deliberately. A tab
+    // that opens onto an empty panel is worse than no tab at all, and this was
+    // shipped once: the chapter was in the outline unconditionally and the
+    // public surface had nothing to put in it.
+    expect(APP).toMatch(/sections\.filter\(\(s\) => s\.id !== "catalog" \|\| catalogue\)/);
+    expect(APP).toMatch(/tabs\.some\(\(s\) => s\.id === initial\)/);
   });
 
   it("and the chapter slug is still a real route, so old links are not dead", () => {
@@ -294,10 +288,16 @@ describe("the body is prose, not markup", () => {
     expect(html).toContain("<li>");
   });
 
-  it("filed under a chapter it is set off by a rule, not boxed like another document", () => {
-    // A box announces "a different document starts here", which is the opposite
-    // of what filing it under this chapter is for.
-    expect(NOTES).toMatch(/border-l-2/);
+  it("it is one chapter, introduced as a chapter", () => {
+    // Scoped past the empty state, which also renders a CardHeader. Matching the
+    // whole file would let the guard be satisfied by the one page nobody with
+    // content ever sees.
+    const main = NOTES.slice(NOTES.indexOf("if (visible.length === 0)"));
+    expect(main).toMatch(
+      /<CardHeader title=\{t\("docs\.notes\.title"\)\} description=\{t\("docs\.notes\.desc"\)\} \/>/,
+    );
+    // The inline variant is gone: these are a chapter, not a footnote to one.
+    expect(NOTES).not.toMatch(/variant/);
   });
 });
 
@@ -317,10 +317,9 @@ describe("what a page may be called, and where it may go", () => {
     expect(validatePage({ id: "ok", title: "", body: "…" })).toMatch(/title/);
   });
 
-  it("a chapter that exists, or none at all", () => {
-    expect(validatePage({ id: "ok", title: "x", section: "endpoints" })).toBeNull();
-    expect(validatePage({ id: "ok", title: "x", section: NOTES_SECTION })).toBeNull();
-    expect(validatePage({ id: "ok", title: "x", section: "nope" })).toMatch(/chapter/);
+  it("and a body, capped, because an unbounded one is prose nobody finishes", () => {
+    expect(validatePage({ id: "ok", title: "x", body: "…".repeat(60_001) })).toMatch(/body/);
+    expect(validatePage({ id: "ok", title: "x", body: "…" })).toBeNull();
   });
 
   it("the editor refuses to save while a page is unusable", () => {
@@ -363,32 +362,42 @@ describe("what a page may be called, and where it may go", () => {
     expect(API).toMatch(/重复/);
   });
 
-  it("and the server re-checks the id shape and the chapter, not just the editor", () => {
+  it("and the server re-checks the id shape, not just the editor", () => {
     // The editor refusing is a convenience; the endpoint is the boundary. A
     // caller that is not the editor form — a script, an older tab — must be
     // stopped here too.
     expect(API).toMatch(/\.regex\(\/\^\[a-z0-9\]/);
     expect(API).toMatch(/DocPageIdSchema/);
-    expect(API).toMatch(/refine\(isUserDocId/);
+  });
+
+  it("and the stored shape has no chapter field, so a stale one is rejected rather than honoured", () => {
+    // `.strict()` on the page schema, which is what turns a leftover `section`
+    // from an older client into a 400 instead of a silently ignored key. Scoped
+    // to the DocPageSchema block: the outer settings object has a `.strict()`
+    // too, and a looser search would match that one and pass forever.
+    const block = API.slice(API.indexOf("const DocPageSchema"));
+    expect(block.slice(0, block.indexOf("const UpdateSchema"))).toMatch(/\.strict\(\)/);
   });
 });
 
 describe("editing it", () => {
-  it("offers a body, a title, a slug, a chapter, a draft flag and an order", () => {
-    for (const field of ["pageBody", "pageTitle", "pageId", "pageSection", "pageHidden"]) {
+  it("offers a body, a title, a slug, a draft flag and an order", () => {
+    for (const field of ["pageBody", "pageTitle", "pageId", "pageHidden"]) {
       expect(FORM, `no ${field}`).toContain(`admin.docsSettings.${field}`);
     }
     expect(FORM).toContain("movePage");
   });
 
-  it("the chapter choices come from the document's own outline", () => {
-    // A second hand-written list would drift from the docs the first time a
-    // chapter is renamed, and would offer a page that renders nowhere.
-    expect(FORM).toMatch(/userDocSections\(t\)\.filter\(\(s\) => s\.id !== NOTES_SECTION\)/);
+  it("and offers no chapter, because all the pages are one chapter", () => {
+    // The dropdown was here for one round. It scattered the operator's prose
+    // through the built-in chapters, and every page had to be assigned a home
+    // before it would show up anywhere.
+    expect(FORM).not.toContain("admin.docsSettings.pageSection");
+    expect(FORM).not.toMatch(/\bsection\b/);
   });
 
-  it("and the chosen chapter is sent with the page", () => {
-    expect(FORM).toMatch(/\.\.\.\(f\.section \? \{ section: f\.section \} : \{\}\)/);
+  it("and sends no chapter with the page", () => {
+    expect(FORM).not.toMatch(/\.\.\.\(f\.section/);
   });
 
   it("locks the slug once published, because readers link to it", () => {

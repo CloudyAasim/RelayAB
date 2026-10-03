@@ -1,13 +1,13 @@
 /**
  * src/app/(user)/dashboard/docs/DocsNotes.tsx
  *
- * The operator's own prose, rendered where the reader already is.
+ * The operator's own chapter: whatever the administrator wrote, in reading
+ * order, as one page at the end of the reader-facing docs.
  *
- * `inline` is the point of the whole feature: a page the operator filed under a
- * built-in chapter appears at the bottom of that chapter, as part of it, with
- * the same reading rhythm as everything above it. `chapter` is the fallback for
- * pages that were not filed anywhere, which get the `notes` chapter of their
- * own — and that chapter only exists when it has something in it.
+ * All of it lives here rather than being filed into the built-in chapters. The
+ * version that let each page name its own chapter scattered the operator's
+ * prose through the document, and a reader looking for the rate limit then had
+ * to know which chapter somebody had put it in. One chapter, one place.
  *
  * It is markdown, put through the same escaping path as the built-in pages —
  * `markdownToHtml` escapes before it emits anything — so an admin writing prose
@@ -28,14 +28,7 @@ import { sortDocPages, type DocPage } from "@/lib/docs/custom";
 const PROSE =
   "prose prose-sm max-w-none break-words text-foreground prose-headings:mt-4 prose-headings:mb-2 prose-p:my-2 prose-pre:my-3 prose-pre:bg-foreground/[0.03] prose-code:before:content-none prose-code:after:content-none prose-a:text-primary";
 
-export function DocsNotes({
-  pages,
-  variant = "inline",
-}: {
-  pages: readonly DocPage[];
-  /** `chapter` introduces the operator's own chapter; `inline` tucks into one. */
-  variant?: "inline" | "chapter";
-}) {
+export function DocsNotes({ pages }: { pages: readonly DocPage[] }) {
   const t = useT();
   const visible = sortDocPages(pages).filter((p) => !p.hidden);
 
@@ -52,31 +45,13 @@ export function DocsNotes({
 
   return (
     <div className="space-y-6">
-      {variant === "chapter" && (
-        <Card>
-          <CardHeader title={t("docs.notes.title")} description={t("docs.notes.desc")} />
-        </Card>
-      )}
+      <Card>
+        <CardHeader title={t("docs.notes.title")} description={t("docs.notes.desc")} />
+      </Card>
 
       {visible.map((page) => (
-        <article
-          key={page.id}
-          id={page.id}
-          className={
-            variant === "inline"
-              ? // A rule down the left edge, not a box. A box would announce
-                // "a different document starts here", which is the opposite of
-                // what filing it under this chapter is for.
-                "scroll-mt-24 space-y-3 border-l-2 border-primary/30 pl-4"
-              : "scroll-mt-24 space-y-3"
-          }
-        >
-          <h2 className="flex items-baseline gap-2 text-base font-semibold tracking-tight text-foreground">
-            {page.title}
-            <span className="text-[10px] font-normal uppercase tracking-wider text-muted-foreground">
-              {t("docs.notes.badge")}
-            </span>
-          </h2>
+        <article key={page.id} id={page.id} className="scroll-mt-24 space-y-3">
+          <h2 className="text-base font-semibold tracking-tight text-foreground">{page.title}</h2>
           <div
             className={PROSE}
             dangerouslySetInnerHTML={{ __html: markdownToHtml(page.body) }}

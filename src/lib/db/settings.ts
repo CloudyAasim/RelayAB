@@ -72,23 +72,12 @@ export interface DocPage {
   /** Markdown. Rendered with the same audited path the rest of the docs use. */
   body: string;
   /**
-   * Which built-in chapter this page belongs to.
-   *
-   * The point of the field. A page parked in its own chapter at the end of the
-   * outline is an appendix; a page filed under the chapter it is about is part
-   * of the document — the reader who wants to know the rate limit is already
-   * on the endpoints page, and the answer is there.
-   *
-   * Absent, or set to `notes`, means the dedicated chapter at the end.
-   */
-  section?: string;
-  /**
    * Draft: written but not shown. The point of a draft is that the outline
    * does not change while it is being written, so a half-finished page never
    * appears in a reader's navigation.
    */
   hidden?: boolean;
-  /** Sort order within its chapter; ties fall back to the title. */
+  /** Sort order within the chapter; ties fall back to the title. */
   order?: number;
 }
 

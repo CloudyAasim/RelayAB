@@ -28,7 +28,6 @@ import { getSettings, updateSettings } from "@/lib/db/settings";
 import { getCurrentUser } from "@/lib/auth/session";
 import { buildModelCatalog } from "@/lib/docs/catalog";
 import { loadConfig } from "@/lib/config";
-import { isUserDocId } from "@/lib/docs/sections";
 
 const ModelNoteSchema = z
   .object({
@@ -46,18 +45,6 @@ const DocPageIdSchema = z
   .max(60)
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "页面标识只能用小写字母、数字和中划线");
 
-/**
- * Which chapter a page belongs to.
- *
- * Checked against the real outline rather than accepted as any string: a page
- * filed under a chapter that does not exist would render nowhere, and a page
- * that renders nowhere is a page the operator believes they published.
- */
-const DocPageSectionSchema = z
-  .string()
-  .refine(isUserDocId, "只能放在文档现有的某一章里")
-  .optional();
-
 const DocPageSchema = z
   .object({
     id: DocPageIdSchema,
@@ -66,7 +53,6 @@ const DocPageSchema = z
     // docs, so it is text — but it is still a body of prose typed by a human, and
     // an unbounded one would be a body of prose nobody can finish reading.
     body: z.string().max(60_000),
-    section: DocPageSectionSchema,
     hidden: z.boolean().optional(),
     order: z.number().int().min(0).max(10_000).optional(),
   })

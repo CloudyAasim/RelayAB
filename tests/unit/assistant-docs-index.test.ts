@@ -127,67 +127,48 @@ describe("the operator's own chapter, which is written at runtime", () => {
   });
 });
 
-describe("a page filed under a built-in chapter", () => {
-  const custom = createDocReader([
-    { id: "limits", title: "限流", body: "每分钟 30 次。", section: "endpoints" },
-    { id: "loose", title: "杂记", body: "随便记的。", section: "nowhere" },
-  ]);
+describe("the operator's own chapter, which is written at runtime", () => {
+  const pages = [
+    { id: "rate-limits", title: "限流", body: "每分钟 30 次。", order: 0 },
+    { id: "draft", title: "草稿", body: "还没写完。", hidden: true },
+  ];
+  const custom = createDocReader(pages);
 
-  it("is indexed under the chapter it renders in, not under the fallback", () => {
+  it("appears in the index only when there is something to read", () => {
+    expect(custom.index.some((e) => e.topic === "user:notes")).toBe(true);
+    expect(reader().index.some((e) => e.topic === "user:notes")).toBe(false);
+  });
+
+  it("lists each published page, and not the drafts", () => {
     const topics = custom.index.map((e) => e.topic);
-    expect(topics).toContain("user:endpoints#limits");
-    expect(topics).not.toContain("user:notes#limits");
+    expect(topics).toContain("user:notes#rate-limits");
+    expect(topics.some((t) => t.includes("draft"))).toBe(false);
   });
 
-  it("and an unfiled or misfiled page still lands somewhere readable", () => {
-    // `nowhere` is not a chapter, so it falls back — rather than becoming a page
-    // the model can see in the index and then fail to read.
-    expect(custom.index.map((e) => e.topic)).toContain("user:notes#loose");
-  });
-
-  it("is readable by its chapter-qualified topic", () => {
-    const result = custom.read("user:endpoints#limits", "zh-CN", "user");
+  it("reads a page by its slug", () => {
+    const result = custom.read("user:notes#rate-limits", "zh-CN", "user");
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.text).toBe("每分钟 30 次。");
   });
 
-  it("and by a bare id, since the chapter is implied by where it lives", () => {
-    const result = custom.read("#limits", "zh-CN", "user");
-    expect(result.ok).toBe(true);
-  });
-
-  it("reading it under the wrong chapter says which chapter it is really in", () => {
-    // Better than a bare "not found": the model asked a well-formed question
-    // with one wrong word in it.
-    const result = custom.read("user:openai#limits", "zh-CN", "user");
+  it("a draft is not readable through a link either", () => {
+    const result = custom.read("user:notes#draft", "zh-CN", "user");
     expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.reason).toMatch(/endpoints/);
   });
 
-  it("a chapter page carries the operator's note, because that is what the page says", () => {
-    // Otherwise the model reads the built-in prose, finds no rate limit, and
-    // tells the user this deployment has none.
-    const result = custom.read("user:endpoints", "zh-CN", "user");
+  it("a deployment with only drafts has no chapter at all", () => {
+    const allDrafts = createDocReader([{ id: "x", title: "X", body: "…", hidden: true }]);
+    expect(allDrafts.index.some((e) => e.topic === "user:notes")).toBe(false);
+  });
+
+  it("and reading the chapter itself returns every page in it", () => {
+    // The chapter is a chapter: the model can read the whole thing in one go
+    // rather than discovering page by page that it exists.
+    const result = custom.read("user:notes", "zh-CN", "user");
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.text).toContain("每分钟 30 次。");
-  });
-
-  it("a chapter with nothing filed under it is unchanged", () => {
-    const before = reader().read("user:endpoints", "zh-CN", "user");
-    const after = custom.read("user:openai", "zh-CN", "user");
-    expect(before.ok && after.ok).toBe(true);
-    if (!before.ok || !after.ok) return;
-    expect(after.text).not.toContain("每分钟 30 次。");
-  });
-
-  it("and the fallback chapter stays out of the index when nothing is in it", () => {
-    const onlyFiled = createDocReader([
-      { id: "limits", title: "限流", body: "…", section: "endpoints" },
-    ]);
-    expect(onlyFiled.index.some((e) => e.topic === "user:notes")).toBe(false);
   });
 });
 
