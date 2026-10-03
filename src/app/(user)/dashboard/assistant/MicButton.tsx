@@ -15,14 +15,34 @@
  * The recording stays in the page. `MediaRecorder` hands back a blob, the blob
  * is posted and then dropped; nothing is written to disk and no playback
  * control is offered, because the audio is a means of typing, not a message.
+ *
+ * **Ask, then wait. Do not diagnose.**
+ *
+ * Two earlier versions asked the Permissions API what the browser thought,
+ * split the answer into "refused" and "blocked", and told the operator which
+ * one it was. That was a mistake twice over. `getUserMedia` does not settle
+ * until somebody answers the prompt, so there is nothing to diagnose while it
+ * is outstanding — and the version that did diagnose it told an operator who
+ * had just set the microphone to Allow that the browser had remembered a
+ * refusal. They were looking at the setting that disproved it.
+ *
+ * So: raise the request on mount, and if it has not been answered after a
+ * while, say so. One message, one remedy, no claim about the browser's memory
+ * that cannot be checked from here. The press-to-record path asks again
+ * immediately, which is strictly more than the timer offers.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Mic, Square, Loader2 } from "lucide-react";
+import { Mic, Square, Loader2, MicOff } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useT } from "@/components/i18n/I18nProvider";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";
 
-type Phase = "idle" | "recording" | "transcribing";
+/**
+ * `unsupported` is decided once, from capability, and is the only state here
+ * that is not about the prompt. `asking` is the prompt outstanding. `waiting`
+ * is the prompt unanswered for a while. `ready` is granted.
+ */
+type MicState = "unsupported" | "asking" | "waiting" | "ready" | "recording" | "transcribing";
 
 /** `getUserMedia` needs a secure context; localhost counts. */
 function recordingSupported(): boolean {
@@ -36,41 +56,14 @@ function recordingSupported(): boolean {
 }
 
 /**
- * What the browser currently thinks about the microphone.
+ * How long an unanswered prompt is waited out before saying anything.
  *
- * "denied" and "blocked" are the same word to the operator and opposite
- * problems: a single refusal can be asked again, but once a permission is
- * *blocked* the browser will not prompt again at all, and the only way back is
- * the site settings. Telling someone to "allow it in the browser" for the
- * second case is advice that cannot work.
+ * Long enough for somebody who is reading the page to find and click the
+ * browser's own prompt, which sits in the address-bar area and is easy to miss
+ * on a windowed site like this one. Not so long that a person who is not
+ * answering is left with a message that outlives their attention.
  */
-type MicPermission = "unknown" | "granted" | "denied" | "blocked" | "unsupported";
-
-function permissionStateOf(status: PermissionStatus | undefined): MicPermission {
-  if (!status) return "unknown";
-  return status.state as MicPermission;
-}
-
-/** The browser's own view of the microphone, or "unknown" where unsupported. */
-async function microphoneState(): Promise<MicPermission> {
-  try {
-    return permissionStateOf(
-      await navigator.permissions?.query({ name: "microphone" as PermissionName }),
-    );
-  } catch {
-    return "unknown";
-  }
-}
-
-/** When the permission last changed, if the browser will say. */
-async function permissionChangedAt(): Promise<number | null> {
-  try {
-    const status = await navigator.permissions?.query({ name: "microphone" as PermissionName });
-    return status && "lastChanged" in status ? Number(status.lastChanged) : null;
-  } catch {
-    return null;
-  }
-}
+const ASK_TIMEOUT_MS = 12_000;
 
 export function MicButton({
   onTranscribed,
@@ -82,69 +75,77 @@ export function MicButton({
   disabled?: boolean;
 }) {
   const t = useT();
-  const [phase, setPhase] = useState<Phase>("idle");
-  const [permission, setPermission] = useState<MicPermission>("unknown");
+  const [state, setState] = useState<MicState>("asking");
+  const [deviceError, setDeviceError] = useState<string | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Stopped by unmount or by switching threads: a recorder left running would
   // keep the microphone indicator on long after the conversation is gone.
   const liveRef = useRef(false);
 
-  useEffect(() => {
+  const clearTimer = useCallback(() => {
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
+  /**
+   * Raise the request, and start waiting for an answer.
+   *
+   * The prompt is raised while the assistant screen is open — where the
+   * microphone is visible and its purpose obvious. A prompt raised by pressing
+   * the button is easy to refuse by reflex, and a refusal is remembered for
+   * the site, so the next visit does not prompt at all.
+   *
+   * The tracks are released the moment they arrive: this asks for permission,
+   * it does not record, and a microphone the operator cannot see is worse than
+   * none.
+   */
+  const ask = useCallback(() => {
     if (!recordingSupported()) {
-      setPermission("unsupported");
+      setState("unsupported");
       return;
     }
-    let cancelled = false;
+    setDeviceError(null);
+    setState("asking");
+    clearTimer();
+    timerRef.current = setTimeout(() => setState("waiting"), ASK_TIMEOUT_MS);
 
-    // The browser's own state, so a hard block is distinguishable from a
-    // refusal. Not supported everywhere; the absence is not a failure.
-    navigator.permissions
-      ?.query({ name: "microphone" as PermissionName })
-      .then((status) => {
-        if (cancelled) return;
-        setPermission(permissionStateOf(status));
-        status.onchange = () => {
-          if (!cancelled) setPermission(permissionStateOf(status));
-        };
-      })
-      .catch(() => setPermission("unknown"));
-
-    /**
-     * Ask now rather than on the first click.
-     *
-     * A prompt raised by pressing the microphone button is easy to refuse by
-     * reflex, and a refusal is remembered: the next visit does not prompt at
-     * all, and the button reports a problem the operator cannot fix from here.
-     * Asking while the assistant screen is open — where the microphone is
-     * visible and the purpose is obvious — gives the prompt a context, and
-     * grants it now means the button just works later.
-     */
     navigator.mediaDevices
       .getUserMedia({ audio: true })
       .then((stream) => {
-        // Nothing is recorded and nothing is kept: this is a permission check,
-        // not a recording. The tracks are released immediately.
+        clearTimer();
         stream.getTracks().forEach((track) => track.stop());
-        if (!cancelled) setPermission("granted");
+        setState("ready");
       })
-      .catch(() => {
-        // Silence here on purpose. The prompt has been raised; the button
-        // carries the state, and a banner on mount for something the operator
-        // may not even want is worse than silence.
+      .catch((err) => {
+        clearTimer();
+        // Two failures the operator can act on differently, and they are the
+        // only two the browser reliably names. Everything else is one sentence
+        // that tells them what to try, rather than a claim about why.
+        const name = typeof err === "object" && err && "name" in err ? String((err as Error).name) : "";
+        if (name === "NotFoundError" || name === "OverconstrainedError") {
+          setDeviceError(t("assistant.voice.noDevice"));
+        }
+        setState("waiting");
       });
+  }, [clearTimer, t]);
 
+  useEffect(() => {
+    ask();
     return () => {
-      cancelled = true;
       liveRef.current = false;
       recorderRef.current?.stream.getTracks().forEach((tr) => tr.stop());
       recorderRef.current = null;
+      clearTimer();
     };
-  }, []);
+  }, [ask, clearTimer]);
 
   const send = useCallback(
     async (blob: Blob) => {
-      setPhase("transcribing");
+      setState("transcribing");
       try {
         const form = new FormData();
         form.append("file", blob, "recording.webm");
@@ -165,7 +166,7 @@ export function MicButton({
       } catch (e) {
         onError(e instanceof Error ? e.message : t("assistant.voice.failed"));
       } finally {
-        setPhase("idle");
+        setState("ready");
       }
     },
     [onError, onTranscribed, t],
@@ -173,76 +174,19 @@ export function MicButton({
 
   const start = useCallback(async () => {
     onError(null);
-    if (!recordingSupported()) {
-      onError(t("assistant.voice.unsupportedContext"));
-      return;
-    }
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch (err) {
-      setPermission("denied");
-      // `instanceof` is unreliable across realms and polyfills, so the name is
-      // read the way every browser actually populates it.
-      const name =
-        typeof err === "object" && err && "name" in err ? String((err as Error).name) : "";
-      if (name === "NotFoundError" || name === "OverconstrainedError") {
-        onError(t("assistant.voice.noDevice"));
-        return;
-      }
-      if (name !== "NotAllowedError" && name !== "SecurityError") {
-        onError(t("assistant.voice.failed"));
-        return;
-      }
-
-      /**
-       * How long ago the settings changed, if it can be told.
-       *
-       * Granting the microphone in site settings does not retroactively fix a
-       * page that already failed to open it, and the remedy is a reload — not
-       * more settings. This bit used to assert "the browser has remembered a
-       * refusal", which is only true sometimes, and it is the one thing the
-       * operator can disprove in a glance by looking at the settings they just
-       * changed.
-       */
-      const changedAt = await permissionChangedAt();
-      const since = changedAt === null ? null : Date.now() - changedAt;
-      const justChanged = since !== null && since < 60_000;
-      if (justChanged) {
-        onError(t("assistant.voice.changedJustNow"));
-        return;
-      }
-
-      /**
-       * "Blocked" needs two failures, not one.
-       *
-       * A single `getUserMedia` rejection plus a permissions query that says
-       * "denied" is a claim about the future: that the browser will not ask
-       * again. Ask a second time — after the query — and only two refusals make
-       * it a fact. Anything less and the honest message is the neutral one.
-       */
-      const state = await microphoneState();
-      if (state === "denied") {
-        try {
-          const again = await navigator.mediaDevices.getUserMedia({ audio: true });
-          again.getTracks().forEach((tr) => tr.stop());
-          setPermission("granted");
-          return;
-        } catch {
-          setPermission("blocked");
-          onError(t("assistant.voice.blocked"));
-          return;
-        }
-      }
-
-      onError(
-        state === "granted"
-          ? t("assistant.voice.stillFailing")
-          : t("assistant.voice.denied"),
-      );
+    } catch {
+      // Pressing the button is an explicit ask, so re-raise it rather than
+      // explaining: whatever went wrong last time may not be true now, and
+      // asking again is what the operator just asked for.
+      ask();
+      onError(t("assistant.voice.askAgain"));
       return;
     }
-    setPermission("granted");
+    setDeviceError(null);
+    setState("recording");
     chunksRef.current = [];
     const recorder = new MediaRecorder(stream);
     recorderRef.current = recorder;
@@ -257,57 +201,68 @@ export function MicButton({
       chunksRef.current = [];
       recorderRef.current = null;
       if (blob.size > 0) void send(blob);
-      else setPhase("idle");
+      else setState("ready");
     };
     recorder.start();
-    setPhase("recording");
-  }, [onError, send, t]);
+  }, [ask, onError, send, t]);
 
   const stop = useCallback(() => {
     const recorder = recorderRef.current;
     if (recorder && recorder.state !== "inactive") recorder.stop();
-    else setPhase("idle");
+    else setState("ready");
   }, []);
 
-  if (permission === "unsupported") return null;
+  if (state === "unsupported") return null;
 
-  // A blocked microphone is not a button that does nothing when pressed — it is
-  // one that says so before it is pressed, and says where the fix is.
-  const blocked = permission === "blocked";
   const label =
-    phase === "recording"
+    state === "recording"
       ? t("assistant.voice.stop")
-      : phase === "transcribing"
+      : state === "transcribing"
         ? t("assistant.voice.working")
-        : blocked
-          ? t("assistant.voice.blockedHint")
-          : t("assistant.voice.start");
+        : state === "asking"
+          ? t("assistant.voice.asking")
+          : state === "waiting"
+            ? t("assistant.voice.waiting")
+            : t("assistant.voice.start");
 
   return (
-    <Button
-      type="button"
-      size="icon"
-      variant="ghost"
-      disabled={disabled || phase === "transcribing"}
-      onClick={phase === "recording" ? stop : start}
-      title={label}
-      aria-label={label}
-      aria-pressed={phase === "recording"}
-      className={
-        phase === "recording"
-          ? "text-destructive hover:text-destructive"
-          : blocked
-            ? "text-muted-foreground/50 hover:text-muted-foreground"
-            : ""
-      }
-    >
-      {phase === "transcribing" ? (
-        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-      ) : phase === "recording" ? (
-        <Square className="h-4 w-4" aria-hidden />
-      ) : (
-        <Mic className="h-4 w-4" aria-hidden />
+    <>
+      <Button
+        type="button"
+        size="icon"
+        variant="ghost"
+        disabled={disabled || state === "transcribing" || state === "asking"}
+        onClick={state === "recording" ? stop : start}
+        title={label}
+        aria-label={label}
+        aria-pressed={state === "recording"}
+        className={
+          state === "recording"
+            ? "text-destructive hover:text-destructive"
+            : state === "waiting"
+              ? "text-muted-foreground/60 hover:text-muted-foreground"
+              : ""
+        }
+      >
+        {state === "transcribing" || state === "asking" ? (
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+        ) : state === "recording" ? (
+          <Square className="h-4 w-4" aria-hidden />
+        ) : state === "waiting" ? (
+          <MicOff className="h-4 w-4" aria-hidden />
+        ) : (
+          <Mic className="h-4 w-4" aria-hidden />
+        )}
+      </Button>
+
+      {/*
+        Said once, after the prompt has been outstanding long enough to be
+        missed, and only about what the operator can do about it.
+      */}
+      {state === "waiting" && !deviceError && (
+        <p className="ml-2 max-w-xs text-xs text-muted-foreground">{t("assistant.voice.waitingHint")}</p>
       )}
-    </Button>
+      {deviceError && <p className="ml-2 text-xs text-destructive">{deviceError}</p>}
+    </>
   );
 }

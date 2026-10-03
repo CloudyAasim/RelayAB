@@ -877,16 +877,13 @@ const zhCN: Dict = {
   "assistant.voice.start": "语音输入",
   "assistant.voice.stop": "停止录音",
   "assistant.voice.working": "转写中…",
+  "assistant.voice.asking": "正在请求麦克风权限…",
+  "assistant.voice.waiting": "还没有拿到麦克风权限",
+  "assistant.voice.waitingHint":
+    "浏览器地址栏附近那个权限提示还在等选择。选「允许」就能用；选过「拒绝」的话，点地址栏左侧的图标 → 网站设置 → 麦克风改为「允许」，再刷新本页。",
+  "assistant.voice.askAgain": "这次还是没拿到，再点一次麦克风重新请求。",
   "assistant.voice.failed": "语音转写失败",
   "assistant.voice.empty": "没有识别到内容。",
-  "assistant.voice.denied": "这次没有拿到麦克风，点按钮可以再要一次。",
-  "assistant.voice.changedJustNow":
-    "刚改过麦克风设置的话，请刷新本页再试——已经打开的页面不会因为改了设置就自动拿到权限。",
-  "assistant.voice.stillFailing":
-    "设置显示麦克风是允许的，但浏览器仍然拒绝打开它。可能是这台设备没有可用麦克风，或被别的程序占用，关掉占用它的程序后刷新再试。",
-  "assistant.voice.blocked":
-    "连续两次都被拒绝，浏览器不会再弹窗了。请点地址栏左侧的图标 → 网站设置 → 麦克风改为「允许」，然后刷新本页。",
-  "assistant.voice.blockedHint": "麦克风已被浏览器禁用（点地址栏图标可恢复）",
   "assistant.voice.noDevice": "没有找到麦克风设备。",
   "assistant.voice.unsupportedContext": "这个页面不是安全上下文，浏览器不提供麦克风。请用 https 打开。",
   "assistant.pretty.switch": "输出美化",
@@ -1881,16 +1878,13 @@ const en: Dict = {
   "assistant.voice.start": "Dictate",
   "assistant.voice.stop": "Stop recording",
   "assistant.voice.working": "Transcribing…",
+  "assistant.voice.asking": "Asking for the microphone…",
+  "assistant.voice.waiting": "Still waiting for the microphone",
+  "assistant.voice.waitingHint":
+    "The browser's permission prompt is still open, near the address bar. Choose Allow and it works; if you chose Deny, use the icon left of the address bar → Site settings → Microphone → Allow, then reload.",
+  "assistant.voice.askAgain": "Still nothing. Press the microphone again to re-ask.",
   "assistant.voice.failed": "Transcription failed",
   "assistant.voice.empty": "Nothing was recognised.",
-  "assistant.voice.denied": "No microphone this time. Press the button to ask again.",
-  "assistant.voice.changedJustNow":
-    "If you just changed the microphone setting, reload this page — a page that is already open does not pick the change up.",
-  "assistant.voice.stillFailing":
-    "Settings say the microphone is allowed, but the browser still refuses to open it. There may be no usable device, or another program is holding it. Close that and reload.",
-  "assistant.voice.blocked":
-    "Refused twice in a row, so the browser will not ask again. Use the icon left of the address bar → Site settings → Microphone → Allow, then reload.",
-  "assistant.voice.blockedHint": "Microphone blocked by the browser (use the icon by the address bar)",
   "assistant.voice.noDevice": "No microphone device was found.",
   "assistant.voice.unsupportedContext": "This page is not a secure context, so the browser offers no microphone. Open it over https.",
   "assistant.pretty.switch": "Pretty output",

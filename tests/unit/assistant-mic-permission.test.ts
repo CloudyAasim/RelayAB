@@ -1,18 +1,23 @@
 /**
  * tests/unit/assistant-mic-permission.test.ts
  *
- * A microphone the site never asked for.
+ * Ask, then wait. Do not diagnose.
  *
- * The first version called `getUserMedia` only when the button was pressed. A
- * prompt raised by pressing a button is easy to refuse by reflex, and the
- * refusal is remembered for the site: the next visit does not prompt at all,
- * and the button reports "allow it in the browser" — advice that cannot work,
- * because the browser will not ask again. Only the Permissions API can tell
- * the two apart, so the two states get different words and different remedies.
+ * Three versions of this button, in order:
  *
- * Asking on mount is the other half. The assistant screen is where the
- * microphone is visible and its purpose obvious, so the prompt lands somewhere
- * it can be answered on purpose rather than dismissed.
+ *  1. asked only when pressed, and reported every failure as "allow it in the
+ *     browser";
+ *  2. asked on mount, and asked the Permissions API what the browser thought
+ *     in order to split "refused" from "blocked" — which told an operator who
+ *     had just set the microphone to Allow that the browser had remembered a
+ *     refusal. They were looking at the setting that disproved it;
+ *  3. this one. Raise the request, and if nobody answers it, say so.
+ *
+ * The reason 2 was wrong is structural, not a slip: `getUserMedia` does not
+ * settle until the prompt is answered, so while it is outstanding there is
+ * nothing to diagnose. And a conclusion about what the browser will remember
+ * cannot be verified from here — only disproved, by an operator who knows what
+ * they just did in the settings.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
@@ -25,98 +30,74 @@ const MIC = readFileSync(
 );
 const DICT = readFileSync(join(ROOT, "src", "lib", "i18n", "dict.ts"), "utf-8");
 
-describe("the microphone is asked for up front", () => {
-  it("requests on mount, not only on the first click", () => {
-    expect(MIC).toMatch(/useEffect\(\(\) => \{[\s\S]{0,2000}getUserMedia\(\{ audio: true \}\)/);
-    // And the tracks are released immediately: this is a permission check, not
-    // a recording. An open microphone the operator cannot see is worse than
-    // none.
+describe("it asks, then it waits", () => {
+  it("raises the request on mount", () => {
+    expect(MIC).toMatch(/useEffect\(\(\) => \{[\s\S]{0,200}ask\(\);/);
+    expect(MIC).toMatch(/navigator\.mediaDevices[\s\S]{0,80}getUserMedia\(\{ audio: true \}\)/);
+    // Nothing is recorded and nothing is kept: the tracks go the moment they
+    // arrive. A microphone the operator cannot see is worse than none.
     expect(MIC).toMatch(/stream\.getTracks\(\)\.forEach\(\(track\) => track\.stop\(\)\)/);
   });
 
-  it("keeps the press-to-record path working", () => {
-    expect(MIC).toMatch(/onClick=\{phase === "recording" \? stop : start\}/);
-    expect(MIC).toMatch(/recorder\.start\(\)/);
+  it("says something only after waiting, and then only about what to do", () => {
+    expect(MIC).toMatch(/const ASK_TIMEOUT_MS = \d+_?\d*/);
+    expect(MIC).toMatch(/setTimeout\(\(\) => setState\("waiting"\), ASK_TIMEOUT_MS\)/);
+    // A later answer clears the wait rather than leaving a stale complaint.
+    expect(MIC).toMatch(/\.then\(\(stream\) => \{[\s\S]{0,120}clearTimer\(\)/);
+    expect(MIC).toMatch(/\.catch\(\(err\) => \{[\s\S]{0,80}clearTimer\(\)/);
+  });
+
+  it("pressing the button asks again immediately", () => {
+    // Strictly more than the timer offers, and it is what the operator asked
+    // for by pressing it.
+    expect(MIC).toMatch(/await navigator\.mediaDevices\.getUserMedia\(\{ audio: true \}\)/);
+    expect(MIC).toMatch(/ask\(\);\s*\n\s*onError\(t\("assistant\.voice\.askAgain"\)\);/);
   });
 });
 
-describe("a refusal and a block are told apart", () => {
-  it("asks the browser what it thinks the state is", () => {
-    expect(MIC).toMatch(/navigator\.permissions[\s\S]{0,200}query\(\{ name: "microphone"/);
-    expect(MIC).toMatch(/status\.onchange/);
+describe("it makes no claim it cannot check", () => {
+  it("does not ask the browser what it remembers", () => {
+    // The whole of version 2. It was the source of a wrong answer, not a
+    // missing one.
+    //
+    // Anchored on the type, not on the bare word: the header comment above
+    // names the state this version removed, and a substring search reports the
+    // explanation as the defect. (Fourth time today, for a source assertion
+    // matching the sentence about the bug.)
+    expect(MIC).not.toMatch(/type MicState = [^;]*"blocked"/);
+    expect(MIC).not.toMatch(/navigator\.permissions/);
+    expect(MIC).not.toMatch(/lastChanged/);
   });
 
-  it("a block takes two refusals, not one", () => {
-    /**
-     * The bug this file was corrected by.
-     *
-     * "Blocked" is a claim about the *future*: that the browser will not ask
-     * again. It was being asserted from a single `getUserMedia` rejection plus a
-     * permissions query that said "denied" — and an operator who had just set
-     * the microphone to Allow was told, to their face, that the browser had
-     * remembered a refusal. They were looking at the settings that disproved it.
-     *
-     * Two refusals make it a fact. One makes it a guess.
-     */
-    expect(MIC).toMatch(
-      /state === "denied"[\s\S]{0,400}await navigator\.mediaDevices\.getUserMedia\(\{ audio: true \}\)/,
-    );
-    expect(MIC).toMatch(/setPermission\("blocked"\)/);
-    // And the neutral message survives for everything short of a confirmed
-    // block, rather than escalating to a claim that can be checked and found
-    // wrong.
-    expect(MIC).toMatch(/assistant\.voice\.denied/);
-    expect(MIC).toMatch(/assistant\.voice\.stillFailing/);
+  it("and has exactly one message about the microphone being unavailable", () => {
+    // One sentence, one remedy. "The browser has remembered a refusal" is a
+    // claim about the future that nobody here can verify.
+    expect(MIC).toMatch(/assistant\.voice\.waitingHint/);
+    expect(DICT).not.toMatch(/已被浏览器记住|remembered a refusal/);
+    expect(DICT).not.toMatch(/不会.{0,6}再弹窗|will not ask again/);
   });
 
-  it("recognises a page loaded before the setting was changed", () => {
-    // Granting the microphone in site settings does not retroactively fix a
-    // page that already failed to open it, and "reload" is the actual remedy.
-    // The old messages only ever said reload as part of the blocked remedy,
-    // which is precisely the case where it was not the problem.
-    expect(MIC).toMatch(/lastChanged/);
-    expect(MIC).toMatch(/changedJustNow/);
-  });
-
-  it("reads the error name the way browsers actually set it", () => {
-    // `instanceof DOMException` is unreliable across realms; the `name` is.
-    expect(MIC).toMatch(/"name" in err \? String\(\(err as Error\)\.name\)/);
-    expect(MIC).not.toMatch(/err instanceof DOMException \? err\.name/);
-  });
-
-  it("a blocked button says so before it is pressed", () => {
-    expect(MIC).toMatch(/const blocked = permission === "blocked"/);
-    expect(MIC).toMatch(/assistant\.voice\.blockedHint/);
-  });
-
-  it("says which failure it was", () => {
-    // A missing device, a refused permission and an insecure page are three
-    // different problems with three different fixes.
+  it("but still names the two failures the browser does name", () => {
+    // A missing device and a missing answer are different problems, and both
+    // are things the operator can act on.
     expect(MIC).toMatch(/NotFoundError/);
-    expect(MIC).toMatch(/NotAllowedError/);
     expect(MIC).toMatch(/recordingSupported\(\)/);
     expect(MIC).toMatch(/window\.isSecureContext !== false/);
   });
 });
 
-describe("each remedy exists in both languages", () => {
-  it.each([
-    "blocked",
-    "blockedHint",
-    "denied",
-    "noDevice",
-    "unsupportedContext",
-    "changedJustNow",
-    "stillFailing",
-  ])("assistant.voice.%s", (key) => {
-    // A key present in one locale and missing in the other renders as the raw
-    // key string in the interface.
-    const hits = DICT.match(new RegExp(`"assistant\\.voice\\.${key}":`, "g")) ?? [];
-    expect(hits.length, key).toBe(2);
-  });
+describe("each string exists in both languages", () => {
+  it.each(["start", "stop", "working", "asking", "waiting", "waitingHint", "askAgain", "failed", "empty", "noDevice", "unsupportedContext"])(
+    "assistant.voice.%s",
+    (key) => {
+      // A key present in one locale and missing in the other renders as the
+      // raw key string in the interface.
+      const hits = DICT.match(new RegExp(`"assistant\\.voice\\.${key}":`, "g")) ?? [];
+      expect(hits.length, key).toBe(2);
+    },
+  );
 
-  it("the blocked message names the place the fix lives", () => {
-    // "Allow it in the browser" is not actionable. The site-settings icon is.
+  it("the waiting message points at the prompt, not at a diagnosis", () => {
     expect(DICT).toMatch(/地址栏/);
     expect(DICT).toMatch(/address bar/);
   });
