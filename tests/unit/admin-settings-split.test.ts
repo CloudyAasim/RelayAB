@@ -21,17 +21,46 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { docsPagesPayload } from "@/app/(admin)/admin/settings/DocsPagesForm";
 import { docsSitePayload } from "@/app/(admin)/admin/settings/DocsSiteForm";
-import { modelNotesPayload } from "@/app/(admin)/admin/model-notes/ModelNotesForm";
+import {
+  modelConfigPayload,
+  rowProblem,
+  rowSummary,
+  type ModelConfigRow,
+} from "@/lib/admin/model-config";
 
 const ROOT = process.cwd();
 const read = (...p: string[]) => readFileSync(join(ROOT, ...p), "utf-8");
 
 const PAGES = read("src", "app", "(admin)", "admin", "settings", "DocsPagesForm.tsx");
 const SITE = read("src", "app", "(admin)", "admin", "settings", "DocsSiteForm.tsx");
-const NOTES = read("src", "app", "(admin)", "admin", "model-notes", "ModelNotesForm.tsx");
+const CONFIG = read("src", "app", "(admin)", "admin", "model-notes", "ModelConfigForm.tsx");
 const SETTINGS_PAGE = read("src", "app", "(admin)", "admin", "settings", "page.tsx");
 const NOTES_PAGE = read("src", "app", "(admin)", "admin", "model-notes", "page.tsx");
 const NAV = read("src", "components", "layouts", "AuthenticatedLayout.tsx");
+
+/** One gateway-editable row, as the editor would hold it. */
+const row = (over: Partial<ModelConfigRow> = {}): ModelConfigRow => ({
+  store: "provider",
+  providerId: "p1",
+  providerName: "MiniMax",
+  clientId: "M3",
+  kind: "chat",
+  capability: null,
+  endpoint: null,
+  gatewayEditable: true,
+  upstreamId: "M3",
+  displayName: "M3",
+  contextLength: 200000,
+  maxOutputTokens: 8192,
+  inputCost: 1,
+  outputCost: 2,
+  enabled: true,
+  pricePerItem: null,
+  note: "",
+  tags: "",
+  hidden: false,
+  ...over,
+});
 
 describe("each form sends only its own fields", () => {
   it("the pages form sends docPages and nothing else", () => {
@@ -53,8 +82,10 @@ describe("each form sends only its own fields", () => {
     );
   });
 
-  it("the model notes form sends modelNotes and nothing else", () => {
-    expect(Object.keys(modelNotesPayload({ m1: { displayName: "X" } }))).toEqual(["modelNotes"]);
+  it("the model form sends its own two, and no settings keys at all", () => {
+    // It writes to a different resource — the provider record — so it must not
+    // travel through the settings endpoint with the other two.
+    expect(Object.keys(modelConfigPayload([row()])).sort()).toEqual(["models", "notes"]);
   });
 
   it("so saving one cannot rewrite the other two", () => {
@@ -63,18 +94,25 @@ describe("each form sends only its own fields", () => {
     // form that sends `modelNotes` while saving the site name is the bug.
     const pages = JSON.stringify(docsPagesPayload([{ id: "a", title: "A", body: "x" }]));
     const site = JSON.stringify(docsSitePayload({ siteName: "n" }));
-    const notes = JSON.stringify(modelNotesPayload({ m1: { note: "n" } }));
+    const model = JSON.stringify(modelConfigPayload([row()]));
 
     expect(pages).not.toMatch(/modelNotes|siteName|publicCatalog|announcement|supportContact/);
     expect(site).not.toMatch(/modelNotes|docPages/);
-    expect(notes).not.toMatch(/docPages|siteName|publicCatalog|announcement|supportContact/);
+    expect(model).not.toMatch(/docPages|siteName|publicCatalog|announcement|supportContact/);
+  });
+
+  it("the model form has its own endpoint, because its data lives elsewhere", () => {
+    // A context window is a provider field. Sending it to /api/admin/settings
+    // would be a lie about where it lands, and it would land nowhere.
+    expect(CONFIG).toMatch(/"\/api\/admin\/model-config"/);
+    expect(CONFIG).not.toMatch(/"\/api\/admin\/settings"/);
   });
 });
 
-describe("each form has its own save", () => {
-  it("three buttons, not one", () => {
-    const buttons = [PAGES, SITE, NOTES].filter((f) => f.includes("admin.docsSettings.save"));
-    expect(buttons).toHaveLength(3);
+describe("each section has its own save", () => {
+  it("two buttons on this page, not one", () => {
+    const buttons = [CONFIG, PAGES].filter((f) => f.includes("admin.docsSettings.save"));
+    expect(buttons).toHaveLength(2);
   });
 
   it("and the combined form is gone", () => {
@@ -83,17 +121,15 @@ describe("each form has its own save", () => {
     expect(() => read("src", "app", "(admin)", "admin", "settings", "DocsSettingsForm.tsx")).toThrow();
   });
 
-  it("they all go through one helper, so none of them grew its own error handling", () => {
-    for (const f of [PAGES, SITE, NOTES]) {
-      expect(f, "a form that posts by hand").toMatch(/useSettingsSave/);
-    }
+  it("the site form has its own, over on the settings page", () => {
+    expect(SITE).toMatch(/useSettingsSave/);
     const helper = read("src", "components", "admin", "useSettingsSave.ts");
     expect(helper).toMatch(/router\.refresh\(\)/);
     expect(helper).toMatch(/setMessage/);
   });
 });
 
-describe("the model notes are their own page", () => {
+describe("the model notes are their own page, and carry the configuration too", () => {
   it("a route, at the same level as the system settings", () => {
     expect(NOTES_PAGE).toMatch(/export default async function ModelNotesPage/);
     expect(NAV).toMatch(/href: "\/admin\/model-notes"/);
@@ -109,35 +145,87 @@ describe("the model notes are their own page", () => {
     expect(Math.abs(at - settings)).toBeLessThan(400);
   });
 
-  it("and gone from the system settings page", () => {
-    expect(SETTINGS_PAGE).not.toMatch(/ModelNotesForm/);
+  it("and the model list is gone from the system settings", () => {
+    expect(SETTINGS_PAGE).not.toMatch(/ModelConfigForm/);
     expect(SETTINGS_PAGE).not.toMatch(/modelNotes/);
   });
 
-  it("it still gets its ids from the live catalogue, not from memory", () => {
-    // A note on a model id that does not exist renders on nothing, so the
-    // editor has to offer the ones that do.
-    expect(NOTES_PAGE).toMatch(/cachedBuildModelCatalog/);
+  it("it still gets its rows from the live providers, not from a copy", () => {
+    expect(NOTES_PAGE).toMatch(/listProviders/);
+    expect(NOTES_PAGE).toMatch(/listMediaProviders/);
+  });
+
+  it("and it holds the custom documentation too", () => {
+    expect(NOTES_PAGE).toMatch(/<DocsPagesForm/);
   });
 });
 
-describe("what the notes form still refuses to do", () => {
-  it("there is no field for a fact", () => {
-    // Context window, price, upstream: read live from the provider table, so a
-    // deployment cannot publish a number the gateway would contradict.
-    for (const field of ["context", "price", "upstream", "baseUrl"]) {
-      expect(NOTES, `${field} is editable here`).not.toMatch(new RegExp(`label.*${field}`, "i"));
-    }
+describe("the rows are collapsed until asked for", () => {
+  /**
+   * Fifteen models of eleven fields is two hundred controls on one screen, and
+   * the question an operator usually has is "what does this one model do". A
+   * row that opens by default answers neither.
+   */
+  it("no row starts expanded", () => {
+    expect(CONFIG).toMatch(/useState<Set<string>>\(new Set\(\)\)/);
+    expect(CONFIG).not.toMatch(/new Set\(list\.map/);
+  });
+
+  it("and the whole section can be folded away too", () => {
+    expect(CONFIG).toMatch(/const \[sectionOpen, setSectionOpen\] = useState\(true\)/);
+    expect(CONFIG).toMatch(/aria-expanded=\{sectionOpen\}/);
+  });
+
+  it("a collapsed row still says enough to recognise it", () => {
+    // The provider, the window, whether it is off — otherwise finding the right
+    // row means expanding all of them.
+    expect(CONFIG).toMatch(/rowSummary\(row\)/);
+  });
+
+  it("and the summary is built from the row's real state", () => {
+    const off = rowSummary({ ...row(), enabled: false });
+    expect(off).toMatch(/停用/);
+    const hidden = rowSummary({ ...row(), hidden: true });
+    expect(hidden).toMatch(/文档已隐藏/);
+    const noted = rowSummary({ ...row(), note: "一句话" });
+    expect(noted).toMatch(/已写说明/);
+    // A media model has no token window, so the summary must not claim one.
+    const media = rowSummary({ ...row({ store: "media", kind: "media", gatewayEditable: false }), capability: "image.generate" });
+    expect(media).toContain("image.generate");
+    expect(media).not.toMatch(/200k/);
+  });
+});
+
+describe("what a row is allowed to offer", () => {
+  it("a chat model carries the whole OpenAI-compatible configuration", () => {
+    const out = modelConfigPayload([row()]);
+    expect(out.models).toHaveLength(1);
+    expect(Object.keys(out.models[0]).sort()).toEqual(
+      ["clientId", "contextLength", "displayName", "enabled", "inputCost", "maxOutputTokens", "outputCost", "providerId", "upstreamId"].sort(),
+    );
+  });
+
+  it("a media model does not, because a spec drives it", () => {
+    // A context window and a token price on a media model would be fields that
+    // save and do nothing.
+    const out = modelConfigPayload([
+      row({ store: "media", kind: "media", gatewayEditable: false, capability: "image.generate" }),
+    ]);
+    expect(out.models).toHaveLength(0);
+    // Its documentation note still saves.
+    expect(out.notes).toBeTypeOf("object");
   });
 
   it("a cleared field becomes unset, not a stored blank", () => {
-    expect(modelNotesPayload({ m1: { displayName: "  ", note: "", tags: [] } })).toEqual({
-      modelNotes: {},
-    });
+    expect(modelConfigPayload([row({ note: "  ", tags: " , " })]).notes).toEqual({});
   });
 
-  it("a model with nothing on it is simply absent", () => {
-    expect(Object.keys(modelNotesPayload({}))).toEqual(["modelNotes"]);
-    expect(modelNotesPayload({})).toEqual({ modelNotes: {} });
+  it("a model with nothing on it is simply absent from the notes", () => {
+    expect(modelConfigPayload([row()]).notes).toEqual({});
+  });
+
+  it("the note keeps its tags as a list, not a string", () => {
+    const out = modelConfigPayload([row({ tags: "chat, vision , fast" })]);
+    expect(out.notes.M3?.tags).toEqual(["chat", "vision", "fast"]);
   });
 });

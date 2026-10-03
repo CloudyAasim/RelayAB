@@ -1,21 +1,28 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getT } from "@/lib/i18n/server";
-import { cachedGetSettings, cachedBuildModelCatalog } from "@/lib/db/data-cache";
+import { listProviders } from "@/lib/db/providers";
+import { listMediaProviders } from "@/lib/db/media-providers";
+import { cachedGetSettings } from "@/lib/db/data-cache";
 import { SectionPageLayout } from "@/components/layouts";
-import { ModelNotesForm, type ModelNoteInput } from "./ModelNotesForm";
+import { ModelConfigForm } from "./ModelConfigForm";
+import { DocsPagesForm } from "../settings/DocsPagesForm";
+import { buildModelRows, type ModelNoteInput } from "@/lib/admin/model-config";
 
 export const metadata = { title: { absolute: "模型说明 - RelayAB" } };
 export const dynamic = "force-dynamic";
 
 /**
- * Per-model documentation, on its own page.
+ * Models and documentation, in one place.
  *
- * It was a card at the bottom of the system settings, behind a save button
- * shared with the site's support contact and the custom documentation pages —
- * three unrelated things that happened to be stored in one table. The list
- * itself is a list over every model the deployment serves, and editing it is
- * its own job.
+ * Two sections, each collapsible and each with its own save button. The buttons
+ * are not a detail: they used to be one button over both, and saving one thing
+ * rewrote the other from whatever the form happened to be holding.
+ *
+ * The model section edits the *provider* records as well as the prose, so a
+ * model's context window, prices and whether the gateway routes to it at all are
+ * set here rather than on a different page under a different button. There is
+ * still one source of truth — these are the provider's values, written through.
  */
 export default async function ModelNotesPage() {
   const user = await getCurrentUser();
@@ -23,35 +30,30 @@ export default async function ModelNotesPage() {
   if (user.role !== "admin") redirect("/dashboard");
   const { t } = await getT();
 
-  let initial: Record<string, ModelNoteInput> = {};
-  let models: Array<{ id: string; kind: "chat" | "media"; displayName: string }> = [];
+  const [providers, mediaProviders] = await Promise.all([
+    listProviders(),
+    listMediaProviders(),
+  ]);
 
+  let notes: Record<string, ModelNoteInput> = {};
+  let docPages: Parameters<typeof DocsPagesForm>[0]["initial"] = [];
   try {
     const settings = await cachedGetSettings();
-    initial = settings.modelNotes ?? {};
+    notes = settings.modelNotes ?? {};
+    docPages = settings.docPages ?? [];
   } catch (e) {
-    console.error("Failed to load model notes:", e);
+    console.error("Failed to load settings:", e);
   }
 
-  try {
-    // The ids that actually exist, taken from the live catalogue, so the
-    // operator never has to type a model name from memory and get it wrong.
-    const catalog = await cachedBuildModelCatalog();
-    models = catalog.models.map((m) => ({
-      id: m.id,
-      kind: m.kind,
-      displayName: m.displayName,
-    }));
-  } catch (e) {
-    console.error("Failed to load catalog:", e);
-  }
+  const rows = buildModelRows(providers, mediaProviders, notes);
 
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t("admin.modelNotes.title")}</SectionPageLayout.Title>
       <SectionPageLayout.Content>
         <div className="space-y-6">
-          <ModelNotesForm initial={initial} models={models} />
+          <ModelConfigForm rows={rows} />
+          <DocsPagesForm initial={docPages} />
         </div>
       </SectionPageLayout.Content>
     </SectionPageLayout>
