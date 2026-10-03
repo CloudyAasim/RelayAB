@@ -21,6 +21,8 @@ import { shouldRejectBeforeRequest } from "../quota/calculator";
 import { settleUsage } from "./billing";
 import { ssePassthrough } from "./stream-tap";
 import { providerFaces, type ApiKey, type Provider, type User } from "../db/types";
+import { applyParameterPolicy } from "../protocol/parameter-policy";
+import { readTextSpec } from "../protocol/text-spec";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -155,13 +157,20 @@ async function doProxy(args: {
   const forwardable: Record<string, unknown> = { ...req };
   delete forwardable.stream_options;
 
+  // The provider's parameter policy, applied to the Anthropic face for the same
+  // reason the OpenAI face applies it: the body is now the shape the upstream
+  // will see, so a rule written against `max_tokens` or `stop_sequences` has to
+  // be evaluated here. No spec means forward everything, which is the correct
+  // default for a transparent relay.
+  const { body: policed } = applyParameterPolicy(forwardable, readTextSpec(provider) ?? undefined);
+
   // Streaming clients ask for SSE; buffered clients get a single JSON body.
   // Anthropic carries input tokens in `message_start` and output tokens in
   // `message_delta`, so the tap accumulates both before settling on flush.
   const wantStream = Boolean(req.stream);
   const forwardBody = wantStream
-    ? { ...forwardable, model: upstreamModel, stream: true }
-    : { ...forwardable, model: upstreamModel, stream: false };
+    ? { ...policed, model: upstreamModel, stream: true }
+    : { ...policed, model: upstreamModel, stream: false };
 
   let response: Response;
   try {

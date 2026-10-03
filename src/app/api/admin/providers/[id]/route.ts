@@ -6,6 +6,7 @@ import { z } from "zod";
 import { updateProvider, deleteProvider, getProviderById } from "@/lib/db/providers";
 import { toPublicProvider } from "@/lib/db/types";
 import { getCurrentUser } from "@/lib/auth/session";
+import { parseTextSpec } from "@/lib/protocol/text-spec";
 
 const PatchSchema = z.object({
   name: z.string().optional(),
@@ -35,6 +36,33 @@ const PatchSchema = z.object({
   openaiEnabled: z.boolean().optional(),
   anthropicEnabled: z.boolean().optional(),
   anthropicBaseUrl: z.string().nullable().optional(),
+  /**
+   * The wire protocol, as a JSON document. Validated here rather than on read,
+   * so a spec that is wrong is refused at the moment the operator writes it —
+   * a spec that parses on the way in and then does nothing on the way out is
+   * the worst of both.
+   */
+  textSpec: z
+    .string()
+    .max(200_000)
+    .nullable()
+    .optional()
+    .superRefine((value, ctx) => {
+      if (!value) return;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(value);
+      } catch {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "协议不是合法 JSON" });
+        return;
+      }
+      const result = parseTextSpec(parsed);
+      if (!result.ok) {
+        for (const message of result.errors) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+        }
+      }
+    }),
 });
 
 export async function PATCH(

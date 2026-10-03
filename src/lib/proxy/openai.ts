@@ -28,6 +28,8 @@ import { proxyAnthropicMessage } from "./anthropic";
 import { settleUsage } from "./billing";
 import { ssePassthrough } from "./stream-tap";
 import { providerFaces, type ApiKey, type Provider, type User } from "../db/types";
+import { applyParameterPolicy } from "../protocol/parameter-policy";
+import { readTextSpec } from "../protocol/text-spec";
 
 
 // ---------------------------------------------------------------------------
@@ -248,6 +250,69 @@ function responsesToolChoiceToChatToolChoice(choice: unknown): unknown {
 }
 
 /**
+ * Fields the converter rebuilds, so the client's own spelling must not survive.
+ *
+ * These are *translated*, not dropped: the value is read from the request and
+ * written back in Chat Completions shape further down. Forwarding the original
+ * alongside the translation would send the upstream two spellings of one thing —
+ * `tools` flat and nested, `max_output_tokens` and `max_tokens` — and the
+ * upstream's answer to that is a 400 nobody can explain.
+ */
+const REBUILT_FIELDS = [
+  "tools",
+  "tool_choice",
+  "max_output_tokens",
+  "max_tokens",
+  "reasoning",
+] as const;
+
+/**
+ * Fields that exist only on the Responses surface and mean nothing to a Chat
+ * Completions upstream.
+ *
+ * This is a **denylist, not a whitelist**, and that is the whole fix. It used to
+ * build the upstream body from a fixed list of fields it recognised, so anything
+ * a Responses client sent and this file did not name — `reasoning.effort` above
+ * all, plus `text`, `max_tool_calls`, `logprobs`, `top_logprobs`, `seed` — was
+ * **silently dropped**. A client asking for high reasoning got the model's
+ * default, with no error and nothing to notice. Forwarding the rest is what a
+ * transparent relay should do; these are the ones that would confuse an upstream
+ * that has never heard of them.
+ */
+const RESPONSES_ONLY_FIELDS = [
+  "input",
+  "instructions",
+  "include",
+  "previous_response_id",
+  "store",
+  "truncation",
+  "prompt_cache_key",
+  "text",
+  "prompt",
+  "max_tool_calls",
+] as const;
+
+/**
+ * Responses' `reasoning.effort` in the spelling a Chat Completions upstream
+ * understands.
+ *
+ * The two surfaces do not agree on the name: Responses nests it as
+ * `reasoning: { effort: "high" }`, Chat Completions takes a flat
+ * `reasoning_effort: "high"`. A client sends the first and, before this, the
+ * second never reached the vendor at all.
+ *
+ * A vendor that spells it differently (MiniMax takes `extra_body.thinking`) is
+ * the parameter-policy's job — see `lib/protocol/parameter-policy.ts` — rather
+ * than a guess made here for every provider at once.
+ */
+function chatReasoningEffort(req: ResponseAPIRequest): string | undefined {
+  const reasoning = (req as { reasoning?: unknown }).reasoning;
+  if (!reasoning || typeof reasoning !== "object") return undefined;
+  const effort = (reasoning as { effort?: unknown }).effort;
+  return typeof effort === "string" ? effort : undefined;
+}
+
+/**
  * Convert a Responses API request to Chat Completions format.
  */
 export function responsesToChatRequest(req: ResponseAPIRequest): ChatCompletionRequest {
@@ -262,15 +327,29 @@ export function responsesToChatRequest(req: ResponseAPIRequest): ChatCompletionR
   messages.push(...responsesInputToChatMessages(req.input));
   if (messages.length === 0) messages.push({ role: "user", content: "" });
 
-  const chatReq: ChatCompletionRequest = {
+  // Everything the client asked for, minus what this file rebuilds and minus the
+  // fields that are meaningless to a Chat Completions upstream. `model` is
+  // replaced by the caller with the upstream name; `stream` is set by the caller.
+  const forwarded: Record<string, unknown> = {};
+  const dropped = [
+    ...(REBUILT_FIELDS as readonly string[]),
+    ...(RESPONSES_ONLY_FIELDS as readonly string[]),
+  ];
+  for (const [key, value] of Object.entries(req as Record<string, unknown>)) {
+    if (dropped.includes(key)) continue;
+    if (key === "model" || key === "stream" || value === undefined) continue;
+    forwarded[key] = value;
+  }
+
+  const chatReq = {
+    ...forwarded,
     model: req.model,
-    messages: messages as unknown as Array<{ role: string; content: string }>,
-    temperature: req.temperature as number | undefined,
-    max_tokens:
-      ((req.max_output_tokens ?? req.max_tokens) as number | undefined) ?? 1024,
-    top_p: req.top_p as number | undefined,
+    messages,
+    // Responses counts output tokens separately; Chat Completions calls the
+    // same ceiling `max_tokens`. Either spelling the client used is honoured.
+    max_tokens: (req.max_output_tokens ?? (req as { max_tokens?: number }).max_tokens) ?? 1024,
     stream: false,
-  };
+  } as ChatCompletionRequest;
 
   const tools = responsesToolsToChatTools(req.tools);
   if (tools) chatReq.tools = tools;
@@ -280,6 +359,10 @@ export function responsesToChatRequest(req: ResponseAPIRequest): ChatCompletionR
     chatReq.parallel_tool_calls = req.parallel_tool_calls;
   }
   if (typeof req.stop === "string" || Array.isArray(req.stop)) chatReq.stop = req.stop;
+
+  // The one field that has to be re-spelled rather than forwarded.
+  const effort = chatReasoningEffort(req);
+  if (effort !== undefined) chatReq.reasoning_effort = effort;
 
   // Build extra_body for MiniMax-specific parameters
   const extraBody: Record<string, unknown> = {};
@@ -593,18 +676,27 @@ export async function proxyChatCompletion(args: {
   const forwardable: Record<string, unknown> = { ...req };
   delete forwardable.stream_options;
 
+  // The provider's parameter policy, if it has one. Applied *after* the
+  // conversion, because that is the point at which the body has the shape the
+  // upstream will see: a client that sent `reasoning.effort` is now
+  // `reasoning_effort`, and a rule written against that name has to match.
+  //
+  // A provider with no spec forwards everything, which is the correct default
+  // for a transparent relay and is why an unconfigured deployment loses nothing.
+  const { body: policed } = applyParameterPolicy(forwardable, readTextSpec(provider) ?? undefined);
+
   // 5. Forward the request. Streaming clients get stream=true with the
   // `include_usage` flag so the upstream emits a final usage frame; buffered
   // clients get stream=false so the upstream returns a single JSON body.
   const wantStream = Boolean(req.stream);
   const forwardBody = wantStream
     ? {
-        ...forwardable,
+        ...policed,
         model: upstreamModel,
         stream: true,
         stream_options: { include_usage: true },
       }
-    : { ...forwardable, model: upstreamModel, stream: false };
+    : { ...policed, model: upstreamModel, stream: false };
 
   let response: Response;
   try {
@@ -837,6 +929,10 @@ async function proxyResponsesNative(args: {
   const forwardable: Record<string, unknown> = { ...req };
   delete forwardable.stream_options;
 
+  // The Responses surface's parameter policy, applied at the same point the
+  // OpenAI surface applies it: after the shape is what the upstream will see.
+  const { body: policed } = applyParameterPolicy(forwardable, readTextSpec(provider) ?? undefined);
+
   // 5. Forward request
   // Flatten the request's input into text once: it feeds the credit
   // calculation and the estimation fallback for a stream that never reports
@@ -859,7 +955,7 @@ async function proxyResponsesNative(args: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${upstreamKey}`,
       },
-      body: JSON.stringify({ ...forwardable, model: upstreamModel }),
+      body: JSON.stringify({ ...policed, model: upstreamModel }),
     });
   } catch (err) {
     await recordFailureResponses({ apiKey, provider, model: req.model, upstreamModel, error: err });

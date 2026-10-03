@@ -115,6 +115,7 @@ CREATE TABLE IF NOT EXISTS providers (
   openai_enabled     INTEGER NOT NULL DEFAULT 1,
   anthropic_enabled  INTEGER NOT NULL DEFAULT 0,
   anthropic_base_url TEXT,
+  text_spec          TEXT,
   created_at         TEXT NOT NULL,
   updated_at         TEXT NOT NULL
 );
@@ -403,6 +404,10 @@ const ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; type: string
   // are not: the model's context and the stored transcript should not grow by
   // however large someone's screenshot is.
   { table: "assistant_messages", column: "attachments", type: "TEXT" },
+  // The provider's wire protocol, as one JSON document. `TEXT` and not a
+  // validated blob: the shape is an operator-authored tree, and `parseTextSpec`
+  // is the authority on it. Null means "no protocol, forward everything".
+  { table: "providers", column: "text_spec", type: "TEXT" },
 ];
 
 function addColumnIfMissing(
@@ -536,6 +541,7 @@ export function rowToProvider(row: Record<string, unknown>): Provider {
     openaiEnabled: fromDbBool(row.openai_enabled),
     anthropicEnabled: fromDbBool(row.anthropic_enabled),
     anthropicBaseUrl: row.anthropic_base_url ?? null,
+    textSpec: row.text_spec ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });

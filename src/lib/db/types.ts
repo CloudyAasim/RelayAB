@@ -236,6 +236,19 @@ export const ProviderSchema = z.object({
    * Anthropic endpoint is a sub-path, e.g. `https://api.deepseek.com/anthropic`.
    */
   anthropicBaseUrl: z.string().nullable().default(null),
+  /**
+   * The provider's wire protocol, as one declarative document.
+   *
+   * `null` means "no protocol configured", and the proxy then forwards the
+   * request as sent — which is the correct default for a transparent relay and
+   * is why this is optional rather than required.
+   *
+   * Stored as JSON text and parsed by `parseTextSpec` on read: the spec is an
+   * operator-authored document with an operator-authored shape, so a column
+   * type would only move the validation somewhere it is harder to explain. The
+   * same trade the media spec made, and for the same reason.
+   */
+  textSpec: z.string().nullable().default(null),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

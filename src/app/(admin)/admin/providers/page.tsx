@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/Table";
 import { Badge } from "@/components/ui/Badge";
 import { CreateProviderButton } from "./CreateProviderButton";
+import { TextProtocolPanel } from "./TextProtocolPanel";
 import { ProviderActions } from "./ProviderActions";
 import { getT } from "@/lib/i18n/server";
 import { SectionPageLayout } from "@/components/layouts";
@@ -117,6 +118,22 @@ export default async function ProvidersPage() {
           </Table>
         )}
       </Card>
+
+      {/*
+        One protocol editor per provider, below the table rather than in a
+        column: a spec is a document, and a document in a table cell is a
+        document nobody reads.
+      */}
+      <div className="space-y-4">
+        {providers.map((p) => (
+          <TextProtocolPanel
+            key={p.id}
+            providerId={p.id}
+            providerName={p.name}
+            current={p.textSpec ?? null}
+          />
+        ))}
+      </div>
       </SectionPageLayout.Content>
     </SectionPageLayout>
   );

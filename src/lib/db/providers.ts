@@ -98,6 +98,11 @@ export interface UpdateProviderInput {
   openaiEnabled?: boolean;
   anthropicEnabled?: boolean;
   anthropicBaseUrl?: string | null;
+  /**
+   * The wire protocol, as a JSON document. `null` clears it, which puts the
+   * provider back to forwarding the client's request as sent.
+   */
+  textSpec?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -310,6 +315,9 @@ export async function updateProvider(
         patch.anthropicBaseUrl === undefined
           ? existing.anthropicBaseUrl
           : patch.anthropicBaseUrl,
+      // `undefined` means "leave it alone"; an explicit `null` is how the
+      // background page says "no protocol, forward everything as sent".
+      textSpec: patch.textSpec === undefined ? existing.textSpec : patch.textSpec,
       updatedAt: new Date().toISOString(),
     });
 
@@ -321,7 +329,8 @@ export async function updateProvider(
          name = ?, kind = ?, base_url = ?, encrypted_api_key = ?,
          model_mapping = ?, model_configs = ?, enabled = ?, priority = ?,
          headers = ?, upstream_format = ?, openai_enabled = ?,
-         anthropic_enabled = ?, anthropic_base_url = ?, updated_at = ?
+         anthropic_enabled = ?, anthropic_base_url = ?, text_spec = ?,
+         updated_at = ?
        WHERE id = ?`,
       [
         merged.name,
@@ -337,6 +346,7 @@ export async function updateProvider(
         toDbBool(merged.openaiEnabled),
         toDbBool(merged.anthropicEnabled),
         merged.anthropicBaseUrl,
+        merged.textSpec,
         merged.updatedAt,
         id,
       ],
