@@ -51,6 +51,27 @@ function permissionStateOf(status: PermissionStatus | undefined): MicPermission 
   return status.state as MicPermission;
 }
 
+/** The browser's own view of the microphone, or "unknown" where unsupported. */
+async function microphoneState(): Promise<MicPermission> {
+  try {
+    return permissionStateOf(
+      await navigator.permissions?.query({ name: "microphone" as PermissionName }),
+    );
+  } catch {
+    return "unknown";
+  }
+}
+
+/** When the permission last changed, if the browser will say. */
+async function permissionChangedAt(): Promise<number | null> {
+  try {
+    const status = await navigator.permissions?.query({ name: "microphone" as PermissionName });
+    return status && "lastChanged" in status ? Number(status.lastChanged) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function MicButton({
   onTranscribed,
   onError,
@@ -161,26 +182,64 @@ export function MicButton({
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (err) {
       setPermission("denied");
-      const name = err instanceof DOMException ? err.name : "";
+      // `instanceof` is unreliable across realms and polyfills, so the name is
+      // read the way every browser actually populates it.
+      const name =
+        typeof err === "object" && err && "name" in err ? String((err as Error).name) : "";
       if (name === "NotFoundError" || name === "OverconstrainedError") {
         onError(t("assistant.voice.noDevice"));
-      } else if (name === "NotAllowedError" || name === "SecurityError") {
-        // A refusal is remembered for this site. Whether it can be asked again
-        // is a different question from whether it was refused, and the answer is
-        // only in the permissions API.
-        const state = await navigator.permissions
-          ?.query({ name: "microphone" as PermissionName })
-          .then((s) => s.state as MicPermission)
-          .catch(() => "unknown" as MicPermission);
-        setPermission(state === "denied" ? "blocked" : "denied");
-        onError(
-          state === "denied"
-            ? t("assistant.voice.blocked")
-            : t("assistant.voice.denied"),
-        );
-      } else {
-        onError(t("assistant.voice.failed"));
+        return;
       }
+      if (name !== "NotAllowedError" && name !== "SecurityError") {
+        onError(t("assistant.voice.failed"));
+        return;
+      }
+
+      /**
+       * How long ago the settings changed, if it can be told.
+       *
+       * Granting the microphone in site settings does not retroactively fix a
+       * page that already failed to open it, and the remedy is a reload — not
+       * more settings. This bit used to assert "the browser has remembered a
+       * refusal", which is only true sometimes, and it is the one thing the
+       * operator can disprove in a glance by looking at the settings they just
+       * changed.
+       */
+      const changedAt = await permissionChangedAt();
+      const since = changedAt === null ? null : Date.now() - changedAt;
+      const justChanged = since !== null && since < 60_000;
+      if (justChanged) {
+        onError(t("assistant.voice.changedJustNow"));
+        return;
+      }
+
+      /**
+       * "Blocked" needs two failures, not one.
+       *
+       * A single `getUserMedia` rejection plus a permissions query that says
+       * "denied" is a claim about the future: that the browser will not ask
+       * again. Ask a second time — after the query — and only two refusals make
+       * it a fact. Anything less and the honest message is the neutral one.
+       */
+      const state = await microphoneState();
+      if (state === "denied") {
+        try {
+          const again = await navigator.mediaDevices.getUserMedia({ audio: true });
+          again.getTracks().forEach((tr) => tr.stop());
+          setPermission("granted");
+          return;
+        } catch {
+          setPermission("blocked");
+          onError(t("assistant.voice.blocked"));
+          return;
+        }
+      }
+
+      onError(
+        state === "granted"
+          ? t("assistant.voice.stillFailing")
+          : t("assistant.voice.denied"),
+      );
       return;
     }
     setPermission("granted");

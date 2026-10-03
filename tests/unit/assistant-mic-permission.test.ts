@@ -46,13 +46,42 @@ describe("a refusal and a block are told apart", () => {
     expect(MIC).toMatch(/status\.onchange/);
   });
 
-  it("a block is not answered with 'press the button again'", () => {
-    // The old single message was wrong for one of these two cases, and the
-    // operator who got it could do nothing about it.
+  it("a block takes two refusals, not one", () => {
+    /**
+     * The bug this file was corrected by.
+     *
+     * "Blocked" is a claim about the *future*: that the browser will not ask
+     * again. It was being asserted from a single `getUserMedia` rejection plus a
+     * permissions query that said "denied" — and an operator who had just set
+     * the microphone to Allow was told, to their face, that the browser had
+     * remembered a refusal. They were looking at the settings that disproved it.
+     *
+     * Two refusals make it a fact. One makes it a guess.
+     */
     expect(MIC).toMatch(
-      /state === "denied"\s*\?\s*t\("assistant\.voice\.blocked"\)\s*:\s*t\("assistant\.voice\.denied"\)/,
+      /state === "denied"[\s\S]{0,400}await navigator\.mediaDevices\.getUserMedia\(\{ audio: true \}\)/,
     );
-    expect(MIC).toMatch(/setPermission\(state === "denied" \? "blocked" : "denied"\)/);
+    expect(MIC).toMatch(/setPermission\("blocked"\)/);
+    // And the neutral message survives for everything short of a confirmed
+    // block, rather than escalating to a claim that can be checked and found
+    // wrong.
+    expect(MIC).toMatch(/assistant\.voice\.denied/);
+    expect(MIC).toMatch(/assistant\.voice\.stillFailing/);
+  });
+
+  it("recognises a page loaded before the setting was changed", () => {
+    // Granting the microphone in site settings does not retroactively fix a
+    // page that already failed to open it, and "reload" is the actual remedy.
+    // The old messages only ever said reload as part of the blocked remedy,
+    // which is precisely the case where it was not the problem.
+    expect(MIC).toMatch(/lastChanged/);
+    expect(MIC).toMatch(/changedJustNow/);
+  });
+
+  it("reads the error name the way browsers actually set it", () => {
+    // `instanceof DOMException` is unreliable across realms; the `name` is.
+    expect(MIC).toMatch(/"name" in err \? String\(\(err as Error\)\.name\)/);
+    expect(MIC).not.toMatch(/err instanceof DOMException \? err\.name/);
   });
 
   it("a blocked button says so before it is pressed", () => {
@@ -77,6 +106,8 @@ describe("each remedy exists in both languages", () => {
     "denied",
     "noDevice",
     "unsupportedContext",
+    "changedJustNow",
+    "stillFailing",
   ])("assistant.voice.%s", (key) => {
     // A key present in one locale and missing in the other renders as the raw
     // key string in the interface.
