@@ -33,6 +33,7 @@ import { CredentialChoice, type Mode } from "@/lib/assistant/CredentialPanel";
 import { readPretty, writePretty } from "@/lib/assistant/pretty";
 import { latestRead } from "@/lib/assistant/latest-read";
 import { MediaArtifacts, ToolResultCard, AssistantBody } from "./MediaArtifacts";
+import { MicButton } from "./MicButton";
 import type { ArtifactRef } from "@/lib/db/assistant-artifacts";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";
 import { Pencil, Trash2, Paperclip, X } from "lucide-react";
@@ -869,6 +870,16 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
                 }}
               />
             </label>
+            <MicButton
+              onTranscribed={(text) => {
+                // Appended, not replaced: a half-written thought followed by a
+                // dictated one is still one message to send.
+                setInput((prev) => (prev ? `${prev.replace(/\s*$/, "")} ${text}` : text));
+                inputRef.current?.focus();
+              }}
+              onError={setError}
+              disabled={busy}
+            />
             <textarea
               id="assistant-input"
               ref={inputRef}

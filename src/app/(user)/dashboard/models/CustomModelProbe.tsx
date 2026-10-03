@@ -46,7 +46,22 @@ interface ProbeResult {
   totalTokens?: number | null;
 }
 
-export function CustomModelProbe({ labels }: { labels: Labels }) {
+export function CustomModelProbe({
+  labels,
+  onFetched,
+}: {
+  labels: Labels;
+  /**
+   * The models the vendor just listed.
+   *
+   * The probe was the only way to learn a model id, and its result was a list
+   * of text with nowhere to go: the two testers below could only choose from
+   * the catalog, so a vendor added after the last rebuild could be listed here
+   * and still not be testable. Handing them up puts the fetched ids into the
+   * testers' dropdowns, where they can be picked or typed over.
+   */
+  onFetched?: (models: string[]) => void;
+}) {
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState("");
@@ -77,8 +92,9 @@ export function CustomModelProbe({ labels }: { labels: Labels }) {
         setResult(json.data);
         // Offer the first model when the list came back, so the common flow
         // (paste URL+key, pick a model, try it) is one click shorter.
-        if (mode === "list" && json.data.models?.length && !model.trim()) {
-          setModel(json.data.models[0]);
+        if (mode === "list" && json.data.models?.length) {
+          onFetched?.(json.data.models);
+          if (!model.trim()) setModel(json.data.models[0]);
         }
       } else {
         setResult({

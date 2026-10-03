@@ -18,6 +18,7 @@
  * not entitled to (the API is the one that enforces the filter).
  */
 import { redirect } from "next/navigation";
+import { useState } from "react";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getUserById } from "@/lib/db/users";
 import { cachedBuildModelCatalog } from "@/lib/db/data-cache";
@@ -43,12 +44,34 @@ export default async function ModelsPage() {
   // never list different models.
   const allowed = fullUser?.allowedModels ?? [];
   const visible = (id: string) => allowed.length === 0 || allowed.includes(id);
-  const chatModels = catalog.models
-    .filter((m) => m.kind === "chat" && visible(m.id))
-    .map((m) => m.id);
-  const mediaModels = catalog.models
-    .filter((m) => m.kind === "media" && visible(m.id))
-    .map((m) => ({ id: m.id, capability: m.capability ?? "", provider: m.provider }));
+
+  /**
+   * Models a vendor listed through the probe, for this page view only.
+   *
+   * The catalog is the two testers' default list. It is a snapshot of what was
+   * configured when the page was rendered, so a vendor added since — or one
+   * still only reachable by its own key — is not in it. The probe can list
+   * those, and this is where they become selectable. Kept in state rather than
+   * persisted: it is a lookup aid, and a list of ids nobody chose to keep
+   * should not outlive the page.
+   */
+  const [probed, setProbed] = useState<string[]>([]);
+  const onFetched = (ids: string[]) => setProbed((prev) => [...new Set([...prev, ...ids])]);
+
+  const chatModels = [
+    ...new Set([
+      ...catalog.models.filter((m) => m.kind === "chat" && visible(m.id)).map((m) => m.id),
+      ...probed,
+    ]),
+  ];
+  const mediaModels = [
+    ...catalog.models
+      .filter((m) => m.kind === "media" && visible(m.id))
+      .map((m) => ({ id: m.id, capability: m.capability ?? "", provider: m.provider })),
+    // A probed id has no capability or provider until the catalog catches up;
+    // the tester copes with that (no badge rather than a wrong one).
+    ...probed.map((id) => ({ id, capability: "", provider: "" })),
+  ];
 
   return (
     <SectionPageLayout>
@@ -137,6 +160,7 @@ export default async function ModelsPage() {
               failed: t("dashboard.models.custom.failed"),
               foundModels: t("dashboard.models.custom.foundModels"),
             }}
+            onFetched={onFetched}
           />
         </div>
       </SectionPageLayout.Content>
