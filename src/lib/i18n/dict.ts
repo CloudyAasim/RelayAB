@@ -879,7 +879,12 @@ const zhCN: Dict = {
   "assistant.voice.working": "转写中…",
   "assistant.voice.failed": "语音转写失败",
   "assistant.voice.empty": "没有识别到内容。",
-  "assistant.voice.denied": "拿不到麦克风权限，请在浏览器里允许后重试。",
+  "assistant.voice.denied": "这次拒绝了麦克风。点按钮可以再要一次。",
+  "assistant.voice.blocked":
+    "麦克风权限已被浏览器记住为拒绝，之后不会再弹窗。请点地址栏左侧的图标 → 网站设置 → 麦克风改为「允许」，然后刷新本页。",
+  "assistant.voice.blockedHint": "麦克风已被浏览器禁用（点地址栏图标可恢复）",
+  "assistant.voice.noDevice": "没有找到麦克风设备。",
+  "assistant.voice.unsupportedContext": "这个页面不是安全上下文，浏览器不提供麦克风。请用 https 打开。",
   "assistant.pretty.switch": "输出美化",
   "assistant.pretty.hint": "把回答按 Markdown 排版，思考过程默认折叠起来，生成的图片/语音附带类型与下载。关掉就是模型原样的纯文本。",
   "assistant.artifact.download": "下载",
@@ -1874,7 +1879,12 @@ const en: Dict = {
   "assistant.voice.working": "Transcribing…",
   "assistant.voice.failed": "Transcription failed",
   "assistant.voice.empty": "Nothing was recognised.",
-  "assistant.voice.denied": "No microphone access. Allow it in the browser and try again.",
+  "assistant.voice.denied": "Microphone refused this time. Press the button to ask again.",
+  "assistant.voice.blocked":
+    "The browser has remembered a refusal for the microphone and will not ask again. Use the icon left of the address bar → Site settings → Microphone → Allow, then reload.",
+  "assistant.voice.blockedHint": "Microphone blocked by the browser (use the icon by the address bar)",
+  "assistant.voice.noDevice": "No microphone device was found.",
+  "assistant.voice.unsupportedContext": "This page is not a secure context, so the browser offers no microphone. Open it over https.",
   "assistant.pretty.switch": "Pretty output",
   "assistant.pretty.hint":
     "Lay answers out as Markdown, fold the reasoning away by default, and label generated images and audio with their type and a download button. Turn it off for the model's raw text exactly as written.",

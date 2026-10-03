@@ -29,9 +29,26 @@ function recordingSupported(): boolean {
   return (
     typeof window !== "undefined" &&
     typeof navigator !== "undefined" &&
+    window.isSecureContext !== false &&
     !!navigator.mediaDevices?.getUserMedia &&
     typeof MediaRecorder !== "undefined"
   );
+}
+
+/**
+ * What the browser currently thinks about the microphone.
+ *
+ * "denied" and "blocked" are the same word to the operator and opposite
+ * problems: a single refusal can be asked again, but once a permission is
+ * *blocked* the browser will not prompt again at all, and the only way back is
+ * the site settings. Telling someone to "allow it in the browser" for the
+ * second case is advice that cannot work.
+ */
+type MicPermission = "unknown" | "granted" | "denied" | "blocked" | "unsupported";
+
+function permissionStateOf(status: PermissionStatus | undefined): MicPermission {
+  if (!status) return "unknown";
+  return status.state as MicPermission;
 }
 
 export function MicButton({
@@ -45,7 +62,7 @@ export function MicButton({
 }) {
   const t = useT();
   const [phase, setPhase] = useState<Phase>("idle");
-  const [supported, setSupported] = useState(true);
+  const [permission, setPermission] = useState<MicPermission>("unknown");
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   // Stopped by unmount or by switching threads: a recorder left running would
@@ -53,8 +70,51 @@ export function MicButton({
   const liveRef = useRef(false);
 
   useEffect(() => {
-    setSupported(recordingSupported());
+    if (!recordingSupported()) {
+      setPermission("unsupported");
+      return;
+    }
+    let cancelled = false;
+
+    // The browser's own state, so a hard block is distinguishable from a
+    // refusal. Not supported everywhere; the absence is not a failure.
+    navigator.permissions
+      ?.query({ name: "microphone" as PermissionName })
+      .then((status) => {
+        if (cancelled) return;
+        setPermission(permissionStateOf(status));
+        status.onchange = () => {
+          if (!cancelled) setPermission(permissionStateOf(status));
+        };
+      })
+      .catch(() => setPermission("unknown"));
+
+    /**
+     * Ask now rather than on the first click.
+     *
+     * A prompt raised by pressing the microphone button is easy to refuse by
+     * reflex, and a refusal is remembered: the next visit does not prompt at
+     * all, and the button reports a problem the operator cannot fix from here.
+     * Asking while the assistant screen is open — where the microphone is
+     * visible and the purpose is obvious — gives the prompt a context, and
+     * grants it now means the button just works later.
+     */
+    navigator.mediaDevices
+      .getUserMedia({ audio: true })
+      .then((stream) => {
+        // Nothing is recorded and nothing is kept: this is a permission check,
+        // not a recording. The tracks are released immediately.
+        stream.getTracks().forEach((track) => track.stop());
+        if (!cancelled) setPermission("granted");
+      })
+      .catch(() => {
+        // Silence here on purpose. The prompt has been raised; the button
+        // carries the state, and a banner on mount for something the operator
+        // may not even want is worse than silence.
+      });
+
     return () => {
+      cancelled = true;
       liveRef.current = false;
       recorderRef.current?.stream.getTracks().forEach((tr) => tr.stop());
       recorderRef.current = null;
@@ -92,15 +152,38 @@ export function MicButton({
 
   const start = useCallback(async () => {
     onError(null);
+    if (!recordingSupported()) {
+      onError(t("assistant.voice.unsupportedContext"));
+      return;
+    }
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch {
-      // A refused permission is the common case and has a different remedy from
-      // a missing device, so it says which.
-      onError(t("assistant.voice.denied"));
+    } catch (err) {
+      setPermission("denied");
+      const name = err instanceof DOMException ? err.name : "";
+      if (name === "NotFoundError" || name === "OverconstrainedError") {
+        onError(t("assistant.voice.noDevice"));
+      } else if (name === "NotAllowedError" || name === "SecurityError") {
+        // A refusal is remembered for this site. Whether it can be asked again
+        // is a different question from whether it was refused, and the answer is
+        // only in the permissions API.
+        const state = await navigator.permissions
+          ?.query({ name: "microphone" as PermissionName })
+          .then((s) => s.state as MicPermission)
+          .catch(() => "unknown" as MicPermission);
+        setPermission(state === "denied" ? "blocked" : "denied");
+        onError(
+          state === "denied"
+            ? t("assistant.voice.blocked")
+            : t("assistant.voice.denied"),
+        );
+      } else {
+        onError(t("assistant.voice.failed"));
+      }
       return;
     }
+    setPermission("granted");
     chunksRef.current = [];
     const recorder = new MediaRecorder(stream);
     recorderRef.current = recorder;
@@ -127,14 +210,19 @@ export function MicButton({
     else setPhase("idle");
   }, []);
 
-  if (!supported) return null;
+  if (permission === "unsupported") return null;
 
+  // A blocked microphone is not a button that does nothing when pressed — it is
+  // one that says so before it is pressed, and says where the fix is.
+  const blocked = permission === "blocked";
   const label =
     phase === "recording"
       ? t("assistant.voice.stop")
       : phase === "transcribing"
         ? t("assistant.voice.working")
-        : t("assistant.voice.start");
+        : blocked
+          ? t("assistant.voice.blockedHint")
+          : t("assistant.voice.start");
 
   return (
     <Button
@@ -146,7 +234,13 @@ export function MicButton({
       title={label}
       aria-label={label}
       aria-pressed={phase === "recording"}
-      className={phase === "recording" ? "text-destructive hover:text-destructive" : ""}
+      className={
+        phase === "recording"
+          ? "text-destructive hover:text-destructive"
+          : blocked
+            ? "text-muted-foreground/50 hover:text-muted-foreground"
+            : ""
+      }
     >
       {phase === "transcribing" ? (
         <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
