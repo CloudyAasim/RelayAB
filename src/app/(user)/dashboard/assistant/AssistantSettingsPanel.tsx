@@ -42,7 +42,14 @@ type RefreshResponse =
       ok: boolean;
       data?: {
         updated: number;
-        outcomes: Array<{ name: string; ok: boolean; updated: number; error?: string }>;
+        outcomes: Array<{
+          name: string;
+          ok: boolean;
+          updated: number;
+          asked?: number;
+          learned?: number;
+          error?: string;
+        }>;
       };
       error?: { message?: string };
     }
@@ -264,13 +271,18 @@ export function AssistantSettingsPanel({
       }
       const { updated, outcomes } = json.data ?? { updated: 0, outcomes: [] };
       const failed = outcomes.filter((o) => !o.ok);
+      const asked = outcomes.reduce((n, o) => n + (o.asked ?? 0), 0);
+      const learned = outcomes.reduce((n, o) => n + (o.learned ?? 0), 0);
+      const names = failed.map((o) => `${o.name}（${o.error ?? "—"}）`).join("、");
       setRefreshNote(
         failed.length > 0
-          ? t("assistant.settings.refreshPartial", {
-              n: updated,
-              names: failed.map((o) => `${o.name}（${o.error ?? "—"}）`).join("、"),
-            })
-          : t("assistant.settings.refreshDone", { n: updated }),
+          ? t("assistant.settings.refreshPartial", { n: updated, names })
+          : asked > 0
+            ? t(learned > 0 ? "assistant.settings.refreshLearned" : "assistant.settings.refreshSilent", {
+                asked,
+                n: updated,
+              })
+            : t("assistant.settings.refreshNone"),
       );
       // The refreshed numbers are what the fields above should show, so the
       // server has to send them again rather than this form re-reading its own
