@@ -187,6 +187,30 @@ describe("UI invariants for the model editor", () => {
     expect(editor).toContain("flex flex-wrap");
     expect(editor, "the header row no longer names columns").not.toContain("<thead");
   });
+
+  it("labels every field, because the header it used to carry is gone", () => {
+    // Removing the header removed the only thing that said which id was the
+    // vendor's. Two inputs reading `gpt-4o` and `gpt-4o-2024-08-06` with an
+    // arrow between them are not distinguishable, and guessing wrong writes the
+    // wrong upstream for a model that otherwise works.
+    for (const key of [
+      "admin.providers.create.clientModel",
+      "admin.providers.create.upstreamModel",
+      "admin.providers.create.contextLength",
+      "admin.providers.create.maxOutput",
+      "admin.providers.create.inputCost",
+      "admin.providers.create.outputCost",
+      "admin.providers.create.cachedInputCost",
+      "admin.providers.create.cacheWriteCost",
+    ]) {
+      expect(editor, `${key} is rendered without a label`).toContain(key);
+    }
+    // The arrow was the thing that read as a flow rather than a mapping, and
+    // with the labels present it is also redundant.
+    expect(editor, "a bare arrow is doing the labelling's job").not.toMatch(
+      /<span className="text-\[10px\] text-muted-foreground">→/,
+    );
+  });
 });
 
 describe("the edit modal persists model configs", () => {

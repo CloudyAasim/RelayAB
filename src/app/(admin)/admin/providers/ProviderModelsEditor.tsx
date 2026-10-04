@@ -17,8 +17,14 @@
  * more than the edit modal has to give. It scrolled sideways, and a price you
  * have to scroll to find is a price nobody sets. So a model is a block: the two
  * ids on the first line, the six numbers on the second, each carrying its own
- * label, wrapping rather than overflowing. Which is also why there is no header
- * row: a header earns its place by naming columns, and there are no columns.
+ * label, wrapping rather than overflowing.
+ *
+ * Dropping the header row is not the same as dropping the labels, and the
+ * difference was learned the hard way: with the headers gone and only
+ * placeholders left, two inputs reading `gpt-4o` and `gpt-4o-2024-08-06` were
+ * not distinguishable, and an arrow between them did not help — it reads as a
+ * flow, not as "this one is the vendor's name". Every field carries its own
+ * label, which is what lets the row wrap without anything becoming anonymous.
  *
  * Row state lives in `./model-rows` (plain data, unit-tested); this file only
  * renders it. Note `key={row.id}` below — never key by an editable value.
@@ -143,24 +149,41 @@ export function ProviderModelsEditor({
                 // model id is editable, so keying by it would remount this row
                 // on every keystroke and drop focus.
                 <li key={row.id} className="px-2 py-2">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={row.clientId}
-                      onChange={(e) => update(index, { clientId: e.target.value })}
-                      placeholder="gpt-4o"
-                      className={`min-w-0 flex-1 font-mono ${cell} ${
-                        duplicated ? "border-destructive" : ""
-                      }`}
-                    />
-                    <span className="text-[10px] text-muted-foreground">→</span>
-                    <input
-                      type="text"
-                      value={row.upstreamId}
-                      onChange={(e) => update(index, { upstreamId: e.target.value })}
-                      placeholder="gpt-4o-2024-08-06"
-                      className={`min-w-0 flex-1 font-mono ${cell}`}
-                    />
+                  {/*
+                    Both ids, labelled. The table used to say which was which
+                    in a header row, and dropping the header left two inputs
+                    reading `gpt-4o` and `gpt-4o-2024-08-06` with an arrow
+                    between them — which nobody can read without the labels, and
+                    guessing wrong writes the wrong upstream for a model that
+                    works.
+                  */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="flex min-w-0 flex-1 items-center gap-1">
+                      <span className="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground">
+                        {t("admin.providers.create.clientModel")}
+                      </span>
+                      <input
+                        type="text"
+                        value={row.clientId}
+                        onChange={(e) => update(index, { clientId: e.target.value })}
+                        placeholder="gpt-4o"
+                        className={`min-w-0 flex-1 font-mono ${cell} ${
+                          duplicated ? "border-destructive" : ""
+                        }`}
+                      />
+                    </label>
+                    <label className="flex min-w-0 flex-1 items-center gap-1">
+                      <span className="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground">
+                        {t("admin.providers.create.upstreamModel")}
+                      </span>
+                      <input
+                        type="text"
+                        value={row.upstreamId}
+                        onChange={(e) => update(index, { upstreamId: e.target.value })}
+                        placeholder="gpt-4o-2024-08-06"
+                        className={`min-w-0 flex-1 font-mono ${cell}`}
+                      />
+                    </label>
                     <button
                       type="button"
                       onClick={() => remove(index)}
