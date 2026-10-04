@@ -32,8 +32,11 @@ describe("the providers page stays a server component", () => {
     // The cell is defined in this file, so anything it renders with a hook is
     // a hook in a server component.
     expect(PAGE).toMatch(/function InterfaceCell\(/);
+    // The parked-count label is a function, not a template: the count is only
+    // knowable inside the cell, and the server's `t` is the one thing that knows
+    // how to substitute `{n}`. The window spans the doc comment deliberately.
     expect(PAGE).toMatch(
-      /labels: \{ none: string; hasRule: string; rulesOff: string; chat: string; responses: string \}/,
+      /labels: \{\s*none: string;\s*hasRule: string;[\s\S]{0,320}parkedRules: \(n: number\) => string;\s*chat: string;\s*responses: string;\s*\};/,
     );
     expect(PAGE).toMatch(/<InterfaceCell[\s\S]{0,400}labels=\{\{/);
   });
@@ -53,13 +56,31 @@ describe("the interface column says what is served, not what was typed", () => {
   });
 
   it("it marks which interfaces have a rule, and only while advanced is in effect", () => {
-    // Per surface, and the marker is one function because which of the two it
-    // is depends on the mode: the same stored list reads as "in effect" or
-    // "stored but off" and the column has to agree with the engine either way.
+    // Per surface, and the marker is one function because whether it appears at
+    // all depends on the mode. Simple asks "which endpoints answer"; advanced
+    // asks "and how does each handle its parameters". Putting advanced's
+    // vocabulary in simple's column is what produced three badges each
+    // decorated with a note about a configuration that was switched off.
     expect(PAGE).toMatch(/ruleMark\("openai-chat"\)/);
     expect(PAGE).toMatch(/ruleMark\("openai-responses"\)/);
     expect(PAGE).toMatch(/ruleMark\("anthropic-messages"\)/);
-    expect(PAGE).toMatch(/mode === "advanced"/);
+    // The gate is inside the marker, not at the call sites: a per-badge
+    // condition would be three chances to get it wrong.
+    expect(PAGE).toMatch(
+      /const ruleMark = \(protocol: string\) =>\s*\n\s*advanced && hasRule\(protocol\)/,
+    );
+  });
+
+  it("and a parked rule is one line, not a marker on every interface", () => {
+    // A provider whose rules were switched off and one that never had any are
+    // otherwise identical, and "did I lose it" is the first question that
+    // follows choosing simple — so it is worth one line. It is not worth three.
+    expect(PAGE).toMatch(/const parked = advanced\s*\n\s*\? 0\s*\n\s*: SURFACES\.filter\(\(s\) => hasRule\(s\.id\)\)\.length;/);
+    expect(PAGE).toMatch(/\{parked > 0 && \(/);
+    expect(PAGE).toMatch(/labels\.parkedRules\(parked\)/);
+    // Counted by protocol, not by array length: `textSpecs` holds raw JSON, so
+    // its length counts a duplicate and an unparseable draft like a real rule.
+    expect(PAGE).not.toMatch(/parked = .*textSpecs\.length/);
   });
 
   it("and says a provider with both sides off is unreachable", () => {

@@ -135,19 +135,24 @@ describe("the list reports what is running, not what is stored", () => {
   });
 
   it("the in-effect marker is not reachable from the stored list alone", () => {
-    // The bug this column had: a provider switched to simple still holds every
-    // rule it was given, so marking from `textSpecs` kept advertising three of
-    // them while none was running. `hasRule` may still find them; the marker
-    // for the live configuration has to be behind the mode.
+    // The bug this column had, twice. First: a provider switched to simple still
+    // holds every rule it was given, so marking from `textSpecs` kept
+    // advertising three of them while none was running. Then, over-correcting:
+    // the three markers came back as "stored but off", which is still advanced's
+    // vocabulary sitting in a column that is not asking about rules.
+    //
+    // So the marker is behind the mode — and the mode is the shared resolver's
+    // answer, not a second derivation. `hasRule` may still find them; whether
+    // that is worth saying anything on screen is the mode's call.
     const page = read("src", "app", "(admin)", "admin", "providers", "page.tsx");
     expect(page, "the rule marker ignores the mode").toMatch(
-      /mode === "advanced"[\s\S]{0,200}labels\.hasRule/,
+      /const ruleMark = \(protocol: string\) =>\s*\n\s*advanced && hasRule\(protocol\)/,
     );
-    expect(page, "a parked configuration is not shown as the plain marker").toMatch(
-      /mode === "advanced"[\s\S]{0,300}labels\.rulesOff/,
+    expect(page, "a parked rule is announced on every interface").not.toMatch(
+      /ruleMark[\s\S]{0,200}rulesOff/,
     );
-    // And the interfaces themselves are still listed from the faces, which are
-    // in effect in both modes — the marker is the only thing that moved.
+    // The interfaces themselves still come from the faces, which are in effect
+    // in both modes. Only the marker moved.
     expect(page).toMatch(/ruleMark\("openai-chat"\)/);
     expect(page).toMatch(/ruleMark\("anthropic-messages"\)/);
   });

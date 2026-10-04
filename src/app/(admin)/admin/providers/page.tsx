@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { listProviders } from "@/lib/db/providers";
 import { providerFaces } from "@/lib/db/types";
-import { activeModeOf } from "@/lib/protocol/text-specs";
+import { activeModeOf, SURFACES } from "@/lib/protocol/text-specs";
 import { Card } from "@/components/ui/Card";
 import {
   Table,
@@ -28,18 +28,19 @@ import type { Provider } from "@/lib/db/types";
  * OpenAI while the table said "openai". A list that can state a falsehood is
  * worse than a list that says less.
  *
- * So it says what is actually served, per interface, and marks which of them
- * have a rule *in effect*. That is the question both modes are asking: simple —
- * which endpoints answer; advanced — and how their parameters are handled. A
- * provider with both sides off is called out rather than shown as two dashes,
- * because it is unreachable, not empty.
+ * **The column shows the live configuration's own question, and only that one.**
+ * Simple asks "which endpoints answer"; advanced asks "and how does each one
+ * handle its parameters". Marking interfaces with rules while simple is in
+ * effect was advanced's vocabulary sitting in simple's column — three badges
+ * decorated with a note about a configuration that is switched off.
  *
- * **The rule marker follows `activeModeOf`, not `textSpecs`.** Marking from the
- * stored list alone was a statement about the database, not about the traffic:
- * a provider switched to simple still holds every rule it was given, so the
- * column kept advertising three of them while none was running. The stored-but-
- * inactive case now says so in its own words, which is also the answer to "did
- * switching delete my config" — it did not, and here is where it went.
+ * The marker follows `activeModeOf`, not `textSpecs`, because a provider
+ * switched to simple still holds every rule it was given, and the column was
+ * then describing the database rather than the traffic. So in simple mode the
+ * badges say only what answers. Whether anything is parked gets one quiet line
+ * underneath, because a provider whose rules were switched off and one that
+ * never had any are otherwise identical, and "did I lose it" is the first
+ * question that follows choosing simple.
  *
  * The labels arrive as props. This file is a server component — it reads the
  * session and the providers — so it cannot reach for a client-side translation
@@ -55,7 +56,19 @@ function InterfaceCell({
   faces: ReturnType<typeof providerFaces>;
   textSpecs: string[];
   mode: "simple" | "advanced";
-  labels: { none: string; hasRule: string; rulesOff: string; chat: string; responses: string };
+  labels: {
+    none: string;
+    hasRule: string;
+    /**
+     * Pre-bound rather than a template: the count is only knowable inside this
+     * cell, and doing the `{n}` substitution here would mean re-implementing the
+     * interpreter the server's `t` already has. The call site binds it, so
+     * translation still happens in one place.
+     */
+    parkedRules: (n: number) => string;
+    chat: string;
+    responses: string;
+  };
 }) {
   const { openai, anthropic } = faces;
   if (!openai && !anthropic) {
@@ -71,44 +84,66 @@ function InterfaceCell({
       }
     });
 
+  const advanced = mode === "advanced";
+
   /**
-   * One marker per surface, and which of the two it is depends on the mode. A
-   * surface with no rule at all gets nothing — "no policy" is the default state
-   * and marking it would make every provider look configured.
+   * Advanced's marker, and only advanced's.
+   *
+   * A surface with no rule gets nothing — "no policy" is the default state and
+   * marking it would make every provider look configured. And in simple mode
+   * this returns null for every surface, which is the point: the per-interface
+   * rule vocabulary does not appear in a column that is not asking about rules.
    */
-  const ruleMark = (protocol: string) => {
-    if (!hasRule(protocol)) return null;
-    return mode === "advanced" ? (
+  const ruleMark = (protocol: string) =>
+    advanced && hasRule(protocol) ? (
       <span className="ml-1 opacity-70">· {labels.hasRule}</span>
-    ) : (
-      <span className="ml-1 text-amber-700/80 dark:text-amber-400/80">
-        · {labels.rulesOff}
-      </span>
-    );
-  };
+    ) : null;
+
+  /**
+   * How many interfaces have a rule stored, counted the way the row is read:
+   * by protocol, not by array length. `textSpecs` holds raw JSON strings, so its
+   * length counts an unparseable draft and a duplicate just as readily as a rule
+   * the proxy would actually apply.
+   */
+  const parked = advanced
+    ? 0
+    : SURFACES.filter((s) => hasRule(s.id)).length;
 
   return (
-    <div className="flex flex-wrap items-center gap-1">
-      {openai && (
-        <Badge tone="info">
-          /v1/chat/completions
-          <span className="ml-1 opacity-70">
-            {openai.format === "chat" ? labels.chat : labels.responses}
-          </span>
-          {ruleMark("openai-chat")}
-        </Badge>
-      )}
-      {openai && (
-        <Badge tone="info">
-          /v1/responses
-          {ruleMark("openai-responses")}
-        </Badge>
-      )}
-      {anthropic && (
-        <Badge tone="orange">
-          /anthropic/v1/messages
-          {ruleMark("anthropic-messages")}
-        </Badge>
+    <div>
+      <div className="flex flex-wrap items-center gap-1">
+        {openai && (
+          <Badge tone="info">
+            /v1/chat/completions
+            <span className="ml-1 opacity-70">
+              {openai.format === "chat" ? labels.chat : labels.responses}
+            </span>
+            {ruleMark("openai-chat")}
+          </Badge>
+        )}
+        {openai && (
+          <Badge tone="info">
+            /v1/responses
+            {ruleMark("openai-responses")}
+          </Badge>
+        )}
+        {anthropic && (
+          <Badge tone="orange">
+            /anthropic/v1/messages
+            {ruleMark("anthropic-messages")}
+          </Badge>
+        )}
+      </div>
+      {/*
+        One line, and only when something is actually parked. Without it a
+        provider whose rules were switched off looks exactly like one that never
+        had any — and the whole reason the rules are kept is that somebody is
+        going to want them back.
+      */}
+      {parked > 0 && (
+        <div className="mt-1 text-xs text-muted-foreground">
+          {labels.parkedRules(parked)}
+        </div>
       )}
     </div>
   );
@@ -171,7 +206,7 @@ export default async function ProvidersPage() {
                       labels={{
                         none: t("admin.providers.table.noInterface"),
                         hasRule: t("admin.providers.table.hasRule"),
-                        rulesOff: t("admin.providers.table.rulesOff"),
+                        parkedRules: (n: number) => t("admin.providers.table.parkedRules", { n }),
                         chat: t("admin.providers.format.short.chat"),
                         responses: t("admin.providers.format.short.responses"),
                       }}
