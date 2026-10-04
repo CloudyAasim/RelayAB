@@ -31,6 +31,7 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { sanitizeLevelList } from "@/lib/providers/reasoning-levels";
 import { getCurrentUser, requireAdmin, AuthGuardError, type AuthedUser } from "@/lib/auth/session";
 import {
   claimAssistantAction,
@@ -71,6 +72,19 @@ const ModelConfigSchema = z.object({
   maxOutputTokens: z.number().int().positive().optional(),
   inputCost: z.number().nonnegative().optional(),
   outputCost: z.number().nonnegative().optional(),
+  // Present because `propose_model_config_update` offers them. Their absence
+  // here did not reject the change — it stripped it, so a proposal came back
+  // "applied" with the field silently missing, and the only version of it that
+  // appeared to work was the one carrying nothing.
+  cachedInputCost: z.number().nonnegative().optional(),
+  cacheWriteCost: z.number().nonnegative().optional(),
+  // Filtered for the same reason as everywhere else: a level is a value the
+  // model accepts, not the name of a field in the error that said so.
+  reasoningLevels: z
+    .array(z.string().min(1).max(64))
+    .max(24)
+    .transform((levels) => sanitizeLevelList(levels))
+    .optional(),
   enabled: z.boolean().optional(),
 });
 
