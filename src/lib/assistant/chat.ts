@@ -109,7 +109,22 @@ function fitToWindow<T extends { role: string; content: string }>(
   // Dropping the turn somebody just typed and answering without it would be
   // worse than sending something too long.
   if (kept.length === 0 && recent.length > 0) return [recent[recent.length - 1]];
-  return kept;
+
+  /*
+   * Never start the window on a tool result.
+   *
+   * A tool message is an *answer* to a call the model made; replayed without the
+   * call it answers, upstreams reject the whole turn — and the ones that do not
+   * reject it hand the model an answer to a question it never asked. Walking
+   * back to the first non-tool message is what keeps the window valid, and it
+   * costs a couple of turns rather than the conversation.
+   *
+   * The "while" rather than an "if": a tool result can be preceded by more of
+   * them, and only the first one of the run matters.
+   */
+  let first = 0;
+  while (first < kept.length && kept[first].role === "tool") first += 1;
+  return first > 0 ? kept.slice(first) : kept;
 }
 
 /**
@@ -600,25 +615,72 @@ const MAX_INLINE_BYTES = 16 * 1024 * 1024;
  * had done nothing wrong. The bytes are read back per turn and never written
  * into the stored transcript.
  */
+/**
+ * The history as the model receives it — tool turns included.
+ *
+ * It used to drop both halves of every tool exchange: the `tool` rows, and the
+ * `assistant` rows that made the calls. That was there to avoid sending a
+ * `tool_call` with no result, which upstreams do reject — but the fix was a
+ * sledgehammer that deleted the model's own work from its memory. A
+ * conversation replayed that way reads as though the model only ever talked: it
+ * cannot see what it looked up, what it found, or that it had found it. Vendors
+ * say so outright — MiniMax's OpenAI-compatible notes require the *complete*
+ * assistant message, tool calls included, in the history for the chain of
+ * thought to survive a multi-turn tool conversation.
+ *
+ * So they are replayed, and the pairing is repaired rather than avoided: an
+ * assistant call whose results are not in the window goes, and a result whose
+ * call is not in the window goes. Both halves or neither, which is what the
+ * protocol actually requires.
+ */
 async function toWireMessages(
   rows: Awaited<ReturnType<typeof listAssistantMessages>>,
   userId: string,
 ): Promise<ChatMessage[]> {
-  const out: ChatMessage[] = [];
+  // Pass one: everything, tool turns included.
+  const withTools: ChatMessage[] = [];
   for (const row of rows) {
-    if (row.role === "tool") continue;
-    if (row.role === "assistant" && row.toolCalls.length > 0) {
-      // Skip an assistant turn whose tool results are not being replayed —
-      // OpenAI rejects a tool_call with no following tool message.
+    if (row.role === "tool") {
+      withTools.push({
+        role: "tool",
+        content: row.content,
+        ...(row.toolCallId ? { tool_call_id: row.toolCallId } : {}),
+      });
       continue;
     }
-    out.push(
+    if (row.role === "assistant" && row.toolCalls.length > 0) {
+      withTools.push({
+        role: "assistant",
+        content: row.content,
+        tool_calls: row.toolCalls.map((c) => ({
+          id: c.id,
+          type: "function" as const,
+          function: { name: c.function.name, arguments: c.function.arguments },
+        })),
+      });
+      continue;
+    }
+    withTools.push(
       row.attachments.length
         ? { role: row.role, content: await withAttachments(row, userId) }
         : { role: row.role, content: row.content },
     );
   }
-  return out;
+
+  // Pass two: the pairs. A call needs its result; a result needs its call.
+  const answered = new Set<string>();
+  for (const m of withTools) {
+    if (m.role === "tool" && m.tool_call_id) answered.add(m.tool_call_id);
+  }
+  const called = new Set<string>();
+  for (const m of withTools) {
+    for (const c of m.tool_calls ?? []) called.add(c.id);
+  }
+  return withTools.filter((m) => {
+    if (m.role === "tool") return Boolean(m.tool_call_id) && called.has(m.tool_call_id!);
+    if (m.tool_calls && m.tool_calls.length > 0) return m.tool_calls.every((c) => answered.has(c.id));
+    return true;
+  });
 }
 
 /** One user turn, as the model receives it. Exported shape: text, then images. */
