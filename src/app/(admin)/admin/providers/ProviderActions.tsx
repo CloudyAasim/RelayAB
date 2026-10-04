@@ -8,6 +8,7 @@ import { useT } from "@/components/i18n/I18nProvider";
 import { RefreshCw, Pencil, Trash2, Zap } from "lucide-react";
 import type { UpstreamFormat } from "./ProviderFacesField";
 import { mergeFetchedModels } from "./model-rows";
+import { ModelPickerModal, type PickedEntry } from "./ModelPickerModal";
 import { ProviderForm } from "./form/ProviderForm";
 import { formValuesFromProvider, useProviderForm } from "./form/use-provider-form";
 
@@ -191,6 +192,9 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState("");
+  /** What the last fetch found, and whether the operator is choosing from it. */
+  const [fetchedEntries, setFetchedEntries] = useState<PickedEntry[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const form = useProviderForm(() => formValuesFromProvider(provider));
   const { load, specVerdict, setMode, buildPayload, values } = form;
 
@@ -226,7 +230,10 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
         setError(t("admin.providers.fetchFailed", { error: data.error ?? t("common.unknown") }));
         return;
       }
-      form.setModelRows((prev) => mergeFetchedModels(prev, data.models ?? []));
+      // Asked, not answered for you. The list goes to a picker; nothing reaches
+      // the form until the operator says which of it to add.
+      setFetchedEntries((data.models ?? []) as PickedEntry[]);
+      setPickerOpen(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : t("common.networkError"));
     } finally {
@@ -272,7 +279,8 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={t("admin.providers.edit")} wide>
+    <>
+      <Modal open={open} onClose={onClose} title={t("admin.providers.edit")} wide>
       <form onSubmit={handleSubmit} className="space-y-4">
         <ProviderForm
           form={form}
@@ -305,6 +313,18 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
         </div>
       </form>
     </Modal>
+
+    <ModelPickerModal
+      open={pickerOpen}
+      entries={fetchedEntries}
+      existing={form.values.modelRows.flatMap((r) => [r.clientId, r.upstreamId])}
+      onClose={() => setPickerOpen(false)}
+      onConfirm={(chosen) => {
+        form.setModelRows((prev) => mergeFetchedModels(prev, chosen));
+        setPickerOpen(false);
+      }}
+    />
+    </>
   );
 }
 

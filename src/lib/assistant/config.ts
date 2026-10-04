@@ -69,6 +69,7 @@ export const ASSISTANT_REASONING_SUGGESTIONS = [
   "low",
   "medium",
   "high",
+  "xhigh",
 ] as const;
 
 export interface AssistantConfig {

@@ -25,6 +25,7 @@ import {
   newModelRow,
 } from "./model-rows";
 import { ProviderForm } from "./form/ProviderForm";
+import { ModelPickerModal, type PickedEntry } from "./ModelPickerModal";
 import { useProviderForm } from "./form/use-provider-form";
 
 interface Props {
@@ -43,6 +44,9 @@ export function CreateProviderButton({ onCreated }: Props) {
 
   // Fetch-models state
   const [fetchingModels, setFetchingModels] = useState(false);
+  /** What the last fetch found, and whether the operator is choosing from it. */
+  const [fetchedEntries, setFetchedEntries] = useState<PickedEntry[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [fetchResult, setFetchResult] = useState<{
     count: number;
     status: number;
@@ -138,7 +142,11 @@ export function CreateProviderButton({ onCreated }: Props) {
           // not know that will assume the fetch filled them.
           ...(data.models?.length === 0 && data.notice ? { error: data.notice } : {}),
         });
-        setModelRows((prev) => mergeFetchedModels(prev, data.models ?? [], activeTemplateModelDefaults));
+        // Asked, not answered for you — same as the edit modal. A template may
+        // have pre-filled rows, and the vendor's list is longer than that, so
+        // which of it to add is the operator's call.
+        setFetchedEntries((data.models ?? []) as PickedEntry[]);
+        setPickerOpen(true);
       } else {
         setFetchResult({
           count: 0,
@@ -289,6 +297,20 @@ export function CreateProviderButton({ onCreated }: Props) {
           </div>
         </form>
       </Modal>
+
+      <ModelPickerModal
+        open={pickerOpen}
+        entries={fetchedEntries}
+        existing={form.values.modelRows.flatMap((r) => [r.clientId, r.upstreamId])}
+        onClose={() => setPickerOpen(false)}
+        onConfirm={(chosen) => {
+          // The template's defaults still apply to whatever gets added, so a
+          // model the vendor published no numbers for arrives with the shape the
+          // operator chose when they picked the template.
+          form.setModelRows((prev) => mergeFetchedModels(prev, chosen, activeTemplateModelDefaults));
+          setPickerOpen(false);
+        }}
+      />
     </>
   );
 }

@@ -194,8 +194,15 @@ describe("the thinking level", () => {
   it("offers the common spellings as suggestions, and nothing more", () => {
     // A starting point for a person who does not want to look it up, and
     // explicitly not a contract: the option list is a convenience, the text
-    // field is the answer.
-    expect([...ASSISTANT_REASONING_SUGGESTIONS]).toEqual(["minimal", "low", "medium", "high"]);
+    // field is the answer. Five steps, because a four-step default left the
+    // top of the range unreachable for any model that has one.
+    expect([...ASSISTANT_REASONING_SUGGESTIONS]).toEqual([
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+    ]);
   });
 });
 

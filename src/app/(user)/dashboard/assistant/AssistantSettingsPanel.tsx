@@ -36,6 +36,18 @@ import { useCredentialStore } from "@/lib/assistant/credential-store";
 
 const CUSTOM_EFFORT = "__custom_effort__";
 
+/** What the refresh endpoint answers, and what the error shape is. */
+type RefreshResponse =
+  | {
+      ok: boolean;
+      data?: {
+        updated: number;
+        outcomes: Array<{ name: string; ok: boolean; updated: number; error?: string }>;
+      };
+      error?: { message?: string };
+    }
+  | null;
+
 /**
  * Empty box → null ("do not send"), and never NaN.
  *
@@ -134,6 +146,8 @@ export function AssistantSettingsPanel({
     initial?.reasoningEffort ?? null,
   );
   const [busy, setBusy] = useState<"probe" | "save" | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshNote, setRefreshNote] = useState<string | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
   /**
@@ -228,6 +242,44 @@ export function AssistantSettingsPanel({
       setMessage({ ok: false, text: err instanceof Error ? err.message : String(err) });
     } finally {
       setBusy(null);
+    }
+  }
+
+  /**
+   * Ask the deployment to re-read every enabled provider's model list.
+   *
+   * Per provider, not one verdict: a vendor that is down is a fact about that
+   * vendor, and the others were still refreshed. Reporting only the successes
+   * would leave somebody believing a stale list is a current one.
+   */
+  async function refreshModels() {
+    setRefreshing(true);
+    setRefreshNote(null);
+    try {
+      const res = await fetch("/api/assistant/refresh-models", { method: "POST" });
+      const json = (await res.json().catch(() => null)) as RefreshResponse;
+      if (!json?.ok) {
+        setRefreshNote(json?.error?.message ?? t("common.failed"));
+        return;
+      }
+      const { updated, outcomes } = json.data ?? { updated: 0, outcomes: [] };
+      const failed = outcomes.filter((o) => !o.ok);
+      setRefreshNote(
+        failed.length > 0
+          ? t("assistant.settings.refreshPartial", {
+              n: updated,
+              names: failed.map((o) => `${o.name}（${o.error ?? "—"}）`).join("、"),
+            })
+          : t("assistant.settings.refreshDone", { n: updated }),
+      );
+      // The refreshed numbers are what the fields above should show, so the
+      // server has to send them again rather than this form re-reading its own
+      // state — which still holds what it was told an hour ago.
+      router.refresh();
+    } catch (err) {
+      setRefreshNote(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRefreshing(false);
     }
   }
 
@@ -543,6 +595,35 @@ export function AssistantSettingsPanel({
           </p>
         )}
       </fieldset>
+
+      {/*
+        Update this deployment's own model configuration.
+
+        The account path runs on models this deployment owns, so what they
+        accept was published by their vendors — but it was published once, when
+        the provider was added, and the stored copy is what this picker reads.
+        Refreshing it belongs here rather than on the provider page: a hop
+        nobody would guess at is the same as not having it.
+
+        A button, not something that happens on load. It calls out to every
+        enabled provider, and doing that on every visit would turn a settings
+        screen into a load test against their rate limits.
+      */}
+      {mode === "account" && (
+        <div className="space-y-1.5 border-t border-border pt-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={refreshModels}
+            disabled={refreshing}
+          >
+            {refreshing ? t("assistant.settings.refreshing") : t("assistant.settings.refresh")}
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            {refreshNote ?? t("assistant.settings.refreshHint")}
+          </p>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         {mode === "key" && (
