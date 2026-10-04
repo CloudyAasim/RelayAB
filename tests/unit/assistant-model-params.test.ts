@@ -69,7 +69,11 @@ describe("a configured parameter reaches the request", () => {
     // message count, and a long turn plus an image plus a documentation page
     // the model read is already past a 32k window.
     expect(CHAT).toMatch(/function fitToWindow</);
-    expect(CHAT).toMatch(/toWireMessages\(fitToWindow\(history, settings\?\.contextLength\)/);
+    expect(CHAT).toMatch(
+      /toWireMessages\(kept, user\.id\)/,
+    );
+    // …and the window it trims is the one the declared length sized.
+    expect(CHAT).toMatch(/fitToWindow\(history, settings\?\.contextLength\)/);
     // Whole turns from the front, never half a message: half a tool result is a
     // fact the model will act on. Pinned by the absence of any content rewrite,
     // stated as two direct shapes rather than a slice of the file, which stops

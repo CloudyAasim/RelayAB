@@ -64,7 +64,12 @@ describe("the history a turn is given", () => {
     expect(fit, "the window may start mid-exchange").toMatch(
       /while \(first < kept\.length && kept\[first\]\.role === "tool"\) first \+= 1;/,
     );
-    expect(fit).toMatch(/return first > 0 \? kept\.slice\(first\) : kept;/);
+    expect(fit).toMatch(/const window = first > 0 \? kept\.slice\(first\) : kept;/);
+    // …and what the boundary walk-back removed is available to compress,
+    // rather than being cut from under it.
+    expect(fit, "the dropped prefix is not available").toMatch(
+      /dropped: recent\.slice\(0, recent\.length - window\.length\)/,
+    );
   });
 
   it("and still drops whole messages rather than cutting one in half", () => {

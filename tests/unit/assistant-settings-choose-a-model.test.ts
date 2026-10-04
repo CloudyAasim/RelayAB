@@ -110,7 +110,10 @@ describe("what the removal got right, and kept", () => {
     // conversation plus an image plus a documentation page is already past a 32k
     // window. The failure was an upstream 400 on somebody's turn.
     expect(CHAT, "the history is no longer trimmed at all").toMatch(
-      /toWireMessages\(fitToWindow\(history, settings\?\.contextLength\)/,
+      /fitToWindow\(history, settings\?\.contextLength\)/,
+    );
+    expect(CHAT, "the trimmed history is no longer sent").toMatch(
+      /toWireMessages\(kept, user\.id\)/,
     );
     expect(CHAT).toMatch(/kept\.unshift\(recent\[i\]\)/);
     expect(CHAT, "a history message is truncated by content").not.toMatch(

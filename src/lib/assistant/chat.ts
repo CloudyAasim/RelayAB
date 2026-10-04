@@ -91,7 +91,7 @@ const EMPTY_PARAMS: AssistantModelParams = {
 function fitToWindow<T extends { role: string; content: string }>(
   history: readonly T[],
   contextLength?: number | null,
-): T[] {
+): { kept: T[]; dropped: T[] } {
   const recent = history.slice(-MAX_HISTORY_MESSAGES);
 
   // Roughly four characters per token is the same conversion the estimator
@@ -108,7 +108,9 @@ function fitToWindow<T extends { role: string; content: string }>(
   // Always keep the newest message, even when it alone overruns the budget.
   // Dropping the turn somebody just typed and answering without it would be
   // worse than sending something too long.
-  if (kept.length === 0 && recent.length > 0) return [recent[recent.length - 1]];
+  if (kept.length === 0 && recent.length > 0) {
+    return { kept: [recent[recent.length - 1]], dropped: recent.slice(0, -1) };
+  }
 
   /*
    * Never start the window on a tool result.
@@ -124,7 +126,9 @@ function fitToWindow<T extends { role: string; content: string }>(
    */
   let first = 0;
   while (first < kept.length && kept[first].role === "tool") first += 1;
-  return first > 0 ? kept.slice(first) : kept;
+  const window = first > 0 ? kept.slice(first) : kept;
+  // What the cut removed, and what the tool-boundary walk-back removed with it.
+  return { kept: window, dropped: recent.slice(0, recent.length - window.length) };
 }
 
 /**
@@ -151,6 +155,66 @@ function historyBudgetTokens(contextLength?: number | null): number {
  * settings and this stops applying.
  */
 const HISTORY_BUDGET_TOKENS = 24_000;
+
+/**
+ * Condense the part of the conversation that no longer fits.
+ *
+ * The prompt asks for what a later turn cannot do without — decisions, names,
+ * numbers, what was asked and not answered — rather than for a narrative. A
+ * summary that reads well and drops a decision is worse than no summary,
+ * because it looks like context.
+ *
+ * `system` is the role on purpose: it can be placed in front of the window
+ * without being a tool result, so it cannot unpair a call and its answer.
+ */
+async function summariseDropped(args: {
+  upstream: { model: string; baseUrl?: string; apiKey?: string; extraHeaders?: Record<string, string>; transport?: UpstreamTransport };
+  dropped: Array<{ role: string; content: string }>;
+  onText?: (delta: string) => void;
+}): Promise<string | null> {
+  const transcript = args.dropped
+    .map((m) => `${m.role}: ${m.content}`)
+    .join("\n")
+    .slice(-SUMMARY_INPUT_CHARS);
+  if (transcript.length < SUMMARY_MIN_CHARS) return null; // not worth a call
+
+  try {
+    const turn = await callAssistantModel({
+      model: args.upstream.model,
+      ...(args.upstream.baseUrl ? { baseUrl: args.upstream.baseUrl } : {}),
+      ...(args.upstream.apiKey ? { apiKey: args.upstream.apiKey } : {}),
+      ...(args.upstream.extraHeaders ? { extraHeaders: args.upstream.extraHeaders } : {}),
+      ...(args.upstream.transport ? { transport: args.upstream.transport } : {}),
+      maxTokens: SUMMARY_MAX_TOKENS,
+      messages: [
+        {
+          role: "system",
+          content:
+            "你把一段对话压缩成备忘，供另一个助手继续这次对话。只保留后面还需要的事实：" +
+            "对方的要求与约束、已经确定的事、名字与数字、待办与未解决的问题、" +
+            "已经查到的结果。不要写客套话，不要编造没有的内容，不要评价。",
+        },
+        { role: "user", content: transcript },
+      ],
+    });
+    const text = turn.content.trim();
+    return text.length > 0 ? text : null;
+  } catch {
+    // Compression is a nicety. A conversation that worked before must not stop
+    // working because the summary call did.
+    return null;
+  }
+}
+
+/** The frame the summary is delivered in, and what it says when there is none. */
+const SUMMARY_HEADER =
+  "【以下是这次对话较早部分的摘要，之后的对话从摘要之后继续】\n";
+
+/** Below this, dropping is cheaper than summarising. */
+const SUMMARY_MIN_CHARS = 2_000;
+/** What is fed to the summariser; the rest of the prefix is already gone. */
+const SUMMARY_INPUT_CHARS = 12_000;
+const SUMMARY_MAX_TOKENS = 512;
 
 /** Held back from a declared window for the system prompt and the answer. */
 const RESERVED_TOKENS = 4_000;
@@ -433,9 +497,29 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
   }
 
   const history = await listAssistantMessages(thread.id);
+
+  // Compress the cut before describing it to the model, so the window does not
+  // simply begin halfway through a conversation. A summary the reader can see
+  // is also a summary the model can reason over; a silent cut is neither.
+  const { kept, dropped } = fitToWindow(history, settings?.contextLength);
+  const summary =
+    dropped.length > 0
+      ? await summariseDropped({
+          upstream: {
+            model: upstream.model,
+            ...(upstream.baseUrl ? { baseUrl: upstream.baseUrl } : {}),
+            ...(upstream.apiKey ? { apiKey: upstream.apiKey } : {}),
+            ...(upstream.extraHeaders ? { extraHeaders: upstream.extraHeaders } : {}),
+            ...(upstream.transport ? { transport: upstream.transport } : {}),
+          },
+          dropped,
+        })
+      : null;
+
   const messages: ChatMessage[] = [
     { role: "system", content: systemPrompt(isAdmin) },
-    ...(await toWireMessages(fitToWindow(history, settings?.contextLength), user.id)),
+    ...(summary ? [{ role: "system" as const, content: SUMMARY_HEADER + summary }] : []),
+    ...(await toWireMessages(kept, user.id)),
   ];
 
   const pendingActions: string[] = [];
