@@ -700,7 +700,14 @@ function ReasoningCombobox({
    * the form says the vendor published none. The common spellings are still
    * offered, as hints to click rather than options to pick from.
    */
-  const options = levels ?? [];
+  // The vendor's own list when it has one. When it does not, the common
+  // spellings are offered anyway — removing them made this harder to use and
+  // bought nothing, since most OpenAI-compatible models do take these four.
+  // What was wrong was not offering them; it was offering them as though the
+  // vendor had said so, which is what the note underneath now says.
+  const options = levels && levels.length > 0 ? levels : [...ASSISTANT_REASONING_SUGGESTIONS];
+  /** True when these are the system's, not this model's. */
+  const fromVendor = levels !== undefined && levels.length > 0;
   const isCustom = typed !== "" && !options.includes(typed);
   const [custom, setCustom] = useState(isCustom);
   useEffect(() => {
@@ -739,24 +746,10 @@ function ReasoningCombobox({
         between "this model has two levels" and "nobody has told us what this
         model has" is exactly the thing that has to be on screen.
       */}
-      {options.length === 0 && (
-        <>
-          <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-            {t("assistant.settings.reasoningUnknown")}
-          </p>
-          <p className="mt-1 flex flex-wrap gap-1">
-            {ASSISTANT_REASONING_SUGGESTIONS.map((level) => (
-              <button
-                key={level}
-                type="button"
-                onClick={() => onChange(level)}
-                className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                {level}
-              </button>
-            ))}
-          </p>
-        </>
+      {!fromVendor && (
+        <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+          {t("assistant.settings.reasoningUnknown")}
+        </p>
       )}
       {custom && (
         <>

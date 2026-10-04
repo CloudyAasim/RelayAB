@@ -51,6 +51,23 @@ const optionalNum = (v: string): number | undefined => {
   return Number.isFinite(n) ? n : undefined;
 };
 
+/**
+ * A comma- or space-separated list of level names, in the order written.
+ *
+ * Not lowercased and not validated against anything: the level a vendor calls
+ * `xhigh` or `THINK_HIGH` is the level it calls that, and the value goes on the
+ * wire exactly as typed. Only the separators and the duplicates go, so the list
+ * reads the same on the way back.
+ */
+function parseLevelList(raw: string): string[] {
+  const out: string[] = [];
+  for (const part of raw.split(/[,，\s]+/)) {
+    const trimmed = part.trim();
+    if (trimmed && !out.includes(trimmed)) out.push(trimmed);
+  }
+  return out;
+}
+
 export function ModelConfigForm({ rows }: { rows: ModelConfigRow[] }) {
   const t = useT();
   const [list, setList] = useState<ModelConfigRow[]>(rows);
@@ -252,6 +269,32 @@ export function ModelConfigForm({ rows }: { rows: ModelConfigRow[] }) {
                               onChange={(e) =>
                                 update(index, {
                                   maxOutputTokens: num(e.target.value, row.maxOutputTokens),
+                                })
+                              }
+                            />
+                            {/*
+                              The thinking levels, declared here like the window
+                              and the cap beside it.
+
+                              They used to be reachable only by scraping a
+                              vendor's model list, which means they were
+                              unreachable for every vendor that does not publish
+                              them — and most do not. So the answer to "which
+                              levels does this model take" was whatever this
+                              system guessed, for the models that matter most.
+
+                              Comma separated, because that is how a vendor's
+                              documentation writes them, and the wire value is
+                              passed through exactly as typed.
+                            */}
+                            <Input
+                              label={t("admin.providers.create.reasoningLevels")}
+                              hint={t("admin.providers.create.reasoningLevelsHint")}
+                              placeholder="minimal, low, medium, high"
+                              value={(row.reasoningLevels ?? []).join(", ")}
+                              onChange={(e) =>
+                                update(index, {
+                                  reasoningLevels: parseLevelList(e.target.value),
                                 })
                               }
                             />

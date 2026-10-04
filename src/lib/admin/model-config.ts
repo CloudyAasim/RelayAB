@@ -54,6 +54,14 @@ export interface ModelConfigRow {
   displayName: string;
   contextLength: number;
   maxOutputTokens: number;
+  /**
+   * The thinking levels this model takes, as the vendor writes them.
+   *
+   * Declared here rather than only scraped: most vendors publish no list at all,
+   * so a field that can only be fetched is a field that stays empty exactly
+   * where somebody needs it.
+   */
+  reasoningLevels: string[];
   inputCost: number;
   outputCost: number;
   /**
@@ -123,6 +131,7 @@ export function buildModelRows(
         displayName: notes[clientId]?.displayName ?? clientId,
         contextLength: DEFAULTS.contextLength,
         maxOutputTokens: DEFAULTS.maxOutputTokens,
+        reasoningLevels: [],
         inputCost: 0,
         outputCost: 0,
         enabled: cfg.enabled,
@@ -145,6 +154,8 @@ function chatRow(
     displayName?: string;
     contextLength?: number;
     maxOutputTokens?: number;
+    /** What the vendor published, or what the operator declared. Absent on older rows. */
+    reasoningLevels?: string[];
     inputCost?: number;
     outputCost?: number;
     cachedInputCost?: number;
@@ -166,6 +177,9 @@ function chatRow(
     displayName: cfg?.displayName ?? note?.displayName ?? clientId,
     contextLength: cfg?.contextLength ?? DEFAULTS.contextLength,
     maxOutputTokens: cfg?.maxOutputTokens ?? DEFAULTS.maxOutputTokens,
+    // Empty rather than the common spellings: this is what the vendor's
+    // model list said, and for most of them it said nothing.
+    reasoningLevels: cfg?.reasoningLevels ?? [],
     inputCost: cfg?.inputCost ?? DEFAULTS.inputCost,
     outputCost: cfg?.outputCost ?? DEFAULTS.outputCost,
     // Spread, not `?? 0`: a cache nobody priced must read back as blank,
@@ -220,6 +234,8 @@ export interface ModelConfigPayload {
     displayName?: string;
     contextLength?: number;
     maxOutputTokens?: number;
+    /** What the vendor published, or what the operator declared. Absent on older rows. */
+    reasoningLevels?: string[];
     inputCost?: number;
     outputCost?: number;
     /** `null` = clear the price, because this route merges and absent means keep. */

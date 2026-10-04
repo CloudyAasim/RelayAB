@@ -52,6 +52,8 @@ const row = (over: Partial<ModelConfigRow> = {}): ModelConfigRow => ({
   displayName: "M3",
   contextLength: 200000,
   maxOutputTokens: 8192,
+  // What the vendor published, or what the operator declared beside the window.
+  reasoningLevels: ["low", "medium", "high"],
   inputCost: 1,
   outputCost: 2,
   enabled: true,

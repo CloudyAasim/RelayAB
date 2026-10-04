@@ -183,10 +183,11 @@ describe("the thinking level offers this model's own words", () => {
     }
   });
 
-  it("offers nothing when the vendor published nothing, and says why", () => {
-    // It used to offer the five common spellings here, which made an un-fetched
-    // model look like a five-step one. A default list is a claim; an empty one
-    // with a reason is an answer. The pins are in reasoning-levels-honest.test.
+  it("still offers the common spellings when the vendor published nothing", () => {
+    // It briefly did not, on the reasoning that removing a default makes it
+    // honest. It does not: removing it made this harder to use and claimed
+    // nothing, since the line underneath says these are the system's spellings
+    // rather than the model's. The pins are in reasoning-levels-honest.test.
     const html = render({
       initial: {
         baseUrl: "",
