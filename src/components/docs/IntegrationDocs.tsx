@@ -46,6 +46,8 @@ export async function IntegrationDocs({
       anthropicBase={`${base}/anthropic`}
       catalogue={catalogue}
       chapterAnswers={userChapterAnswers(t)}
+      guideCountLabel={(n) => t("docs.guide.chapters", { n })}
+      guidePagesLabel={(n) => t("docs.guide.pages", { n })}
       prevChapterLabel={t("docs.chapter.prev")}
       nextChapterLabel={t("docs.chapter.next")}
       outlineLabel={t("docs.sections")}

@@ -44,6 +44,8 @@ export function UserDocsApp({
   catalogue,
   /** Each chapter's own question, keyed by chapter id. */
   chapterAnswers,
+  guideCountLabel,
+  guidePagesLabel,
   prevChapterLabel,
   nextChapterLabel,
   outlineLabel,
@@ -72,6 +74,9 @@ export function UserDocsApp({
    */
   catalogue?: ReactNode;
   chapterAnswers: Record<string, string>;
+  /** What is inside each half, so the switch is two answers and not two words. */
+  guideCountLabel: (n: number) => string;
+  guidePagesLabel: (n: number) => string;
   /** Fallback text when a chapter has no neighbour on that side. */
   prevChapterLabel: string;
   nextChapterLabel: string;
@@ -185,42 +190,56 @@ export function UserDocsApp({
       {/*
         The switch, then the contents of whichever side is open.
 
-        Not a tablist over both: the two sides are not peers, and rendering the
-        chapters' tabs next to the parameters guide's page list would put the
-        long list back in the same row as the short chapters — which is the
-        arrangement this split exists to end.
+        Unconditional. It used to be hidden when there was only one guide, on
+        the reasoning that one option is not a switch — which hid the structure
+        from every reader whose parameters guide was still empty. The split is
+        the point; a reader cannot see a split they are never shown, and "these
+        are not separated" is what a one-document page looks like from outside.
       */}
-      {guides.length > 1 && (
-        <div role="tablist" aria-label={outlineLabel} className="flex gap-2">
-          {guides.map((g) => {
-            const on = g.id === guide;
-            return (
-              <button
-                key={g.id}
-                type="button"
-                role="tab"
-                aria-selected={on}
-                onClick={() => (g.id === INTEGRATION_GUIDE ? toIntegration(chapter) : toParameters(g.pages[0]?.id ?? ""))}
+      <div role="tablist" aria-label={outlineLabel} className="flex gap-2">
+        {guides.map((g) => {
+          const on = g.id === guide;
+          return (
+            <button
+              key={g.id}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              onClick={() =>
+                g.id === INTEGRATION_GUIDE
+                  ? toIntegration(chapter)
+                  : toParameters(g.pages[0]?.id ?? "")
+              }
+              className={cn(
+                "flex-1 rounded-lg border-2 px-4 py-2.5 text-left transition-colors",
+                on
+                  ? "border-primary bg-primary/5"
+                  : "border-border hover:border-muted-foreground/40",
+              )}
+            >
+              <span
                 className={cn(
-                  "flex-1 rounded-lg border-2 px-4 py-2.5 text-left transition-colors",
-                  on
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover:border-muted-foreground/40",
+                  "block text-sm font-medium",
+                  on ? "text-primary" : "text-foreground",
                 )}
               >
-                <span className={cn("block text-sm font-medium", on ? "text-primary" : "text-foreground")}>
-                  {g.label}
-                </span>
-                <span className="mt-0.5 block text-xs text-muted-foreground">
-                  {g.id === INTEGRATION_GUIDE
-                    ? g.chapters.length
-                    : `${g.pages.length} ${g.pages.length === 1 ? "page" : "pages"}`}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
+                {g.label}
+              </span>
+              {/*
+                What is inside, so the two are not just two words. A reader
+                deciding which half to open is deciding what kind of question
+                they have, and "0 pages" is the honest answer rather than
+                nothing at all.
+              */}
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                {g.id === INTEGRATION_GUIDE
+                  ? guideCountLabel(g.chapters.length)
+                  : guidePagesLabel(g.pages.length)}
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
       {/*
         The integration guide's own chapters, only while it is open. The
@@ -269,40 +288,12 @@ export function UserDocsApp({
       </div>
 
       {/*
-        The chapter's own question, and the way on. Both are here rather than
-        inside `DocsContent` so the panel stays about prose and this stays about
-        where you are — and so the parameters guide, which has its own paging
-        and no chapters, does not inherit either.
+        The chapter's own question, above the prose — a tab title says which
+        chapter, not why this is the one you want, and a reader who lands in
+        the wrong chapter cannot tell from the title alone.
       */}
       {!onParameters && answer && (
-        <>
-          <p className="-mt-2 text-xs text-muted-foreground">{answer}</p>
-
-          {(prevChapter || nextChapter) && (
-            <div className="flex items-center justify-between gap-3 border-t pt-3">
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                disabled={!prevChapter}
-                onClick={() => prevChapter && toIntegration(prevChapter.id)}
-              >
-                <ChevronLeft className="mr-1 h-3.5 w-3.5" />
-                {prevChapter ? prevChapter.label : prevChapterLabel}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                disabled={!nextChapter}
-                onClick={() => nextChapter && toIntegration(nextChapter.id)}
-              >
-                {nextChapter ? nextChapter.label : nextChapterLabel}
-                <ChevronRight className="ml-1 h-3.5 w-3.5" />
-              </Button>
-            </div>
-          )}
-        </>
+        <p className="-mt-2 text-xs text-muted-foreground">{answer}</p>
       )}
 
       <div ref={bodyRef} role="tabpanel" className="scroll-mt-20 space-y-5">
@@ -329,6 +320,37 @@ export function UserDocsApp({
           />
         )}
       </div>
+
+      {/*
+        The way on, *below* the prose.
+        It used to sit between the chapter's question and its body, where the
+        two buttons pressed against the top of the text and read as a control
+        belonging to it. A reader finishing a chapter is at the bottom of it.
+      */}
+      {!onParameters && (prevChapter || nextChapter) && (
+        <div className="flex items-center justify-between gap-3 border-t pt-3">
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            disabled={!prevChapter}
+            onClick={() => prevChapter && toIntegration(prevChapter.id)}
+          >
+            <ChevronLeft className="mr-1 h-3.5 w-3.5" />
+            {prevChapter ? prevChapter.label : prevChapterLabel}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            disabled={!nextChapter}
+            onClick={() => nextChapter && toIntegration(nextChapter.id)}
+          >
+            {nextChapter ? nextChapter.label : nextChapterLabel}
+            <ChevronRight className="ml-1 h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

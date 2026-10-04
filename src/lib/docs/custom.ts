@@ -109,29 +109,32 @@ export interface DocGuide {
 /**
  * The document, as two guides.
  *
- * The parameters guide is absent when the operator has written nothing, so a
- * deployment with nothing written reads exactly as it did before custom docs
- * existed — one guide, no switch, nothing saying "there is nothing here".
+ * **Both, always.** The parameters guide used to be absent until the operator
+ * wrote something in it, on the reasoning that a deployment with nothing
+ * written should read exactly as it did before custom docs existed. That was
+ * true of a chapter in an outline and false of the split itself: the switch
+ * *is* the structure, so hiding it when there is nothing to switch to means a
+ * reader never learns the document has two halves — and the complaint that
+ * produced the split is "these are not separated", which is exactly what a
+ * missing switch looks like.
+ *
+ * So the guide is always offered, and an empty one says it is empty.
  */
 export function userDocGuides(t: TFn, pages: readonly DocPage[] | undefined): DocGuide[] {
-  const guides: DocGuide[] = [
+  return [
     {
       id: INTEGRATION_GUIDE,
       label: t("docs.guide.integration"),
       chapters: userDocSections(t).filter((s) => s.id !== PARAMETERS_SECTION),
       pages: [],
     },
-  ];
-  const visible = visibleDocPages(pages);
-  if (visible.length > 0) {
-    guides.push({
+    {
       id: PARAMETERS_SECTION,
       label: t("docs.guide.parameters"),
       chapters: [],
-      pages: visible,
-    });
-  }
-  return guides;
+      pages: visibleDocPages(pages),
+    },
+  ];
 }
 
 /**

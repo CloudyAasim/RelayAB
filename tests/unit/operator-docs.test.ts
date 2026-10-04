@@ -260,10 +260,26 @@ describe("the integration guide renders what it says it renders", () => {
     // chapter's question above a page of voices.
     expect(APP).toMatch(/\{!onParameters && answer && \(/);
   });
+
+  it("and the navigation is below the chapter, not above it", () => {
+    // It sat between the chapter's question and its body, where the two buttons
+    // pressed against the top of the prose and read as a control belonging to
+    // it. Order is the whole claim, so it is asserted as order — a regex
+    // cannot tell which of two siblings comes first.
+    const answer = APP.indexOf("{answer}");
+    const panel = APP.indexOf('role="tabpanel"');
+    const nav = APP.indexOf("{!onParameters && (prevChapter || nextChapter) && (");
+    expect(answer).toBeGreaterThan(-1);
+    expect(panel).toBeGreaterThan(-1);
+    expect(nav).toBeGreaterThan(-1);
+    // Question above the prose, the way on below it.
+    expect(answer).toBeLessThan(panel);
+    expect(nav).toBeGreaterThan(panel);
+  });
 });
 
 describe("the outline", () => {
-  it("is two guides, and the operator's is absent until there is something in it", () => {
+  it("is two guides, and the second one is there even when it is empty", () => {
     // The document was ten tabs in a row, with the chapter that explains how to
     // call this sitting next to the chapter holding a 327-row voice table. The
     // two are read for different reasons at different moments, and a reader
@@ -278,19 +294,38 @@ describe("the outline", () => {
         `${g.id} carries both halves`,
       ).toBe(0);
     }
-    // And a deployment with nothing written reads exactly as it did before
-    // custom docs existed: one guide, no switch, nothing saying it is empty.
+    // **Both, always.** The parameters guide used to be absent until something
+    // was written in it, on the reasoning that an empty chapter should not sit
+    // in the outline. That was true of a chapter and false of the split: the
+    // switch *is* the structure, so hiding it left every reader whose guide was
+    // still empty looking at exactly the one-document page the split was meant
+    // to end — and "not separated" is what that looks like from the outside.
     for (const nothing of [undefined, [], [{ id: "x", title: "X", body: "…", hidden: true }]]) {
       const guides = userDocGuides(t, nothing as never);
-      expect(guides.map((g) => g.id)).toEqual([INTEGRATION_GUIDE]);
+      expect(guides.map((g) => g.id)).toEqual([INTEGRATION_GUIDE, PARAMETERS_SECTION]);
+      // The empty one is offered, not filled in: nothing written means no pages.
+      expect(guides[1].pages).toHaveLength(0);
     }
   });
 
-  it("the switch is only there when there is something to switch to", () => {
-    // With nothing written, there is one guide — and a switch with one option
-    // on it is a control that does nothing, which reads as broken rather than
-    // as absent.
-    expect(APP).toMatch(/\{guides\.length > 1 && \(/);
+  it("the switch is unconditional, and says what is on each side", () => {
+    // It was `{guides.length > 1 && …}` — one option is not a switch, so it
+    // hid itself. Which meant the split was invisible to exactly the readers
+    // who had not filled the second half in yet, and a reader cannot see a
+    // split they are never shown.
+    // Anchored on the JSX conditional, not on the words: the comment above the
+    // switch names the old `guides.length > 1` because that is the mistake
+    // being explained, and a bare substring matches the explanation too.
+    expect(APP, "the switch is conditional again").not.toMatch(/\{guides\.length > 1 &&/);
+    // …and on adjacency, which no comment can fake: the guide list is the
+    // switch's first child, so nothing can wrap it in a condition.
+    expect(APP).toMatch(
+      /<div role="tablist" aria-label=\{outlineLabel\} className="flex gap-2">\s*\{guides\.map\(/,
+    );
+    // Two words would be two labels; the count is what tells a reader which
+    // question they are opening the other half to ask.
+    expect(APP).toMatch(/guideCountLabel\(g\.chapters\.length\)/);
+    expect(APP).toMatch(/guidePagesLabel\(g\.pages\.length\)/);
   });
 
   it("and the chapter tabs do not render while the parameters guide is open", () => {
