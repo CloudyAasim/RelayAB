@@ -163,9 +163,29 @@ describe("UI invariants for the model editor", () => {
   });
 
   it("renders every config column the schema stores", () => {
-    for (const field of ["contextLength", "maxOutputTokens", "inputCost", "outputCost"]) {
-      expect(editor).toContain(`["${field}"`);
+    // The editor used to be a table with a column per value, and this guard
+    // matched the tuple array that listed them. It is now a block per model —
+    // two lines, labelled inline — because eight columns is more than the edit
+    // modal has width for, and a price you have to scroll sideways to find is a
+    // price nobody sets. The claim is unchanged: a field the schema stores is a
+    // field an operator can reach.
+    for (const field of [
+      "contextLength",
+      "maxOutputTokens",
+      "inputCost",
+      "outputCost",
+      "cachedInputCost",
+      "cacheWriteCost",
+    ]) {
+      expect(editor, `${field} is stored but not editable`).toContain(field);
     }
+    // The two cache prices go through a blank-preserving renderer rather than
+    // the plain numeric one, because there blank and zero are different answers.
+    expect(editor).toMatch(/raw === "" \? undefined : Number\(raw\)/);
+    // …and the block wraps instead of overflowing, which is the whole point of
+    // the change: a narrow modal gets a taller row, not a hidden price column.
+    expect(editor).toContain("flex flex-wrap");
+    expect(editor, "the header row no longer names columns").not.toContain("<thead");
   });
 });
 
