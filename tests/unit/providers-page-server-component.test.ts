@@ -36,7 +36,7 @@ describe("the providers page stays a server component", () => {
     // knowable inside the cell, and the server's `t` is the one thing that knows
     // how to substitute `{n}`. The window spans the doc comment deliberately.
     expect(PAGE).toMatch(
-      /labels: \{\s*none: string;\s*hasRule: string;[\s\S]{0,320}parkedRules: \(n: number\) => string;\s*chat: string;\s*responses: string;\s*\};/,
+      /labels: \{\s*none: string;\s*hasRule: string;\s*openaiSide: string;\s*anthropicSide: string;[\s\S]{0,320}parkedRules: \(n: number\) => string;\s*chat: string;\s*responses: string;\s*\};/,
     );
     expect(PAGE).toMatch(/<InterfaceCell[\s\S]{0,400}labels=\{\{/);
   });
@@ -49,29 +49,56 @@ describe("the interface column says what is served, not what was typed", () => {
     expect(PAGE).not.toMatch(/\{p\.kind\}/);
   });
 
-  it("it lists the endpoints, and the format only on the OpenAI side", () => {
-    expect(PAGE).toContain("/v1/chat/completions");
-    expect(PAGE).toContain("/v1/responses");
-    expect(PAGE).toContain("/anthropic/v1/messages");
-  });
-
-  it("it marks which interfaces have a rule, and only while advanced is in effect", () => {
-    // Per surface, and the marker is one function because whether it appears at
-    // all depends on the mode. Simple asks "which endpoints answer"; advanced
-    // asks "and how does each handle its parameters". Putting advanced's
-    // vocabulary in simple's column is what produced three badges each
-    // decorated with a note about a configuration that was switched off.
-    expect(PAGE).toMatch(/ruleMark\("openai-chat"\)/);
-    expect(PAGE).toMatch(/ruleMark\("openai-responses"\)/);
-    expect(PAGE).toMatch(/ruleMark\("anthropic-messages"\)/);
-    // The gate is inside the marker, not at the call sites: a per-badge
-    // condition would be three chances to get it wrong.
+  it("simple mode names the sides, with the format on the OpenAI one", () => {
+    // It used to enumerate the client endpoints and hang the format label off
+    // `/v1/chat/completions`, which made one face read as two live endpoints.
+    // The form calls it one side covering both — "OpenAI 侧 — /v1/chat/completions,
+    // /v1/responses" — and the column now says the same thing it does.
+    expect(PAGE).toMatch(/\{labels\.openaiSide\}/);
+    expect(PAGE).toMatch(/\{labels\.anthropicSide\}/);
     expect(PAGE).toMatch(
-      /const ruleMark = \(protocol: string\) =>\s*\n\s*advanced && hasRule\(protocol\)/,
+      /labels\.openaiSide<\/Badge>|openaiSide[\s\S]{0,160}openai\.format === "chat"/,
     );
   });
 
-  it("and a parked rule is one line, not a marker on every interface", () => {
+  it("and each branch stays out of the other's vocabulary", () => {
+    // The whole defect in one assertion: a single list serving both modes. Simple
+    // has no per-surface rule marker and no client endpoint path; advanced has
+    // no face name. Cutting on `if (!advanced)` is the only separator offered.
+    //
+    // Scoped to the cell on purpose. Splitting the whole file would put the call
+    // site in one half, and the call site names every label there is — which
+    // would fail this for a reason that has nothing to do with what the cell
+    // renders.
+    //
+    // Cut on advanced's own helper rather than on `if (!advanced) {`: the simple
+    // branch is *inside* that block, so splitting there puts simple in the
+    // second half and inverts every assertion below.
+    const cell = PAGE.slice(
+      PAGE.indexOf("function InterfaceCell("),
+      PAGE.indexOf("import { SectionPageLayout"),
+    );
+    const [simple, advanced] = cell.split("const ruleMark = (protocol: string) =>");
+    expect(advanced.length, "there is no advanced branch to check").toBeGreaterThan(100);
+    expect(simple, "simple mode mentions an endpoint path").not.toMatch(/\/v1\/responses/);
+    expect(simple, "simple mode marks a surface with a rule").not.toMatch(/labels\.hasRule/);
+    expect(advanced, "advanced mode names a face").not.toMatch(/labels\.openaiSide/);
+    expect(advanced, "advanced mode announces parked rules").not.toMatch(/labels\.parkedRules/);
+    expect(advanced, "advanced mode lost its own list").toMatch(/ruleMark\("openai-chat"\)/);
+    // And the simple branch really is behind the mode, not merely written first.
+    expect(simple).toMatch(/if \(!advanced\) \{/);
+  });
+
+  it("advanced mode still lists the endpoints, and the format only on the OpenAI side", () => {
+    expect(PAGE).toContain("/v1/chat/completions");
+    expect(PAGE).toContain("/v1/responses");
+    expect(PAGE).toContain("/anthropic/v1/messages");
+    expect(PAGE).toMatch(/ruleMark\("openai-chat"\)/);
+    expect(PAGE).toMatch(/ruleMark\("openai-responses"\)/);
+    expect(PAGE).toMatch(/ruleMark\("anthropic-messages"\)/);
+  });
+
+  it("a parked rule is one line, and only in simple mode", () => {
     // A provider whose rules were switched off and one that never had any are
     // otherwise identical, and "did I lose it" is the first question that
     // follows choosing simple — so it is worth one line. It is not worth three.

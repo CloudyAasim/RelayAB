@@ -135,25 +135,34 @@ describe("the list reports what is running, not what is stored", () => {
   });
 
   it("the in-effect marker is not reachable from the stored list alone", () => {
-    // The bug this column had, twice. First: a provider switched to simple still
-    // holds every rule it was given, so marking from `textSpecs` kept
+    // The bug this column had, three times. First: a provider switched to simple
+    // still holds every rule it was given, so marking from `textSpecs` kept
     // advertising three of them while none was running. Then, over-correcting:
     // the three markers came back as "stored but off", which is still advanced's
-    // vocabulary sitting in a column that is not asking about rules.
+    // vocabulary in a column that is not asking about rules. Then again: simple
+    // mode enumerated the client endpoints with the format label stuck to one of
+    // them, so a single face read as two live things.
     //
-    // So the marker is behind the mode — and the mode is the shared resolver's
-    // answer, not a second derivation. `hasRule` may still find them; whether
-    // that is worth saying anything on screen is the mode's call.
+    // The column is two branches now and neither reaches for the other's words.
+    // `hasRule` may still find the rules; whether that is worth saying on screen
+    // is the mode's call.
+    //
+    // Scoped to the cell, and cut on advanced's helper: the simple branch is
+    // inside `if (!advanced) {`, so splitting there inverts the two halves. The
+    // call site is excluded because it names every label by necessity.
     const page = read("src", "app", "(admin)", "admin", "providers", "page.tsx");
-    expect(page, "the rule marker ignores the mode").toMatch(
-      /const ruleMark = \(protocol: string\) =>\s*\n\s*advanced && hasRule\(protocol\)/,
+    const cell = page.slice(
+      page.indexOf("function InterfaceCell("),
+      page.indexOf("import { SectionPageLayout"),
     );
-    expect(page, "a parked rule is announced on every interface").not.toMatch(
-      /ruleMark[\s\S]{0,200}rulesOff/,
-    );
-    // The interfaces themselves still come from the faces, which are in effect
-    // in both modes. Only the marker moved.
-    expect(page).toMatch(/ruleMark\("openai-chat"\)/);
-    expect(page).toMatch(/ruleMark\("anthropic-messages"\)/);
+    const [simple, advanced] = cell.split("const ruleMark = (protocol: string) =>");
+    expect(advanced.length, "there is no advanced branch to check").toBeGreaterThan(100);
+    expect(simple, "simple mode marks a surface with a rule").not.toMatch(/labels\.hasRule/);
+    expect(simple, "simple mode enumerates client endpoints").not.toMatch(/\/v1\/responses/);
+    expect(advanced, "advanced mode names a face").not.toMatch(/labels\.openaiSide/);
+    // And the marker itself is reached through the advanced branch's helper, so
+    // it cannot be called from simple by accident.
+    expect(advanced).toMatch(/ruleMark\("openai-chat"\)/);
+    expect(advanced).toMatch(/ruleMark\("anthropic-messages"\)/);
   });
 });
