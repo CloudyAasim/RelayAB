@@ -79,37 +79,6 @@ export function ProviderActions({ providerId, providerName }: Props) {
     }
   }
 
-  async function fetchModels() {
-    setBusy("fetch");
-    try {
-      const res = await fetch(`/api/admin/providers/${providerId}/models`, { method: "POST" });
-      const data = await res.json();
-      if (!data.ok) {
-        alert(t("admin.providers.fetchFailed", { error: data.error ?? t("common.unknown") }));
-        return;
-      }
-      const currentMapping = await fetchCurrentModelMapping(providerId);
-      const ids: string[] = data.models ?? [];
-      const merged = { ...currentMapping };
-      for (const id of ids) {
-        if (!(id in merged)) merged[id] = id;
-      }
-      const patch = await fetch(`/api/admin/providers/${providerId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ modelMapping: merged }),
-      });
-      const patchData = await patch.json();
-      if (!patchData.ok) {
-        alert(t("admin.providers.saveFailed", { error: patchData.error?.message ?? t("common.unknown") }));
-        return;
-      }
-      startTransition(() => window.location.reload());
-    } finally {
-      setBusy("");
-    }
-  }
-
   async function remove() {
     if (!confirm(t("admin.providers.confirmDelete", { name: providerName }))) return;
     setBusy("delete");
@@ -134,9 +103,6 @@ export function ProviderActions({ providerId, providerName }: Props) {
         </Button>
         <Button size="icon" variant="ghost" onClick={openEdit} title={t("common.edit")}>
           <Pencil className="h-4 w-4" />
-        </Button>
-        <Button size="icon" variant="ghost" onClick={fetchModels} loading={busy === "fetch"} title={t("admin.providers.fetchModels")}>
-          <RefreshCw className="h-4 w-4" />
         </Button>
         <Button size="icon" variant="ghost" onClick={remove} loading={busy === "delete"} title={t("common.delete")}>
           <Trash2 className="h-4 w-4" />
@@ -328,12 +294,3 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
   );
 }
 
-async function fetchCurrentModelMapping(providerId: string): Promise<Record<string, string>> {
-  const res = await fetch("/api/admin/providers");
-  const data = await res.json();
-  if (!data.ok) return {};
-  const me = (data.data?.providers ?? []).find(
-    (p: { id: string }) => p.id === providerId,
-  );
-  return (me?.modelMapping ?? {}) as Record<string, string>;
-}
