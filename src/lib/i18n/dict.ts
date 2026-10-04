@@ -307,7 +307,7 @@ const zhCN: Dict = {
   "admin.docsSettings.pagesHint": "一页只写一类：音色表按语言分页，参数表按能力分页。读者一次只看一页，助手也按页读——一页塞满三百行，两边都读不动。",
   "dashboard.models.gateway.parameters": "请求参数",
   "dashboard.models.gateway.parametersHint":
-    "用来验证这个厂商到底认不认这些参数。比如上游的思考等级叫别的名字，只有真发一次才知道。",
+    "用来验证这个厂商到底认不认这些参数。比如上游的思考等级叫别的名字，只有真发一次才知道。测出来的档位请填到模型配置的「思考等级」里，助手设置的下拉才会列出它们。",
   "dashboard.models.gateway.extraParameters": "其他参数（原始 JSON）",
   "dashboard.models.gateway.extraParametersHint":
     "上面四个之外的任何参数，原样放进请求体。厂商私有参数写在这里。",
@@ -732,7 +732,7 @@ const zhCN: Dict = {
   "admin.providers.create.contextLength": "上下文",
   "admin.providers.create.maxOutput": "输出",
   "admin.providers.create.reasoningLevels": "思考等级",
-  "admin.providers.create.reasoningLevelsHint": "用逗号分隔，按厂商文档原样写。助手设置里的下拉会列出它们；留空表示厂商没有公布。",
+  "admin.providers.create.reasoningLevelsHint": "用逗号分隔，按厂商文档原样写。不确定可以在「模型测试」的「请求参数」里填 reasoning_effort 真发一次试出来。助手设置里的下拉会列出这里的每一档。",
   "admin.providers.create.inputCost": "输入积分",
   "admin.providers.create.outputCost": "输出积分",
   "admin.providers.create.cachedInputCost": "缓存读积分",
@@ -1367,7 +1367,7 @@ const en: Dict = {
   "admin.docsSettings.pagesHint": "One topic per page: voices by language, parameters by capability. A reader sees one page at a time and the assistant reads one page at a time — a page holding three hundred rows is unreadable on both sides.",
   "dashboard.models.gateway.parameters": "Request parameters",
   "dashboard.models.gateway.parametersHint":
-    "Use these to find out whether a vendor actually honours them. If the vendor spells the reasoning level differently, only a real call tells you.",
+    "Use these to find out whether a vendor actually honours them. If the vendor spells the reasoning level differently, only a real call tells you — put the levels you found into the model configuration’s “Thinking levels” and the assistant’s picker will offer them.",
   "dashboard.models.gateway.extraParameters": "Other parameters (raw JSON)",
   "dashboard.models.gateway.extraParametersHint":
     "Anything outside the four above, put into the request body as typed. Vendor-specific parameters go here.",
@@ -1792,7 +1792,7 @@ const en: Dict = {
   "admin.providers.create.contextLength": "Context",
   "admin.providers.create.maxOutput": "Output",
   "admin.providers.create.reasoningLevels": "Thinking levels",
-  "admin.providers.create.reasoningLevelsHint": "Comma separated, written the way the vendor’s documentation writes them. The assistant’s own picker offers exactly these; blank means the vendor publishes none.",
+  "admin.providers.create.reasoningLevelsHint": "Comma separated, written the way the vendor’s documentation writes them. Unsure? Send one with reasoning_effort under the model tester’s request parameters to find out. The assistant’s picker offers exactly what is listed here.",
   "admin.providers.create.inputCost": "Input Credits",
   "admin.providers.create.outputCost": "Output Credits",
   "admin.providers.create.cachedInputCost": "Cache read credits",
