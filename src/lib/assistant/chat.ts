@@ -67,22 +67,26 @@ const MAX_HISTORY_MESSAGES = 40;
  * already more than a 32k model will take — and the failure is an upstream 400
  * on somebody's turn rather than a shorter conversation.
  *
- * **A module valve, not a per-user setting.** The settings form answers "which
- * model", and it should: a model this gateway does not own has its own context
- * window, its own defaults and its own idea of what a turn costs the person who
- * runs it. Inventing a number per conversation and calling it the model's window
- * would be me choosing a parameter for somebody's model.
+ * **A declared window replaces the fallback; it does not meet it.** The
+ * fallback below is a system valve, sized for a conversation rather than for
+ * the largest model anyone might point this at. The moment the caller states
+ * their model's actual window, that valve stops being a guess and their number
+ * is the one. Taking the smaller of the two instead would be the quiet version
+ * of the same bug: somebody declares 200k and still gets a 24k conversation,
+ * with nothing on screen to say so.
  *
- * So the budget is one number, here, sized to leave a long conversation intact
- * on a small model. Whole messages are dropped from the front, never a message
- * cut in half: half a tool result is a fact the model will act on.
+ * Whole messages are dropped from the front, never a message cut in half:
+ * half a tool result is a fact the model will act on.
  */
-function fitToWindow<T extends { role: string; content: string }>(history: readonly T[]): T[] {
+function fitToWindow<T extends { role: string; content: string }>(
+  history: readonly T[],
+  contextLength?: number | null,
+): T[] {
   const recent = history.slice(-MAX_HISTORY_MESSAGES);
 
   // Roughly four characters per token is the same conversion the estimator
   // below uses, so the budget and the measurement cannot disagree.
-  const budgetChars = Math.max(0, HISTORY_BUDGET_TOKENS * 4);
+  const budgetChars = Math.max(0, historyBudgetTokens(contextLength) * 4);
   const kept: T[] = [];
   let used = 0;
   for (let i = recent.length - 1; i >= 0; i--) {
@@ -99,15 +103,32 @@ function fitToWindow<T extends { role: string; content: string }>(history: reado
 }
 
 /**
- * The history budget, in tokens, system prompt and answer held back.
+ * How many tokens of history this conversation may carry.
+ *
+ * The window the caller declared, less what the system prompt and the answer
+ * still need — or, when they have declared nothing, the fallback below.
+ */
+function historyBudgetTokens(contextLength?: number | null): number {
+  if (typeof contextLength === "number" && contextLength > 0) {
+    return Math.max(0, contextLength - RESERVED_TOKENS);
+  }
+  return HISTORY_BUDGET_TOKENS;
+}
+
+/**
+ * The fallback history budget, in tokens, for a model whose window nobody has
+ * stated.
  *
  * Sized for a conversation that is long rather than for the largest model
- * anyone might point this at: the model is the caller's own, its window is
- * whatever that vendor says, and the way to find out is their documentation.
- * What this stops is the case where a long thread becomes an upstream 400 on
- * somebody's turn.
+ * anyone might point this at: the model is the caller's own and its window is
+ * whatever that vendor says. What this stops is the case where a long thread
+ * becomes an upstream 400 on somebody's turn. Set the context window in the
+ * settings and this stops applying.
  */
 const HISTORY_BUDGET_TOKENS = 24_000;
+
+/** Held back from a declared window for the system prompt and the answer. */
+const RESERVED_TOKENS = 4_000;
 
 /**
  * The ceiling on one tool result.
@@ -325,6 +346,9 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
     model: string;
     extraHeaders?: Record<string, string>;
     transport?: UpstreamTransport;
+    maxTokens?: number;
+    temperature?: number;
+    topP?: number;
   } =
     settings
       ? {
@@ -332,6 +356,11 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
           apiKey: decryptSecret(settings.encryptedApiKey),
           model: settings.model,
           ...(settings.extraHeaders ? { extraHeaders: settings.extraHeaders } : {}),
+          // The caller's own model parameters. `!= null` so that a configured 0
+          // — a legal temperature — is sent, and an unset one is not.
+          ...(settings.maxOutputTokens != null ? { maxTokens: settings.maxOutputTokens } : {}),
+          ...(settings.temperature != null ? { temperature: settings.temperature } : {}),
+          ...(settings.topP != null ? { topP: settings.topP } : {}),
         }
       : opts.inProcessUpstream
         ? { model: opts.inProcessUpstream.model, transport: opts.inProcessUpstream.transport }
@@ -361,7 +390,7 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
   const history = await listAssistantMessages(thread.id);
   const messages: ChatMessage[] = [
     { role: "system", content: systemPrompt(isAdmin) },
-    ...(await toWireMessages(fitToWindow(history), user.id)),
+    ...(await toWireMessages(fitToWindow(history, settings?.contextLength), user.id)),
   ];
 
   const pendingActions: string[] = [];
@@ -383,6 +412,9 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
         model: upstream.model,
         // From the settings, so a configured parameter is one the request
         // actually carries. `null` means "not configured" and is left off.
+        ...(upstream.maxTokens != null ? { maxTokens: upstream.maxTokens } : {}),
+        ...(upstream.temperature != null ? { temperature: upstream.temperature } : {}),
+        ...(upstream.topP != null ? { topP: upstream.topP } : {}),
         ...(upstream.baseUrl ? { baseUrl: upstream.baseUrl } : {}),
         ...(upstream.apiKey ? { apiKey: upstream.apiKey } : {}),
         ...(upstream.extraHeaders ? { extraHeaders: upstream.extraHeaders } : {}),

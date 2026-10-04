@@ -60,6 +60,18 @@ export interface SaveAssistantSettingsInput {
   model: string;
   protocol?: AssistantSettings["protocol"];
   extraHeaders?: Record<string, string>;
+  /**
+   * The model's own parameters. `null` clears a stored value; `undefined`
+   * leaves it alone.
+   *
+   * The two directions are different on purpose. Omitting them keeps a form
+   * that only edits the model name from silently resetting a temperature
+   * somebody set deliberately.
+   */
+  contextLength?: number | null;
+  maxOutputTokens?: number | null;
+  temperature?: number | null;
+  topP?: number | null;
 }
 
 /**
@@ -69,6 +81,16 @@ export interface SaveAssistantSettingsInput {
  * form can save a changed model without the browser ever having to hold the
  * key again.
  */
+/**
+ * A patch that can say "leave it" and a patch that can say "clear it".
+ *
+ * `undefined` is not the same as `null` here, and collapsing them is how a
+ * settings form that only edits the model name ends up resetting a temperature
+ * somebody chose on purpose.
+ */
+function pick(next: number | null | undefined, previous: number | null | undefined): number | null {
+  return next === undefined ? (previous ?? null) : next;
+}
 export async function saveAssistantSettings(
   userId: string,
   input: SaveAssistantSettingsInput,
@@ -89,6 +111,12 @@ export async function saveAssistantSettings(
     model: input.model.trim(),
     protocol: input.protocol ?? existing?.protocol ?? "openai",
     extraHeaders: input.extraHeaders ?? existing?.extraHeaders ?? {},
+    // `??` and not `||`: 0 is a legal temperature, and `||` would turn it
+    // into the previous value.
+    contextLength: pick(input.contextLength, existing?.contextLength),
+    maxOutputTokens: pick(input.maxOutputTokens, existing?.maxOutputTokens),
+    temperature: pick(input.temperature, existing?.temperature),
+    topP: pick(input.topP, existing?.topP),
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
@@ -96,14 +124,18 @@ export async function saveAssistantSettings(
   run(
     `INSERT INTO assistant_settings
        (user_id, base_url, encrypted_api_key, model, protocol, extra_headers,
-        created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?)
+        context_length, max_output_tokens, temperature, top_p, created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
      ON CONFLICT(user_id) DO UPDATE SET
        base_url = excluded.base_url,
        encrypted_api_key = excluded.encrypted_api_key,
        model = excluded.model,
        protocol = excluded.protocol,
        extra_headers = excluded.extra_headers,
+       context_length = excluded.context_length,
+       max_output_tokens = excluded.max_output_tokens,
+       temperature = excluded.temperature,
+       top_p = excluded.top_p,
        updated_at = excluded.updated_at`,
     [
       row.userId,
@@ -112,6 +144,10 @@ export async function saveAssistantSettings(
       row.model,
       row.protocol,
       JSON.stringify(row.extraHeaders),
+      row.contextLength ?? null,
+      row.maxOutputTokens ?? null,
+      row.temperature ?? null,
+      row.topP ?? null,
       row.createdAt,
       row.updatedAt,
     ],

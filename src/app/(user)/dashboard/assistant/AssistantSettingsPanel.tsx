@@ -22,10 +22,29 @@ import { Input } from "@/components/ui/Input";
 import { useT } from "@/components/i18n/I18nProvider";
 import { ModelCombobox } from "./ModelCombobox";
 
+/**
+ * Empty box → null ("do not send"), and never NaN.
+ *
+ * `Number("")` is 0, which here would be a temperature of zero — a real and
+ * very different setting from "unset". Every one of these four treats a blank
+ * as an instruction, not as a value.
+ */
+function blankToNull(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (trimmed === "") return null;
+  const n = Number(trimmed);
+  return Number.isFinite(n) ? n : null;
+}
+
 export interface AssistantSettingsView {
   baseUrl: string;
   model: string;
   hasApiKey: boolean;
+  /** The model's own parameters. `null` is "not configured" and is sent as such. */
+  contextLength?: number | null;
+  maxOutputTokens?: number | null;
+  temperature?: number | null;
+  topP?: number | null;
 }
 
 export function AssistantSettingsPanel({
@@ -55,6 +74,12 @@ export function AssistantSettingsPanel({
    * the list, which is what the combo decides for itself.
    */
   const [apiKey, setApiKey] = useState("");
+  // Seeded from the stored row as `null`, never `0`: a blank box means "do not
+  // send this", and a 0 would be a temperature somebody chose.
+  const [contextLength, setContextLength] = useState<number | null>(initial?.contextLength ?? null);
+  const [maxOutputTokens, setMaxOutputTokens] = useState<number | null>(initial?.maxOutputTokens ?? null);
+  const [temperature, setTemperature] = useState<number | null>(initial?.temperature ?? null);
+  const [topP, setTopP] = useState<number | null>(initial?.topP ?? null);
   const [busy, setBusy] = useState<"probe" | "save" | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   /**
@@ -124,6 +149,13 @@ export function AssistantSettingsPanel({
           model: model.trim(),
           // Omitted entirely when blank: the server keeps the stored key.
           ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
+          // Always sent, `null` included. Omitting a cleared box would leave
+          // the stored value in place, so the form would look like it had
+          // forgotten rather than cleared.
+          contextLength,
+          maxOutputTokens,
+          temperature,
+          topP,
         }),
       });
       const json = (await res.json().catch(() => null)) as
@@ -189,6 +221,62 @@ export function AssistantSettingsPanel({
               : t("assistant.settings.modelHint")
           }
         />
+        {/*
+          The model's own parameters. Every one of them is optional, and leaving
+          one blank is a real choice — the upstream's own default — not a gap in
+          the form. Which is why they are not defaulted here: a temperature I
+          picked is a temperature I chose for somebody's model.
+        */}
+        <fieldset className="grid grid-cols-2 gap-3 rounded-md border border-border p-3 sm:grid-cols-4">
+          <legend className="px-1 text-xs text-muted-foreground">
+            {t("assistant.settings.modelParams")}
+          </legend>
+          <Input
+            id="assistant-context-length"
+            name="contextLength"
+            type="number"
+            min={1}
+            label={t("assistant.settings.contextLength")}
+            hint={t("assistant.settings.contextLengthHint")}
+            value={contextLength === null ? "" : String(contextLength)}
+            onChange={(e) => setContextLength(blankToNull(e.target.value))}
+          />
+          <Input
+            id="assistant-max-output"
+            name="maxOutputTokens"
+            type="number"
+            min={1}
+            label={t("assistant.settings.maxOutput")}
+            hint={t("assistant.settings.maxOutputHint")}
+            value={maxOutputTokens === null ? "" : String(maxOutputTokens)}
+            onChange={(e) => setMaxOutputTokens(blankToNull(e.target.value))}
+          />
+          <Input
+            id="assistant-temperature"
+            name="temperature"
+            type="number"
+            min={0}
+            max={2}
+            step="0.1"
+            label={t("assistant.settings.temperature")}
+            hint={t("assistant.settings.temperatureHint")}
+            value={temperature === null ? "" : String(temperature)}
+            onChange={(e) => setTemperature(blankToNull(e.target.value))}
+          />
+          <Input
+            id="assistant-top-p"
+            name="topP"
+            type="number"
+            min={0}
+            max={1}
+            step="0.05"
+            label={t("assistant.settings.topP")}
+            hint={t("assistant.settings.topPHint")}
+            value={topP === null ? "" : String(topP)}
+            onChange={(e) => setTopP(blankToNull(e.target.value))}
+          />
+        </fieldset>
+
         <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"

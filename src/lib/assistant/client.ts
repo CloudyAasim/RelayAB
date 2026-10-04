@@ -73,6 +73,15 @@ export interface CallModelOptions {
   signal?: AbortSignal;
   timeoutMs?: number;
   /**
+   * The caller's own model parameters. Omitted from the request when unset,
+   * because `temperature: undefined` is still a key the upstream has to
+   * decide what to do with — and a value we invented is a value we chose for
+   * somebody's model.
+   */
+  maxTokens?: number;
+  temperature?: number;
+  topP?: number;
+  /**
    * Replaces the HTTP call. `baseUrl` and `apiKey` are then unused, which is why
    * the account path can leave them unset rather than pass a placeholder.
    */
@@ -148,6 +157,12 @@ export async function callAssistantModel(opts: CallModelOptions): Promise<Upstre
     model: opts.model,
     messages: opts.messages,
     stream: true,
+    // Each conditional, not `temperature: opts.temperature` — an explicit
+    // undefined is still a key in the JSON body, and a key the upstream fills
+    // in is a default this system chose rather than one the caller did.
+    ...(opts.maxTokens !== undefined ? { max_tokens: opts.maxTokens } : {}),
+    ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
+    ...(opts.topP !== undefined ? { top_p: opts.topP } : {}),
     ...(opts.tools && opts.tools.length ? { tools: opts.tools, tool_choice: "auto" } : {}),
   };
 
