@@ -324,8 +324,26 @@ describe("the outline", () => {
     );
     // Two words would be two labels; the count is what tells a reader which
     // question they are opening the other half to ask.
-    expect(APP).toMatch(/guideCountLabel\(g\.chapters\.length\)/);
-    expect(APP).toMatch(/guidePagesLabel\(g\.pages\.length\)/);
+    expect(APP).toMatch(/\{g\.id === INTEGRATION_GUIDE \? guideCountLabel : guidePagesLabel\}/);
+    // **Strings, resolved on the server.** Both counts are known there, so both
+    // labels are finished there. This prop first arrived as an arrow function,
+    // and a function cannot be serialised into a client component's props:
+    // `/docs` answered 500 on every request while `/healthz` stayed green, the
+    // build passed, and 1743 tests passed. Only opening the page found it.
+    expect(APP, "a function is being passed to a client component").not.toMatch(
+      /guide\w*Label:\s*\(/,
+    );
+    expect(INTEGRATION, "a function is being passed to a client component").not.toMatch(
+      /guide\w*Label=\{\(/,
+    );
+    // …and resolved with its placeholder, so the substitution stays on the side
+    // that holds the dictionary.
+    expect(INTEGRATION).toMatch(
+      /guideCountLabel=\{t\("docs\.guide\.chapters", \{ n: integrationChapters \}\)\}/,
+    );
+    expect(INTEGRATION).toMatch(
+      /guidePagesLabel=\{t\("docs\.guide\.pages", \{ n: parametersPages \}\)\}/,
+    );
   });
 
   it("and the chapter tabs do not render while the parameters guide is open", () => {
@@ -379,7 +397,8 @@ describe("the outline", () => {
     // The outline has to be built with the answer already in hand; a reader that
     // discovers the page afterwards is a reader who saw it vanish.
     expect(CUSTOM).toMatch(/const built = userDocSections\(t\)\.filter\(\(s\) => s\.id !== PARAMETERS_SECTION\)/);
-    expect(INTEGRATION).toMatch(/guides=\{userDocGuides\(t, docPages\)\}/);
+    expect(INTEGRATION).toMatch(/const guides = userDocGuides\(t, docPages\);/);
+    expect(INTEGRATION).toMatch(/guides=\{guides\}/);
   });
 
   it("and the built-in list is not offered its own notes chapter as well", () => {

@@ -1,6 +1,7 @@
 import { getT } from "@/lib/i18n/server";
 import { resolvePublicUrl } from "@/lib/public-url";
-import { userChapterAnswers } from "@/lib/docs/sections";
+import { INTEGRATION_GUIDE, userChapterAnswers } from "@/lib/docs/sections";
+import { PARAMETERS_SECTION } from "@/lib/docs/custom";
 import { UserDocsApp } from "./UserDocsApp";
 import { userDocGuides } from "@/lib/docs/custom";
 import { getSettings } from "@/lib/db/settings";
@@ -35,9 +36,18 @@ export async function IntegrationDocs({
   const { t } = await getT();
   const base = await resolvePublicUrl();
 
+  const guides = userDocGuides(t, docPages);
+  // Both counts are known here, so both labels resolve here. The alternative
+  // — shipping a template, or a function that fills it in, across the
+  // server/client boundary — is what made /docs answer 500 on every request.
+  const integrationChapters =
+    guides.find((g) => g.id === INTEGRATION_GUIDE)?.chapters.length ?? 0;
+  const parametersPages =
+    guides.find((g) => g.id === PARAMETERS_SECTION)?.pages.length ?? 0;
+
   return (
     <UserDocsApp
-      guides={userDocGuides(t, docPages)}
+      guides={guides}
       initial={section}
       initialPage={initialPage}
       basePath={basePath}
@@ -46,8 +56,8 @@ export async function IntegrationDocs({
       anthropicBase={`${base}/anthropic`}
       catalogue={catalogue}
       chapterAnswers={userChapterAnswers(t)}
-      guideCountLabel={(n) => t("docs.guide.chapters", { n })}
-      guidePagesLabel={(n) => t("docs.guide.pages", { n })}
+      guideCountLabel={t("docs.guide.chapters", { n: integrationChapters })}
+      guidePagesLabel={t("docs.guide.pages", { n: parametersPages })}
       prevChapterLabel={t("docs.chapter.prev")}
       nextChapterLabel={t("docs.chapter.next")}
       outlineLabel={t("docs.sections")}

@@ -2071,7 +2071,10 @@ export const DICTS: Record<Locale, Dict> = { "zh-CN": zhCN, en };
  *   t("dashboard.quota.credits", { used: 5, limit: 100 })
  *   // → "5 / 100 积分"
  */
-function interpolate(template: string, vars?: Record<string, string | number>): string {
+function interpolate(
+  template: string,
+  vars?: Record<string, string | number>,
+): string {
   if (!vars) return template;
   return template.replace(/\{(\w+)\}/g, (_m, key: string) => {
     const v = vars[key];

@@ -75,8 +75,13 @@ export function UserDocsApp({
   catalogue?: ReactNode;
   chapterAnswers: Record<string, string>;
   /** What is inside each half, so the switch is two answers and not two words. */
-  guideCountLabel: (n: number) => string;
-  guidePagesLabel: (n: number) => string;
+  /**
+   * Resolved on the server, and passed as a string. A function here is a
+   * request-time 500 on every page that renders this component: it cannot be
+   * serialised into a client component's props.
+   */
+  guideCountLabel: string;
+  guidePagesLabel: string;
   /** Fallback text when a chapter has no neighbour on that side. */
   prevChapterLabel: string;
   nextChapterLabel: string;
@@ -232,9 +237,7 @@ export function UserDocsApp({
                 nothing at all.
               */}
               <span className="mt-0.5 block text-xs text-muted-foreground">
-                {g.id === INTEGRATION_GUIDE
-                  ? guideCountLabel(g.chapters.length)
-                  : guidePagesLabel(g.pages.length)}
+                {g.id === INTEGRATION_GUIDE ? guideCountLabel : guidePagesLabel}
               </span>
             </button>
           );
