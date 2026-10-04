@@ -19,6 +19,7 @@ import { join } from "node:path";
 const ROOT = process.cwd();
 const read = (...p: string[]): string => readFileSync(join(ROOT, ...p), "utf-8");
 const ROUTE = read("src", "app", "api", "assistant", "refresh-models", "route.ts");
+const UPSTREAM = read("src", "lib", "providers", "upstream.ts");
 const PANEL = read("src", "app", "(user)", "dashboard", "assistant", "AssistantSettingsPanel.tsx");
 const DICT = read("src", "lib", "i18n", "dict.ts");
 
@@ -49,6 +50,24 @@ describe("the refresh button", () => {
     expect(ROUTE, "a vendor that said nothing is treated as an answer").toContain(
       "if (r.levels === null) continue;",
     );
+  });
+
+  it("posts the body it sends, because callUpstream defaults to GET", () => {
+    // The actual cause, found by letting the reason travel out instead of
+    // guessing at it: `callUpstream` defaults to GET, undici refuses a GET that
+    // carries a body before anything leaves the process, and the empty failure
+    // that produced was reported four layers up as a statement about MiniMax.
+    //
+    // Stated as a rule rather than as a line, because it applies to every call
+    // site that sends a body — and nothing in the type system says which.
+    expect(UPSTREAM, "the shared default is still GET").toMatch(/method: opts\.method \?\? "GET"/);
+    const posts = [...ROUTE.matchAll(/callUpstream\(\{/g)];
+    expect(posts.length, "no call site found").toBeGreaterThan(0);
+    for (const m of posts) {
+      const block = ROUTE.slice(m.index, m.index + 700);
+      if (!/\bbody:/.test(block)) continue; // a read, not a write
+      expect(block, "a body is sent as a GET").toMatch(/method: "POST"/);
+    }
   });
 
   it("is given time to answer, and a failure to answer is named as one", () => {
