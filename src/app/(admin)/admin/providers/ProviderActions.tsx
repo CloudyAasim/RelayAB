@@ -194,11 +194,20 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
   const form = useProviderForm(() => formValuesFromProvider(provider));
   const { load, specVerdict, setMode, buildPayload, values } = form;
 
-  // Re-read when the row changes under us. `load` is stable, so this does not
-  // fire on every render of the page behind the modal.
+  /**
+   * Re-read the row when the modal opens, or when the row itself changes.
+   *
+   * Keyed on `provider.id`, not on `provider`. The object comes back from JSON,
+   * so any re-render that re-fetches it produces a new identity — and this
+   * effect calling `load` re-derives the mode from the row, which for a provider
+   * with a rule is "advanced". That made the mode impossible to leave: click
+   * simple, and the next unrelated render put it back.
+   */
   useEffect(() => {
     if (open) load(provider);
-  }, [open, provider, load]);
+    // `load` is stable; `provider` is deliberately absent, hence `id`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, provider.id, load]);
 
   /**
    * Pull the upstream model list and merge it into the mapping being edited.
