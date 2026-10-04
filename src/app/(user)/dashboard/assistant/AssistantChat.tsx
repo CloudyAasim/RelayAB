@@ -1084,16 +1084,50 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
               </label>
             </div>
 
-            {/* Which credential this screen spends. Whether account calls are
+            {/*
+              Two subjects, and they used to be one undifferentiated list.
+              The drawer said "no key is needed or stored" three lines above a
+              required key field, with nothing to say the two were unrelated —
+              which reads as a contradiction rather than as two settings. The
+              headings name what each is for, and the upstream comes first
+              because it is what decides whether the assistant runs at all
+              (no row, and the chat route answers 409 not_configured).
+
+              The key field stays in both modes. It is the assistant's own
+              upstream key, not the credential the choice below selects, and
+              deleting it is not a display change.
+            */}
+            <section className="space-y-2">
+              <header>
+                <h3 className="text-sm font-medium text-foreground">
+                  {t("assistant.settings.upstream.title")}
+                </h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {t("assistant.settings.upstream.desc")}
+                </p>
+              </header>
+              {settingsPanel}
+            </section>
+
+            {/* Which credential the tools spend. Whether account calls are
                 allowed at all is a separate, account-level switch, and it lives
                 on the settings screen next to the other account settings. */}
-            <CredentialChoice
-              mode={credentialMode}
-              onModeChange={setCredentialMode}
-              relayKey={relayKey}
-              onRelayKeyChange={setRelayKey}
-            />
-            {settingsPanel}
+            <section className="space-y-2">
+              <header>
+                <h3 className="text-sm font-medium text-foreground">
+                  {t("assistant.tools.title")}
+                </h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {t("assistant.tools.desc")}
+                </p>
+              </header>
+              <CredentialChoice
+                mode={credentialMode}
+                onModeChange={setCredentialMode}
+                relayKey={relayKey}
+                onRelayKeyChange={setRelayKey}
+              />
+            </section>
           </div>
         </SheetContent>
       </Sheet>

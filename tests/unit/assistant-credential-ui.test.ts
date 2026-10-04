@@ -282,3 +282,65 @@ describe("credential UI: the testers' spacing", () => {
     expect(MEDIA_TESTER).toContain("sm:col-span-2");
   });
 });
+
+/**
+ * The drawer held two unrelated subjects as one list.
+ *
+ * It said "no key is needed or stored" three lines above a required key field,
+ * with nothing to say the two were unrelated — so a reader who had switched on
+ * account identity met a demand for a key and reasonably concluded the screen
+ * contradicted itself. It did; it just had no headings, so nothing said which
+ * of the two keys was being asked for.
+ *
+ * The fix is structural, not cosmetic, and the second half of it is a boundary:
+ * the key field is the assistant's *own upstream* key and cannot be deleted,
+ * because without it the chat route refuses to run at all. That last guard is
+ * here because the obvious "fix" for this complaint is exactly that deletion.
+ */
+describe("credential UI: the drawer's two subjects stay apart", () => {
+  const SETTINGS_PANEL = read("app/(user)/dashboard/assistant/AssistantSettingsPanel.tsx");
+  const CHAT_ROUTE = read("app/api/assistant/chat/route.ts");
+  const DICT = read("lib/i18n/dict.ts");
+
+  it("each subject is under a heading that names it", () => {
+    // The complaint is about a contradiction, and a contradiction is fixed by
+    // saying which thing is which — not by reordering or restyling the fields.
+    expect(CHAT, "the upstream section has no heading").toContain("assistant.settings.upstream.title");
+    expect(CHAT, "the tools section has no heading").toContain("assistant.tools.title");
+    // Each heading is paired with a line saying what it covers, so "which key is
+    // this" is answered where the reader is looking.
+    expect(CHAT).toMatch(/assistant\.settings\.upstream\.desc/);
+    expect(CHAT).toMatch(/assistant\.tools\.desc/);
+  });
+
+  it("the upstream comes first, because it decides whether the assistant runs", () => {
+    // With the credential choice first, the settings panel read as a
+    // continuation of it — which is precisely the misreading reported.
+    const upstream = CHAT.indexOf("assistant.settings.upstream.title");
+    const tools = CHAT.indexOf("assistant.tools.title");
+    expect(upstream).toBeGreaterThan(-1);
+    expect(tools).toBeGreaterThan(upstream);
+    // And the two are separate elements, not one list with a divider.
+    expect(CHAT.slice(upstream, tools)).toContain("</section>");
+    expect(CHAT.slice(upstream, tools)).toContain("{settingsPanel}");
+    expect(CHAT.slice(tools)).toContain("<CredentialChoice");
+  });
+
+  it("the upstream key says which key it is", () => {
+    // "API 密钥" next to a "网关密钥" two sections away is not a distinction, and
+    // the hint is what has to carry it.
+    expect(DICT).toMatch(/"assistant\.settings\.apiKey":\s*"上游 API 密钥"/);
+    expect(DICT).toMatch(/"assistant\.settings\.apiKeyHint":\s*"[^"]*不是本部署的网关密钥/);
+  });
+
+  it("and it is not deleted, because the assistant cannot start without it", () => {
+    // The obvious reading of the complaint is "remove the key box while account
+    // identity is on". Doing that takes the chat to 409 not_configured, so the
+    // field is not a display choice and no guard should ever let it be treated
+    // as one.
+    expect(SETTINGS_PANEL, "the upstream key field is gone").toContain("assistant.settings.apiKey");
+    expect(SETTINGS_PANEL).toMatch(/label=\{t\("assistant\.settings\.apiKey"\)\}/);
+    expect(CHAT_ROUTE, "the chat no longer refuses to run without an upstream").toContain("not_configured");
+    expect(CHAT_ROUTE).toMatch(/getAssistantSettings\(me\.id\)/);
+  });
+});
