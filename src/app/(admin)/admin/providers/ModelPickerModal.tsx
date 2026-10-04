@@ -88,8 +88,14 @@ export function ModelPickerModal({
                 disabled={done}
                 onChange={(ev) => setTicked((prev) => ({ ...prev, [e.id]: ev.target.checked }))}
               />
-              <span className="min-w-0 flex-1">
-                <span className="block font-mono text-xs">{e.id}</span>
+              <span className="min-w-0 flex-1 text-foreground">
+                {/* The colour is stated here rather than inherited. This was the
+                    one text node in the whole modal without one, so on the admin
+                    theme it resolved to white-on-white — and because the vendor
+                    often publishes no numbers, the model id is usually the ONLY
+                    text in its row. A row that looks empty is a picker that looks
+                    broken, and every other assertion in the repository passed. */}
+                <span className="block font-mono text-xs text-foreground">{e.id}</span>
                 {done ? (
                   <span className="block text-[11px] text-muted-foreground">
                     {t("admin.providers.alreadyAdded")}
