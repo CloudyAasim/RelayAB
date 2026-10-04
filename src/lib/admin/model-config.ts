@@ -56,6 +56,14 @@ export interface ModelConfigRow {
   maxOutputTokens: number;
   inputCost: number;
   outputCost: number;
+  /**
+   * Per 1M tokens for cache reads and writes, optional because blank and
+   * zero are different answers: blank means "charge the input price" and
+   * zero means "this cache is free". Same distinction as on the providers
+   * page, and it has to hold in both or the two pages disagree.
+   */
+  cachedInputCost?: number;
+  cacheWriteCost?: number;
   /** Whether the gateway will route to this model at all. */
   enabled: boolean;
   /** Media only: whole credits charged per produced item. */
@@ -132,7 +140,17 @@ export function buildModelRows(
 function chatRow(
   provider: Provider,
   clientId: string,
-  cfg: { upstreamId: string; displayName?: string; contextLength?: number; maxOutputTokens?: number; inputCost?: number; outputCost?: number; enabled?: boolean } | null,
+  cfg: {
+    upstreamId: string;
+    displayName?: string;
+    contextLength?: number;
+    maxOutputTokens?: number;
+    inputCost?: number;
+    outputCost?: number;
+    cachedInputCost?: number;
+    cacheWriteCost?: number;
+    enabled?: boolean;
+  } | null,
   note: ModelNoteInput | undefined,
 ): ModelConfigRow {
   return {
@@ -150,6 +168,10 @@ function chatRow(
     maxOutputTokens: cfg?.maxOutputTokens ?? DEFAULTS.maxOutputTokens,
     inputCost: cfg?.inputCost ?? DEFAULTS.inputCost,
     outputCost: cfg?.outputCost ?? DEFAULTS.outputCost,
+    // Spread, not `?? 0`: a cache nobody priced must read back as blank,
+    // because 0 on this row means the cache is free.
+    ...(cfg?.cachedInputCost !== undefined ? { cachedInputCost: cfg.cachedInputCost } : {}),
+    ...(cfg?.cacheWriteCost !== undefined ? { cacheWriteCost: cfg.cacheWriteCost } : {}),
     enabled: cfg?.enabled ?? true,
     pricePerItem: null,
     note: note?.note ?? "",
@@ -178,6 +200,15 @@ export function rowProblem(row: ModelConfigRow): string | null {
       return `${label} cannot be negative`;
     }
   }
+  // Skipped when absent: undefined is "charge the input price", which is valid.
+  for (const [label, value] of [
+    ["cache read cost", row.cachedInputCost],
+    ["cache write cost", row.cacheWriteCost],
+  ] as const) {
+    if (row.gatewayEditable && value !== undefined && (!Number.isFinite(value) || value < 0)) {
+      return `${label} cannot be negative`;
+    }
+  }
   return null;
 }
 
@@ -191,6 +222,9 @@ export interface ModelConfigPayload {
     maxOutputTokens?: number;
     inputCost?: number;
     outputCost?: number;
+    /** `null` = clear the price, because this route merges and absent means keep. */
+    cachedInputCost?: number | null;
+    cacheWriteCost?: number | null;
     enabled?: boolean;
   }>;
   notes: Record<string, ModelNoteInput>;
@@ -228,6 +262,11 @@ export function modelConfigPayload(rows: readonly ModelConfigRow[]): ModelConfig
         maxOutputTokens: r.maxOutputTokens,
         inputCost: r.inputCost,
         outputCost: r.outputCost,
+        // Always sent, and blank becomes `null` rather than nothing: this route
+        // merges, so an absent field reads as "keep the stored price" and a
+        // cleared box would be unable to clear anything.
+        cachedInputCost: r.cachedInputCost ?? null,
+        cacheWriteCost: r.cacheWriteCost ?? null,
         enabled: r.enabled,
       })),
     notes,
@@ -252,6 +291,8 @@ export function validateModelConfigPayload(
       maxOutputTokens: m.maxOutputTokens,
       inputCost: m.inputCost,
       outputCost: m.outputCost,
+      cachedInputCost: m.cachedInputCost,
+      cacheWriteCost: m.cacheWriteCost,
       enabled: m.enabled,
     });
     if (!parsed.success) {

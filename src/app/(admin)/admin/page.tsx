@@ -196,6 +196,7 @@ export default async function AdminOverviewPage() {
                   <TH>{t("docs.models.title")}</TH>
                   <TH className="text-right">{t("admin.overview.usageTotalTokens")}</TH>
                   <TH className="text-right">{t("admin.overview.usageTotalCredits")}</TH>
+                  <TH className="text-right">{t("admin.overview.usageCache")}</TH>
                   <TH>{t("admin.overview.billingMode")}</TH>
                 </TR>
               </THead>
@@ -214,6 +215,18 @@ export default async function AdminOverviewPage() {
                     </TD>
                     <TD className="text-right">
                       {row.status === "success" ? formatNumber(row.creditsUsed / 1000) : "—"}
+                    </TD>
+                    <TD className="text-right text-xs">
+                      {row.cachedPromptTokens || row.cacheWriteTokens ? (
+                        <span title={t("admin.overview.usageCacheHint")}>
+                          {row.cacheWriteTokens
+                            ? `+${formatNumber(row.cacheWriteTokens)} 写 / `
+                            : ""}
+                          {formatNumber(row.cachedPromptTokens ?? 0)} 读
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </TD>
                     <TD>
                       {row.status !== "success" ? (

@@ -200,9 +200,35 @@ describe("what a row is allowed to offer", () => {
   it("a chat model carries the whole OpenAI-compatible configuration", () => {
     const out = modelConfigPayload([row()]);
     expect(out.models).toHaveLength(1);
+    // The two cache prices are in the list, and they are *always* present: this
+    // route merges, so an absent field reads as "keep the stored price" and a
+    // cleared box would be unable to clear anything. Blank travels as `null`.
     expect(Object.keys(out.models[0]).sort()).toEqual(
-      ["clientId", "contextLength", "displayName", "enabled", "inputCost", "maxOutputTokens", "outputCost", "providerId", "upstreamId"].sort(),
+      [
+        "cachedInputCost",
+        "cacheWriteCost",
+        "clientId",
+        "contextLength",
+        "displayName",
+        "enabled",
+        "inputCost",
+        "maxOutputTokens",
+        "outputCost",
+        "providerId",
+        "upstreamId",
+      ].sort(),
     );
+    expect(out.models[0].cachedInputCost).toBeNull();
+    expect(out.models[0].cacheWriteCost).toBeNull();
+  });
+
+  it("a zero cache price is a price, not an absence", () => {
+    // "This cache is free" and "this cache was never priced" are different
+    // answers, and only the first is a decision. Collapsing them would make a
+    // free cache unpriceable.
+    const out = modelConfigPayload([row({ cachedInputCost: 0, cacheWriteCost: 12 })]);
+    expect(out.models[0].cachedInputCost).toBe(0);
+    expect(out.models[0].cacheWriteCost).toBe(12);
   });
 
   it("a media model does not, because a spec drives it", () => {

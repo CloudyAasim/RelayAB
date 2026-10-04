@@ -194,6 +194,25 @@ export const ModelConfigSchema = z.object({
   inputCost: z.number().nonnegative().default(0),
   /** Credit cost per 1M output tokens */
   outputCost: z.number().nonnegative().default(0),
+  /**
+   * Credit cost per 1M input tokens the upstream served from its prompt cache.
+   *
+   * **Unset means "the same as `inputCost`**, which is the safe default and the
+   * one a model configured before caching existed must keep: a miss on this
+   * field has to cost the full input price, not nothing. Three states, not two,
+   * because `0` is a real answer — "this vendor's cache reads are free" — and
+   * collapsing it into "unset" would make a free cache unexpressible.
+   */
+  cachedInputCost: z.number().nonnegative().optional(),
+  /**
+   * Credit cost per 1M input tokens written *into* the upstream's cache.
+   *
+   * A separate field, not a multiple of the read price, because the vendors
+   * disagree about whether writing is free (OpenAI) or a premium (Anthropic
+   * charges 1.25× input). Unset falls back to `inputCost`, which is what a
+   * vendor that does not distinguish them should be charged.
+   */
+  cacheWriteCost: z.number().nonnegative().optional(),
   /** Whether this model is enabled */
   enabled: z.boolean().default(true),
 });
@@ -370,6 +389,22 @@ export const UsageLogSchema = z.object({
   promptTokens: z.number().int().nonnegative(),
   completionTokens: z.number().int().nonnegative(),
   totalTokens: z.number().int().nonnegative(),
+  /**
+   * Input tokens the upstream served from its own prompt cache.
+   *
+   * Optional so rows written before this existed keep parsing, and so "this
+   * vendor reported no caching at all" is expressible as absent rather than 0 —
+   * the two mean different things, and only the second is a claim.
+   */
+  cachedPromptTokens: z.number().int().nonnegative().optional(),
+  /**
+   * Input tokens written *into* the upstream's cache by this request.
+   *
+   * A separate column because it is priced separately and because "wrote 8000
+   * tokens of cache" and "read 8000 tokens of cache" look identical in a usage
+   * table and are opposite events.
+   */
+  cacheWriteTokens: z.number().int().nonnegative().optional(),
   /** 积分 consumed by this request, in integer 0.001-积分 units. */
   creditsUsed: z.number().int().nonnegative(),
   /**

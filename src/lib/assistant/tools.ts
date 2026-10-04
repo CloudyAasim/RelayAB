@@ -545,6 +545,15 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
           maxOutputTokens: { type: "integer" },
           inputCost: { type: "number", description: "每 100 万输入 token 的积分" },
           outputCost: { type: "number", description: "每 100 万输出 token 的积分" },
+          cachedInputCost: {
+            type: "number",
+            description:
+              "每 100 万「命中上游提示缓存」的输入 token 的积分。不填 = 按 inputCost 算（安全默认，老模型不受影响）；填 0 = 缓存命中免费。读和写分开，因为厂商一个免费、一个加价。",
+          },
+          cacheWriteCost: {
+            type: "number",
+            description: "每 100 万「写入」上游提示缓存的输入 token 的积分。不填 = 按 inputCost 算。",
+          },
           enabled: { type: "boolean", description: "false = 网关不再路由到这个模型，客户端会 404" },
         },
         required: ["providerId", "clientId", "summary"],
@@ -1575,6 +1584,8 @@ async function proposeModelConfigUpdate(
     ["maxOutputTokens", "最大输出"],
     ["inputCost", "输入价格"],
     ["outputCost", "输出价格"],
+    ["cachedInputCost", "缓存读价格"],
+    ["cacheWriteCost", "缓存写价格"],
   ] as const) {
     const value = args[key];
     if (value === undefined) continue;
@@ -1615,6 +1626,12 @@ async function proposeModelConfigUpdate(
       maxOutputTokens: existing.maxOutputTokens,
       inputCost: existing.inputCost,
       outputCost: existing.outputCost,
+      ...(existing.cachedInputCost !== undefined
+        ? { cachedInputCost: existing.cachedInputCost }
+        : {}),
+      ...(existing.cacheWriteCost !== undefined
+        ? { cacheWriteCost: existing.cacheWriteCost }
+        : {}),
       enabled: existing.enabled,
     },
     after: { ...existing, ...patch },

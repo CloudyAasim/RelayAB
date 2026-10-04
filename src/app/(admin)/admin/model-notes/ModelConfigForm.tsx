@@ -36,6 +36,21 @@ const num = (v: string, fallback: number): number => {
   return Number.isFinite(n) ? n : fallback;
 };
 
+/**
+ * A price that is allowed to be blank.
+ *
+ * `num("")` answers 0, which for the cache prices means "this cache is free" —
+ * so a field nobody touched would quietly reprice every cached request. Blank is
+ * a value here: it means "charge the input price", which is the default a model
+ * configured before caching existed must keep.
+ */
+const optionalNum = (v: string): number | undefined => {
+  const raw = v.trim();
+  if (raw === "") return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : undefined;
+};
+
 export function ModelConfigForm({ rows }: { rows: ModelConfigRow[] }) {
   const t = useT();
   const [list, setList] = useState<ModelConfigRow[]>(rows);
@@ -256,7 +271,37 @@ export function ModelConfigForm({ rows }: { rows: ModelConfigRow[] }) {
                                 update(index, { outputCost: num(e.target.value, row.outputCost) })
                               }
                             />
+                            {/*
+                              Blank-capable, unlike the four above. `num("")`
+                              would answer 0, and here 0 means "this cache is
+                              free" — so a field the operator never touched
+                              would silently reprice every cached request.
+                              Blank has to stay blank.
+                            */}
+                            <Input
+                              type="number"
+                              label={t("admin.providers.create.cachedInputCost")}
+                              hint={t("admin.providers.create.cachedInputCostSame")}
+                              value={row.cachedInputCost === undefined ? "" : String(row.cachedInputCost)}
+                              onChange={(e) =>
+                                update(index, {
+                                  cachedInputCost: optionalNum(e.target.value),
+                                })
+                              }
+                            />
+                            <Input
+                              type="number"
+                              label={t("admin.providers.create.cacheWriteCost")}
+                              hint={t("admin.providers.create.cachedInputCostSame")}
+                              value={row.cacheWriteCost === undefined ? "" : String(row.cacheWriteCost)}
+                              onChange={(e) =>
+                                update(index, { cacheWriteCost: optionalNum(e.target.value) })
+                              }
+                            />
                           </div>
+                          <p className="text-xs text-muted-foreground">
+                            {t("admin.providers.models.cacheCostHint")}
+                          </p>
                           <p className="text-xs text-muted-foreground">
                             {t("admin.modelConfig.factsHint")}
                           </p>

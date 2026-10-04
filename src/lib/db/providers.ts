@@ -61,6 +61,10 @@ export interface CreateProviderInput {
     maxOutputTokens?: number;
     inputCost?: number;
     outputCost?: number;
+    /** Per 1M input tokens the upstream served from its cache. Unset = same as inputCost. */
+    cachedInputCost?: number;
+    /** Per 1M input tokens written into the upstream's cache. Unset = same as inputCost. */
+    cacheWriteCost?: number;
     enabled?: boolean;
   }>;
   enabled?: boolean;
@@ -100,6 +104,10 @@ export interface UpdateProviderInput {
     maxOutputTokens?: number;
     inputCost?: number;
     outputCost?: number;
+    /** Per 1M input tokens the upstream served from its cache. Unset = same as inputCost. */
+    cachedInputCost?: number;
+    /** Per 1M input tokens written into the upstream's cache. Unset = same as inputCost. */
+    cacheWriteCost?: number;
     enabled?: boolean;
   }>;
   enabled?: boolean;
@@ -422,14 +430,29 @@ export function getModelConfig(
 export function getModelCreditCost(
   provider: Provider,
   clientModelId: string
-): { inputCost: number; outputCost: number } {
+): {
+  inputCost: number;
+  outputCost: number;
+  /** Resolved, so a caller never has to re-implement the unset fallback. */
+  cachedInputCost: number;
+  cacheWriteCost: number;
+} {
   const config = provider.modelConfigs?.[clientModelId];
   if (!config) {
-    return { inputCost: 0, outputCost: 0 };
+    return {
+      inputCost: 0,
+      outputCost: 0,
+      cachedInputCost: 0,
+      cacheWriteCost: 0,
+    };
   }
   return {
     inputCost: config.inputCost,
     outputCost: config.outputCost,
+    // Unset means "the same as input", which is the safe answer for a
+    // model row written before caching existed.
+    cachedInputCost: config.cachedInputCost ?? config.inputCost,
+    cacheWriteCost: config.cacheWriteCost ?? config.inputCost,
   };
 }
 

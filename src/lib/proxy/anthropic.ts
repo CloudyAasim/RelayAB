@@ -19,6 +19,7 @@ import { checkKeyStatus, reasonToHttp } from "../auth/apikey";
 import { estimateTokensFromText } from "../quota/calculator";
 import { shouldRejectBeforeRequest } from "../quota/calculator";
 import { settleUsage } from "./billing";
+import { extractCacheBuckets, type CacheBuckets } from "../quota/rates";
 import { ssePassthrough } from "./stream-tap";
 import { providerFaces, type ApiKey, type Provider, type User } from "../db/types";
 import { applyParameterPolicy } from "../protocol/parameter-policy";
@@ -68,7 +69,18 @@ interface AnthropicResponse {
   content: Array<{ type: "text"; text: string }>;
   model: string;
   stop_reason: string | null;
-  usage: { input_tokens: number; output_tokens: number };
+  /**
+   * `cache_creation_input_tokens` and `cache_read_input_tokens` are declared
+   * deliberately. They are on every response that has caching, and leaving
+   * them out of this type is what made a cached request indistinguishable
+   * from an uncached one: the fields parsed fine and were never read.
+   */
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_creation_input_tokens?: number;
+    cache_read_input_tokens?: number;
+  };
   [k: string]: unknown;
 }
 
@@ -254,6 +266,7 @@ async function doProxy(args: {
     provider,
     promptTokens: usage.input_tokens,
     completionTokens: usage.output_tokens,
+    cache: extractCacheBuckets(usage),
     user,
     model: req.model,
     upstreamModel,
@@ -336,16 +349,19 @@ function streamAnthropicAnswer(args: {
   let outputTokens = 0;
   let sawInput = false;
   let sawOutput = false;
+  let cache: CacheBuckets = { read: 0, write: 0, reported: false };
   let outputText = "";
 
   const handleEvent = (rawEvent: string, rawData: string): void => {
     if (rawEvent === "message_start") {
       try {
-        const parsed = JSON.parse(rawData) as { message?: { usage?: { input_tokens?: number } } };
+        const parsed = JSON.parse(rawData) as { message?: { usage?: Record<string, unknown> } };
         const usage = parsed.message?.usage;
         if (usage && typeof usage.input_tokens === "number") {
           inputTokens = Math.max(0, Math.trunc(usage.input_tokens));
           sawInput = true;
+          // Anthropic reports both cache buckets here, in `message_start`.
+          cache = extractCacheBuckets(usage);
         }
       } catch { /* ignore */ }
     } else if (rawEvent === "message_delta") {
@@ -407,6 +423,9 @@ function streamAnthropicAnswer(args: {
         upstreamModel,
         promptTokens,
         completionTokens,
+        // Only when the frames were real. An estimated turn never saw a usage
+        // frame, so it has no cache to report and must not claim zero.
+        cache: billingMode === "usage" ? cache : { read: 0, write: 0, reported: false },
         billingMode,
       });
     },

@@ -25,6 +25,10 @@ const PostSchema = z.object({
     maxOutputTokens: z.number().int().positive().optional(),
     inputCost: z.number().nonnegative().optional(),
     outputCost: z.number().nonnegative().optional(),
+    // Optional, not defaulted: an absent rate means "charge the input price",
+    // and a schema default of 0 would silently make every cache read free.
+    cachedInputCost: z.number().nonnegative().optional(),
+    cacheWriteCost: z.number().nonnegative().optional(),
     enabled: z.boolean().optional(),
   })).optional(),
   enabled: z.boolean().optional(),

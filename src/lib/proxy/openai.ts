@@ -23,6 +23,7 @@ import { findOpenAIProvidersForModel } from "../db/providers";
 import { recordUsage } from "../db/usage";
 import { checkKeyStatus, reasonToHttp } from "../auth/apikey";
 import { estimateTokensFromText } from "../quota/calculator";
+import { extractCacheBuckets, type CacheBuckets } from "../quota/rates";
 import { shouldRejectBeforeRequest } from "../quota/calculator";
 import { proxyAnthropicMessage } from "./anthropic";
 import { settleUsage } from "./billing";
@@ -773,7 +774,8 @@ export async function proxyChatCompletion(args: {
     upstreamModel,
     promptTokens,
     completionTokens,
-  });
+    cache: extractCacheBuckets(usage),
+    });
 
   return { ok: true, status: 200, data: body };
 }
@@ -1023,7 +1025,8 @@ async function proxyResponsesNative(args: {
     upstreamModel,
     promptTokens,
     completionTokens,
-  });
+    cache: extractCacheBuckets(usage),
+    });
 
   return { ok: true, status: 200, data: body };
 }
@@ -1032,6 +1035,14 @@ interface StreamUsage {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  /**
+   * The upstream's prompt-cache buckets, in this gateway's spelling.
+   *
+   * Carried alongside the counts rather than folded into them: the counts are
+   * what quota modes are derived from, and adding the cache to them would
+   * inflate a token total that has to stay comparable with every older row.
+   */
+  cache: CacheBuckets;
 }
 
 /**
@@ -1065,7 +1076,9 @@ function usageFromSsePayload(payload: unknown): StreamUsage | null {
   const promptTokens = toInt(source.prompt_tokens ?? source.input_tokens);
   const completionTokens = toInt(source.completion_tokens ?? source.output_tokens);
   const totalTokens = toInt(source.total_tokens) || promptTokens + completionTokens;
-  return { promptTokens, completionTokens, totalTokens };
+  // `source` is the raw upstream object, so the vendor's own spelling of the
+  // cache buckets is still on it. Read before it is discarded.
+  return { promptTokens, completionTokens, totalTokens, cache: extractCacheBuckets(source) };
 }
 
 /**
@@ -1101,7 +1114,12 @@ function streamChatAnswer(args: {
     };
   }
 
-  let usage: StreamUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+  let usage: StreamUsage = {
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+    cache: { read: 0, write: 0, reported: false },
+  };
   let sawUsage = false;
   let outputText = "";
 
@@ -1157,8 +1175,11 @@ function streamChatAnswer(args: {
         upstreamModel,
         promptTokens,
         completionTokens,
+        // Only when the upstream really reported it: an estimated turn has no
+        // cache to report, and a 0 would turn a guess into a recorded fact.
+        cache: sawUsage ? usage.cache : { read: 0, write: 0, reported: false },
         billingMode,
-      });
+        });
     },
   });
 
@@ -1191,7 +1212,12 @@ function streamResponsesAnswer(args: {
     };
   }
 
-  let usage: StreamUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+  let usage: StreamUsage = {
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+    cache: { read: 0, write: 0, reported: false },
+  };
   let sawUsage = false;
   let outputText = "";
 
@@ -1239,8 +1265,11 @@ function streamResponsesAnswer(args: {
         upstreamModel,
         promptTokens: sawUsage ? usage.promptTokens : estimateTokensFromText(inputText),
         completionTokens: sawUsage ? usage.completionTokens : estimateTokensFromText(outputText),
+        // Only when the upstream really reported it: an estimated turn has no cache
+        // to report, and claiming 0 would turn a guess into a recorded fact.
+        cache: sawUsage ? usage.cache : { read: 0, write: 0, reported: false },
         billingMode,
-      });
+        });
     },
   });
 

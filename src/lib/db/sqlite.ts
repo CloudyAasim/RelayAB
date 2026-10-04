@@ -150,6 +150,8 @@ CREATE TABLE IF NOT EXISTS usage_logs (
   status            TEXT NOT NULL,
   error_message     TEXT,
   billing_mode      TEXT,
+  cached_prompt_tokens INTEGER,
+  cache_write_tokens   INTEGER,
   created_at        TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_usage_logs_key     ON usage_logs(api_key_id, created_at);
@@ -418,6 +420,12 @@ const ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; type: string
   // means "this row predates the choice, keep doing what it did", which is not
   // the same statement as 'simple' and must not be back-filled to it.
   { table: "providers", column: "active_mode", type: "TEXT" },
+  // What the upstream served from, and wrote into, its own prompt cache. Two
+  // columns rather than one because they are opposite events that look alike in
+  // a usage table, and because only the read is a discount. Nullable so "this
+  // vendor reported no cache" stays distinguishable from "0 cached".
+  { table: "usage_logs", column: "cached_prompt_tokens", type: "INTEGER" },
+  { table: "usage_logs", column: "cache_write_tokens", type: "INTEGER" },
 ];
 
 function addColumnIfMissing(
@@ -591,6 +599,14 @@ export function rowToUsageLog(row: Record<string, unknown>): UsageLog {
       : { capability: row.capability }),
     status: row.status,
     errorMessage: row.error_message ?? null,
+    // Absent, not 0: a row from a vendor that reports no cache is not a row
+    // that hit 0% of its cache.
+    ...(typeof row.cached_prompt_tokens === "number"
+      ? { cachedPromptTokens: row.cached_prompt_tokens }
+      : {}),
+    ...(typeof row.cache_write_tokens === "number"
+      ? { cacheWriteTokens: row.cache_write_tokens }
+      : {}),
     billingMode: row.billing_mode ?? undefined,
     createdAt: row.created_at,
   });

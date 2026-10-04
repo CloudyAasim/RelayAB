@@ -19,6 +19,17 @@ export interface ProviderModelRow {
   maxOutputTokens: number;
   inputCost: number;
   outputCost: number;
+  /**
+   * Optional because blank and zero are different answers here.
+   *
+   * `undefined` is "charge the input price", the safe default for a model
+   * row written before caching existed. `0` is "this cache is free", a real
+   * answer that has to survive the round trip — and the numeric inputs below
+   * cannot express it, because a 0 there is dropped and the schema default
+   * reapplies. Hence a number-or-undefined rather than a number.
+   */
+  cachedInputCost?: number;
+  cacheWriteCost?: number;
 }
 
 export const DEFAULT_CONTEXT_LENGTH = 128000;
@@ -47,6 +58,8 @@ interface StoredModelConfig {
   maxOutputTokens?: number;
   inputCost?: number;
   outputCost?: number;
+  cachedInputCost?: number;
+  cacheWriteCost?: number;
 }
 
 /**
@@ -69,6 +82,11 @@ export function rowsFromProvider(
       maxOutputTokens: config.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
       inputCost: config.inputCost ?? 0,
       outputCost: config.outputCost ?? 0,
+      // Not `?? 0`: a row whose cache was never priced has to read back as
+      // blank, and a 0 here would mean the opposite of what it means on the
+      // input row.
+      ...(config.cachedInputCost !== undefined ? { cachedInputCost: config.cachedInputCost } : {}),
+      ...(config.cacheWriteCost !== undefined ? { cacheWriteCost: config.cacheWriteCost } : {}),
     };
   });
 }
@@ -98,6 +116,10 @@ export function rowsToPayload(rows: ProviderModelRow[]): {
     if (row.maxOutputTokens > 0) config.maxOutputTokens = row.maxOutputTokens;
     if (row.inputCost > 0) config.inputCost = row.inputCost;
     if (row.outputCost > 0) config.outputCost = row.outputCost;
+    // `!== undefined`, not `> 0`: zero is "this cache is free" and has to be
+    // written, while blank has to stay absent so the input price applies.
+    if (row.cachedInputCost !== undefined) config.cachedInputCost = row.cachedInputCost;
+    if (row.cacheWriteCost !== undefined) config.cacheWriteCost = row.cacheWriteCost;
     modelConfigs[clientId] = config;
   }
 

@@ -56,6 +56,8 @@ export function ProviderModelsEditor({
     t("admin.providers.create.maxOutput"),
     t("admin.providers.create.inputCost"),
     t("admin.providers.create.outputCost"),
+    t("admin.providers.create.cachedInputCost"),
+    t("admin.providers.create.cacheWriteCost"),
   ];
 
   const cell = "rounded border bg-transparent px-1 py-0.5";
@@ -95,7 +97,7 @@ export function ProviderModelsEditor({
           <tbody className="divide-y">
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-3 py-4 text-center text-muted-foreground">
+                <td colSpan={9} className="px-3 py-4 text-center text-muted-foreground">
                   {t("admin.providers.create.noMappings")}
                 </td>
               </tr>
@@ -141,6 +143,35 @@ export function ProviderModelsEditor({
                           value={row[field]}
                           onChange={(e) => update(index, { [field]: Number(e.target.value) })}
                           placeholder={placeholder ?? undefined}
+                          className={`${width} ${cell}`}
+                        />
+                      </td>
+                    ))}
+                    {/*
+                      The cache prices, blank-capable on purpose. The four above
+                      can use `Number(e.target.value)` because a blank there means
+                      the same 0 the field already holds; here blank means
+                      "charge the input price" and 0 means "free", so
+                      `Number("")` would quietly price every cache read at zero.
+                    */}
+                    {(
+                      [
+                        ["cachedInputCost", "w-20"],
+                        ["cacheWriteCost", "w-20"],
+                      ] as const
+                    ).map(([field, width]) => (
+                      <td key={field} className="px-1 py-1">
+                        <input
+                          type="number"
+                          value={row[field] ?? ""}
+                          onChange={(e) => {
+                            const raw = e.target.value.trim();
+                            update(index, {
+                              [field]: raw === "" ? undefined : Number(raw),
+                            });
+                          }}
+                          placeholder={t("admin.providers.create.cachedInputCostSame")}
+                          title={t("admin.providers.models.cacheCostHint")}
                           className={`${width} ${cell}`}
                         />
                       </td>

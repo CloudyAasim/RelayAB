@@ -56,6 +56,16 @@ export interface RecordUsageInput {
    * a usage frame.
    */
   billingMode?: "usage" | "estimated";
+  /**
+   * Input tokens the upstream served from, and wrote into, its own cache.
+   *
+   * Omitted rather than zeroed when the upstream reported no cache at
+   * all: a row claiming "0 cached" and a row saying "this vendor has no
+   * caching" are different facts, and only the second is a claim about the
+   * provider that would need changing when they add it.
+   */
+  cachedPromptTokens?: number;
+  cacheWriteTokens?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -78,6 +88,12 @@ export async function recordUsage(input: RecordUsageInput): Promise<UsageLog> {
     completionTokens: input.completionTokens,
     totalTokens,
     creditsUsed: input.creditsUsed,
+    ...(input.cachedPromptTokens !== undefined
+      ? { cachedPromptTokens: input.cachedPromptTokens }
+      : {}),
+    ...(input.cacheWriteTokens !== undefined
+      ? { cacheWriteTokens: input.cacheWriteTokens }
+      : {}),
     images: input.images ?? 0,
     capability: input.capability,
     status: input.status,
@@ -94,8 +110,9 @@ export async function recordUsage(input: RecordUsageInput): Promise<UsageLog> {
       `INSERT INTO usage_logs
          (id, api_key_id, user_id, provider_id, model, upstream_model,
           prompt_tokens, completion_tokens, total_tokens, credits_used,
+          cached_prompt_tokens, cache_write_tokens,
           images, capability, status, error_message, billing_mode, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         log.id,
         log.apiKeyId,
@@ -107,6 +124,8 @@ export async function recordUsage(input: RecordUsageInput): Promise<UsageLog> {
         log.completionTokens,
         log.totalTokens,
         log.creditsUsed,
+        log.cachedPromptTokens ?? null,
+        log.cacheWriteTokens ?? null,
         log.images ?? 0,
         log.capability ?? null,
         log.status,

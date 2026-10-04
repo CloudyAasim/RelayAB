@@ -273,11 +273,25 @@ function ModelRows({ model: m, isChat }: { model: CatalogModel; isChat: boolean 
           </>
         )}
         <td className="py-2 pr-3 text-xs">
-          {isChat
-            ? cost(m.inputCost)
-            : m.inputCost
-              ? `${(m.inputCost / 1000).toFixed(3)} 积分`
-              : "—"}
+          {isChat ? (
+            <>
+              {cost(m.inputCost)}
+              {/*
+                Only when it is actually cheaper. A cached rate equal to the
+                input rate is not a discount, and printing it would advertise a
+                saving that does not exist.
+              */}
+              {m.cachedInputCost !== null && m.cachedInputCost < (m.inputCost ?? 0) && (
+                <span className="block text-[10px] text-muted-foreground">
+                  {t("docs.catalog.cachedInput")} {cost(m.cachedInputCost)}
+                </span>
+              )}
+            </>
+          ) : m.inputCost ? (
+            `${(m.inputCost / 1000).toFixed(3)} 积分`
+          ) : (
+            "—"
+          )}
         </td>
         <td className="py-2 text-right">
           <button

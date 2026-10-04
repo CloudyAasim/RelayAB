@@ -38,6 +38,12 @@ export interface CatalogModel {
   /** Credits per 1M tokens, in the same 0.001-credit unit as the rest of the app. */
   inputCost: number | null;
   outputCost: number | null;
+  /**
+   * Credits per 1M tokens served from the upstream's prompt cache, or null
+   * when the rate was never set — which means the cache is charged the input
+   * price and there is nothing cheaper to advertise.
+   */
+  cachedInputCost: number | null;
   /** Protocol faces this model is reachable through. */
   faces: string[];
   tags: string[];
@@ -152,6 +158,13 @@ export async function buildModelCatalog(): Promise<ModelCatalog> {
         maxOutputTokens: cfg?.maxOutputTokens ?? null,
         inputCost: cost ? cost.inputCost : null,
         outputCost: cost ? cost.outputCost : null,
+        // Resolved, not raw: unset means "the input price", and the reader
+        // needs to know whether there is a cheaper number to show, not
+        // whether the field happened to be blank.
+        cachedInputCost:
+          cost && cost.cachedInputCost !== undefined && cost.cachedInputCost !== cost.inputCost
+            ? cost.cachedInputCost
+            : null,
         faces: faceNames,
         ...note,
         meta: {},
@@ -189,6 +202,7 @@ export async function buildModelCatalog(): Promise<ModelCatalog> {
         // the ones the spec advertises (sizes, modes, max_n).
         contextLength: null,
         maxOutputTokens: null,
+        cachedInputCost: null,
         inputCost:
           typeof (model as { pricePerItem?: unknown }).pricePerItem === "number"
             ? (model as { pricePerItem: number }).pricePerItem

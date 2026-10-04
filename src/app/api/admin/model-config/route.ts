@@ -28,6 +28,10 @@ const ModelEntrySchema = z.object({
   maxOutputTokens: z.number().int().positive().max(100_000_000).optional(),
   inputCost: z.number().nonnegative().max(1_000_000).optional(),
   outputCost: z.number().nonnegative().max(1_000_000).optional(),
+  // `null` clears the price back to "charge the input price". Absent is
+  // not the same thing here: this route merges, so absent means "leave it".
+  cachedInputCost: z.number().nonnegative().max(1_000_000).nullable().optional(),
+  cacheWriteCost: z.number().nonnegative().max(1_000_000).nullable().optional(),
   enabled: z.boolean().optional(),
 });
 
@@ -109,7 +113,28 @@ export async function POST(req: Request): Promise<Response> {
         inputCost: entry.inputCost ?? existing?.inputCost ?? 0,
         outputCost: entry.outputCost ?? existing?.outputCost ?? 0,
         enabled: entry.enabled ?? existing?.enabled ?? true,
+        // Deleted, not set to undefined: `ModelConfigSchema` treats an absent
+        // cache price as "charge the input price", and a stored `undefined`
+        // disappears in JSON anyway.
+        ...(entry.cachedInputCost === null
+          ? {}
+          : entry.cachedInputCost !== undefined
+            ? { cachedInputCost: entry.cachedInputCost }
+            : existing?.cachedInputCost !== undefined
+              ? { cachedInputCost: existing.cachedInputCost }
+              : {}),
+        ...(entry.cacheWriteCost === null
+          ? {}
+          : entry.cacheWriteCost !== undefined
+            ? { cacheWriteCost: entry.cacheWriteCost }
+            : existing?.cacheWriteCost !== undefined
+              ? { cacheWriteCost: existing.cacheWriteCost }
+              : {}),
       };
+      // `null` asked for the key to go. JSON.stringify drops `undefined`, so
+      // it has to be deleted explicitly or the old price survives the save.
+      if (entry.cachedInputCost === null) delete configs[entry.clientId].cachedInputCost;
+      if (entry.cacheWriteCost === null) delete configs[entry.clientId].cacheWriteCost;
     }
     await updateProvider(providerId, { modelConfigs: configs });
   }
