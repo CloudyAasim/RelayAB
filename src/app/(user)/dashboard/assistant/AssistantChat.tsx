@@ -120,14 +120,31 @@ type EventPayload =
   | { type: "done"; data?: { pendingActions?: string[]; usage?: unknown } };
 
 interface Props {
+  /**
+   * Whether a stored upstream exists.
+   *
+   * Only that path needs one. The account path runs the turn through this
+   * deployment with the credential the user already authorised, so it works
+   * with nothing stored — and gating the composer on this would tell someone
+   * with account identity switched on that the assistant is not configured,
+   * which is the mirror image of the complaint this replaced.
+   */
   configured: boolean;
   /** Model name shown in the top bar, so it is obvious what is answering. */
   modelLabel: string;
+  /** This deployment's chat models — the account path's only choice of model. */
+  accountModels: string[];
   settingsPanel: React.ReactNode;
   pendingPanel: React.ReactNode | null;
 }
 
-export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPanel }: Props) {
+export function AssistantChat({
+  configured,
+  modelLabel,
+  accountModels,
+  settingsPanel,
+  pendingPanel,
+}: Props) {
   const t = useT();
   const router = useRouter();
 
@@ -148,6 +165,15 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
   const uploadFilesRef = useRef(new Map<string, File>());
   const [relayKey, setRelayKey] = useState("");
   const [credentialMode, setCredentialMode] = useState<Mode>("account");
+  /**
+   * Which model the account path asks this deployment for.
+   *
+   * Empty means "whichever the server picks first", which is why it is allowed
+   * to start empty rather than being seeded: the list is the deployment's, it
+   * changes when an admin edits a provider, and a stale default would be a
+   * model the user never chose. The server validates whatever arrives.
+   */
+  const [accountModel, setAccountModel] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /**
@@ -482,13 +508,37 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
     });
   }
 
+  /**
+   * Whether this turn has somewhere to go.
+   *
+   * The account path always does — it runs on this deployment as the signed-in
+   * user — so it is the stored upstream, not the assistant, that is missing.
+   * Gating the composer on `configured` alone told someone with account identity
+   * switched on that the assistant was not set up, and the settings drawer they
+   * were then sent to had no way to fix it.
+   */
+  /**
+   * Which model is answering, named in the top bar.
+   *
+   * Depends on the credential: the stored upstream's model on the key path, one
+   * of this deployment's on the account path. Showing the stored one either way
+   * would make switching credentials look like it changed nothing — and with no
+   * upstream stored at all, it would name a model that is not in the call.
+   */
+  const effectiveModelLabel =
+    credentialMode === "account"
+      ? accountModel || t("assistant.accountModelAuto")
+      : modelLabel;
+  const canSend = credentialMode === "account" || configured;
+  const missingUpstream = credentialMode === "key" && !configured;
+
   async function send() {
     const text = input.trim();
     const files = uploadFilesRef.current;
     const picked = uploads.filter((u) => files.has(u.key));
     // A turn of nothing but a picture is a normal thing to send, so it is
     // allowed; the server fills in what the model should be told about it.
-    if ((!text && picked.length === 0) || busy || !configured) return;
+    if ((!text && picked.length === 0) || busy || !canSend) return;
     setBusy(true);
     setError(null);
     setInput("");
@@ -539,6 +589,11 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
           // is the whole point of it.
           ...(credentialMode === "key" && relayKey.trim() ? { relayKey: relayKey.trim() } : {}),
           credentialMode,
+          // Which model, on the account path only. The key path reads it from the
+          // stored upstream; the account path has none stored, so the choice
+          // travels with the turn. The server checks it against what this
+          // credential may call rather than taking it on trust.
+          ...(credentialMode === "account" && accountModel.trim() ? { model: accountModel.trim() } : {}),
           ...(attachments.length ? { attachments } : {}),
         }),
         signal: controller.signal,
@@ -710,9 +765,9 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
 
         <span
           className="hidden max-w-[14rem] truncate rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground sm:inline-block"
-          title={modelLabel}
+          title={effectiveModelLabel}
         >
-          {modelLabel}
+          {effectiveModelLabel}
         </span>
 
         <Button
@@ -831,7 +886,7 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
             </pre>
           )}
 
-          {!configured && (
+          {missingUpstream && (
             <p className="mb-2 rounded-md border border-destructive/40 bg-destructive/10 p-2 text-sm text-destructive">
               {t("assistant.notConfigured")}{" "}
               <button
@@ -929,7 +984,7 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
               <Button
                 size="icon"
                 onClick={send}
-                disabled={(!input.trim() && uploads.length === 0) || !configured}
+                disabled={(!input.trim() && uploads.length === 0) || !canSend}
                 aria-label={t("assistant.send")}
               >
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -1085,33 +1140,16 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
             </div>
 
             {/*
-              Two subjects, and they used to be one undifferentiated list.
-              The drawer said "no key is needed or stored" three lines above a
-              required key field, with nothing to say the two were unrelated —
-              which reads as a contradiction rather than as two settings. The
-              headings name what each is for, and the upstream comes first
-              because it is what decides whether the assistant runs at all
-              (no row, and the chat route answers 409 not_configured).
+              The credential first, and the upstream only on the key path.
 
-              The key field stays in both modes. It is the assistant's own
-              upstream key, not the credential the choice below selects, and
-              deleting it is not a display change.
+              These were one list, and the order was backwards: the choice came
+              first and the address and key came below it, so a reader who chose
+              the account path was then asked for a key anyway — three lines under
+              a line that says none is needed. The key path still has to be
+              configured; the account path has an upstream by construction, this
+              deployment, and asking for its address and key was asking for the
+              one thing it does not use.
             */}
-            <section className="space-y-2">
-              <header>
-                <h3 className="text-sm font-medium text-foreground">
-                  {t("assistant.settings.upstream.title")}
-                </h3>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {t("assistant.settings.upstream.desc")}
-                </p>
-              </header>
-              {settingsPanel}
-            </section>
-
-            {/* Which credential the tools spend. Whether account calls are
-                allowed at all is a separate, account-level switch, and it lives
-                on the settings screen next to the other account settings. */}
             <section className="space-y-2">
               <header>
                 <h3 className="text-sm font-medium text-foreground">
@@ -1127,7 +1165,47 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
                 relayKey={relayKey}
                 onRelayKeyChange={setRelayKey}
               />
+              {/*
+                Which model, on the account path. There is no stored upstream to
+                read a name from, and the list is this deployment's rather than
+                the user's — so it is a closed set, which is why this is a select
+                rather than the free-text field the key path uses.
+              */}
+              {credentialMode === "account" && accountModels.length > 0 && (
+                <div className="space-y-1.5 pt-1">
+                  <label htmlFor="assistant-account-model" className="block text-sm font-medium text-foreground">
+                    {t("assistant.settings.model")}
+                  </label>
+                  <select
+                    id="assistant-account-model"
+                    value={accountModel}
+                    onChange={(e) => setAccountModel(e.target.value)}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="">{t("assistant.accountModelAuto")}</option>
+                    {accountModels.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </section>
+
+            {credentialMode === "key" && (
+              <section className="space-y-2">
+                <header>
+                  <h3 className="text-sm font-medium text-foreground">
+                    {t("assistant.settings.upstream.title")}
+                  </h3>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {t("assistant.settings.upstream.desc")}
+                  </p>
+                </header>
+                {settingsPanel}
+              </section>
+            )}
           </div>
         </SheetContent>
       </Sheet>

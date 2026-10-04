@@ -584,7 +584,7 @@ export interface ProxyDeps {
 // Request validation
 // ---------------------------------------------------------------------------
 
-interface ChatCompletionRequest {
+export interface ChatCompletionRequest {
   model: string;
   messages?: Array<{ role: string; content: string }>;
   stream?: boolean;

@@ -24,6 +24,10 @@ import { getAssistantSettings } from "@/lib/db/assistant";
 import { createAssistantThread, getAssistantThread } from "@/lib/db/assistant";
 import { runChat, type ChatEvent } from "@/lib/assistant/chat";
 import { resolveToolCredential } from "@/lib/assistant/credentials";
+import { UpstreamError } from "@/lib/assistant/client";
+import { proxyChatCompletion, type ChatCompletionRequest } from "@/lib/proxy/openai";
+import { proxyResultToResponse } from "@/lib/proxy/respond";
+import { listClientModelIds } from "@/lib/proxy/model-catalog";
 import { consumeAssistantTurn } from "@/lib/assistant/rate-limit";
 import { resolvePublicUrl } from "@/lib/public-url";
 import { getServerLocale } from "@/lib/i18n/server";
@@ -32,6 +36,39 @@ import { saveAssistantArtifact, artifactRef } from "@/lib/db/assistant-artifacts
 import type { MessageAttachment } from "@/lib/assistant/schema";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * One assistant turn, run through this deployment's own proxy.
+ *
+ * The account credential cannot be sent over HTTP — its row keeps only a sha256
+ * of a secret that was discarded at creation — so the proxy is called directly
+ * with the `ApiKey` and `User` objects, which is the whole reason that row
+ * exists. The response is handed back as the byte stream `callAssistantModel`
+ * expects, so delta reassembly and tool-call stitching are the same code on both
+ * paths rather than a second implementation of them.
+ *
+ * `UpstreamError` is thrown rather than a Response returned because the caller's
+ * error reporting is written against it, and a failed turn must read as "上游调用
+ * 失败（HTTP …）" on the account path too rather than as a generic stream error.
+ */
+function accountTransport(account: {
+  apiKey: import("@/lib/db/types").ApiKey;
+  user: import("@/lib/db/types").User;
+}): import("@/lib/assistant/client").UpstreamTransport {
+  return async ({ body, signal }) => {
+    const req = body as ChatCompletionRequest;
+    const result = await proxyChatCompletion({ req, apiKey: account.apiKey, user: account.user, signal });
+    const res = proxyResultToResponse(result, { streamRequest: true });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new UpstreamError(text.slice(0, 400) || `上游返回 ${res.status}`, res.status, text);
+    }
+    if (!res.body) {
+      throw new UpstreamError("上游没有返回可读的响应流", 502);
+    }
+    return res.body;
+  };
+}
 
 const MAX_MESSAGE_CHARS = 8000;
 
@@ -163,6 +200,15 @@ export async function POST(req: Request): Promise<Response> {
     relayKey?: unknown;
     credentialMode?: unknown;
     attachments?: unknown;
+    /**
+     * Which model the account path should ask for.
+     *
+     * Ignored on the key path, where the stored upstream names it. It exists
+     * because the account path has no stored upstream to read a name from, and
+     * it is validated against what that credential may actually call rather than
+     * trusted.
+     */
+    model?: unknown;
   };
   try {
     body = (await req.json()) as typeof body;
@@ -196,8 +242,28 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  const settings = await getAssistantSettings(me.id);
-  if (!settings) {
+  const relayKey = typeof body.relayKey === "string" && body.relayKey.trim()
+    ? body.relayKey.trim()
+    : undefined;
+  const credentialMode =
+    body.credentialMode === "account" || body.credentialMode === "key" ? body.credentialMode : undefined;
+
+  /**
+   * The credential is resolved before the configuration gate, because on the
+   * account path there is no configuration to gate: the turn runs through this
+   * deployment with the credential the user already authorised.
+   *
+   * That credential has no plaintext — the row keeps only a sha256 of a secret
+   * that was dropped at creation (`db/assistant-keys.ts`) — so it cannot be sent
+   * as a bearer token. It goes to the proxy in-process instead, which is what
+   * the tools have always done with it. `gatewayBase` is not the destination
+   * here; the transport below is.
+   */
+  const credential = await resolveToolCredential({ userId: me.id, mode: credentialMode, relayKey });
+  const onAccount = credential.kind === "account";
+
+  const settings = onAccount ? null : await getAssistantSettings(me.id);
+  if (!settings && !onAccount) {
     return Response.json(
       {
         ok: false,
@@ -208,6 +274,48 @@ export async function POST(req: Request): Promise<Response> {
       },
       { status: 409 },
     );
+  }
+
+  /**
+   * The model the account path asks for, checked against what that credential
+   * may actually call.
+   *
+   * Validated rather than trusted because the list is a policy decision — the
+   * key's own whitelist and which providers are enabled — and a request body is
+   * not where that is enforced. A model outside it would otherwise be a way to
+   * spend against something the user was not offered.
+   */
+  let accountModel: string | null = null;
+  if (onAccount) {
+    const wanted = typeof body.model === "string" ? body.model.trim() : "";
+    const allowed = await listClientModelIds(credential.account.apiKey);
+    if (!wanted) {
+      accountModel = allowed[0] ?? null;
+    } else if (allowed.includes(wanted)) {
+      accountModel = wanted;
+    } else {
+      return Response.json(
+        {
+          ok: false,
+          error: {
+            code: "model_not_allowed",
+            message: wanted
+              ? `这个模型不在你可用范围内：${wanted}`
+              : "当前没有可用模型，请先让管理员配置提供商。",
+          },
+        },
+        { status: 400 },
+      );
+    }
+    if (!accountModel) {
+      return Response.json(
+        {
+          ok: false,
+          error: { code: "no_model", message: "当前没有可用模型，请先让管理员配置提供商。" },
+        },
+        { status: 409 },
+      );
+    }
   }
 
   const threadId = typeof body.threadId === "string" ? body.threadId : null;
@@ -221,26 +329,16 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  const relayKey = typeof body.relayKey === "string" && body.relayKey.trim()
-    ? body.relayKey.trim()
-    : undefined;
-  const credentialMode =
-    body.credentialMode === "account" || body.credentialMode === "key" ? body.credentialMode : undefined;
-
-  // Resolved here, while the request context is still live — it reads the
-  // database and, for the key path, the deployment's own address. Doing it in
-  // the stream callback would be too late for `next/headers`.
-  //
-  // The tool loop runs inside a stream callback, where `next/headers` may no
-  // longer resolve, and without resolving the address here the model tester
-  // addressed http://localhost:3000 and failed with "fetch failed" on every
-  // self-hosted deployment that does not set RELAY_PUBLIC_URL.
-  const [gatewayBase, credential, locale, docPages] = await Promise.all([
+  /**
+   * Resolved here, while the request context is still live. The tool loop runs
+   * inside a stream callback, where `next/headers` may no longer resolve, and
+   * without resolving the address before the stream the model tester addressed
+   * http://localhost:3000 and failed with "fetch failed" on every self-hosted
+   * deployment that does not set RELAY_PUBLIC_URL. The documentation tool and
+   * its language have to come from here for the same reason.
+   */
+  const [gatewayBase, locale, docPages] = await Promise.all([
     resolvePublicUrl(),
-    resolveToolCredential({ userId: me.id, mode: credentialMode, relayKey }),
-    // Also resolved here, for the same reason: the tool loop runs inside a
-    // stream callback where `next/headers` no longer resolves, and both the
-    // documentation tool and its language have to come from here.
     getServerLocale(),
     getSettings().then((s) => s.docPages ?? []),
   ]);
@@ -275,7 +373,18 @@ export async function POST(req: Request): Promise<Response> {
 
         await runChat({
           user: me,
-          settings,
+          // Exactly one of the two is passed, so `runChat` cannot pick the wrong
+          // vendor: the stored upstream when there is one, the in-process proxy
+          // when the account credential is paying.
+          ...(settings ? { settings } : {}),
+          ...(onAccount && accountModel
+            ? {
+                inProcessUpstream: {
+                  model: accountModel,
+                  transport: accountTransport(credential.account),
+                },
+              }
+            : {}),
           thread,
           message,
           attachments,

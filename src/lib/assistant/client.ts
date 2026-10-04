@@ -60,8 +60,10 @@ export interface UpstreamTurn {
 }
 
 export interface CallModelOptions {
-  baseUrl: string;
-  apiKey: string;
+  /** Unused when `transport` is set; the transport is the whole destination. */
+  baseUrl?: string;
+  /** Unused when `transport` is set — there is no secret to send. */
+  apiKey?: string;
   model: string;
   extraHeaders?: Record<string, string>;
   messages: ChatMessage[];
@@ -70,6 +72,11 @@ export interface CallModelOptions {
   onText?: (delta: string) => void;
   signal?: AbortSignal;
   timeoutMs?: number;
+  /**
+   * Replaces the HTTP call. `baseUrl` and `apiKey` are then unused, which is why
+   * the account path can leave them unset rather than pass a placeholder.
+   */
+  transport?: UpstreamTransport;
 }
 
 export class UpstreamError extends Error {
@@ -82,6 +89,25 @@ export class UpstreamError extends Error {
     this.name = "UpstreamError";
   }
 }
+
+/**
+ * How one turn reaches a model.
+ *
+ * The default is an HTTP call to the user's own upstream, authenticated with a
+ * key they pasted. The account path cannot use that: the credential the system
+ * issues on a user's behalf keeps only a sha256 of a secret that is dropped the
+ * moment the row is created (`db/assistant-keys.ts`), so it provably cannot go
+ * in an `Authorization` header. It is handed straight to this deployment's own
+ * proxy instead — the same thing the assistant's tools have always done.
+ *
+ * So the transport is a parameter rather than a second client. Everything after
+ * it — delta reassembly, tool-call stitching, the abort contract — is shared,
+ * because that is the part that is easy to get subtly wrong twice.
+ */
+export type UpstreamTransport = (args: {
+  body: unknown;
+  signal: AbortSignal;
+}) => Promise<ReadableStream<Uint8Array>>;
 
 /** Strip a trailing slash so `join` never produces a double slash. */
 function normalizeBase(base: string): string {
@@ -126,22 +152,36 @@ export async function callAssistantModel(opts: CallModelOptions): Promise<Upstre
   };
 
   try {
-    const res = await fetch(`${normalizeBase(opts.baseUrl)}/chat/completions`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
+    let stream: ReadableStream<Uint8Array>;
 
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new UpstreamError(extractErrorMessage(text), res.status, text);
-    }
-    if (!res.body) {
-      throw new UpstreamError("上游没有返回可读的响应流", 502);
+    if (opts.transport) {
+      // Throws UpstreamError itself, so the reporting below is identical.
+      stream = await opts.transport({ body, signal: controller.signal });
+    } else {
+      // Making the address optional is what let the account path exist at all,
+      // so the case where neither is present has to fail here rather than
+      // become a fetch of "undefined/chat/completions".
+      if (!opts.baseUrl || !opts.apiKey) {
+        throw new UpstreamError("没有配置上游地址或密钥", 500);
+      }
+      const res = await fetch(`${normalizeBase(opts.baseUrl)}/chat/completions`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new UpstreamError(extractErrorMessage(text), res.status, text);
+      }
+      if (!res.body) {
+        throw new UpstreamError("上游没有返回可读的响应流", 502);
+      }
+      stream = res.body;
     }
 
-    return await readTurn(res.body, opts.onText);
+    return await readTurn(stream, opts.onText);
   } catch (err) {
     if (err instanceof UpstreamError) throw err;
     if (err instanceof DOMException && err.name === "AbortError") {

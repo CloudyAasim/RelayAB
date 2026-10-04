@@ -57,6 +57,7 @@ export default async function AssistantPage() {
         <AssistantChat
           configured={Boolean(settings)}
           modelLabel={settings?.model ?? t("assistant.unconfiguredModel")}
+          accountModels={suggestedModels}
           settingsPanel={
             <AssistantSettingsPanel initial={settings} suggestedModels={suggestedModels} />
           }

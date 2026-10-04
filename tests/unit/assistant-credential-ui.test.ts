@@ -284,63 +284,94 @@ describe("credential UI: the testers' spacing", () => {
 });
 
 /**
- * The drawer held two unrelated subjects as one list.
+ * The credential decides which of two upstreams there is, so it comes first.
  *
- * It said "no key is needed or stored" three lines above a required key field,
- * with nothing to say the two were unrelated — so a reader who had switched on
- * account identity met a demand for a key and reasonably concluded the screen
- * contradicted itself. It did; it just had no headings, so nothing said which
- * of the two keys was being asked for.
+ * The drawer used to put the credential choice above the address and key, and
+ * then show those fields in both modes — so someone who chose their account
+ * identity was asked for a key three lines under a line saying none was needed.
+ * The account path has an upstream by construction: this deployment, reached
+ * with the credential the user already authorised. Asking for its address and
+ * key was asking for the one thing it does not use.
  *
- * The fix is structural, not cosmetic, and the second half of it is a boundary:
- * the key field is the assistant's *own upstream* key and cannot be deleted,
- * because without it the chat route refuses to run at all. That last guard is
- * here because the obvious "fix" for this complaint is exactly that deletion.
+ * This is not a display change, and the guards below are about that. The account
+ * credential keeps only a sha256 of a secret that was discarded at creation
+ * (`db/assistant-keys.ts`), so it provably cannot be sent as a bearer token —
+ * the turn has to be run through the proxy in-process. A form that merely hid
+ * the fields would have left the assistant answering 409.
  */
-describe("credential UI: the drawer's two subjects stay apart", () => {
-  const SETTINGS_PANEL = read("app/(user)/dashboard/assistant/AssistantSettingsPanel.tsx");
+describe("credential UI: the credential comes first, the upstream only on the key path", () => {
+  const CHAT = read("app/(user)/dashboard/assistant/AssistantChat.tsx");
   const CHAT_ROUTE = read("app/api/assistant/chat/route.ts");
-  const DICT = read("lib/i18n/dict.ts");
+  const CLIENT = read("lib/assistant/client.ts");
+  const SETTINGS_PANEL_SRC = read("app/(user)/dashboard/assistant/AssistantSettingsPanel.tsx");
 
-  it("each subject is under a heading that names it", () => {
-    // The complaint is about a contradiction, and a contradiction is fixed by
-    // saying which thing is which — not by reordering or restyling the fields.
-    expect(CHAT, "the upstream section has no heading").toContain("assistant.settings.upstream.title");
-    expect(CHAT, "the tools section has no heading").toContain("assistant.tools.title");
-    // Each heading is paired with a line saying what it covers, so "which key is
-    // this" is answered where the reader is looking.
-    expect(CHAT).toMatch(/assistant\.settings\.upstream\.desc/);
-    expect(CHAT).toMatch(/assistant\.tools\.desc/);
-  });
-
-  it("the upstream comes first, because it decides whether the assistant runs", () => {
-    // With the credential choice first, the settings panel read as a
-    // continuation of it — which is precisely the misreading reported.
+  it("the choice is above the upstream block", () => {
+    const choice = CHAT.indexOf("assistant.tools.title");
     const upstream = CHAT.indexOf("assistant.settings.upstream.title");
-    const tools = CHAT.indexOf("assistant.tools.title");
-    expect(upstream).toBeGreaterThan(-1);
-    expect(tools).toBeGreaterThan(upstream);
-    // And the two are separate elements, not one list with a divider.
-    expect(CHAT.slice(upstream, tools)).toContain("</section>");
-    expect(CHAT.slice(upstream, tools)).toContain("{settingsPanel}");
-    expect(CHAT.slice(tools)).toContain("<CredentialChoice");
+    expect(choice, "the credential section lost its heading").toBeGreaterThan(-1);
+    expect(upstream, "the upstream section lost its heading").toBeGreaterThan(-1);
+    expect(choice).toBeLessThan(upstream);
   });
 
-  it("the upstream key says which key it is", () => {
-    // "API 密钥" next to a "网关密钥" two sections away is not a distinction, and
-    // the hint is what has to carry it.
-    expect(DICT).toMatch(/"assistant\.settings\.apiKey":\s*"上游 API 密钥"/);
-    expect(DICT).toMatch(/"assistant\.settings\.apiKeyHint":\s*"[^"]*不是本部署的网关密钥/);
+  it("and the upstream fields render only while the key path is selected", () => {
+    // A conditional, not a hint. Showing them disabled would be the same
+    // contradiction in a quieter voice.
+    expect(CHAT).toMatch(/\{credentialMode === "key" && \(\s*<section/);
+    // And the settings panel is inside that conditional, not beside it.
+    const guarded = CHAT.slice(CHAT.indexOf('{credentialMode === "key" && ('));
+    expect(guarded.slice(0, 1200)).toContain("{settingsPanel}");
   });
 
-  it("and it is not deleted, because the assistant cannot start without it", () => {
-    // The obvious reading of the complaint is "remove the key box while account
-    // identity is on". Doing that takes the chat to 409 not_configured, so the
-    // field is not a display choice and no guard should ever let it be treated
-    // as one.
-    expect(SETTINGS_PANEL, "the upstream key field is gone").toContain("assistant.settings.apiKey");
-    expect(SETTINGS_PANEL).toMatch(/label=\{t\("assistant\.settings\.apiKey"\)\}/);
-    expect(CHAT_ROUTE, "the chat no longer refuses to run without an upstream").toContain("not_configured");
-    expect(CHAT_ROUTE).toMatch(/getAssistantSettings\(me\.id\)/);
+  it("the account path asks for a model, and it is this deployment's list", () => {
+    // There is no stored upstream to read a name from, so the choice travels
+    // with the turn — and the list is the deployment's, which is why it is a
+    // closed select rather than the key path's free-text field.
+    expect(CHAT).toContain("accountModels");
+    expect(CHAT).toMatch(/credentialMode === "account" && accountModels\.length > 0/);
+    expect(CHAT).toMatch(/\{accountModels\.map\(\(m\) => \(/);
+    expect(CHAT).toMatch(/credentialMode === "account" && accountModel\.trim\(\)[\s\S]{0,120}model: accountModel\.trim\(\)/);
+  });
+
+  it("the account turn runs through the proxy, not over HTTP with a key", () => {
+    // The reason the fields can go. A credential with no plaintext has nothing
+    // to put in an Authorization header, so the turn is handed to the proxy as
+    // the objects it already has.
+    expect(CHAT_ROUTE, "the account path still dials an address").toMatch(
+      /function accountTransport\([\s\S]{0,900}proxyChatCompletion\(\{/,
+    );
+    expect(CHAT_ROUTE).toMatch(/transport: accountTransport\(credential\.account\)/);
+    // And the client takes that as an alternative to the fetch, not instead of
+    // the streaming assembly — the two paths must not become two clients.
+    expect(CLIENT).toContain("export type UpstreamTransport");
+    expect(CLIENT).toMatch(/if \(opts\.transport\) \{[\s\S]{0,400}opts\.transport\(\{ body, signal/);
+    expect(CLIENT).toMatch(/return await readTurn\(stream, opts\.onText\)/);
+  });
+
+  it("the model on that path is checked, not trusted", () => {
+    // The list is a policy decision — the key's whitelist and which providers
+    // are enabled — and a request body is not where that is enforced.
+    expect(CHAT_ROUTE).toMatch(/listClientModelIds\(credential\.account\.apiKey\)/);
+    expect(CHAT_ROUTE).toMatch(/allowed\.includes\(wanted\)/);
+    expect(CHAT_ROUTE).toMatch(/code: "model_not_allowed"/);
+  });
+
+  it("and the composer is not blocked by a missing upstream on the account path", () => {
+    // The mirror of the old bug: it used to refuse to send, and sent the user
+    // to a settings drawer that, in this mode, had nothing to configure.
+    expect(CHAT).toMatch(/const canSend = credentialMode === "account" \|\| configured;/);
+    expect(CHAT).toMatch(/const missingUpstream = credentialMode === "key" && !configured;/);
+    expect(CHAT).toMatch(/busy \|\| !canSend\) return;/);
+    // The "not configured" banner is the key path's, for the same reason.
+    expect(CHAT).toMatch(/\{missingUpstream && \(/);
+  });
+
+  it("the key path still needs its upstream, and still says so", () => {
+    // Nothing about the key path was relaxed. Without a stored row it is 409,
+    // and the banner is what tells the reader where to go.
+    expect(CHAT_ROUTE).toMatch(/if \(!settings && !onAccount\)/);
+    expect(CHAT_ROUTE).toMatch(/code: "not_configured"/);
+    expect(SETTINGS_PANEL_SRC, "the upstream key field is gone").toContain(
+      "assistant.settings.apiKey",
+    );
   });
 });

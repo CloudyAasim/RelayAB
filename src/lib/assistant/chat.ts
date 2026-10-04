@@ -22,7 +22,7 @@
  *    wall-clock deadline — the two failures that would otherwise hang a request
  *    open and run up an upstream bill.
  */
-import { callAssistantModel, UpstreamError, type ChatMessage, type ContentPart, type UpstreamTurn } from "./client";
+import { callAssistantModel, UpstreamError, type ChatMessage, type ContentPart, type UpstreamTurn, type UpstreamTransport } from "./client";
 import { toolDefinitions, executeTool, type ToolContext } from "./tools";
 import { systemPrompt } from "./prompts";
 import type { ResolvedCredential } from "./credentials";
@@ -160,7 +160,27 @@ export interface ChatEvent {
 
 export interface RunChatOptions {
   user: AuthedUser;
-  settings: AssistantSettings;
+  /**
+   * The user's own upstream, for the key path.
+   *
+   * Optional because the account path does not have one: it runs the turn
+   * through this deployment's own proxy in-process and names no address and no
+   * secret at all. See {@link RunChatOptions.inProcessUpstream}.
+   */
+  settings?: AssistantSettings;
+  /**
+   * Where the turn goes when there is no stored upstream — the account path.
+   *
+   * Carries the model to ask for and the transport that reaches it. The route
+   * builds it from the credential the user already authorised, which is why it
+   * can exist at all: that credential has no plaintext to put in a header
+   * (`db/assistant-keys.ts`), so it is handed to the proxy directly.
+   *
+   * Exactly one of `settings` and this is used. `settings` wins when both are
+   * present, so a half-configured account path cannot silently change which
+   * vendor a conversation runs on.
+   */
+  inProcessUpstream?: { model: string; transport: UpstreamTransport };
   thread: AssistantThread;
   message: string;
   /**
@@ -246,7 +266,20 @@ function withArtifactRefs(content: string, refs: ArtifactRef[]): string {
 
 export async function runChat(opts: RunChatOptions): Promise<void> {
   const { user, settings, thread, message, credential, signal, emit } = opts;
-  const apiKey = decryptSecret(settings.encryptedApiKey);
+  // Which of the two upstreams this turn uses, decided once. The stored upstream
+  // wins when both are present, and the account path is the one that has no key
+  // to decrypt at all — so this cannot be left as a field read at the call site.
+  const upstream: { baseUrl?: string; apiKey?: string; model: string; extraHeaders?: Record<string, string>; transport?: UpstreamTransport } =
+    settings
+      ? {
+          baseUrl: settings.baseUrl,
+          apiKey: decryptSecret(settings.encryptedApiKey),
+          model: settings.model,
+          ...(settings.extraHeaders ? { extraHeaders: settings.extraHeaders } : {}),
+        }
+      : opts.inProcessUpstream
+        ? { model: opts.inProcessUpstream.model, transport: opts.inProcessUpstream.transport }
+        : { model: "", baseUrl: "", apiKey: "" };
   const isAdmin = user.role === "admin";
   const tools = toolDefinitions(isAdmin);
   const ctx: ToolContext = {
@@ -291,10 +324,11 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
     let turn: UpstreamTurn;
     try {
       turn = await callAssistantModel({
-        baseUrl: settings.baseUrl,
-        apiKey,
-        model: settings.model,
-        extraHeaders: settings.extraHeaders,
+        model: upstream.model,
+        ...(upstream.baseUrl ? { baseUrl: upstream.baseUrl } : {}),
+        ...(upstream.apiKey ? { apiKey: upstream.apiKey } : {}),
+        ...(upstream.extraHeaders ? { extraHeaders: upstream.extraHeaders } : {}),
+        ...(upstream.transport ? { transport: upstream.transport } : {}),
         messages,
         tools,
         signal,
