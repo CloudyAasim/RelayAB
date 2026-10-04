@@ -41,7 +41,6 @@ export function UserDocsApp({
   base,
   openaiBase,
   anthropicBase,
-  responsesBase,
   catalogue,
   outlineLabel,
   copyPageLabel,
@@ -57,7 +56,6 @@ export function UserDocsApp({
   base: string;
   openaiBase: string;
   anthropicBase: string;
-  responsesBase: string;
   /**
    * The live model catalogue, when this deployment shows one.
    *
@@ -266,7 +264,6 @@ export function UserDocsApp({
             baseUrl={base}
             openaiBase={openaiBase}
             anthropicBase={anthropicBase}
-            responsesBase={responsesBase}
           />
         )}
       </div>

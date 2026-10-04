@@ -58,6 +58,10 @@ const FORM = readFileSync(
   join(process.cwd(), "src", "app", "(admin)", "admin", "settings", "DocsPagesForm.tsx"),
   "utf-8",
 );
+const CONTENT = readFileSync(
+  join(process.cwd(), "src", "app", "(user)", "dashboard", "docs", "DocsContent.tsx"),
+  "utf-8",
+);
 const READER = readFileSync(join(process.cwd(), "src", "lib", "assistant", "docs-reader.ts"), "utf-8");
 const DIFF = readFileSync(join(process.cwd(), "src", "lib", "assistant", "diff.ts"), "utf-8");
 const TOOLS = readFileSync(join(process.cwd(), "src", "lib", "assistant", "tools.ts"), "utf-8");
@@ -187,6 +191,41 @@ describe("the parameters guide, and what the assistant can do with it", () => {
     // invisible until somebody reloads hard.
     expect(ACTION_ROUTE).toMatch(/revalidatePath\("\/docs", "layout"\)/);
     expect(ACTION_ROUTE).toMatch(/revalidatePath\("\/dashboard\/docs", "layout"\)/);
+  });
+});
+
+describe("the integration guide renders what it says it renders", () => {
+  it("every chapter is reached by its own name", () => {
+    // `media` used to be whatever fell past the last `if`, so any chapter id
+    // this component did not recognise came out as the media page — under the
+    // media page's heading, with its own examples, looking entirely plausible.
+    // Nothing hits that today because the two non-prose ids are routed away
+    // above it, but the type that would have caught it is erased at runtime,
+    // and the next chapter added without a branch would land there silently.
+    for (const id of ["start", "endpoints", "openai", "anthropic", "responses", "models", "sdks", "media"]) {
+      expect(CONTENT, `no branch renders the "${id}" chapter`).toMatch(
+        new RegExp(`if \\(section === "${id}"\\) \\{`),
+      );
+    }
+    // And the fallthrough says so, rather than rendering something plausible.
+    expect(CONTENT).not.toMatch(/^\s*\/\/ media\s*$/m);
+    expect(CONTENT).toMatch(/docs\.unknown\.title/);
+  });
+
+  it("and the two OpenAI-shaped chapters say they share a base instead of repeating one", () => {
+    // They always did share it: both are served under one `/v1` and
+    // authenticated the same way. Carried as two props, the reader compared two
+    // identical code blocks and found a copy-paste slip. One sentence is both
+    // shorter and the actual information.
+    expect(CONTENT, "the duplicate base prop is back").not.toMatch(/responsesBase/);
+    expect(INTEGRATION, "the duplicate base prop is back").not.toMatch(/responsesBase/);
+    expect(APP, "the duplicate base prop is back").not.toMatch(/responsesBase/);
+    // The Responses chapter points at the OpenAI one instead of re-printing it.
+    expect(CONTENT).toMatch(/t\("docs\.responses\.sameAsOpenai"\)/);
+    expect(CONTENT).not.toMatch(/label=\{t\("docs\.responses\.header"\)\}/);
+    // …and the OpenAI chapter says which chapter it is shared with, so the
+    // claim is findable from either side.
+    expect(CONTENT).toMatch(/t\("docs\.openai\.sharesBase"\)/);
   });
 });
 

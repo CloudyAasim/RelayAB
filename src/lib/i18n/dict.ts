@@ -342,6 +342,12 @@ const zhCN: Dict = {
   "docs.url.responsesBase": "OpenAI Responses API Base URL",
   "docs.responses.title": "OpenAI Responses API",
   "docs.responses.desc": "兼容 /v1/responses。",
+  "docs.responses.sameAsOpenai":
+    "基址和认证头跟上面那章完全一样——两个 OpenAI 形状的端点共用同一个 /v1，区别只在路径和请求体。",
+  "docs.openai.sharesBase":
+    "这一章和「Responses」共用同一个基址和同一把密钥；要发 /v1/responses 就把路径换掉。",
+  "docs.unknown.title": "没有这一章",
+  "docs.unknown.desc": "文档里找不到这个章节，可能是链接过期了。",
   "docs.responses.line1": "Responses API 是 OpenAI 最新的一体化 API，使用与 Chat Completions 相同的 Base URL。",
   "docs.responses.baseUrl": "Base URL",
   "docs.responses.header": "认证头",
@@ -1331,6 +1337,12 @@ const en: Dict = {
   "docs.url.responsesBase": "OpenAI Responses API Base URL",
   "docs.responses.title": "OpenAI Responses API",
   "docs.responses.desc": "Compatible with /v1/responses.",
+  "docs.responses.sameAsOpenai":
+    "The base URL and the auth header are exactly the ones on the OpenAI chapter — both OpenAI-shaped endpoints live under one /v1, and only the path and the request body differ.",
+  "docs.openai.sharesBase":
+    "This chapter and Responses share one base URL and one key; to reach /v1/responses, change the path.",
+  "docs.unknown.title": "No such chapter",
+  "docs.unknown.desc": "The document has no chapter by that name. The link is probably out of date.",
   "docs.responses.line1": "The Responses API is OpenAI's newest unified API. Use the same base URL as Chat Completions.",
   "docs.responses.baseUrl": "Base URL",
   "docs.responses.header": "Auth header",

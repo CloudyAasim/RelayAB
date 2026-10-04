@@ -26,7 +26,13 @@ interface Props {
   baseUrl: string;
   openaiBase: string;
   anthropicBase: string;
-  responsesBase: string;
+  /**
+   * The Responses chapter used to carry its own base, and it was the same
+   * string. Both OpenAI-shaped endpoints live under one `/v1`, so a second prop
+   * was a second place to change an address and a second thing for a reader to
+   * compare and find identical — which is true, and reads as a mistake. The
+   * chapters now say outright that they share one base and one header.
+   */
 }
 
 /** One page of the integration docs. The shell handles navigation. */
@@ -35,7 +41,6 @@ export function DocsContent({
   baseUrl,
   openaiBase,
   anthropicBase,
-  responsesBase,
 }: Props) {
   const t = useT();
 
@@ -114,6 +119,7 @@ export function DocsContent({
         />
         <div className="space-y-3 text-xs text-foreground/90 sm:space-y-4 sm:text-sm">
           <p>{t("docs.openai.line1")}</p>
+          <p className="text-xs text-muted-foreground">{t("docs.openai.sharesBase")}</p>
           <CodeBlock label={t("docs.openai.baseUrl")} value={openaiBase} />
           <CodeBlock
             label={t("docs.openai.header")}
@@ -197,14 +203,18 @@ console.log(msg.content);`}
         />
         <div className="space-y-3 text-xs text-foreground/90 sm:space-y-4 sm:text-sm">
           <p>{t("docs.responses.line1")}</p>
-          <CodeBlock label={t("docs.responses.baseUrl")} value={responsesBase} />
-          <CodeBlock
-            label={t("docs.responses.header")}
-            value="Authorization: Bearer sk-relay-xxxx..."
-          />
+          {/*
+            The base and the header are not repeated here. They are the ones on
+            the OpenAI chapter, verbatim, and the reason is worth stating rather
+            than showing twice: both endpoints are served under one `/v1` and
+            authenticated the same way. Two identical code blocks in two
+            chapters reads as a copy-paste slip; one shared sentence reads as
+            what it is.
+          */}
+          <p className="text-xs text-muted-foreground">{t("docs.responses.sameAsOpenai")}</p>
           <CodeBlock
             label={t("docs.responses.example")}
-            value={`curl ${responsesBase}/responses \\
+            value={`curl ${openaiBase}/responses \\
   -H "Authorization: Bearer $RELAYAB_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"model": "YOUR_MODEL_ID","input": "Hello!"}'`}
@@ -268,19 +278,19 @@ console.log(resp.choices[0].message.content);`}
     );
   }
 
-  // media
-  return (
-    <div className="space-y-4 sm:space-y-6">
-      <Card>
-        <CardHeader
-          title={
-            <span className="flex items-center gap-2">
-              <ImageIcon className="h-4 w-4 text-muted-foreground" />
-              {t("docs.media.title")}
-            </span>
-          }
-          description={t("docs.media.desc")}
-        />
+  if (section === "media") {
+    return (
+      <div className="space-y-4 sm:space-y-6">
+        <Card>
+          <CardHeader
+            title={
+              <span className="flex items-center gap-2">
+                <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                {t("docs.media.title")}
+              </span>
+            }
+            description={t("docs.media.desc")}
+          />
         <div className="space-y-3 text-xs text-foreground/90 sm:space-y-4 sm:text-sm">
           <p>{t("docs.media.line1")}</p>
           <CodeBlock
@@ -337,6 +347,28 @@ console.log(resp.choices[0].message.content);`}
         {t("docs.help.contactAdmin")}
       </p>
     </div>
+    );
+  }
+
+  /*
+   * Nothing renders the media page by accident any more.
+   *
+   * `media` used to be whatever fell past the last `if`, so *any* chapter id
+   * this component did not recognise came out as the media page — under the
+   * media page's own heading, with its own examples, looking entirely
+   * plausible. Nothing hits that today because the two ids that are not prose
+   * are routed away above it, but the type that would have caught it is
+   * erased at runtime, and the next chapter added without a branch would land
+   * here silently.
+   *
+   * So it says what happened instead. An unreachable branch is a bug; a page
+   * that lies about which page it is is worse.
+   */
+  return (
+    <Card>
+      <CardHeader title={t("docs.unknown.title")} description={t("docs.unknown.desc")} />
+      <p className="font-mono text-xs text-muted-foreground">{section}</p>
+    </Card>
   );
 }
 

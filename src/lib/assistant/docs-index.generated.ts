@@ -39,7 +39,7 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     surface: "user",
     id: "openai",
     summary: "OpenAI 兼容用法：chat/completions、鉴权、示例",
-    keys: ["docs.openai.title","docs.openai.desc","docs.openai.line1","docs.openai.baseUrl","docs.openai.header","docs.openai.example","docs.openai.modelListHint"],
+    keys: ["docs.openai.title","docs.openai.desc","docs.openai.line1","docs.openai.sharesBase","docs.openai.baseUrl","docs.openai.header","docs.openai.example","docs.openai.modelListHint"],
   },
   {
     surface: "user",
@@ -51,7 +51,7 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     surface: "user",
     id: "responses",
     summary: "Responses 接口：什么时候用，和 chat/completions 的区别",
-    keys: ["docs.responses.title","docs.responses.desc","docs.responses.line1","docs.responses.baseUrl","docs.responses.header","docs.responses.example"],
+    keys: ["docs.responses.title","docs.responses.desc","docs.responses.line1","docs.responses.sameAsOpenai","docs.responses.example"],
   },
   {
     surface: "user",
@@ -63,7 +63,7 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     surface: "user",
     id: "sdks",
     summary: "官方 SDK 接法：Python / Node / CLI",
-    keys: ["docs.python.title","docs.python.desc","docs.python.openai","docs.node.title","docs.node.desc","docs.node.openai","docs.media.title","docs.media.desc","docs.media.line1","docs.media.image","docs.media.edit","docs.media.video","docs.media.tts","docs.media.stt","docs.media.music","docs.media.billing","docs.help.contactAdmin","docs.copy.failed","docs.copy.copied","common.copy"],
+    keys: ["docs.python.title","docs.python.desc","docs.python.openai","docs.node.title","docs.node.desc","docs.node.openai"],
   },
   {
     surface: "user",

@@ -43,7 +43,6 @@ export async function IntegrationDocs({
       base={base}
       openaiBase={`${base}/v1`}
       anthropicBase={`${base}/anthropic`}
-      responsesBase={`${base}/v1`}
       catalogue={catalogue}
       outlineLabel={t("docs.sections")}
       copyPageLabel={t("docs.copyPage")}
