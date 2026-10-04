@@ -7,30 +7,17 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createProvider, listProviders } from "@/lib/db/providers";
-import { toPublicProvider } from "@/lib/db/types";
+import { toPublicProvider, ModelConfigPatchSchema } from "@/lib/db/types";
 import { getCurrentUser } from "@/lib/auth/session";
 import { validateTextSpecs } from "@/lib/protocol/text-specs";
 
-const PostSchema = z.object({
+export const PostSchema = z.object({
   name: z.string().min(1).max(64),
   kind: z.enum(["openai", "anthropic", "custom-openai", "azure"]),
   baseUrl: z.string().nullable().optional(),
   apiKey: z.string().min(1),
   modelMapping: z.record(z.string(), z.string()).optional(),
-  modelConfigs: z.record(z.string(), z.object({
-    upstreamId: z.string(),
-    clientId: z.string(),
-    displayName: z.string().optional(),
-    contextLength: z.number().int().positive().optional(),
-    maxOutputTokens: z.number().int().positive().optional(),
-    inputCost: z.number().nonnegative().optional(),
-    outputCost: z.number().nonnegative().optional(),
-    // Optional, not defaulted: an absent rate means "charge the input price",
-    // and a schema default of 0 would silently make every cache read free.
-    cachedInputCost: z.number().nonnegative().optional(),
-    cacheWriteCost: z.number().nonnegative().optional(),
-    enabled: z.boolean().optional(),
-  })).optional(),
+  modelConfigs: z.record(z.string(), ModelConfigPatchSchema).optional(),
   enabled: z.boolean().optional(),
   priority: z.number().int().optional(),
   headers: z.record(z.string(), z.string()).optional(),

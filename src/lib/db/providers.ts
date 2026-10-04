@@ -26,6 +26,7 @@ import {
   type Provider,
   type ProviderKind,
   type ModelConfig,
+  type ModelConfigPatch,
 } from "./types";
 import { revalidateTag, unstable_cache } from "next/cache";
 import { getAll, getOne, rowToProvider, run, toDbBool, withTransaction } from "./sqlite";
@@ -53,20 +54,15 @@ export interface CreateProviderInput {
   baseUrl?: string | null;
   apiKey: string;
   modelMapping?: Record<string, string>;
-  modelConfigs?: Record<string, {
-    upstreamId: string;
-    clientId: string;
-    displayName?: string;
-    contextLength?: number;
-    maxOutputTokens?: number;
-    inputCost?: number;
-    outputCost?: number;
-    /** Per 1M input tokens the upstream served from its cache. Unset = same as inputCost. */
-    cachedInputCost?: number;
-    /** Per 1M input tokens written into the upstream's cache. Unset = same as inputCost. */
-    cacheWriteCost?: number;
-    enabled?: boolean;
-  }>;
+  /**
+   * Typed from the schema that validates it, not spelled out again.
+   *
+   * Spelled out here this block was the sixth copy of the same field list, and
+   * copies drift: this one had already lost `reasoningLevels` while every route
+   * that writes through it still offers the field. A field the repository
+   * cannot name is a field it drops.
+   */
+  modelConfigs?: Record<string, ModelConfigPatch>;
   enabled?: boolean;
   priority?: number;
   headers?: Record<string, string>;
@@ -96,20 +92,7 @@ export interface UpdateProviderInput {
   baseUrl?: string | null;
   apiKey?: string;
   modelMapping?: Record<string, string>;
-  modelConfigs?: Record<string, {
-    upstreamId: string;
-    clientId: string;
-    displayName?: string;
-    contextLength?: number;
-    maxOutputTokens?: number;
-    inputCost?: number;
-    outputCost?: number;
-    /** Per 1M input tokens the upstream served from its cache. Unset = same as inputCost. */
-    cachedInputCost?: number;
-    /** Per 1M input tokens written into the upstream's cache. Unset = same as inputCost. */
-    cacheWriteCost?: number;
-    enabled?: boolean;
-  }>;
+  modelConfigs?: Record<string, ModelConfigPatch>;
   enabled?: boolean;
   priority?: number;
   headers?: Record<string, string>;

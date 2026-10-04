@@ -31,7 +31,7 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { sanitizeLevelList } from "@/lib/providers/reasoning-levels";
+import { ModelConfigPatchSchema } from "@/lib/db/types";
 import { getCurrentUser, requireAdmin, AuthGuardError, type AuthedUser } from "@/lib/auth/session";
 import {
   claimAssistantAction,
@@ -63,30 +63,17 @@ const DecisionSchema = z.object({
 });
 
 
-/** Mirrors PatchSchema in the provider editor, minus anything key-shaped. */
-const ModelConfigSchema = z.object({
-  upstreamId: z.string(),
-  clientId: z.string(),
-  displayName: z.string().optional(),
-  contextLength: z.number().int().positive().optional(),
-  maxOutputTokens: z.number().int().positive().optional(),
-  inputCost: z.number().nonnegative().optional(),
-  outputCost: z.number().nonnegative().optional(),
-  // Present because `propose_model_config_update` offers them. Their absence
-  // here did not reject the change — it stripped it, so a proposal came back
-  // "applied" with the field silently missing, and the only version of it that
-  // appeared to work was the one carrying nothing.
-  cachedInputCost: z.number().nonnegative().optional(),
-  cacheWriteCost: z.number().nonnegative().optional(),
-  // Filtered for the same reason as everywhere else: a level is a value the
-  // model accepts, not the name of a field in the error that said so.
-  reasoningLevels: z
-    .array(z.string().min(1).max(64))
-    .max(24)
-    .transform((levels) => sanitizeLevelList(levels))
-    .optional(),
-  enabled: z.boolean().optional(),
-});
+/**
+ * The provider editor's model-configuration shape, used directly rather than
+ * mirrored.
+ *
+ * "Minus anything key-shaped" was true the moment it was written and stopped
+ * being the difference the moment a field was added: the local copy lost
+ * `reasoningLevels` and both cache prices while the tool still offered them, so
+ * a proposal came back reported as applied with the field stripped. The provider
+ * key is not part of this shape at all — it is a separate field of the approval
+ * body — so using the shared schema drops nothing and cannot drift again.
+ */
 
 const ProviderArgsSchema = z
   .object({
@@ -97,7 +84,7 @@ const ProviderArgsSchema = z
     enabled: z.boolean().optional(),
     priority: z.number().int().optional(),
     modelMapping: z.record(z.string(), z.string()).optional(),
-    modelConfigs: z.record(z.string(), ModelConfigSchema).optional(),
+    modelConfigs: z.record(z.string(), ModelConfigPatchSchema).optional(),
     /**
      * The provider's protocol documents, one per compatibility interface.
      *
@@ -154,7 +141,7 @@ const ProviderCreateSchema = z
     anthropicEnabled: z.boolean().optional(),
     anthropicBaseUrl: z.string().max(500).nullable().optional(),
     modelMapping: z.record(z.string(), z.string()).optional(),
-    modelConfigs: z.record(z.string(), ModelConfigSchema).optional(),
+    modelConfigs: z.record(z.string(), ModelConfigPatchSchema).optional(),
   })
   .strict();
 

@@ -12,6 +12,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { join } from "path";
+import { PatchSchema } from "@/app/api/admin/providers/[id]/route";
 import {
   DEFAULT_CONTEXT_LENGTH,
   DEFAULT_MAX_OUTPUT_TOKENS,
@@ -237,9 +238,29 @@ describe("the edit modal persists model configs", () => {
   });
 
   it("lets PATCH accept modelConfigs", () => {
+    // Parsed, not grepped. This used to assert the PATCH route's own file
+    // mentioned three field names, which is a statement about the text: it
+    // passed while the route was dropping two of the three, and it would have
+    // failed the moment the shared schema replaced the hand-written copy. What
+    // matters is whether a payload the editor builds survives the route's
+    // schema, so the route's schema is what gets handed the payload.
     const route = read("app/api/admin/providers/[id]/route.ts");
-    expect(route).toContain("modelConfigs:");
-    expect(route).toContain("contextLength");
-    expect(route).toContain("inputCost");
+    expect(route, "the PATCH route no longer takes model configs").toContain(
+      "modelConfigs:",
+    );
+    const entry = PatchSchema.shape.modelConfigs.unwrap()._def.valueType;
+    for (const [field, value] of Object.entries({
+      contextLength: 128_000,
+      inputCost: 1,
+    })) {
+      const parsed = entry.safeParse({
+        upstreamId: "u",
+        clientId: "c",
+        [field]: value,
+      });
+      expect(parsed.success, `PATCH rejects ${field}`).toBe(true);
+      if (!parsed.success) continue;
+      expect(parsed.data).toHaveProperty(field);
+    }
   });
 });

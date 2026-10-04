@@ -17,6 +17,20 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { z } from "zod";
+import { PostSchema } from "@/app/api/admin/providers/route";
+import { ModelEntrySchema } from "@/app/api/admin/model-config/route";
+
+/**
+ * The two API doors onto a model row, as the schemas their handlers parse with.
+ *
+ * The providers route keys a model by the record it sits in, so its entry
+ * schema is one level down; everything else is the entry shape itself.
+ */
+const DOORS: Record<string, z.ZodType<Record<string, unknown>>> = {
+  "providers API": PostSchema.shape.modelConfigs.unwrap()._def.valueType,
+  "model-config API": ModelEntrySchema,
+};
 
 const ROOT = process.cwd();
 const read = (...p: string[]) => readFileSync(join(ROOT, ...p), "utf-8");
@@ -32,7 +46,6 @@ const PROVIDER_EDITOR = read(
 const MODEL_ROWS = read("src", "app", "(admin)", "admin", "providers", "model-rows.ts");
 const MODEL_CONFIG = read("src", "lib", "admin", "model-config.ts");
 const MODEL_CONFIG_ROUTE = read("src", "app", "api", "admin", "model-config", "route.ts");
-const PROVIDER_API = read("src", "app", "api", "admin", "providers", "route.ts");
 const TOOLS = read("src", "lib", "assistant", "tools.ts");
 const USAGE_PAGE = read("src", "app", "(admin)", "admin", "page.tsx");
 
@@ -70,18 +83,35 @@ describe("cache pricing: one rate list, typed in three places", () => {
   });
 
   it("every door accepts them, and none of them defaults them away", () => {
-    for (const [name, src] of [
-      ["providers API", PROVIDER_API],
-      ["model-config API", MODEL_CONFIG_ROUTE],
-    ] as const) {
+    // Parsed, not grepped. The doors used to spell out their own field list, so
+    // this could only check that a name appeared somewhere in the file — which
+    // a comment satisfies, and which said nothing about whether a rate handed to
+    // the endpoint would survive the trip. They share one schema now; the check
+    // that matters is what that schema does to a value.
+    for (const [name, schema] of Object.entries(DOORS)) {
+      const parsed = schema.safeParse({
+        // The model-config page addresses a row by provider; the providers route
+        // keys it by the record it sits in. Extra keys are dropped by the doors
+        // that do not declare them.
+        providerId: "provider-1",
+        upstreamId: "u",
+        clientId: "c",
+        inputCost: 0,
+        outputCost: 0,
+        // 0 is the value at risk: a schema default of 0 here would make every
+        // cache read free the moment anybody saved an unrelated field.
+        cachedInputCost: 0,
+        cacheWriteCost: 0,
+      });
+      expect(parsed.success, `${name} rejects the rates`).toBe(true);
+      if (!parsed.success) continue;
       for (const field of RATES) {
-        expect(src, `${name} does not accept ${field}`).toContain(field);
+        expect(parsed.data, `${name} does not carry ${field}`).toHaveProperty(field);
+        expect(
+          (parsed.data as Record<string, unknown>)[field],
+          `${name} defaults ${field} away`,
+        ).toBe(0);
       }
-      // A schema default of 0 would make every cache read free the moment
-      // anybody saved an unrelated field.
-      expect(src, `${name} defaults a cache price`).not.toMatch(
-        new RegExp(`${RATES[2]}: z\\.number\\(\\)[^.]*\\.default\\(`),
-      );
     }
   });
 

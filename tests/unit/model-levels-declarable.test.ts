@@ -15,6 +15,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { ModelEntrySchema } from "@/app/api/admin/model-config/route";
 
 const ROOT = process.cwd();
 const read = (...p: string[]): string => readFileSync(join(ROOT, ...p), "utf-8");
@@ -59,18 +60,28 @@ describe("the levels are a field on the model configuration", () => {
   });
 
   it("the API accepts it and keeps it across an edit that did not mention it", () => {
-    expect(API, "the route will not take a list").toMatch(
-      /reasoningLevels: z[\s\S]{0,120}?\.array\(z\.string\(\)\.min\(1\)\.max\(64\)\)/,
-    );
-    // …and it filters on the way in. A level is a value the model accepts; the
-    // field names in the error that said so are not, and nine models here carried
-    // two of them until this was written.
-    expect(API, "envelope field names can be stored as levels").toMatch(
-      /\.transform\(\(levels\) => sanitizeLevelList\(levels\)\)/,
-    );
+    // Accepting a list, and filtering it, checked by handing one to the schema
+    // the route actually parses with. Both used to be asserted by matching the
+    // route's own text, which is a claim about a file rather than about the
+    // endpoint — and the shape now lives in one shared schema that the route
+    // imports, so there is nothing of it left in this file to match.
+    const parsed = ModelEntrySchema.safeParse({
+      providerId: "p",
+      upstreamId: "u",
+      clientId: "c",
+      // The shape that really happened: a parser that read the keys of the
+      // vendor's refusal and called them the list of levels the model accepts.
+      reasoningLevels: ["http_code", "request_id", "low", "medium", "high"],
+    });
+    expect(parsed.success, "the route will not take a list").toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.reasoningLevels).toEqual(["low", "medium", "high"]);
+    }
     // Merging, so an edit of some other field must not quietly drop them —
     // the failure that makes a declared configuration look unset.
-    expect(API).toMatch(/reasoningLevels: entry\.reasoningLevels \?\? existing\?\.reasoningLevels \?\? \[\]/);
+    expect(API).toMatch(
+      /reasoningLevels: entry\.reasoningLevels \?\? existing\?\.reasoningLevels \?\? \[\]/,
+    );
   });
 
   it("and the label says what the field is for", () => {

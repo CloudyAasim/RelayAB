@@ -13,14 +13,24 @@
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { sanitizeLevelList } from "@/lib/providers/reasoning-levels";
+import { ModelConfigPatchSchema } from "@/lib/db/types";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getProviderById, updateProvider } from "@/lib/db/providers";
 import { getSettings, updateSettings } from "@/lib/db/settings";
 
 export const dynamic = "force-dynamic";
 
-const ModelEntrySchema = z.object({
+/**
+ * The shared model-configuration shape, plus only what this route does
+ * differently.
+ *
+ * Extended rather than retyped: the field list used to be written out again
+ * here, which is precisely how a copy falls behind the routes writing the same
+ * fields. `null` is the one addition — on a route that merges, null is how a
+ * price is cleared back to "charge the input price", which is a different act
+ * from leaving the field alone.
+ */
+export const ModelEntrySchema = ModelConfigPatchSchema.extend({
   providerId: z.string().min(1),
   clientId: z.string().min(1).max(200),
   upstreamId: z.string().min(1).max(200),
@@ -29,26 +39,8 @@ const ModelEntrySchema = z.object({
   maxOutputTokens: z.number().int().positive().max(100_000_000).optional(),
   inputCost: z.number().nonnegative().max(1_000_000).optional(),
   outputCost: z.number().nonnegative().max(1_000_000).optional(),
-  // `null` clears the price back to "charge the input price". Absent is
-  // not the same thing here: this route merges, so absent means "leave it".
   cachedInputCost: z.number().nonnegative().max(1_000_000).nullable().optional(),
   cacheWriteCost: z.number().nonnegative().max(1_000_000).nullable().optional(),
-  /**
-   * The thinking levels the vendor publishes for this model.
-   *
-   * A list rather than a choice, because the levels are the model's: four on one
-   * vendor, three on the next, an on/off pair on a third, none on a model that
-   * does not think. An empty list is a real answer and means "we do not know",
-   * which is why it is not defaulted to a set of four here either.
-   */
-  // Filtered on the way in: a level is a value the model accepts, and the
-  // names of the fields in a refusal are not. See lib/providers/reasoning-levels.
-  reasoningLevels: z
-    .array(z.string().min(1).max(64))
-    .max(24)
-    .transform((levels) => sanitizeLevelList(levels))
-    .optional(),
-  enabled: z.boolean().optional(),
 });
 
 const NoteSchema = z

@@ -1560,6 +1560,78 @@ function listTextProtocolsTool(): ToolResult {
 }
 
 /**
+ * The numbers a proposal may set, with the labels used to reject a bad one.
+ *
+ * The thinking levels are deliberately absent. They are words, and a list of
+ * them cannot go through a `Number(...)` coercion — see
+ * {@link buildModelConfigPatch}.
+ */
+const NUMERIC_PATCH_FIELDS = [
+  ["contextLength", "上下文长度", true],
+  ["maxOutputTokens", "最大输出", true],
+  ["inputCost", "输入价格", false],
+  ["outputCost", "输出价格", false],
+  ["cachedInputCost", "缓存读价格", false],
+  ["cacheWriteCost", "缓存写价格", false],
+] as const;
+
+/**
+ * Turn the tool's arguments into the patch to merge into a stored model config.
+ *
+ * Pure, so it can be tested without a provider, a database or a user — which is
+ * the only reason the levels bug below was findable at all. It lived in the
+ * middle of a function that needed all three, so nothing could ask the executor
+ * a question; the only checks anyone had were on the schema the tool *advertises*,
+ * and that schema was correct the whole time.
+ *
+ * Returns `{ error }` for a message to show the model verbatim.
+ */
+export function buildModelConfigPatch(args: Record<string, unknown>):
+  | { patch: Record<string, unknown> }
+  | { error: string } {
+  const patch: Record<string, unknown> = {};
+  if (typeof args.displayName === "string" && args.displayName.trim()) {
+    patch.displayName = args.displayName.trim();
+  }
+  if (typeof args.upstreamId === "string" && args.upstreamId.trim()) {
+    patch.upstreamId = args.upstreamId.trim();
+  }
+
+  // The levels are words, not a number. This used to sit in the numeric loop,
+  // which coerced every value with `Number(...)` — and `Number(["low","high"])`
+  // is NaN, so the tool rejected the field it had just advertised with "thinking
+  // levels must be a non-negative number". Offered, documented and carried all
+  // the way to the database, and unwritable by the only thing that offers it.
+  //
+  // Validated as a list of non-empty strings here; the envelope names are
+  // filtered on the write path, once, for every writer.
+  if (args.reasoningLevels !== undefined) {
+    const levels = args.reasoningLevels;
+    if (!Array.isArray(levels)) return { error: "思考等级必须是一个字符串数组。" };
+    if (!levels.every((l) => typeof l === "string" && l.trim().length > 0)) {
+      return { error: "思考等级必须是一个非空字符串组成的数组。" };
+    }
+    if (levels.length > 24) return { error: "思考等级最多 24 个。" };
+    // Written even when empty: that is how a model stops offering levels a
+    // vendor has withdrawn.
+    patch.reasoningLevels = levels.map((l) => l.trim());
+  }
+
+  for (const [key, label, mustBeInteger] of NUMERIC_PATCH_FIELDS) {
+    const value = args[key];
+    if (value === undefined) continue;
+    const n = typeof value === "number" ? value : Number(value);
+    if (!Number.isFinite(n) || n < 0) return { error: `${label}必须是一个非负数字。` };
+    if (mustBeInteger && !Number.isInteger(n)) return { error: `${label}必须是整数。` };
+    patch[key] = n;
+  }
+  if (typeof args.enabled === "boolean") patch.enabled = args.enabled;
+
+  if (Object.keys(patch).length === 0) return { error: "没有提供任何要修改的字段。" };
+  return { patch };
+}
+
+/**
  * One model's gateway configuration.
  *
  * Merges into the stored config rather than replacing it: a model row carries
@@ -1586,34 +1658,9 @@ async function proposeModelConfigUpdate(
     );
   }
 
-  const patch: Record<string, unknown> = {};
-  if (typeof args.displayName === "string" && args.displayName.trim()) {
-    patch.displayName = args.displayName.trim();
-  }
-  if (typeof args.upstreamId === "string" && args.upstreamId.trim()) {
-    patch.upstreamId = args.upstreamId.trim();
-  }
-  for (const [key, label] of [
-    ["contextLength", "上下文长度"],
-    ["maxOutputTokens", "最大输出"],
-    ["reasoningLevels", "思考等级"],
-    ["inputCost", "输入价格"],
-    ["outputCost", "输出价格"],
-    ["cachedInputCost", "缓存读价格"],
-    ["cacheWriteCost", "缓存写价格"],
-  ] as const) {
-    const value = args[key];
-    if (value === undefined) continue;
-    const n = typeof value === "number" ? value : Number(value);
-    if (!Number.isFinite(n) || n < 0) return fail(`${label}必须是一个非负数字。`);
-    if (key !== "inputCost" && key !== "outputCost" && !Number.isInteger(n)) {
-      return fail(`${label}必须是整数。`);
-    }
-    patch[key] = n;
-  }
-  if (typeof args.enabled === "boolean") patch.enabled = args.enabled;
-
-  if (Object.keys(patch).length === 0) return fail("没有提供任何要修改的字段。");
+  const built = buildModelConfigPatch(args);
+  if ("error" in built) return fail(built.error);
+  const patch = built.patch;
 
   const merged = { ...(provider.modelConfigs ?? {}) };
   merged[clientId.data] = { ...existing, ...patch };

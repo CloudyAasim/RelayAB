@@ -9,6 +9,7 @@
  * All timestamps are ISO 8601 strings (UTC) for portability.
  */
 import { z } from "zod";
+import { sanitizeLevelList } from "@/lib/providers/reasoning-levels";
 
 // ---------------------------------------------------------------------------
 // Primitives
@@ -228,6 +229,40 @@ export const ModelConfigSchema = z.object({
 });
 
 export type ModelConfig = z.infer<typeof ModelConfigSchema>;
+
+/**
+ * A model configuration as it arrives in a *write* — every field optional, so
+ * that a patch which does not mention one keeps the stored value.
+ *
+ * The read schema above fills defaults; this one must not, because a default of
+ * 0 here would overwrite a real price with nothing. The two are separate
+ * shapes for the same reason the levels are filtered on only one side: a stored
+ * value is read back as it is, and a value on its way in is checked.
+ */
+export const ModelConfigPatchSchema = z.object({
+  upstreamId: z.string(),
+  clientId: z.string(),
+  displayName: z.string().optional(),
+  contextLength: z.number().int().positive().optional(),
+  maxOutputTokens: z.number().int().positive().optional(),
+  inputCost: z.number().nonnegative().optional(),
+  outputCost: z.number().nonnegative().optional(),
+  /** Absent means "charge the input price"; 0 means the cache read is free. */
+  cachedInputCost: z.number().nonnegative().optional(),
+  cacheWriteCost: z.number().nonnegative().optional(),
+  /**
+   * A level is a value the model accepts, not the name of a field in the error
+   * that said so — and an envelope's keys are exactly what a naive read picks
+   * up. Filtered here, once, for every writer.
+   */
+  reasoningLevels: z
+    .array(z.string().min(1).max(64))
+    .max(24)
+    .transform((levels) => sanitizeLevelList(levels))
+    .optional(),
+  enabled: z.boolean().optional(),
+});
+export type ModelConfigPatch = z.infer<typeof ModelConfigPatchSchema>;
 export const ProviderSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1).max(64),
