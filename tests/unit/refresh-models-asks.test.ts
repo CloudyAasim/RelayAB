@@ -51,6 +51,29 @@ describe("the refresh button", () => {
     );
   });
 
+  it("is given time to answer, and a timeout is not a silence", () => {
+    // The third layer, and the same mistake again: `callUpstream` gives a
+    // request eight seconds, which is a model-list budget. Every ask to a model
+    // that thinks first timed out, and a timeout arrives as `status: 0` with no
+    // body — the same shape as a refusal that said nothing useful, so all nine
+    // read as nine silences.
+    expect(ROUTE, "the ask still uses the eight-second default").toMatch(
+      /timeoutMs: ASK_TIMEOUT_MS/,
+    );
+    expect(ROUTE, "no ceiling is named").toContain("const ASK_TIMEOUT_MS");
+    // And the outcome that means "we did not find out" is kept apart from the
+    // one that means "the vendor declined to say".
+    expect(ROUTE, "a timeout is still reported as a refusal").not.toMatch(
+      /if \(!said\) return \{ levels: refusalVocabulary\(\"\)/,
+    );
+    expect(ROUTE).toMatch(/if \(!said\) return \{ levels: null, said: null, unanswered: true \};/);
+    expect(ROUTE, "timeouts are not counted").toMatch(/unanswered \+= 1;/);
+    expect(PANEL, "the panel cannot tell a timeout from a silence").toContain(
+      "assistant.settings.refreshUnanswered",
+    );
+    expect(DICT).toContain("assistant.settings.refreshUnanswered");
+  });
+
   it("and reports what was asked, not only what changed", () => {
     // "Updated 0" is the same sentence for "asked nobody", "asked nine and
     // learned nothing", and "asked nine and learned nine". Only the first
