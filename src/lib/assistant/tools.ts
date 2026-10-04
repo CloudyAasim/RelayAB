@@ -548,7 +548,8 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
             type: "array",
             items: { type: "string" },
             description:
-              "这个模型接受的思考等级，照厂商文档的原样写，不要翻译也不要归一化。例：MiniMax-M3.1-Flash-Preview 接受 low, medium, high, xhigh, max。空数组 = 这个模型不支持思考等级。先查官方文档确认再写，不确定就别写。",
+              "这个模型接受的思考等级，照厂商文档的原样写，不要翻译也不要归一化。例：MiniMax-M3.1-Flash-Preview 接受 low, medium, high, xhigh, max。空数组 = 这个模型不支持思考等级。先查官方文档确认再写，不确定就别写。\n" +
+              "注意：这个字段是**界面上给用户选的档位**，不是「能不能关思考」。同一个模型可能档位写了五档、却一个都关不掉（发 disabled 直接 400），也可能档位根本不调深度、真正的开关在另一个字段上。分不清就照文档写档位，别把开关混进来。",
           },
           inputCost: { type: "number", description: "每 100 万输入 token 的积分" },
           outputCost: { type: "number", description: "每 100 万输出 token 的积分" },

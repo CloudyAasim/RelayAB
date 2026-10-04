@@ -22,6 +22,31 @@ const OPENAI_CHAT: TextSpec = {
   // declared so the background page can show them, not so they are enforced.
   parameters: {
     reasoning_effort: { mode: "passthrough" },
+    /**
+     * The switch, on the vendors that have one — and the parameter whose absence
+     * from this list is why an operator could not find it.
+     *
+     * `reasoning_effort` is *how hard to think*; on MiniMax it is not even that
+     * for some models. `thinking` is *whether to think*, and it is the only
+     * spelling MiniMax accepts for it: `{"type":"adaptive"}` or
+     * `{"type":"disabled"}`. A client that only ever sends `reasoning_effort`
+     * cannot turn thinking off on those vendors, and the spec is the page that
+     * is supposed to say so.
+     *
+     * Undeclared parameters already pass through, so nothing was broken here.
+     * What was missing was the operator being able to *see* the switch, which is
+     * the same reason a closed list costs more than it saves.
+     */
+    thinking: { mode: "passthrough" },
+    /**
+     * Where the thinking content is returned, not whether there is any.
+     *
+     * `true` moves it to a separate field; `false` leaves it inside the content
+     * wrapped in tags. A reader that looks only at the separated field concludes
+     * a model that is thinking is not — which is a false negative about the
+     * vendor, made by the gateway.
+     */
+    reasoning_split: { mode: "passthrough" },
     temperature: { mode: "clamp", min: 0, max: 2 },
     max_tokens: { mode: "clamp", max: 131072 },
   },
@@ -32,6 +57,15 @@ const OPENAI_RESPONSES: TextSpec = {
   specVersion: 1,
   protocol: "openai-responses",
   parameters: {
+    /**
+     * Nested here, flat on Chat Completions — and on some vendors the object
+     * carries a real off switch. `"effort": "none"` is how a client asks a model
+     * not to think, which is the one case where a level and a switch are the
+     * same field, and the reason the rename to an identical name is written out
+     * rather than left implicit: an operator reading this list is told the
+     * parameter exists, which is the point of declaring one that changes
+     * nothing.
+     */
     reasoning: { mode: "rename", to: "reasoning" },
     temperature: { mode: "clamp", min: 0, max: 2 },
     max_output_tokens: { mode: "rename", to: "max_output_tokens" },
@@ -54,6 +88,17 @@ const ANTHROPIC_MESSAGES: TextSpec = {
     // operator who enables thinking has to drop it deliberately rather than
     // discovering the 400 in production.
     thinking: { mode: "passthrough" },
+    /**
+     * Thinking depth on this surface, and the only place it can be set.
+     *
+     * A vendor that publishes depth levels on its OpenAI surface does not
+     * necessarily publish them on its Anthropic surface under the same name —
+     * MiniMax puts them in `output_config.effort` here, so `reasoning_effort`
+     * reaches an endpoint that has never heard of it and the client believes it
+     * asked for `high`. Named here so the mismatch is something an operator can
+     * see and fix in the spec rather than discover in production.
+     */
+    output_config: { mode: "passthrough" },
   },
   errors: [{ httpStatus: 529, code: "overloaded" }],
   limits: { timeoutMs: 600000 },
@@ -106,17 +151,17 @@ export const TEXT_PROTOCOL_LABELS: Record<TextProtocol, { zh: string; en: string
   "openai-chat": {
     zh: "OpenAI Chat Completions",
     en: "OpenAI Chat Completions",
-    hint: "大多数厂商（含 MiniMax、OpenAI 兼容中转）都是这个。选它通常什么都不用改。",
+    hint: "大多数厂商（含 MiniMax、OpenAI 兼容中转）都是这个。选它通常什么都不用改。已声明 reasoning_effort（思考深度）、thinking（思考开关）、reasoning_split（思考内容放哪）。",
   },
   "openai-responses": {
     zh: "OpenAI Responses",
     en: "OpenAI Responses",
-    hint: "上游原生支持 /v1/responses。Codex CLI 直连这种上游时选它。",
+    hint: "上游原生支持 /v1/responses。Codex CLI 直连这种上游时选它。思考控制在嵌套的 reasoning 对象里。",
   },
   "anthropic-messages": {
     zh: "Anthropic Messages",
     en: "Anthropic Messages",
-    hint: "Anthropic 官方或任何 /v1/messages 兼容上游。token 上限叫 max_tokens，停词叫 stop_sequences。",
+    hint: "Anthropic 官方或任何 /v1/messages 兼容上游。token 上限叫 max_tokens，停词叫 stop_sequences。部分厂商把思考深度放在 output_config 而不是 reasoning_effort。",
   },
   "gemini-generate": {
     zh: "Google Gemini",

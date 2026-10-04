@@ -536,6 +536,18 @@ export function AssistantSettingsPanel({
               levels={mode === "account" ? (facts?.reasoningLevels ?? []) : []}
             />
             <p className="font-mono text-[10px] text-muted-foreground">reasoning_effort</p>
+            {/*
+              Next to the field, because the option list cannot say it. The empty
+              option is labelled "default" and is honest, but "default" is a
+              different claim in each direction: for a model whose default is its
+              deepest level it is the most expensive choice on this list, and for
+              a model that thinks unless told otherwise it means thinking stays
+              on. A user who wants to spend less and picks the default gets the
+              opposite, and nothing on screen says so.
+            */}
+            <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+              {t("assistant.settings.reasoningDefaultIsNotOff")}
+            </p>
           </div>
           <ParamField
             id="assistant-max-output"
