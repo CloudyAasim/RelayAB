@@ -56,6 +56,15 @@ const PatchSchema = z.object({
         ctx.addIssue({ code: z.ZodIssueCode.custom, message });
       }
     }),
+  /**
+   * Which configuration is live. Absent leaves the stored choice alone; `null`
+   * hands the row back to following its rules if it has any.
+   *
+   * This schema is `.strict()`, so the field has to be declared here — an
+   * editor that starts sending it is otherwise rejected wholesale, and the
+   * failure reads as "the whole save was refused" rather than "one new field".
+   */
+  activeMode: z.enum(["simple", "advanced"]).nullable().optional(),
   })
   .strict();
 

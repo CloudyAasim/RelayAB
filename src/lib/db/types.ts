@@ -256,6 +256,21 @@ export const ProviderSchema = z.object({
    * provider written before this existed needs no migration.
    */
   textSpecs: z.array(z.string()).default([]).optional(),
+  /**
+   * Which of this provider's two configurations is live: the faces alone
+   * ("simple"), or the faces plus the per-interface rules ("advanced").
+   *
+   * Both are kept whichever is chosen — the inactive one is not thrown away, so
+   * switching costs nothing and losing it is not possible. This field only says
+   * which one the engine reads.
+   *
+   * `null` is the deliberate default rather than `"simple"`: a row written
+   * before the field existed has rules and they were applying, so defaulting
+   * the other way would silently switch every existing provider's rules off the
+   * moment it was upgraded. `activeModeOf` reads null as "whatever it has
+   * always done" — rules if it has any.
+   */
+  activeMode: z.enum(["simple", "advanced"]).nullable().default(null),
   createdAt: z.string(),
   updatedAt: z.string(),
 });export type Provider = z.infer<typeof ProviderSchema>;

@@ -65,6 +65,7 @@ const values: ProviderFormValues = {
   },
   modelRows: [newModelRow({ clientId: "abab", upstreamId: "abab-6" })],
   textSpecs: ['{"protocol":"openai-chat"}'],
+  activeMode: "advanced",
 };
 
 /** How the two call sites actually invoke the builder. */
@@ -213,6 +214,43 @@ describe("neither modal keeps its own copy of the form", () => {
     // provider can serve Chat Completions with no rule at all. So advanced mode
     // does not write them, it leaves them exactly as simple mode set them.
     expect(FORM).toMatch(/value=\{values\.faces\}/);
+  });
+});
+
+describe("the mode is a saved value, not a view", () => {
+  it("whichever mode is open, the body carries it", () => {
+    // The mode used to be a second `useState` in the hook that the builder
+    // never read, so moving the switch changed nothing that was written and the
+    // only true reading of the screen was "this is a display option". The whole
+    // point of keeping both configurations is that the engine knows which one
+    // is live, which means the choice has to arrive.
+    for (const mode of ["simple", "advanced"] as const) {
+      expect(asEdit({ ...values, activeMode: mode }).activeMode).toBe(mode);
+      expect(asCreate({ ...values, activeMode: mode }).activeMode).toBe(mode);
+    }
+  });
+
+  it("the inactive configuration still goes with it", () => {
+    // Switching to simple must park the rules, not drop them: a payload that
+    // omitted the list in simple mode would lose the configuration on save,
+    // which is the one outcome the two-configurations design exists to prevent.
+    const simple = { ...values, activeMode: "simple" as const };
+    expect(asEdit(simple).textSpecs).toEqual(values.textSpecs);
+  });
+
+  it("the hook keeps no second mode state to fall out of step with", () => {
+    // Anchored on the destructuring pair, the same shape the field-state guard
+    // above uses. A `useState` for the mode would be a value the payload cannot
+    // see, which is the drift this file was written for.
+    expect(HOOK, "the hook holds the mode beside the values").not.toMatch(
+      /\[\s*mode\s*,\s*setMode\s*\]\s*=\s*useState/,
+    );
+    expect(HOOK, "the hook no longer reads the mode off the values").toMatch(
+      /const mode = values\.activeMode/,
+    );
+    expect(HOOK, "setMode does not write to the values").toMatch(
+      /setValues\(\(prev\) => \(\{ \.\.\.prev, activeMode: next \}\)\)/,
+    );
   });
 });
 

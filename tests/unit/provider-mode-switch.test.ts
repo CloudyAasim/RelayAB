@@ -288,15 +288,31 @@ describe("the modes configure different fields of the same row", () => {
 });
 
 describe("the mode belongs to whoever is editing", () => {
-  it("and it is not re-derived from the row when a row is loaded", () => {
-    // It used to be derived from the values on every load, so a provider with
-    // a rule always reopened in advanced and a simple session could not be kept
-    // there. The default existed to stop a spec being overwritten unseen — but
-    // the mode has not affected what is saved for some time: the payload always
-    // carries the whole list. So it protected nothing and only refused to stay
-    // where it was put.
-    expect(HOOK).not.toMatch(/setMode\(modeForProvider\(/);
-    expect(HOOK).toMatch(/setMode\("simple"\)/);
+  it("it is read from the row's own choice, never derived from its rules", () => {
+    // Two things used to be true at once, and only one of them could be. The
+    // mode was re-derived from the values on every load, so a provider with a
+    // rule always reopened in advanced and a simple session could not be kept
+    // there. But the payload never read the mode, so protecting it protected
+    // nothing.
+    //
+    // Now it is a stored value: loaded from the row by the same resolver the
+    // engine uses, and sent on save. So a provider switched to simple reopens in
+    // simple because that is what it was saved as — not because the rules were
+    // counted, and not because a default overrode the last choice.
+    expect(HOOK).toMatch(/activeMode: activeModeOf\(provider\),/);
+    // The derivation that made it impossible to leave: a count of rules standing
+    // in for a decision.
+    expect(HOOK).not.toMatch(/setMode\((modeForProvider|activeModeOf)\(/);
+    expect(HOOK).not.toMatch(/activeMode:\s*provider\.textSpecs\?\.length/);
+  });
+
+  it("and it does not move under the operator while the form is open", () => {
+    // The `4aee721` bug: click simple, and an unrelated re-render put it back.
+    // `load` is the only writer now and the modal calls it on open and on id,
+    // not on every render — so switching and staying switched still works, and
+    // the guard for that is the modal's own effect keying, not this file.
+    expect(EDIT).toMatch(/\}, \[open, provider\.id, load\]\);/);
+    expect(EDIT).not.toMatch(/\}, \[open, provider, load\]\);/);
   });
 
   it("and the card reports how many interfaces are configured", () => {
@@ -307,8 +323,9 @@ describe("the mode belongs to whoever is editing", () => {
   });
 
   it("while a new provider starts simple, because that is right for almost all of them", () => {
-    // An empty list, which is what the hook reads to pick the mode.
-    expect(HOOK).toMatch(/textSpecs: \[\]/);
+    // The new-provider form, not the edit form: an existing row is told what it
+    // is, and a row that has never been saved has no opinion to report.
+    expect(HOOK).toMatch(/textSpecs: \[\],\s*\n\s*activeMode: "simple",/);
   });
 });
 
@@ -326,7 +343,7 @@ describe("the endpoint refuses an invalid spec on both verbs", () => {
     // so a create answered 200 with nothing stored.
     expect(API_POST).toMatch(/textSpecs: parsed\.data\.textSpecs \?\? \[\]/);
     expect(DB).toMatch(/textSpecs: input\.textSpecs \?\? \[\],/);
-    expect(DB).toMatch(/anthropic_base_url, text_specs,\n\s+created_at, updated_at\)/);
+    expect(DB).toMatch(/anthropic_base_url, text_specs,\n\s+active_mode, created_at, updated_at\)/);
     expect(DB).toMatch(/anthropic_enabled = \?, anthropic_base_url = \?, text_specs = \?/);
     // The old column is read, never written: it would make the value list and
     // the column list disagree, and `updated_at` would go in as undefined.

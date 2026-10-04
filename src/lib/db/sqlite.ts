@@ -116,6 +116,7 @@ CREATE TABLE IF NOT EXISTS providers (
   anthropic_enabled  INTEGER NOT NULL DEFAULT 0,
   anthropic_base_url TEXT,
   text_specs         TEXT,
+  active_mode        TEXT,
   created_at         TEXT NOT NULL,
   updated_at         TEXT NOT NULL
 );
@@ -413,6 +414,10 @@ const ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; type: string
   // drop the old one, and a row that still has a single document is read as a
   // one-entry list — so a provider configured before this is not orphaned.
   { table: "providers", column: "text_specs", type: "TEXT" },
+  // Which of the two configurations is in effect. Nullable on purpose: NULL
+  // means "this row predates the choice, keep doing what it did", which is not
+  // the same statement as 'simple' and must not be back-filled to it.
+  { table: "providers", column: "active_mode", type: "TEXT" },
 ];
 
 function addColumnIfMissing(
@@ -556,6 +561,11 @@ export function rowToProvider(row: Record<string, unknown>): Provider {
       const legacy = row.text_spec;
       return typeof legacy === "string" && legacy ? [legacy] : [];
     })(),
+    // NULL here is "this row was written before the choice existed", and it is
+    // left NULL rather than back-filled: `activeModeOf` gives those rows the
+    // behaviour they always had, and writing "simple" here would read as an
+    // explicit choice nobody made.
+    activeMode: row.active_mode === "simple" || row.active_mode === "advanced" ? row.active_mode : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });

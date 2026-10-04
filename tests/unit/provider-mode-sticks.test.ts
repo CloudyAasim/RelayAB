@@ -47,14 +47,30 @@ describe("the chosen mode survives a render the operator did not ask for", () =>
   it("and the mode is the operator's, not a function of the row, while editing", () => {
     // The load effect re-derived the mode from the row, and a row with a rule is
     // "advanced" — so a session that started in simple could not be kept there:
-    // close the modal, reopen, and it had decided for you. The default existed
-    // to stop a spec being overwritten without anybody seeing it, but the mode
-    // has not affected what is saved for some time: the payload always carries
-    // the whole list. So it protected nothing and only refused to stay put.
-    expect(HOOK).toMatch(/const reset = useCallback\([\s\S]{0,200}setMode\("simple"\)/);
+    // close the modal, reopen, and it had decided for you.
+    //
+    // Since the mode became a stored value it is read from the row again — but
+    // as the row's own saved choice rather than as a count of its rules, and
+    // only when the modal opens or a different row is loaded. So the thing this
+    // file is actually about is unchanged: nothing re-derives it underneath a
+    // form the operator is in the middle of using.
+    //
+    // `reset` used to call `setMode("simple")` explicitly. The mode is one of
+    // the values now, so that call is `emptyFormValues()` carrying
+    // `activeMode: "simple"` through the one `setValues` — asserted below, so
+    // that a future edit cannot quietly drop the reset along with the call.
+    expect(HOOK).toMatch(
+      /export function emptyFormValues\(\)[\s\S]{0,700}activeMode: "simple",/,
+    );
+    expect(HOOK).toMatch(
+      /const reset = useCallback\(\(next: ProviderFormValues = emptyFormValues\(\)\) => \{[\s\S]{0,200}setValues\(next\)/,
+    );
     expect(HOOK).toMatch(/const load = useCallback\([\s\S]{0,200}setValues\(formValuesFromProvider\(provider\)\)/);
-    // The row must not be able to set it any more.
-    expect(HOOK).not.toMatch(/setMode\(modeForProvider\(/);
+    // The row must not set it by deriving one, and there is no longer a second
+    // derivation helper to call.
+    expect(HOOK).not.toMatch(/setMode\((modeForProvider|activeModeOf)\(/);
+    expect(HOOK).not.toMatch(/activeMode:\s*provider\.textSpecs\?\.length/);
+    expect(HOOK).toMatch(/activeMode: activeModeOf\(provider\),/);
     // And the switch writes it directly rather than asking the row again.
     expect(SWITCH).toMatch(/onClick=\{\(\) => onChange\(id\)\}/);
   });

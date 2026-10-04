@@ -42,6 +42,8 @@ export interface ProviderRecord {
   anthropicEnabled?: boolean;
   anthropicBaseUrl?: string | null;
   textSpecs?: string[];
+  /** Which configuration is live. Absent/null = "follow the rules if any". */
+  activeMode?: string | null;
 }
 
 /** Everything the form holds, as strings where the inputs are strings. */
@@ -56,6 +58,15 @@ export interface ProviderFormValues {
   faces: ProviderFacesValue;
   modelRows: ProviderModelRow[];
   textSpecs: string[];
+  /**
+   * Which of the two configurations is live.
+   *
+   * Part of `values` rather than separate state, because it is a thing that gets
+   * saved. It used to be a second `useState` that the payload never read, which
+   * is why the mode could be moved and then forgotten — the switch was decoration
+   * and the row was the truth. One value, read by the builder, sent on save.
+   */
+  activeMode: "simple" | "advanced";
 }
 
 export interface ProviderPayload {
@@ -73,6 +84,8 @@ export interface ProviderPayload {
   modelMapping: Record<string, string>;
   modelConfigs: Record<string, unknown>;
   textSpecs?: string[];
+  /** Always sent: an explicit choice beats an inferred one on the next read. */
+  activeMode: "simple" | "advanced";
 }
 
 export interface ProviderPayloadOptions {
@@ -141,7 +154,11 @@ export function buildProviderPayload(
     anthropicBaseUrl: faces.anthropicBaseUrl || null,
     modelMapping,
     modelConfigs,
+    // The whole list goes either way. Switching to simple turns the rules off;
+    // it does not delete them, and a spec written while in advanced is still
+    // here when they switch back.
     ...(options.textSpecs ? { textSpecs: options.textSpecs } : {}),
+    activeMode: values.activeMode,
   };
 }
 
@@ -167,8 +184,4 @@ export function headersToText(headers: Record<string, string> | null | undefined
   return Object.entries(headers)
     .map(([k, v]) => `${k}: ${v}`)
     .join("\n");
-}
-
-export function modeForProvider(provider: Pick<ProviderRecord, "textSpecs">): "simple" | "advanced" {
-  return provider.textSpecs?.length ? "advanced" : "simple";
 }

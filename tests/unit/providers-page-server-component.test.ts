@@ -32,7 +32,9 @@ describe("the providers page stays a server component", () => {
     // The cell is defined in this file, so anything it renders with a hook is
     // a hook in a server component.
     expect(PAGE).toMatch(/function InterfaceCell\(/);
-    expect(PAGE).toMatch(/labels: \{ none: string; hasRule: string; chat: string; responses: string \}/);
+    expect(PAGE).toMatch(
+      /labels: \{ none: string; hasRule: string; rulesOff: string; chat: string; responses: string \}/,
+    );
     expect(PAGE).toMatch(/<InterfaceCell[\s\S]{0,400}labels=\{\{/);
   });
 });
@@ -50,10 +52,14 @@ describe("the interface column says what is served, not what was typed", () => {
     expect(PAGE).toContain("/anthropic/v1/messages");
   });
 
-  it("it marks which interfaces have a rule, for the advanced mode", () => {
-    expect(PAGE).toMatch(/hasRule\("openai-chat"\)/);
-    expect(PAGE).toMatch(/hasRule\("openai-responses"\)/);
-    expect(PAGE).toMatch(/hasRule\("anthropic-messages"\)/);
+  it("it marks which interfaces have a rule, and only while advanced is in effect", () => {
+    // Per surface, and the marker is one function because which of the two it
+    // is depends on the mode: the same stored list reads as "in effect" or
+    // "stored but off" and the column has to agree with the engine either way.
+    expect(PAGE).toMatch(/ruleMark\("openai-chat"\)/);
+    expect(PAGE).toMatch(/ruleMark\("openai-responses"\)/);
+    expect(PAGE).toMatch(/ruleMark\("anthropic-messages"\)/);
+    expect(PAGE).toMatch(/mode === "advanced"/);
   });
 
   it("and says a provider with both sides off is unreachable", () => {

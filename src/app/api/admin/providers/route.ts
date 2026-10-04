@@ -52,6 +52,14 @@ const PostSchema = z.object({
         ctx.addIssue({ code: z.ZodIssueCode.custom, message });
       }
     }),
+  /**
+   * Which of the two stored configurations is live.
+   *
+   * `null` is accepted and means "no opinion" — the row then follows its rules
+   * if it has any, which is what every row created before this field existed
+   * should keep doing. `simple` switches them off without deleting them.
+   */
+  activeMode: z.enum(["simple", "advanced"]).nullable().optional(),
 });
 
 export async function GET(): Promise<Response> {
@@ -120,6 +128,7 @@ export async function POST(req: Request): Promise<Response> {
       anthropicEnabled: parsed.data.anthropicEnabled,
       anthropicBaseUrl: parsed.data.anthropicBaseUrl ?? null,
       textSpecs: parsed.data.textSpecs ?? [],
+      activeMode: parsed.data.activeMode ?? null,
     });
     return NextResponse.json({
       ok: true,

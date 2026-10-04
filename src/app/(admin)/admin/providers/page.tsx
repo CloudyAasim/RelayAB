@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { listProviders } from "@/lib/db/providers";
 import { providerFaces } from "@/lib/db/types";
+import { activeModeOf } from "@/lib/protocol/text-specs";
 import { Card } from "@/components/ui/Card";
 import {
   Table,
@@ -28,10 +29,17 @@ import type { Provider } from "@/lib/db/types";
  * worse than a list that says less.
  *
  * So it says what is actually served, per interface, and marks which of them
- * have a rule written. That is the question both modes are asking: simple —
+ * have a rule *in effect*. That is the question both modes are asking: simple —
  * which endpoints answer; advanced — and how their parameters are handled. A
  * provider with both sides off is called out rather than shown as two dashes,
  * because it is unreachable, not empty.
+ *
+ * **The rule marker follows `activeModeOf`, not `textSpecs`.** Marking from the
+ * stored list alone was a statement about the database, not about the traffic:
+ * a provider switched to simple still holds every rule it was given, so the
+ * column kept advertising three of them while none was running. The stored-but-
+ * inactive case now says so in its own words, which is also the answer to "did
+ * switching delete my config" — it did not, and here is where it went.
  *
  * The labels arrive as props. This file is a server component — it reads the
  * session and the providers — so it cannot reach for a client-side translation
@@ -41,11 +49,13 @@ import type { Provider } from "@/lib/db/types";
 function InterfaceCell({
   faces,
   textSpecs,
+  mode,
   labels,
 }: {
   faces: ReturnType<typeof providerFaces>;
   textSpecs: string[];
-  labels: { none: string; hasRule: string; chat: string; responses: string };
+  mode: "simple" | "advanced";
+  labels: { none: string; hasRule: string; rulesOff: string; chat: string; responses: string };
 }) {
   const { openai, anthropic } = faces;
   if (!openai && !anthropic) {
@@ -61,6 +71,22 @@ function InterfaceCell({
       }
     });
 
+  /**
+   * One marker per surface, and which of the two it is depends on the mode. A
+   * surface with no rule at all gets nothing — "no policy" is the default state
+   * and marking it would make every provider look configured.
+   */
+  const ruleMark = (protocol: string) => {
+    if (!hasRule(protocol)) return null;
+    return mode === "advanced" ? (
+      <span className="ml-1 opacity-70">· {labels.hasRule}</span>
+    ) : (
+      <span className="ml-1 text-amber-700/80 dark:text-amber-400/80">
+        · {labels.rulesOff}
+      </span>
+    );
+  };
+
   return (
     <div className="flex flex-wrap items-center gap-1">
       {openai && (
@@ -69,25 +95,19 @@ function InterfaceCell({
           <span className="ml-1 opacity-70">
             {openai.format === "chat" ? labels.chat : labels.responses}
           </span>
-          {hasRule("openai-chat") && (
-            <span className="ml-1 opacity-70">· {labels.hasRule}</span>
-          )}
+          {ruleMark("openai-chat")}
         </Badge>
       )}
       {openai && (
         <Badge tone="info">
           /v1/responses
-          {hasRule("openai-responses") && (
-            <span className="ml-1 opacity-70">· {labels.hasRule}</span>
-          )}
+          {ruleMark("openai-responses")}
         </Badge>
       )}
       {anthropic && (
         <Badge tone="orange">
           /anthropic/v1/messages
-          {hasRule("anthropic-messages") && (
-            <span className="ml-1 opacity-70">· {labels.hasRule}</span>
-          )}
+          {ruleMark("anthropic-messages")}
         </Badge>
       )}
     </div>
@@ -147,9 +167,11 @@ export default async function ProvidersPage() {
                     <InterfaceCell
                       faces={providerFaces(p)}
                       textSpecs={p.textSpecs ?? []}
+                      mode={activeModeOf(p)}
                       labels={{
                         none: t("admin.providers.table.noInterface"),
                         hasRule: t("admin.providers.table.hasRule"),
+                        rulesOff: t("admin.providers.table.rulesOff"),
                         chat: t("admin.providers.format.short.chat"),
                         responses: t("admin.providers.format.short.responses"),
                       }}

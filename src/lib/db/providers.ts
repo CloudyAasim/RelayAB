@@ -79,6 +79,11 @@ export interface CreateProviderInput {
    * provider needs none of this to be a working one.
    */
   textSpecs?: string[];
+  /**
+   * Which configuration is live. Omitted means "whatever it has always done":
+   * `activeModeOf` reads an absent value as advanced-when-there-are-rules.
+   */
+  activeMode?: "simple" | "advanced" | null;
 }
 
 export interface UpdateProviderInput {
@@ -110,6 +115,12 @@ export interface UpdateProviderInput {
    * every protocol is removed.
    */
   textSpecs?: string[];
+  /**
+   * Which configuration is live. `undefined` leaves the stored choice alone; an
+   * explicit `null` hands the row back to "follow the rules if it has any",
+   * which is what a row written before the field existed reads as.
+   */
+  activeMode?: "simple" | "advanced" | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -140,6 +151,7 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
     anthropicEnabled: input.anthropicEnabled ?? faceDefaults.anthropicEnabled,
     anthropicBaseUrl: input.anthropicBaseUrl ?? null,
     textSpecs: input.textSpecs ?? [],
+    activeMode: input.activeMode ?? null,
     createdAt: now,
     updatedAt: now,
   });
@@ -153,8 +165,8 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
        (id, name, kind, base_url, encrypted_api_key, model_mapping,
         model_configs, enabled, priority, headers, upstream_format,
         openai_enabled, anthropic_enabled, anthropic_base_url, text_specs,
-        created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        active_mode, created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       provider.id,
       provider.name,
@@ -175,6 +187,7 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
       toDbBool(provider.anthropicEnabled),
       provider.anthropicBaseUrl ?? null,
       JSON.stringify(provider.textSpecs ?? []),
+      provider.activeMode ?? null,
       provider.createdAt,
       provider.updatedAt,
     ],
@@ -327,6 +340,9 @@ export async function updateProvider(
       // `undefined` means "leave it alone"; an explicit `null` is how the
       // background page says "no protocol, forward everything as sent".
       textSpecs: patch.textSpecs ?? existing.textSpecs ?? [],
+      // `undefined` leaves the choice as it is, which is how a PATCH that only
+      // touches the name does not silently reset it.
+      activeMode: patch.activeMode === undefined ? existing.activeMode : patch.activeMode,
       updatedAt: new Date().toISOString(),
     });
 
@@ -339,7 +355,7 @@ export async function updateProvider(
          model_mapping = ?, model_configs = ?, enabled = ?, priority = ?,
          headers = ?, upstream_format = ?, openai_enabled = ?,
          anthropic_enabled = ?, anthropic_base_url = ?, text_specs = ?,
-         updated_at = ?
+         active_mode = ?, updated_at = ?
        WHERE id = ?`,
       [
         merged.name,
@@ -356,6 +372,7 @@ export async function updateProvider(
         toDbBool(merged.anthropicEnabled),
         merged.anthropicBaseUrl,
         JSON.stringify(merged.textSpecs ?? []),
+        merged.activeMode ?? null,
         merged.updatedAt,
         id,
       ],
