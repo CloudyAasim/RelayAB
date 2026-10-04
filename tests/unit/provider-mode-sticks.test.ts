@@ -45,9 +45,16 @@ describe("the chosen mode survives a render the operator did not ask for", () =>
   });
 
   it("and the mode is the operator's, not a function of the row, while editing", () => {
-    // `load` deriving the mode is right *once*, when the row is read. After
-    // that the state belongs to whoever is editing.
-    expect(HOOK).toMatch(/setMode\(modeForProvider\(provider\)\)/);
+    // The load effect re-derived the mode from the row, and a row with a rule is
+    // "advanced" — so a session that started in simple could not be kept there:
+    // close the modal, reopen, and it had decided for you. The default existed
+    // to stop a spec being overwritten without anybody seeing it, but the mode
+    // has not affected what is saved for some time: the payload always carries
+    // the whole list. So it protected nothing and only refused to stay put.
+    expect(HOOK).toMatch(/const reset = useCallback\([\s\S]{0,200}setMode\("simple"\)/);
+    expect(HOOK).toMatch(/const load = useCallback\([\s\S]{0,200}setValues\(formValuesFromProvider\(provider\)\)/);
+    // The row must not be able to set it any more.
+    expect(HOOK).not.toMatch(/setMode\(modeForProvider\(/);
     // And the switch writes it directly rather than asking the row again.
     expect(SWITCH).toMatch(/onClick=\{\(\) => onChange\(id\)\}/);
   });

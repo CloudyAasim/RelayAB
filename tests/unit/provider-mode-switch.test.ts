@@ -285,13 +285,16 @@ describe("the modes configure different fields of the same row", () => {
   });
 });
 
-describe("the editor opens on the mode the provider is actually configured in", () => {
-  it("advanced when a list has entries, simple when it is empty", () => {
-    // Owned by the hook now, and derived from the values rather than re-spelled
-    // by each modal — the edit modal used to compute this twice (once for the
-    // initial state, once in the open effect) and the create modal a third time.
-    expect(HOOK).toMatch(/return start\.textSpecs\.length \? "advanced" : "simple"/);
-    expect(PAYLOAD).toMatch(/export function modeForProvider/);
+describe("the mode belongs to whoever is editing", () => {
+  it("and it is not re-derived from the row when a row is loaded", () => {
+    // It used to be derived from the values on every load, so a provider with
+    // a rule always reopened in advanced and a simple session could not be kept
+    // there. The default existed to stop a spec being overwritten unseen — but
+    // the mode has not affected what is saved for some time: the payload always
+    // carries the whole list. So it protected nothing and only refused to stay
+    // where it was put.
+    expect(HOOK).not.toMatch(/setMode\(modeForProvider\(/);
+    expect(HOOK).toMatch(/setMode\("simple"\)/);
   });
 
   it("and the card reports how many interfaces are configured", () => {

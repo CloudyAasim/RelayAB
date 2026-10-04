@@ -349,9 +349,27 @@ export function toolContentForDisplay(content: string): string {
   try {
     const parsed: unknown = JSON.parse(content);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return content;
-    const { artifacts: _dropped, ...rest } = parsed as Record<string, unknown>;
-    if (_dropped === undefined) return content;
-    return JSON.stringify(rest, null, 2);
+    const { artifacts, ...rest } = parsed as { artifacts?: unknown } & Record<string, unknown>;
+    if (artifacts === undefined) return content;
+    /**
+     * The URLs stay in the text, in place of the artefact objects.
+     *
+     * They used to be dropped, and the picture was only ever reachable through
+     * the card above — so a transcript of the turn, or a copy of the raw tool
+     * output, named a generated image that was in it nowhere. What a reader
+     * wants from the raw form is the address, not the record that a card exists
+     * somewhere above this line.
+     */
+    const urls = (Array.isArray(artifacts) ? artifacts : [])
+      .map((a) =>
+        typeof a === "string"
+          ? a
+          : a && typeof a === "object" && "url" in a && typeof (a as { url?: unknown }).url === "string"
+            ? (a as { url: string }).url
+            : null,
+      )
+      .filter((u): u is string => Boolean(u));
+    return JSON.stringify({ ...rest, ...(urls.length > 0 ? { urls } : {}) }, null, 2);
   } catch {
     // A refusal is prose, not JSON. Show it as it is.
     return content;

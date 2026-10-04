@@ -67,14 +67,24 @@ export function useProviderForm(
   // row's model table on every render of the page behind it is work nobody
   // asked for.
   initial: ProviderFormValues | (() => ProviderFormValues) = emptyFormValues,
+  /** Where the mode starts. Simple unless the caller wants otherwise. */
+  initialMode: "simple" | "advanced" = "simple",
 ) {
   const [values, setValues] = useState<ProviderFormValues>(() =>
     typeof initial === "function" ? initial() : initial,
   );
-  const [mode, setMode] = useState<"simple" | "advanced">(() => {
-    const start = typeof initial === "function" ? initial() : initial;
-    return start.textSpecs.length ? "advanced" : "simple";
-  });
+  /**
+   * The mode is the operator's, and it starts wherever they left off.
+   *
+   * It used to be re-derived from the row on every load, so a provider with a
+   * rule always reopened in advanced and a session that started in simple could
+   * not be kept there. The default existed to stop a spec being overwritten
+   * without anybody seeing it — but the mode has not affected what is saved for
+   * some time: the payload always carries the whole list, whichever mode it was
+   * edited in. So it protects nothing, and the only thing it does is refuse to
+   * stay where you put it.
+   */
+  const [mode, setMode] = useState<"simple" | "advanced">(initialMode);
 
   /** Patch any subset. A new provider object each time, so no key is missed. */
   const patch = useCallback((next: Partial<ProviderFormValues>) => {
@@ -117,13 +127,11 @@ export function useProviderForm(
 
   const reset = useCallback((next: ProviderFormValues = emptyFormValues()) => {
     setValues(next);
-    setMode(next.textSpecs.length ? "advanced" : "simple");
+    setMode("simple");
   }, []);
 
   const load = useCallback((provider: ProviderRecord) => {
-    const next = formValuesFromProvider(provider);
-    setValues(next);
-    setMode(modeForProvider(provider));
+    setValues(formValuesFromProvider(provider));
   }, []);
 
   /**

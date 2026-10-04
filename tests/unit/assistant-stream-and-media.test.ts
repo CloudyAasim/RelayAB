@@ -160,9 +160,11 @@ describe("assistant: prose carries links, never a second picture", () => {
 });
 
 describe("assistant: the tool row", () => {
-  it("drops the artefact array from the JSON it shows", () => {
-    // The picture is on screen directly above; the raw array is the same link
-    // a second time, in a worse form.
+  it("shows the address of each artefact, and not the record of the card", () => {
+    // The array used to be dropped, with the card above as the only route to
+    // the picture. That is fine for a screenshot and useless for a transcript:
+    // copying the raw tool output named a generated image that was in it
+    // nowhere. The URLs take the artefacts' place; the card still renders.
     const shown = toolContentForDisplay(
       JSON.stringify({
         ok: true,
@@ -171,8 +173,12 @@ describe("assistant: the tool row", () => {
         artifacts: [{ id: "a1", kind: "image", url: "/api/assistant/artifacts/a1" }],
       }),
     );
-    expect(shown).not.toContain("artifacts");
+    // Checked on the key, not the substring: the artefact route is
+    // `/api/assistant/artifacts/…`, so the address itself contains the word.
+    const parsed = JSON.parse(shown) as Record<string, unknown>;
+    expect(parsed).not.toHaveProperty("artifacts");
     expect(shown).toContain("itemCount");
+    expect(parsed.urls).toEqual(["/api/assistant/artifacts/a1"]);
   });
 
   it("leaves a result with nothing to hide untouched", () => {
