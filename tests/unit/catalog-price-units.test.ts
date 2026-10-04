@@ -48,9 +48,11 @@ describe("a price is printed in the units it is stored in", () => {
   });
 
   it("and the whole file does not divide a rate to render it", () => {
-    // The same mistake reached the media cell once already, and a per-item
-    // price is in 0.001-credit units, so / 1000 there is right. This only pins
-    // the token-rate path, which must not divide.
+    // A per-item price is **whole 积分 per item** — `media/billing.ts` says so
+    // and multiplies by 1000 on the way into storage. The media cell used to
+    // divide it before printing, publishing 100 积分 per image as 0.100, and
+    // this comment used to endorse that. Both are corrected: the media cell
+    // must not divide either, for the same reason the token rate does not.
     expect(MODEL_CATALOG).not.toMatch(/\(m\.inputCost \/ 1_000_000\)/);
     expect(MODEL_CATALOG).not.toMatch(/\(m\.outputCost \/ 1_000_000\)/);
     expect(MODEL_CATALOG).not.toMatch(/\(m\.cachedInputCost \/ 1_000_000\)/);
@@ -67,6 +69,20 @@ describe("a price is printed in the units it is stored in", () => {
       /inputCost: cost \? cost\.inputCost : null/,
     );
     expect(CATALOG).toMatch(/outputCost: cost \? cost\.outputCost : null/);
+  });
+
+  it("and the media per-item price is whole credits, not thousandths", () => {
+    // The sibling of the bug: `pricePerItem` arrives from the panel as whole
+    // 积分 and is multiplied by 1000 when it is stored. A catalogue that divides
+    // it is a thousand off, and it was.
+    expect(
+      MODEL_CATALOG,
+      "a whole-credit per-item price is divided on the way to the page",
+    ).not.toMatch(/m\.inputCost \/ 1000/);
+    expect(
+      MODEL_CATALOG,
+      "the media cell prints units and calls them credits",
+    ).not.toMatch(/toFixed\(3\)\} 积分/);
   });
 
   it("both halves of the rate are on the page", () => {

@@ -332,7 +332,13 @@ function ModelRows({ model: m, isChat }: { model: CatalogModel; isChat: boolean 
           </>
         ) : (
           <td className="py-2 pr-3 text-xs">
-            {m.inputCost ? `${(m.inputCost / 1000).toFixed(3)} 积分` : cost(null)}
+            {/*
+                No division. `pricePerItem` is whole 积分 per item — the same
+                number the operator typed in the panel, and the one the media
+                billing path multiplies by 1000 on the way into storage.
+                Dividing here published 100 积分/张 as 0.100 积分.
+              */}
+            {m.inputCost !== null ? `${m.inputCost} 积分` : cost(null)}
           </td>
         )}
         <td className="py-2 text-right">
