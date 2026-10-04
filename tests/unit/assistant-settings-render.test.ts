@@ -153,6 +153,61 @@ describe("the account path fills the model's own numbers from the catalogue", ()
   });
 });
 
+describe("the account path takes a typed model, not only a listed one", () => {
+  it("offers the same picker, custom option included, as the key path", () => {
+    // A closed <select> here said this deployment can only serve what the
+    // catalogue happens to list — a list of what is *configured*, not of what
+    // the upstream serves. A model added upstream last week was not selectable,
+    // and the field read as a statement about the deployment rather than about
+    // the form.
+    const html = render({
+      initial: {
+        baseUrl: "",
+        model: "",
+        accountModel: "m",
+        credentialMode: "account",
+        hasApiKey: false,
+      },
+    });
+    expect(html, "no way to type a model on the account path").toContain("自定义");
+    // …and the option to reach it is present, not just the label.
+    expect(html, "the custom option is missing").toContain("__custom__");
+  });
+
+  it("and still lists what the deployment does have", () => {
+    const html = render({
+      initial: {
+        baseUrl: "",
+        model: "",
+        accountModel: "gpt-4o",
+        credentialMode: "account",
+        hasApiKey: false,
+      },
+    });
+    // The option's text rather than its attribute: which of the two React
+    // emits is not what is being claimed here.
+    expect(html).toContain(">gpt-4o</option>");
+    expect(html).toContain(">deepseek-chat</option>");
+  });
+
+  it("and a stored value the deployment does not list opens in custom mode", () => {
+    // The other half of the fix: a model that was configured before it was
+    // listed, or added upstream afterwards, must be *kept* and editable — not
+    // shown as nothing selected, which is what a closed list did with it.
+    const html = render({
+      initial: {
+        baseUrl: "",
+        model: "",
+        accountModel: "some-new-upstream-model",
+        credentialMode: "account",
+        hasApiKey: false,
+      },
+    });
+    expect(html, "an unlisted model is not kept").toContain("some-new-upstream-model");
+    expect(html, "it is not editable either").toContain('id="assistant-account-model-text"');
+  });
+});
+
 describe("the thinking level offers this model's own words", () => {
   it("and not the generic four when the deployment knows better", () => {
     // Read from the catalogue, which read it from the provider config, which the

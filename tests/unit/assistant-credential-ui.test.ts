@@ -337,13 +337,23 @@ describe("credential UI: one form, and a model on both paths", () => {
     );
   });
 
-  it("the account path asks for a model, from this deployment's own list", () => {
-    // A closed select, because the list is the deployment's rather than the
-    // user's — and a real one, with no "pick one for me" entry.
-    expect(SETTINGS_PANEL_SRC).toContain("accountModels");
-    expect(SETTINGS_PANEL_SRC).toMatch(/\{accountModels\.map\(\(m\) => \(/);
-    expect(SETTINGS_PANEL_SRC).toMatch(/value=\{accountModel\}/);
+  it("the account path asks for a model, and accepts one that is typed", () => {
+    // It was a closed <select> over this deployment's catalogue — a list of
+    // what is *configured*, not of what the upstream serves. A model added
+    // upstream last week was not selectable, and a stored one that was no
+    // longer listed read as nothing selected at all. Same picker as the key
+    // path now, custom option included.
+    expect(SETTINGS_PANEL_SRC, "the account path has no picker").toMatch(
+      /<ModelCombobox[\s\S]{0,400}?value=\{accountModel\}/,
+    );
+    expect(SETTINGS_PANEL_SRC, "the listed models are not offered").toMatch(
+      /options=\{accountModels\}/,
+    );
+    // Still no "pick one for me": a model nobody chose is still the thing this
+    // whole path was built to stop.
     expect(SETTINGS_PANEL_SRC).not.toContain("assistant.accountModelAuto");
+    // The key path's own combobox, unchanged.
+    expect(SETTINGS_PANEL_SRC).toContain("options={knownModels}");
   });
 
   it("the model is stored, not carried by the request", () => {

@@ -453,30 +453,30 @@ export function AssistantSettingsPanel({
       </fieldset>
 
       {mode === "account" ? (
-        <div className="space-y-1.5">
-          <label
-            htmlFor="assistant-account-model"
-            className="block text-sm font-medium text-foreground"
-          >
-            {t("assistant.settings.accountModel")}
-          </label>
-          <select
-            id="assistant-account-model"
-            value={accountModel}
-            onChange={(e) => chooseAccountModel(e.target.value)}
-            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-          >
-            <option value="">{t("assistant.settings.accountModelNone")}</option>
-            {accountModels.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-          <p className="text-xs text-muted-foreground">
-            {t("assistant.settings.accountModelHint")}
-          </p>
-        </div>
+        /*
+          The same picker the key path uses, custom option and all.
+
+          A closed `<select>` here said this deployment can only ever serve the
+          models the catalogue happens to list — which is a list of what is
+          *configured*, not of what the upstream serves. A model added upstream
+          last week, or one an operator has not got round to mapping, was simply
+          not selectable, and the field read as a statement about the deployment
+          rather than about the form.
+
+          The server still checks whatever is typed against what the credential
+          may actually call, so a wrong name is refused with that name in the
+          message rather than quietly swapped for something else.
+        */
+        <ModelCombobox
+          id="assistant-account-model"
+          label={t("assistant.settings.accountModel")}
+          customLabel={t("assistant.settings.modelCustom")}
+          placeholder="model-name"
+          value={accountModel}
+          options={accountModels}
+          onChange={chooseAccountModel}
+          hint={t("assistant.settings.accountModelHint")}
+        />
       ) : (
         <>
           <Input
