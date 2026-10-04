@@ -581,6 +581,42 @@ export interface ProxyDeps {
   upstreamUrlFor?: (provider: Provider) => string;
 }
 
+/**
+ * What the upstream said, in the client's error message.
+ *
+ * It used to be `Upstream returned 400`, which tells the caller that something
+ * failed and nothing about what. The body was read, logged and filed, then
+ * dropped — and the body is the only place a vendor says *why*: which values it
+ * accepts for a parameter, which name it uses for one, that a field does not
+ * exist here. A tester whose whole purpose is "does this vendor honour
+ * `reasoning_effort`, and what does it call it" cannot answer that question
+ * while the answer is being discarded on the way out.
+ *
+ * Only the vendor's own `message` is passed through, and only to its length, so
+ * a large HTML error page or an echoed request body cannot ride along. The
+ * status stays in the message too, because a 400 and a 500 from the same vendor
+ * mean very different things to whoever is reading.
+ */
+export function upstreamRefusal(status: number, body: string): string {
+  const trimmed = (body ?? "").slice(0, 800);
+  if (!trimmed) return `Upstream returned ${status}`;
+  let said = "";
+  try {
+    const parsed = JSON.parse(trimmed) as { error?: { message?: unknown } };
+    if (typeof parsed?.error?.message === "string") said = parsed.error.message;
+  } catch {
+    // Not JSON. A vendor that answers a 400 with plain text has still said
+    // something worth passing on, so fall through to the raw text below.
+  }
+  if (!said) {
+    // Only when it reads like a sentence. An HTML page is noise, and a page of
+    // it in an error message helps nobody.
+    said = /<[a-z!/][\s\S]*>/i.test(trimmed) ? "" : trimmed;
+  }
+  const clipped = said.replace(/\s+/g, " ").trim().slice(0, 300);
+  return clipped ? `Upstream ${status}: ${clipped}` : `Upstream returned ${status}`;
+}
+
 // ---------------------------------------------------------------------------
 // Request validation
 // ---------------------------------------------------------------------------
@@ -753,7 +789,7 @@ export async function proxyChatCompletion(args: {
       status: 502,
       error: {
         code: "upstream_error",
-        message: `Upstream returned ${response.status}`,
+        message: upstreamRefusal(response.status, detail),
       },
     };
   }
@@ -988,7 +1024,7 @@ async function proxyResponsesNative(args: {
       status: 502,
       error: {
         code: "upstream_error",
-        message: `Upstream returned ${response.status}`,
+        message: upstreamRefusal(response.status, detail),
       },
     };
   }
