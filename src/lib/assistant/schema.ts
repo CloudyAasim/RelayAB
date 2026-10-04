@@ -23,9 +23,22 @@ export type AssistantProtocol = z.infer<typeof AssistantProtocolSchema>;
 
 export const AssistantSettingsSchema = z.object({
   userId: z.string().min(1),
-  baseUrl: z.string().min(1),
-  encryptedApiKey: z.string().min(1),
-  model: z.string().min(1),
+  /**
+   * Empty is allowed, and it means "not stored".
+   *
+   * The column is `NOT NULL` — SQLite cannot drop that without rebuilding the
+   * table on a live deployment — so the account path, which by construction has
+   * no upstream of its own, stores the empty string rather than the row not
+   * existing. A row is needed to remember which model the account path uses,
+   * and a fake base URL would be worse than an honest blank.
+   */
+  baseUrl: z.string(),
+  encryptedApiKey: z.string(),
+  model: z.string(),
+  /** Which credential the next turn spends. NULL means the key path. */
+  credentialMode: z.enum(["account", "key"]).nullable().default(null),
+  /** The account path's model: one of this deployment's own. */
+  accountModel: z.string().nullable().default(null),
   protocol: AssistantProtocolSchema.default("openai"),
   /** Extra headers some gateways require (e.g. an OpenAI org id). Never the key. */
   extraHeaders: z.record(z.string(), z.string()).default({}),
@@ -186,6 +199,8 @@ export function rowToAssistantSettings(row: Record<string, unknown>): AssistantS
     baseUrl: row.base_url,
     encryptedApiKey: row.encrypted_api_key,
     model: row.model,
+    credentialMode: (row.credential_mode as "account" | "key" | null) ?? null,
+    accountModel: (row.account_model as string | null) ?? null,
     protocol: row.protocol,
     extraHeaders: parseJson(row.extra_headers, {}),
     // Passed through as null rather than coerced: absent and 0 are different

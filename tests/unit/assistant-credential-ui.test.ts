@@ -301,58 +301,111 @@ describe("credential UI: the testers' spacing", () => {
 });
 
 /**
- * The credential decides which of two upstreams there is, so it comes first.
+ * One configuration, one form, one source of truth — and a model on both paths.
  *
- * The drawer used to put the credential choice above the address and key, and
- * then show those fields in both modes — so someone who chose their account
- * identity was asked for a key three lines under a line saying none was needed.
- * The account path has an upstream by construction: this deployment, reached
- * with the credential the user already authorised. Asking for its address and
- * key was asking for the one thing it does not use.
+ * The drawer used to hold three controls for two settings: a mode switch, an
+ * account-path model dropdown, and a settings form that was only rendered on
+ * the key path. The mode and the account model were component state, so a chosen
+ * model was gone on the next refresh; and the account path had no form at all,
+ * which is why it looked unconfigurable. Meanwhile the chat route answered an
+ * empty model with `allowed[0]` — a model nobody picked — so an unconfigured
+ * assistant still worked and looked fine doing it.
  *
- * This is not a display change, and the guards below are about that. The account
- * credential keeps only a sha256 of a secret that was discarded at creation
- * (`db/assistant-keys.ts`), so it provably cannot be sent as a bearer token —
- * the turn has to be run through the proxy in-process. A form that merely hid
- * the fields would have left the assistant answering 409.
+ * The guards below pin the replacement. The account path still runs through the
+ * proxy rather than over HTTP, because that has not changed and is why the
+ * upstream fields can be hidden on it: the credential keeps only a sha256 of a
+ * secret that was discarded at creation (`db/assistant-keys.ts`), so it provably
+ * cannot be sent as a bearer token.
  */
-describe("credential UI: the credential comes first, the upstream only on the key path", () => {
+describe("credential UI: one form, and a model on both paths", () => {
   const CHAT = read("app/(user)/dashboard/assistant/AssistantChat.tsx");
   const CHAT_ROUTE = read("app/api/assistant/chat/route.ts");
   const CLIENT = read("lib/assistant/client.ts");
   const SETTINGS_PANEL_SRC = read("app/(user)/dashboard/assistant/AssistantSettingsPanel.tsx");
+  const CONFIG = read("lib/assistant/config.ts");
 
-  it("the choice is above the upstream block", () => {
-    const choice = CHAT.indexOf("assistant.tools.title");
-    const upstream = CHAT.indexOf("assistant.settings.upstream.title");
-    expect(choice, "the credential section lost its heading").toBeGreaterThan(-1);
-    expect(upstream, "the upstream section lost its heading").toBeGreaterThan(-1);
-    expect(choice).toBeLessThan(upstream);
+  it("the settings form is rendered unconditionally, and it owns the mode", () => {
+    // Not `credentialMode === "key" && ...`. That conditional is what left the
+    // account path with nothing to configure, and what made the same setting
+    // have two homes.
+    expect(CHAT).not.toMatch(/credentialMode === "key" && \(\s*<section/);
+    expect(CHAT).toContain("{settingsPanel}");
+    // And the mode switch lives in the form, not beside it.
+    expect(SETTINGS_PANEL_SRC).toMatch(/const \[mode, setMode\] = useState<AssistantCredentialMode>/);
+    expect(SETTINGS_PANEL_SRC, "the chat still keeps a mode of its own").not.toContain(
+      "setCredentialMode",
+    );
   });
 
-  it("and the upstream fields render only while the key path is selected", () => {
-    // A conditional, not a hint. Showing them disabled would be the same
-    // contradiction in a quieter voice.
-    expect(CHAT).toMatch(/\{credentialMode === "key" && \(\s*<section/);
-    // And the settings panel is inside that conditional, not beside it.
-    const guarded = CHAT.slice(CHAT.indexOf('{credentialMode === "key" && ('));
-    expect(guarded.slice(0, 1200)).toContain("{settingsPanel}");
+  it("the account path asks for a model, from this deployment's own list", () => {
+    // A closed select, because the list is the deployment's rather than the
+    // user's — and a real one, with no "pick one for me" entry.
+    expect(SETTINGS_PANEL_SRC).toContain("accountModels");
+    expect(SETTINGS_PANEL_SRC).toMatch(/\{accountModels\.map\(\(m\) => \(/);
+    expect(SETTINGS_PANEL_SRC).toMatch(/value=\{accountModel\}/);
+    expect(SETTINGS_PANEL_SRC).not.toContain("assistant.accountModelAuto");
   });
 
-  it("the account path asks for a model, and it is this deployment's list", () => {
-    // There is no stored upstream to read a name from, so the choice travels
-    // with the turn — and the list is the deployment's, which is why it is a
-    // closed select rather than the key path's free-text field.
-    expect(CHAT).toContain("accountModels");
-    expect(CHAT).toMatch(/credentialMode === "account" && accountModels\.length > 0/);
-    expect(CHAT).toMatch(/\{accountModels\.map\(\(m\) => \(/);
-    expect(CHAT).toMatch(/credentialMode === "account" && accountModel\.trim\(\)[\s\S]{0,120}model: accountModel\.trim\(\)/);
+  it("the model is stored, not carried by the request", () => {
+    // This is the persistence bug. The request used to name the mode and the
+    // model, which is how a choice could apply to one turn and be forgotten by
+    // the next; the only thing a turn may still carry is the secret.
+    expect(CHAT, "the request still names the mode").not.toMatch(/credentialMode,/);
+    expect(CHAT, "the request still names the model").not.toMatch(/\{\s*model:\s*accountModel/);
+    expect(CHAT).toMatch(/resolveAssistantConfig|config\.mode/);
+    expect(CHAT_ROUTE).toContain("resolveAssistantConfig");
+    // The route reads the stored row and decides from it.
+    expect(CHAT_ROUTE).toMatch(/const stored = await getAssistantSettings\(me\.id\);/);
+    expect(CHAT_ROUTE).toMatch(/const config = resolveAssistantConfig\(stored\);/);
   });
 
-  it("the account turn runs through the proxy, not over HTTP with a key", () => {
-    // The reason the fields can go. A credential with no plaintext has nothing
-    // to put in an Authorization header, so the turn is handed to the proxy as
-    // the objects it already has.
+  it("and neither the mode nor the account model is component state", () => {
+    // The two halves of "a refresh loses what I chose". Both were `useState`,
+    // and both were the only copy — a saved row and a forgotten one at the same
+    // time, which is how the assistant looked configured while answering with
+    // a model nobody had picked.
+    //
+    // Anchored on the destructuring, not on the words: the legitimate lines
+    // also mention both names, as `const credentialMode = config.mode`.
+    expect(CHAT, "the mode is state again").not.toMatch(
+      /const \[\s*(?:accountModel|credentialMode)\s*,\s*set/,
+    );
+    expect(CHAT).toMatch(/const credentialMode = config\.mode;/);
+  });
+
+  it("and the two new fields are added to an existing deployment", () => {
+    // Nullable columns in the fresh schema only would mean a deployment that
+    // already has rows never gets them, so the save would write to columns that
+    // do not exist. Both go through ADDED_COLUMNS for exactly that reason.
+    const sqlite = read("lib/db/sqlite.ts");
+    for (const column of ["credential_mode", "account_model"]) {
+      expect(sqlite, `${column} is only in the fresh schema`).toContain(
+        `{ table: "assistant_settings", column: "${column}"`,
+      );
+    }
+  });
+
+  it("and there is no auto-pick anywhere on the account path", () => {
+    // The single line that made an unconfigured assistant work:
+    // `accountModel = allowed[0] ?? null`. It answered a turn with a model
+    // nobody chose, which is indistinguishable from a saved setting.
+    // Anchored to an assignment, not the bare text: the comment above records
+    // that `allowed[0]` used to be the answer, and a guard that matched the
+    // sentence explaining the fix would be a guard that could never pass.
+    expect(CHAT_ROUTE, "something still picks the first available model").not.toMatch(
+      /=\s*allowed\[0\]/,
+    );
+    expect(CHAT_ROUTE).not.toMatch(/accountModelAuto/);
+    // A model is required, and the refusal names the field.
+    expect(CHAT_ROUTE).toMatch(/if \(!config\.ready\) \{/);
+    expect(CHAT_ROUTE).toMatch(/code: "not_configured"/);
+    // The rule itself is tested by calling it, not by reading it:
+    // `assistant-config.test.ts` pins that an unconfigured row resolves to no
+    // model at all, which is the property this whole file is guarding.
+    expect(CONFIG).toContain("export function resolveAssistantConfig");
+  });
+
+  it("the account turn still runs through the proxy, not over HTTP with a key", () => {
     expect(CHAT_ROUTE, "the account path still dials an address").toMatch(
       /function accountTransport\([\s\S]{0,900}proxyChatCompletion\(\{/,
     );
@@ -366,45 +419,47 @@ describe("credential UI: the credential comes first, the upstream only on the ke
 
   it("the model on that path is checked, not trusted", () => {
     // The list is a policy decision — the key's whitelist and which providers
-    // are enabled — and a request body is not where that is enforced.
+    // are enabled — and neither a request body nor a form is where that is
+    // enforced. A model that has since been withdrawn is a setting to fix, said
+    // as such, rather than quietly replaced.
     expect(CHAT_ROUTE).toMatch(/listClientModelIds\(credential\.account\.apiKey\)/);
-    expect(CHAT_ROUTE).toMatch(/allowed\.includes\(wanted\)/);
+    expect(CHAT_ROUTE).toMatch(/allowed\.includes\(config\.model\)/);
     expect(CHAT_ROUTE).toMatch(/code: "model_not_allowed"/);
   });
 
-  it("and the composer is not blocked by a missing upstream on the account path", () => {
-    // The mirror of the old bug: it used to refuse to send, and sent the user
-    // to a settings drawer that, in this mode, had nothing to configure.
-    //
-    // But a turn still needs a model on *both* paths. A stored row with a blank
-    // model used to look configured, and the send went out to be refused
-    // mid-conversation rather than by a field that would not let you.
-    expect(CHAT).toMatch(/const missingModel = !modelLabel\.trim\(\);/);
-    expect(CHAT).toMatch(/const canSend =[\s\S]{0,90}!missingModel/);
-    expect(CHAT).toMatch(
-      /const missingUpstream = credentialMode === "key" && \(!configured \|\| missingModel\);/,
-    );
+  it("and the composer follows the same one rule the route uses", () => {
+    // Was `configured` and `missingModel` computed here from two props, which
+    // is how a stored row with a blank model looked configured. Now there is
+    // one value, computed on the server by the same resolver.
+    expect(CHAT).toMatch(/const canSend = config\.ready;/);
+    expect(CHAT).not.toMatch(/const missingModel = /);
+    expect(CHAT).not.toMatch(/const configured\b/);
     expect(CHAT).toMatch(/busy \|\| !canSend\) return;/);
-    // The "not configured" banner is the key path's, for the same reason.
     expect(CHAT).toMatch(/\{missingUpstream && \(/);
   });
 
-  it("and the model answering is named on screen", () => {
-    // "Which model is this" decides what the answer is worth, and it used to be
-    // unanswerable: the label fell back to "no model configured" on the account
-    // path and to nothing at all once a row existed.
-    expect(CHAT).toMatch(/const effectiveModelLabel =/);
-    expect(CHAT).toMatch(/effectiveModelLabel/);
-    expect(CHAT).not.toMatch(/\{modelLabel\}\s*$/m);
+  it("and the model answering is named on screen, with no fallback", () => {
+    // "Which model is this" decides what the answer is worth. With nothing
+    // chosen it says nothing chosen — the old fallback named a model nobody
+    // picked, which is worse than naming none.
+    expect(CHAT).toMatch(/const effectiveModelLabel = config\.model \|\|/);
+    expect(CHAT).not.toContain("assistant.accountModelAuto");
   });
 
   it("the key path still needs its upstream, and still says so", () => {
-    // Nothing about the key path was relaxed. Without a stored row it is 409,
-    // and the banner is what tells the reader where to go.
-    expect(CHAT_ROUTE).toMatch(/if \(!settings && !onAccount\)/);
-    expect(CHAT_ROUTE).toMatch(/code: "not_configured"/);
+    // Nothing about the key path was relaxed. Without an address or a key it is
+    // 409, and the form still asks for them on that path.
+    expect(CONFIG, "the key path no longer requires an upstream").toMatch(
+      /mode === "key"[\s\S]{0,200}no-upstream/,
+    );
+    expect(CONFIG, "the key path no longer requires a key").toMatch(
+      /mode === "key"[\s\S]{0,320}no-key/,
+    );
     expect(SETTINGS_PANEL_SRC, "the upstream key field is gone").toContain(
       "assistant.settings.apiKey",
+    );
+    expect(SETTINGS_PANEL_SRC, "the address field is gone").toContain(
+      "assistant.settings.baseUrl",
     );
   });
 });

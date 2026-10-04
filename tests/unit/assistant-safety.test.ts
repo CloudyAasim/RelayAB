@@ -331,13 +331,44 @@ describe("assistant: settings", () => {
     expect(decryptSecret(after!.encryptedApiKey)).toBe("sk-first");
   });
 
-  it("refuses to save without any key at all", async () => {
+  it("refuses to save a key-path configuration without any key at all", async () => {
     __resetDbForTest();
     const user = await makeUser("user", "u5");
+    // Named as the key path, and also unnamed — a NULL mode reads as the key
+    // path, so a caller that forgets the field must not be a way to write a
+    // keyless row and discover it on the first turn.
+    await expect(
+      saveAssistantSettings(user.id, {
+        baseUrl: "https://a.example/v1",
+        model: "m1",
+        credentialMode: "key",
+      }),
+    ).rejects.toBeInstanceOf(AssistantSettingsError);
     await expect(
       saveAssistantSettings(user.id, { baseUrl: "https://a.example/v1", model: "m1" }),
     ).rejects.toBeInstanceOf(AssistantSettingsError);
     expect(await getAssistantSettings(user.id)).toBeNull();
+  });
+
+  it("but does save an account-path one, which is what makes that path configurable", async () => {
+    // The rule that was blocking it: a row has to exist to remember which model
+    // the account path uses, and the row could not exist without a key — so the
+    // account path had nowhere to keep a model and could not be configured.
+    __resetDbForTest();
+    const user = await makeUser("user", "u5b");
+    await saveAssistantSettings(user.id, {
+      baseUrl: "",
+      model: "",
+      credentialMode: "account",
+      accountModel: "gpt-4o",
+    });
+    const after = await getAssistantSettings(user.id);
+    expect(after?.credentialMode).toBe("account");
+    expect(after?.accountModel).toBe("gpt-4o");
+    // Blank, not a fabricated address: the account path has no upstream of its
+    // own, and inventing one would be a value the reader could not act on.
+    expect(after?.baseUrl).toBe("");
+    expect(after?.encryptedApiKey).toBe("");
   });
 });
 
@@ -749,7 +780,12 @@ describe("assistant: an unconfigured account cannot start a turn", () => {
 
     expect(res.status).toBe(409);
     expect(body.error?.code).toBe("not_configured");
-    expect(body.error?.message).toMatch(/自己的/);
+    // The refusal names what is actually missing. With no row at all the
+    // deployment is on the account path, so the missing thing is a model — and
+    // saying "fill in your own API address" would send somebody to configure an
+    // upstream they do not need for a credential they already have.
+    expect(body.error?.message).toMatch(/模型/);
+    expect(body.error?.message).not.toMatch(/自动/);
 
     // The three things that would have cost something: an upstream call, a
     // conversation row, and a message row.

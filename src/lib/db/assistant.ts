@@ -54,10 +54,20 @@ export async function getPublicAssistantSettings(
 }
 
 export interface SaveAssistantSettingsInput {
+  /**
+   * The key path's upstream. Empty on the account path, which has none of its
+   * own — the turn runs through this deployment, so there is nothing to point
+   * at and nothing to authenticate with.
+   */
   baseUrl: string;
   /** Blank or omitted keeps the stored key. */
   apiKey?: string;
+  /** The key path's model. Empty on the account path. */
   model: string;
+  /** Which credential the next turn spends. Omitted keeps the stored one. */
+  credentialMode?: "account" | "key" | null;
+  /** The account path's model. `null` clears it; omitted leaves it alone. */
+  accountModel?: string | null;
   protocol?: AssistantSettings["protocol"];
   extraHeaders?: Record<string, string>;
   /**
@@ -75,13 +85,6 @@ export interface SaveAssistantSettingsInput {
 }
 
 /**
- * Insert or update the caller's assistant configuration.
- *
- * The key is only touched when a non-empty one is supplied, so the settings
- * form can save a changed model without the browser ever having to hold the
- * key again.
- */
-/**
  * A patch that can say "leave it" and a patch that can say "clear it".
  *
  * `undefined` is not the same as `null` here, and collapsing them is how a
@@ -91,6 +94,17 @@ export interface SaveAssistantSettingsInput {
 function pick(next: number | null | undefined, previous: number | null | undefined): number | null {
   return next === undefined ? (previous ?? null) : next;
 }
+
+/**
+ * Insert or update the caller's assistant configuration.
+ *
+ * The key is only touched when a non-empty one is supplied, so the settings
+ * form can save a changed model without the browser ever having to hold the
+ * key again. It is also not *required* on the account path, which is the
+ * change that lets the account path keep a model: a row has to exist to
+ * remember one, and the old "no key, no row" rule meant there was nowhere to
+ * put it.
+ */
 export async function saveAssistantSettings(
   userId: string,
   input: SaveAssistantSettingsInput,
@@ -100,15 +114,27 @@ export async function saveAssistantSettings(
   const encryptedApiKey =
     input.apiKey && input.apiKey.trim() ? encryptSecret(input.apiKey.trim()) : existing?.encryptedApiKey;
 
-  if (!encryptedApiKey) {
+  const credentialMode = input.credentialMode === undefined ? (existing?.credentialMode ?? null) : input.credentialMode;
+
+  // The key is required everywhere except the account path, which is the one
+  // that has no upstream of its own. Refusing to save an account-path
+  // configuration because it has no key was the rule that made the account
+  // path impossible to configure at all.
+  //
+  // `!== "account"` and not `=== "key"`: a caller that names no mode is on the
+  // key path (that is what a NULL column means), so the omission must not be a
+  // way to write a keyless row and only find out on the first turn.
+  if (credentialMode !== "account" && !encryptedApiKey) {
     throw new AssistantSettingsError("需要先配置 API 密钥");
   }
 
   const row = {
     userId,
     baseUrl: input.baseUrl.trim(),
-    encryptedApiKey,
+    encryptedApiKey: encryptedApiKey ?? "",
     model: input.model.trim(),
+    credentialMode,
+    accountModel: input.accountModel === undefined ? (existing?.accountModel ?? null) : input.accountModel,
     protocol: input.protocol ?? existing?.protocol ?? "openai",
     extraHeaders: input.extraHeaders ?? existing?.extraHeaders ?? {},
     // `??` and not `||`: 0 is a legal temperature, and `||` would turn it
@@ -123,13 +149,16 @@ export async function saveAssistantSettings(
 
   run(
     `INSERT INTO assistant_settings
-       (user_id, base_url, encrypted_api_key, model, protocol, extra_headers,
-        context_length, max_output_tokens, temperature, top_p, created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+       (user_id, base_url, encrypted_api_key, model, credential_mode, account_model,
+        protocol, extra_headers, context_length, max_output_tokens, temperature, top_p,
+        created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
      ON CONFLICT(user_id) DO UPDATE SET
        base_url = excluded.base_url,
        encrypted_api_key = excluded.encrypted_api_key,
        model = excluded.model,
+       credential_mode = excluded.credential_mode,
+       account_model = excluded.account_model,
        protocol = excluded.protocol,
        extra_headers = excluded.extra_headers,
        context_length = excluded.context_length,
@@ -142,6 +171,8 @@ export async function saveAssistantSettings(
       row.baseUrl,
       row.encryptedApiKey,
       row.model,
+      row.credentialMode,
+      row.accountModel,
       row.protocol,
       JSON.stringify(row.extraHeaders),
       row.contextLength ?? null,

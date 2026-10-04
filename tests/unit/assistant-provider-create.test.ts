@@ -450,6 +450,8 @@ describe("the second line of defence, for a model that ignores the first", () =>
         userId: caller.id,
         baseUrl: "https://upstream.example/v1",
         model: "m",
+        credentialMode: null,
+        accountModel: null,
         encryptedApiKey: encryptSecret("sk-upstream"),
         protocol: "openai",
         extraHeaders: {},

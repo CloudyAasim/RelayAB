@@ -29,13 +29,54 @@ import {
   SheetDescription,
 } from "@/components/ui/Sheet";
 import { useT } from "@/components/i18n/I18nProvider";
-import { CredentialChoice, type Mode } from "@/lib/assistant/CredentialPanel";
 import { readPretty, writePretty } from "@/lib/assistant/pretty";
 import { latestRead } from "@/lib/assistant/latest-read";
+import type { AssistantConfig } from "@/lib/assistant/config";
 import { MediaArtifacts, ToolResultCard, AssistantBody } from "./MediaArtifacts";
 import type { ArtifactRef } from "@/lib/db/assistant-artifacts";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";
 import { Pencil, Trash2, Paperclip, X } from "lucide-react";
+import { useId } from "react";
+
+/**
+ * The gateway key for this conversation, and nothing else.
+ *
+ * The mode switch used to live on this component through `CredentialChoice`,
+ * which put a *setting* and a *per-turn secret* in one control and gave the
+ * setting no storage. Splitting them is what makes both honest: the mode is
+ * decided in the settings form and read from the server, and this is only ever
+ * a value that exists while the tab does.
+ */
+function PerTurnKeyField({
+  value,
+  onChange,
+  active,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  active: boolean;
+}) {
+  const t = useT();
+  const id = `${useId()}-per-turn-key`;
+  if (!active) return null;
+  return (
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="block text-sm font-medium text-foreground">
+        {t("assistant.credential.keyLabel")}
+      </label>
+      <input
+        id={id}
+        type="password"
+        autoComplete="off"
+        placeholder="sk-relay-..."
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+      />
+      <p className="text-xs text-muted-foreground">{t("assistant.credential.keyHint")}</p>
+    </div>
+  );
+}
 
 interface Thread {
   id: string;
@@ -121,27 +162,20 @@ type EventPayload =
 
 interface Props {
   /**
-   * Whether a stored upstream exists.
+   * The whole configuration, resolved on the server by one rule.
    *
-   * Only that path needs one. The account path runs the turn through this
-   * deployment with the credential the user already authorised, so it works
-   * with nothing stored — and gating the composer on this would tell someone
-   * with account identity switched on that the assistant is not configured,
-   * which is the mirror image of the complaint this replaced.
+   * It used to arrive as three separate props — "is there a row", "what is the
+   * model", "which models exist" — and the client kept the mode and the account
+   * model in component state on top. Four copies of one setting, three of them
+   * lost on refresh, and the answer depended on whichever copy the request read.
    */
-  configured: boolean;
-  /** Model name shown in the top bar, so it is obvious what is answering. */
-  modelLabel: string;
-  /** This deployment's chat models — the account path's only choice of model. */
-  accountModels: string[];
+  config: AssistantConfig;
   settingsPanel: React.ReactNode;
   pendingPanel: React.ReactNode | null;
 }
 
 export function AssistantChat({
-  configured,
-  modelLabel,
-  accountModels,
+  config,
   settingsPanel,
   pendingPanel,
 }: Props) {
@@ -164,16 +198,16 @@ export function AssistantChat({
   /** Kept beside the chips so `send` can read the bytes without a second picker. */
   const uploadFilesRef = useRef(new Map<string, File>());
   const [relayKey, setRelayKey] = useState("");
-  const [credentialMode, setCredentialMode] = useState<Mode>("account");
   /**
-   * Which model the account path asks this deployment for.
+   * The mode and the account model are **not** state.
    *
-   * Empty means "whichever the server picks first", which is why it is allowed
-   * to start empty rather than being seeded: the list is the deployment's, it
-   * changes when an admin edits a provider, and a stale default would be a
-   * model the user never chose. The server validates whatever arrives.
+   * They were, and that is the bug this replaced: a model chosen in the
+   * credential panel was gone on the next refresh, and an empty one was quietly
+   * answered with whichever model the server picked first — so the assistant
+   * looked configured while nothing about it was saved. Both now come from
+   * `config`, which is resolved once, on the server, from the stored row.
    */
-  const [accountModel, setAccountModel] = useState("");
+  const credentialMode = config.mode;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /**
@@ -528,29 +562,22 @@ export function AssistantChat({
   /**
    * What actually answers a turn, named on screen.
    *
-   * The label used to fall back to "no model configured" for the account path
-   * and to nothing at all once a row existed, so a conversation could be having
-   * its replies written by a model the reader had no way to name. "Which model is
-   * this" is not a detail: it decides what the answer is worth.
+   * There is no fallback here, and that is the point. It used to fall back to
+   * "whichever the server picked" for the account path, so a conversation could
+   * be having its replies written by a model the reader had no way to name.
+   * "Which model is this" decides what the answer is worth, so with nothing
+   * chosen it says nothing chosen and the composer stays closed.
    */
-  const effectiveModelLabel =
-    credentialMode === "account"
-      ? accountModel || t("assistant.accountModelAuto")
-      : modelLabel;
+  const effectiveModelLabel = config.model || t("assistant.unconfiguredModel");
 
   /**
-   * A turn needs somewhere to go: an address, a key **and a model**.
+   * A turn needs a model, on both paths.
    *
-   * The row existed, so `configured` was true, and a turn went out with a model
-   * the reader had never chosen — or with none at all, because the save that
-   * created the row had left it blank. The chat route answers 400 for an empty
-   * model, so the failure was a refusal in the middle of a conversation rather
-   * than a field that would not let you.
+   * One rule, from the server, so the button, the request and the route cannot
+   * disagree about whether this turn is allowed.
    */
-  const missingModel = !modelLabel.trim();
-  const canSend =
-    (credentialMode === "account" || (configured && !missingModel)) && !missingModel;
-  const missingUpstream = credentialMode === "key" && (!configured || missingModel);
+  const canSend = config.ready;
+  const missingUpstream = !config.ready;
 
   async function send() {
     const text = input.trim();
@@ -605,15 +632,11 @@ export function AssistantChat({
         body: JSON.stringify({
           message: text,
           ...(threadId ? { threadId } : {}),
-          // Sent only in key mode: the account path has no token to send, which
-          // is the whole point of it.
-          ...(credentialMode === "key" && relayKey.trim() ? { relayKey: relayKey.trim() } : {}),
-          credentialMode,
-          // Which model, on the account path only. The key path reads it from the
-          // stored upstream; the account path has none stored, so the choice
-          // travels with the turn. The server checks it against what this
-          // credential may call rather than taking it on trust.
-          ...(credentialMode === "account" && accountModel.trim() ? { model: accountModel.trim() } : {}),
+          // Only the secret travels with the turn. Which credential it is, and
+          // which model answers, are both read from the stored configuration —
+          // the request used to carry them too, which is how a mode could be
+          // chosen for one turn and be gone on the next.
+          ...(config.mode === "key" && relayKey.trim() ? { relayKey: relayKey.trim() } : {}),
           ...(attachments.length ? { attachments } : {}),
         }),
         signal: controller.signal,
@@ -1170,6 +1193,35 @@ export function AssistantChat({
               deployment, and asking for its address and key was asking for the
               one thing it does not use.
             */}
+            {/*
+              One configuration, one place.
+
+              The drawer used to hold the mode switch, an account-path model
+              dropdown and — only on the key path — the settings form, which is
+              three controls for two settings, two of them unsaved. It is now a
+              single form that decides the mode and shows only that mode's
+              fields, and the chat is told which model is answering rather than
+              being able to change it.
+            */}
+            <section className="space-y-2">
+              <header>
+                <h3 className="text-sm font-medium text-foreground">
+                  {t("assistant.settings.drawerTitle")}
+                </h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {t("assistant.settings.drawerDesc")}
+                </p>
+              </header>
+              {settingsPanel}
+            </section>
+
+            {/*
+              The relay key is not configuration, and deliberately does not join
+              the form above: it is a per-turn secret, pasted to spend this
+              conversation and never written anywhere. Storing it would be a
+              stored key; not storing it means it is asked for per turn, which
+              is the trade the hint under the field says out loud.
+            */}
             <section className="space-y-2">
               <header>
                 <h3 className="text-sm font-medium text-foreground">
@@ -1179,53 +1231,12 @@ export function AssistantChat({
                   {t("assistant.tools.desc")}
                 </p>
               </header>
-              <CredentialChoice
-                mode={credentialMode}
-                onModeChange={setCredentialMode}
-                relayKey={relayKey}
-                onRelayKeyChange={setRelayKey}
+              <PerTurnKeyField
+                value={relayKey}
+                onChange={setRelayKey}
+                active={credentialMode === "key"}
               />
-              {/*
-                Which model, on the account path. There is no stored upstream to
-                read a name from, and the list is this deployment's rather than
-                the user's — so it is a closed set, which is why this is a select
-                rather than the free-text field the key path uses.
-              */}
-              {credentialMode === "account" && accountModels.length > 0 && (
-                <div className="space-y-1.5 pt-1">
-                  <label htmlFor="assistant-account-model" className="block text-sm font-medium text-foreground">
-                    {t("assistant.settings.model")}
-                  </label>
-                  <select
-                    id="assistant-account-model"
-                    value={accountModel}
-                    onChange={(e) => setAccountModel(e.target.value)}
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  >
-                    <option value="">{t("assistant.accountModelAuto")}</option>
-                    {accountModels.map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
             </section>
-
-            {credentialMode === "key" && (
-              <section className="space-y-2">
-                <header>
-                  <h3 className="text-sm font-medium text-foreground">
-                    {t("assistant.settings.upstream.title")}
-                  </h3>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {t("assistant.settings.upstream.desc")}
-                  </p>
-                </header>
-                {settingsPanel}
-              </section>
-            )}
           </div>
         </SheetContent>
       </Sheet>

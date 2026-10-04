@@ -19,6 +19,7 @@ import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth/session";
 import {
   getPublicAssistantSettings,
+  getAssistantSettings,
   saveAssistantSettings,
   deleteAssistantSettings,
   AssistantSettingsError,
@@ -27,10 +28,21 @@ import { probeUpstream } from "@/lib/assistant/client";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * What the form may write.
+ *
+ * `baseUrl` and `model` are blankable because the account path has no upstream
+ * of its own: a row still has to exist to remember which model the account path
+ * uses, and the key-path fields are simply not in use there. Which of them
+ * actually has to be filled is decided per mode below, not by the shape of the
+ * request.
+ */
 const PutSchema = z.object({
-  baseUrl: z.string().min(1, "base URL 不能为空").max(500),
+  baseUrl: z.string().max(500).optional().default(""),
   apiKey: z.string().max(500).optional(),
-  model: z.string().min(1, "模型名不能为空").max(200),
+  model: z.string().max(200).optional().default(""),
+  credentialMode: z.enum(["account", "key"]).nullable().optional(),
+  accountModel: z.string().max(200).nullable().optional(),
   protocol: z.enum(["openai"]).optional(),
   extraHeaders: z.record(z.string(), z.string()).optional(),
   // Nullable, not optional-and-defaulted: an empty box sends `null` and has
@@ -85,8 +97,44 @@ export async function PUT(req: Request): Promise<Response> {
     );
   }
 
+  const data = parsed.data;
+  const existing = await getAssistantSettings(me.id);
+  const mode = data.credentialMode === undefined ? (existing?.credentialMode ?? null) : data.credentialMode;
+
+  /**
+   * Only the mode being switched *to* is held to its own requirements.
+   *
+   * Validating both would make a person who keeps a key-path configuration also
+   * maintain an account-path one they are not using, and the form would refuse
+   * to save a working configuration over a field that is not on screen. What is
+   * refused is the state that would be left behind: choosing a mode whose
+   * required field is blank.
+   */
+  const modelForMode = mode === "account" ? data.accountModel : data.model;
+  const modelStored = mode === "account" ? existing?.accountModel : existing?.model;
+  if (mode === "account" && !(modelForMode ?? "").trim() && !(modelStored ?? "").trim()) {
+    return NextResponse.json(
+      { ok: false, error: { code: "no_model", message: "用账号身份需要一个模型：请从列表里选一个。" } },
+      { status: 400 },
+    );
+  }
+  if (mode === "key") {
+    if (!data.baseUrl.trim()) {
+      return NextResponse.json(
+        { ok: false, error: { code: "no_upstream", message: "用自己的密钥需要填写接口地址。" } },
+        { status: 400 },
+      );
+    }
+    if (!data.model.trim()) {
+      return NextResponse.json(
+        { ok: false, error: { code: "no_model", message: "用自己的密钥需要填写模型名。" } },
+        { status: 400 },
+      );
+    }
+  }
+
   try {
-    await saveAssistantSettings(me.id, parsed.data);
+    await saveAssistantSettings(me.id, data);
   } catch (err) {
     if (err instanceof AssistantSettingsError) {
       return NextResponse.json(

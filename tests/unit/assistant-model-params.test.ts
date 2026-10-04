@@ -140,10 +140,16 @@ describe("blank is not zero, everywhere on this path", () => {
   it("and the form sends a blank as null rather than as 0", () => {
     expect(PANEL).toMatch(/function blankToNull\(raw: string\): number \| null/);
     expect(PANEL).toMatch(/if \(trimmed === ""\) return null;/);
-    // The save body always carries all four, nulls included.
+    // The save body always carries all four, nulls included. Read from the
+    // `payload()` builder rather than the JSX, which is where the values now
+    // live after the form was rebuilt as a single column with a mode switch.
+    const payload = PANEL.slice(PANEL.indexOf("function payload("));
     for (const field of PARAMS) {
-      expect(PANEL, `${field} is not sent on save`).toContain(`\n          ${field},`);
+      expect(payload, `${field} is not sent on save`).toMatch(new RegExp(`^\\s+${field},`, "m"));
     }
+    // …and the numeric input is bound to the same null, not stringified to "".
+    expect(PANEL).toMatch(/value=\{value === null \? "" : String\(value\)\}/);
+    expect(PANEL).toMatch(/onChange=\{\(e\) => onChange\(blankToNull\(e\.target\.value\)\)\}/);
   });
 
   it("and the columns exist on an existing deployment", () => {

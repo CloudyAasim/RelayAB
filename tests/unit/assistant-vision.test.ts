@@ -107,6 +107,8 @@ describe("assistant: what the model is shown", () => {
       userId: user.id,
       baseUrl: "https://upstream.example/v1",
       model: "vision-model",
+      credentialMode: null,
+      accountModel: null,
       encryptedApiKey: encryptSecret("sk-upstream-key"),
       protocol: "openai",
       extraHeaders: {},

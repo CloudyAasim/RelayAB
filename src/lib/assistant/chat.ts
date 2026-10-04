@@ -37,6 +37,7 @@ import {
   renameAssistantThread,
 } from "../db/assistant";
 import type { AssistantSettings, AssistantThread, MessageAttachment } from "./schema";
+import { modelParamsForRequest, type AssistantModelParams } from "./config";
 import type { Locale } from "../i18n/dict";
 import type { DocPage } from "../docs/custom";
 import type { AuthedUser } from "../auth/session";
@@ -58,6 +59,14 @@ export const MAX_TURN_MS = 10 * 60 * 1000;
 
 /** How much history to replay. Older turns are dropped rather than truncated. */
 const MAX_HISTORY_MESSAGES = 40;
+
+/** No parameters configured — nothing to put on the request. */
+const EMPTY_PARAMS: AssistantModelParams = {
+  contextLength: null,
+  maxOutputTokens: null,
+  temperature: null,
+  topP: null,
+};
 
 /**
  * Fit the history to the message cap, and to a budget.
@@ -252,6 +261,16 @@ export interface RunChatOptions {
    * vendor a conversation runs on.
    */
   inProcessUpstream?: { model: string; transport: UpstreamTransport };
+  /**
+   * The model's own parameters, when they are not already on `settings`.
+   *
+   * They are one setting wherever they are read from, so the account path —
+   * which has no stored upstream to carry them — gets them here instead. The
+   * parameters belong to the model the person chose, not to the credential that
+   * pays for it, and a setting that only works on one of the two paths is half a
+   * setting.
+   */
+  modelParams?: AssistantModelParams;
   thread: AssistantThread;
   message: string;
   /**
@@ -363,7 +382,13 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
           ...(settings.topP != null ? { topP: settings.topP } : {}),
         }
       : opts.inProcessUpstream
-        ? { model: opts.inProcessUpstream.model, transport: opts.inProcessUpstream.transport }
+        ? {
+            model: opts.inProcessUpstream.model,
+            transport: opts.inProcessUpstream.transport,
+            // Same parameters, same rules, on the account path — read from one
+            // builder so a 0 survives here exactly as it does above.
+            ...modelParamsForRequest(opts.modelParams ?? EMPTY_PARAMS),
+          }
         : { model: "" };
   const isAdmin = user.role === "admin";
   const tools = toolDefinitions(isAdmin);

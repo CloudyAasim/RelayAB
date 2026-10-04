@@ -214,6 +214,12 @@ CREATE TABLE IF NOT EXISTS assistant_settings (
   max_output_tokens  INTEGER,
   temperature        REAL,
   top_p              REAL,
+  -- Which credential the next turn spends, and the model the account path
+  -- uses. Nullable on purpose: a row written before these existed has a key, a
+  -- base URL and a model in it, which is exactly what "key" means, so NULL is
+  -- read as the key path and nobody is moved.
+  credential_mode    TEXT,
+  account_model      TEXT,
   created_at         TEXT NOT NULL,
   updated_at         TEXT NOT NULL
 );
@@ -441,6 +447,11 @@ const ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; type: string
   { table: "assistant_settings", column: "max_output_tokens", type: "INTEGER" },
   { table: "assistant_settings", column: "temperature", type: "REAL" },
   { table: "assistant_settings", column: "top_p", type: "REAL" },
+  // Which credential the assistant spends, and the model it spends it on for
+  // the account path. Both nullable so that upgrading cannot move anybody: NULL
+  // reads as the key path, which is what every existing row is.
+  { table: "assistant_settings", column: "credential_mode", type: "TEXT" },
+  { table: "assistant_settings", column: "account_model", type: "TEXT" },
 ];
 
 function addColumnIfMissing(

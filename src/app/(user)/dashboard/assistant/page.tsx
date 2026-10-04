@@ -14,6 +14,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getPublicAssistantSettings } from "@/lib/db/assistant";
 import { cachedBuildModelCatalog } from "@/lib/db/data-cache";
+import { resolveAssistantConfig } from "@/lib/assistant/config";
 import { getT } from "@/lib/i18n/server";
 import { SectionPageLayout } from "@/components/layouts";
 import { AssistantChat } from "./AssistantChat";
@@ -49,17 +50,29 @@ export default async function AssistantPage() {
     .filter((m) => m.kind === "chat")
     .map((m) => m.id);
 
+  /**
+   * One answer, computed here, for everything on the page.
+   *
+   * The page, the chat and the chat route each used to decide this separately
+   * and disagree, which is why a chosen model vanished on refresh and an
+   * unconfigured assistant still answered. `resolveAssistantConfig` is the
+   * single rule; the page only forwards what it says.
+   */
+  const config = resolveAssistantConfig(settings);
+
   return (
     // No page title: the app header already says "AI 助手", and a chat screen
     // that greets you with its own name twice reads as two different screens.
     <SectionPageLayout scrollContent={false}>
       <SectionPageLayout.Content>
         <AssistantChat
-          configured={Boolean(settings)}
-          modelLabel={settings?.model ?? t("assistant.unconfiguredModel")}
-          accountModels={suggestedModels}
+          config={config}
           settingsPanel={
-            <AssistantSettingsPanel initial={settings} suggestedModels={suggestedModels} />
+            <AssistantSettingsPanel
+              initial={settings}
+              suggestedModels={suggestedModels}
+              accountModels={suggestedModels}
+            />
           }
           pendingPanel={isAdmin ? <PendingActions isAdmin={isAdmin} /> : null}
         />

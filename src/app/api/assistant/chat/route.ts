@@ -23,6 +23,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { getAssistantSettings } from "@/lib/db/assistant";
 import { createAssistantThread, getAssistantThread } from "@/lib/db/assistant";
 import { runChat, type ChatEvent } from "@/lib/assistant/chat";
+import { resolveAssistantConfig } from "@/lib/assistant/config";
 import { resolveToolCredential } from "@/lib/assistant/credentials";
 import { UpstreamError } from "@/lib/assistant/client";
 import { proxyChatCompletion, type ChatCompletionRequest } from "@/lib/proxy/openai";
@@ -198,17 +199,7 @@ export async function POST(req: Request): Promise<Response> {
     message?: unknown;
     threadId?: unknown;
     relayKey?: unknown;
-    credentialMode?: unknown;
     attachments?: unknown;
-    /**
-     * Which model the account path should ask for.
-     *
-     * Ignored on the key path, where the stored upstream names it. It exists
-     * because the account path has no stored upstream to read a name from, and
-     * it is validated against what that credential may actually call rather than
-     * trusted.
-     */
-    model?: unknown;
   };
   try {
     body = (await req.json()) as typeof body;
@@ -245,36 +236,58 @@ export async function POST(req: Request): Promise<Response> {
   const relayKey = typeof body.relayKey === "string" && body.relayKey.trim()
     ? body.relayKey.trim()
     : undefined;
-  const credentialMode =
-    body.credentialMode === "account" || body.credentialMode === "key" ? body.credentialMode : undefined;
 
   /**
-   * The credential is resolved before the configuration gate, because on the
-   * account path there is no configuration to gate: the turn runs through this
-   * deployment with the credential the user already authorised.
+   * The credential, resolved before the configuration gate because the two
+   * paths need different things from it: the key path reads a stored upstream,
+   * the account path spends the credential the user already authorised and has
+   * an upstream by construction.
    *
    * That credential has no plaintext — the row keeps only a sha256 of a secret
    * that was dropped at creation (`db/assistant-keys.ts`) — so it cannot be sent
    * as a bearer token. It goes to the proxy in-process instead, which is what
    * the tools have always done with it. `gatewayBase` is not the destination
    * here; the transport below is.
+   *
+   * **The mode is the stored one, not one the request names.** The browser used
+   * to send it, which is how a mode could be chosen for one turn and forgotten
+   * by the next: two sources of truth for one setting, and the one that did not
+   * survive a refresh was the one the answer depended on.
    */
-  const credential = await resolveToolCredential({ userId: me.id, mode: credentialMode, relayKey });
+  const stored = await getAssistantSettings(me.id);
+  const config = resolveAssistantConfig(stored);
+  const credential = await resolveToolCredential({
+    userId: me.id,
+    mode: config.mode,
+    ...(relayKey ? { relayKey } : {}),
+  });
   const onAccount = credential.kind === "account";
 
-  const settings = onAccount ? null : await getAssistantSettings(me.id);
-  if (!settings && !onAccount) {
+  /**
+   * A model is required, on both paths, and there is no fallback.
+   *
+   * The account path used to answer with `allowed[0]` when the browser sent no
+   * model, which is why an assistant with nothing configured still worked: the
+   * symptom looked like a saved setting, and it was a guess made per request.
+   * The guess is gone. A turn with no chosen model is refused, with a message
+   * that says which field to fill.
+   */
+  if (!config.ready) {
+    const message =
+      config.missing === "no-upstream"
+        ? "还没有填写接口地址。请到助手设置里补上。"
+        : config.missing === "no-key"
+          ? "还没有配置密钥。请到助手设置里补上。"
+          : onAccount
+            ? "还没有选模型。请到助手设置里选一个模型。"
+            : "还没有填写模型名。请到助手设置里补上。";
     return Response.json(
-      {
-        ok: false,
-        error: {
-          code: "not_configured",
-          message: "还没有配置助手的模型。请先在助手设置里填入你自己的 API 地址、密钥和模型名。",
-        },
-      },
+      { ok: false, error: { code: "not_configured", message } },
       { status: 409 },
     );
   }
+
+  const settings = onAccount ? null : stored;
 
   /**
    * The model the account path asks for, checked against what that credential
@@ -283,37 +296,24 @@ export async function POST(req: Request): Promise<Response> {
    * Validated rather than trusted because the list is a policy decision — the
    * key's own whitelist and which providers are enabled — and a request body is
    * not where that is enforced. A model outside it would otherwise be a way to
-   * spend against something the user was not offered.
+   * spend against something the user was not offered. A stored model that has
+   * since been withdrawn from that list is a configuration to fix, said as
+   * such, rather than silently replaced by one they did not pick.
    */
-  let accountModel: string | null = null;
   if (onAccount) {
-    const wanted = typeof body.model === "string" ? body.model.trim() : "";
     const allowed = await listClientModelIds(credential.account.apiKey);
-    if (!wanted) {
-      accountModel = allowed[0] ?? null;
-    } else if (allowed.includes(wanted)) {
-      accountModel = wanted;
-    } else {
+    if (!allowed.includes(config.model)) {
       return Response.json(
         {
           ok: false,
           error: {
             code: "model_not_allowed",
-            message: wanted
-              ? `这个模型不在你可用范围内：${wanted}`
+            message: allowed.length
+              ? `你选的模型现在不可用了：${config.model}。请到助手设置里换一个。`
               : "当前没有可用模型，请先让管理员配置提供商。",
           },
         },
         { status: 400 },
-      );
-    }
-    if (!accountModel) {
-      return Response.json(
-        {
-          ok: false,
-          error: { code: "no_model", message: "当前没有可用模型，请先让管理员配置提供商。" },
-        },
-        { status: 409 },
       );
     }
   }
@@ -377,10 +377,10 @@ export async function POST(req: Request): Promise<Response> {
           // vendor: the stored upstream when there is one, the in-process proxy
           // when the account credential is paying.
           ...(settings ? { settings } : {}),
-          ...(onAccount && accountModel
+          ...(onAccount
             ? {
                 inProcessUpstream: {
-                  model: accountModel,
+                  model: config.model,
                   transport: accountTransport(credential.account),
                 },
               }

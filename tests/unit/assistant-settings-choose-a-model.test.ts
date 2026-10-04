@@ -45,10 +45,11 @@ describe("the settings offer the model's parameters, and only the caller's", () 
     }
     // Not a bare mention. A name can survive while the control around it is
     // gone — removed from the JSX, or wrapped in something hidden — and every
-    // other assertion here still passes. So: each id must be attached to a
-    // number input that is bound to its state, and the group must not be
-    // hidden. `htmlFor` falls back to `name`, so an input with neither renders
-    // a label that labels nothing; both are given.
+    // other assertion here still passes. Each parameter is rendered by one
+    // shared `ParamField`, so the assertion is on that: it exists, it is used
+    // four times, and it takes the id, the type and the null-safe value.
+    expect(PANEL, "the shared parameter field is gone").toMatch(/function ParamField\(/);
+    expect(PANEL.match(/<ParamField/g) || []).toHaveLength(4);
     for (const id of [
       "assistant-context-length",
       "assistant-max-output",
@@ -56,13 +57,16 @@ describe("the settings offer the model's parameters, and only the caller's", () 
       "assistant-top-p",
     ]) {
       expect(PANEL, `${id} has no input`).toMatch(new RegExp(`id="${id}"`));
-      expect(PANEL, `${id} is not a number input`).toMatch(
-        new RegExp(`id="${id}"[\\s\\S]{0,400}?type="number"`),
-      );
-      expect(PANEL, `${id} is not bound to state`).toMatch(
-        new RegExp(`id="${id}"[\\s\\S]{0,600}?value=\\{\\w+ === null \\? "" : String\\(\\w+\\)\\}`),
-      );
     }
+    // Two columns, not four. This renders in a 384px drawer, and four columns
+    // of number inputs there is four ~80px fields with three-line labels — the
+    // layout that made this form look thrown together.
+    expect(PANEL, "the parameter grid is not two columns").toMatch(
+      /className="grid grid-cols-2 gap-3"/,
+    );
+    expect(PANEL, "something is still laying four out across a narrow drawer").not.toMatch(
+      /grid-cols-4/,
+    );
     expect(PANEL, "the parameter group is hidden").not.toMatch(/<fieldset[^>]*\bhidden\b/);
     expect(PANEL, "the group is not labelled").toMatch(
       /<legend[^>]*>[\s\S]{0,160}?assistant\.settings\.modelParams/,
@@ -119,18 +123,23 @@ describe("what the removal got right, and kept", () => {
   it("and a turn still needs a model on both paths", () => {
     // A stored row with a blank model used to look configured; the send went
     // out and was refused mid-conversation instead of by a field that would not
-    // let you. Adding four parameter boxes must not reopen this.
+    // let you. Adding four parameter boxes must not reopen this — and neither
+    // must making the account path configurable.
     const chat = read("src", "app", "(user)", "dashboard", "assistant", "AssistantChat.tsx");
-    expect(chat).toMatch(/const missingModel = !modelLabel\.trim\(\);/);
-    expect(chat).toMatch(/const canSend =[\s\S]{0,90}!missingModel/);
+    expect(chat, "the composer has its own rule again").toMatch(/const canSend = config\.ready;/);
+    expect(chat).toMatch(/busy \|\| !canSend\) return;/);
+    // …and the rule it follows is the one the route enforces, not a second one.
+    expect(chat).not.toMatch(/const missingModel = /);
   });
 
   it("and the model still saves, and is still named where the answer comes from", () => {
-    // The other three reports from the same sitting: the chosen model did not
-    // persist, a turn went out without one, and nothing said which model was
-    // answering.
-    expect(PANEL).toMatch(/model: model\.trim\(\),/);
+    // The other reports from the same sitting: the chosen model did not persist,
+    // a turn went out without one, and nothing said which model was answering.
     const chat = read("src", "app", "(user)", "dashboard", "assistant", "AssistantChat.tsx");
-    expect(chat).toContain("modelLabel");
+    expect(PANEL, "the model is not in the save payload").toMatch(/model: model\.trim\(\),/);
+    expect(PANEL, "the account path's model is not saved either").toMatch(
+      /accountModel: mode === "account" \? \(accountModel\.trim\(\) \|\| null\) : null,/,
+    );
+    expect(chat).toMatch(/const effectiveModelLabel = config\.model \|\|/);
   });
 });

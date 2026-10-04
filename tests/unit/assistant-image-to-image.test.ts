@@ -358,6 +358,8 @@ describe("a turn with a picture the model can actually use", () => {
         userId: user.id,
         baseUrl: "https://upstream.example/v1",
         model: "m",
+        credentialMode: null,
+        accountModel: null,
         encryptedApiKey: encryptSecret("sk-upstream"),
         protocol: "openai",
         extraHeaders: {},
