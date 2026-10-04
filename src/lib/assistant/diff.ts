@@ -13,6 +13,7 @@ import type { Provider } from "../db/types";
 import type { MediaProvider } from "../media/spec";
 import type { DocPage } from "../docs/custom";
 import { surfaceOf } from "../protocol/text-specs";
+import { ASSISTANT_PAGE_READ_LIMIT } from "./docs-reader";
 
 /** Stored documents keyed by the interface they govern, for a before/after. */
 function byProtocol(raws: readonly string[]): Map<string, string> {
@@ -248,6 +249,32 @@ export function renderDocPagesDiff(
     `变更摘要：${summary ?? "(未填写)"}`,
     "",
   ];
+
+  /*
+   * A page the assistant cannot finish reading.
+   *
+   * Storage allows 60,000 characters and the reader cuts at 20,000, so anything
+   * between the two is a page a browser renders whole and the assistant reads
+   * half of — silently, because the cut is followed by a marker rather than an
+   * error. That is the shape a 327-row voice list takes, and it is why a
+   * reference the operator can see and the model cannot is a plausible thing to
+   * approve by accident.
+   *
+   * Not a rejection: the reader-facing page is genuinely fine, and refusing it
+   * would take away a capability the admin form legitimately has. It is said out
+   * loud in the diff the admin reads, which is the only place it can still be
+   * acted on.
+   */
+  const tooLong = after.filter((p) => p.body.length > ASSISTANT_PAGE_READ_LIMIT);
+  if (tooLong.length) {
+    out.push(
+      `⚠ 以下页面正文超过 ${ASSISTANT_PAGE_READ_LIMIT.toLocaleString()} 字符，` +
+        `助手读它时会被截断（页面上仍然完整显示）：` +
+        tooLong.map((p) => ` ${p.id}（${p.body.length.toLocaleString()} 字符）`).join("、") +
+        `。建议按语言或能力拆成多页，一页一类。`,
+      "",
+    );
+  }
 
   const beforeById = new Map(before.map((p) => [p.id, p]));
   const afterById = new Map(after.map((p) => [p.id, p]));

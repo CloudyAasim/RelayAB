@@ -29,6 +29,9 @@ import {
   PARAMETERS_SECTION,
 } from "@/lib/docs/custom";
 import { INTEGRATION_GUIDE } from "@/lib/docs/sections";
+import { ASSISTANT_PAGE_READ_LIMIT } from "@/lib/assistant/docs-reader";
+import { renderDocPagesDiff } from "@/lib/assistant/diff";
+import { docPageAdvice } from "@/lib/assistant/tools";
 import { markdownToHtml } from "@/lib/markdown";
 
 const SECTIONS = readFileSync(join(process.cwd(), "src", "lib", "docs", "sections.ts"), "utf-8");
@@ -53,6 +56,13 @@ const INTEGRATION = readFileSync(
 );
 const FORM = readFileSync(
   join(process.cwd(), "src", "app", "(admin)", "admin", "settings", "DocsPagesForm.tsx"),
+  "utf-8",
+);
+const READER = readFileSync(join(process.cwd(), "src", "lib", "assistant", "docs-reader.ts"), "utf-8");
+const DIFF = readFileSync(join(process.cwd(), "src", "lib", "assistant", "diff.ts"), "utf-8");
+const TOOLS = readFileSync(join(process.cwd(), "src", "lib", "assistant", "tools.ts"), "utf-8");
+const ACTION_ROUTE = readFileSync(
+  join(process.cwd(), "src", "app", "api", "assistant", "actions", "[id]", "route.ts"),
   "utf-8",
 );
 const API = readFileSync(join(process.cwd(), "src", "app", "api", "admin", "settings", "route.ts"), "utf-8");
@@ -107,6 +117,76 @@ describe("where a page goes", () => {
     const TYPES = readFileSync(join(ROOT, "src", "lib", "db", "settings.ts"), "utf-8");
     const docPage = TYPES.slice(TYPES.indexOf("export interface DocPage"));
     expect(docPage.slice(0, docPage.indexOf("}"))).not.toMatch(/\bsection\??:/);
+  });
+});
+
+describe("the parameters guide, and what the assistant can do with it", () => {
+  it("a page longer than the assistant can read is said out loud on approval", () => {
+    // Storage allows 60,000 characters and the reader cuts at 20,000, so the
+    // band between them is silent: the page saves, a browser renders it whole,
+    // and the assistant gets half of it with a marker at the end. The shape a
+    // 327-row voice list takes, and something an admin can approve by accident.
+    const long = "x".repeat(ASSISTANT_PAGE_READ_LIMIT + 1);
+    const diff = renderDocPagesDiff(
+      [],
+      [{ id: "voices", title: "音色", body: long }],
+      "test",
+    );
+    expect(diff).toContain("voices");
+    expect(diff).toMatch(/助手读它时会被截断/);
+
+    // …and a page that fits says nothing, because a warning on every save is
+    // a warning nobody reads.
+    const fits = "y".repeat(100);
+    expect(renderDocPagesDiff([], [{ id: "limits", title: "限流", body: fits }], "t")).not.toContain(
+      "截断",
+    );
+  });
+
+  it("and the model is told, not only the admin", () => {
+    // The person who can fix it is the model: it chose the page. The diff only
+    // reaches whoever happens to approve, which may be later and may not be
+    // the author.
+    const long = "x".repeat(ASSISTANT_PAGE_READ_LIMIT + 1);
+    const said = docPageAdvice([{ id: "voices", title: "音色", body: long }]);
+    expect(said, "a page past the limit said nothing").toBeDefined();
+    expect(said!.tooLongForAssistant).toEqual([
+      { id: "voices", chars: ASSISTANT_PAGE_READ_LIMIT + 1, limit: ASSISTANT_PAGE_READ_LIMIT },
+    ]);
+    expect(said!.advice).toContain("拆成多页");
+    // Silence when there is nothing to say: a warning on every save is a warning
+    // nobody reads.
+    expect(docPageAdvice([{ id: "limits", title: "限流", body: "短" }])).toBeUndefined();
+    // …and the propose path actually hands it back.
+    expect(TOOLS).toMatch(/\.\.\.\(advice \? \{ advice \} : \{\}\),/);
+  });
+
+  it("and the limit it warns about is the reader's, not a second copy", () => {
+    // Two copies of 20 000 drift, and the drift is invisible until a page lands
+    // in the gap.
+    expect(READER).toMatch(/export const ASSISTANT_PAGE_READ_LIMIT = MAX_PAGE_CHARS;/);
+    expect(DIFF).toMatch(/import \{ ASSISTANT_PAGE_READ_LIMIT \} from "\.\/docs-reader";/);
+    expect(TOOLS).toMatch(/import \{ ASSISTANT_PAGE_READ_LIMIT \} from "\.\/docs-reader";/);
+  });
+
+  it("the AI can still read and propose them, and only an admin may", () => {
+    // The whole interface, end to end: list what is there, propose a change,
+    // and have the apply route re-check it — because a proposal and its
+    // approval can be a day apart.
+    for (const name of ["list_doc_pages", "propose_doc_pages"]) {
+      expect(TOOLS, `${name} is not offered to the model`).toContain(`name: "${name}"`);
+      expect(TOOLS, `${name} is not admin-gated`).toMatch(
+        new RegExp(`case "${name}":\\s*\\n\\s*if \\(!isAdmin\\) return fail\\("这是管理员功能。\\"\\)`),
+      );
+    }
+    expect(ACTION_ROUTE, "the apply route does not re-validate the pages").toMatch(
+      /claimed\.kind === "doc_pages\.update"/,
+    );
+    expect(ACTION_ROUTE).toMatch(/validatePage\(page\)/);
+    // …and it re-renders both reader surfaces, or the change is saved and
+    // invisible until somebody reloads hard.
+    expect(ACTION_ROUTE).toMatch(/revalidatePath\("\/docs", "layout"\)/);
+    expect(ACTION_ROUTE).toMatch(/revalidatePath\("\/dashboard\/docs", "layout"\)/);
   });
 });
 

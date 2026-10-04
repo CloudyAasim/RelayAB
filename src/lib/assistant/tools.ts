@@ -35,6 +35,7 @@ import { getPublicUrl } from "../config";
 import { knownModelOrDefault } from "../providers/known-models";
 import { decryptSecret } from "../crypto/secrets";
 import { renderProviderDiff, renderMediaDiff, renderDocPagesDiff } from "./diff";
+import { ASSISTANT_PAGE_READ_LIMIT } from "./docs-reader";
 import { getSettings } from "../db/settings";
 import { parseTextSpec, readTextSpec } from "../protocol/text-spec";
 import { validateTextSpecs, SURFACES, faceOf } from "../protocol/text-specs";
@@ -593,7 +594,7 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
     function: {
       name: "list_doc_pages",
       description:
-        "读回当前的自定义文档页面（站长的那一章）。改之前必须先调这个 —— " +
+        "读回当前【参数指南】的页面。改之前必须先调这个 —— " +
         "propose_doc_pages 是整份替换，不知道现状就改会把页面全删掉。",
       parameters: { type: "object", properties: {}, additionalProperties: false },
     },
@@ -1638,6 +1639,35 @@ async function listDocPagesTool(): Promise<ToolResult> {
  * description and in the list tool's own output, because the failure happens
  * silently otherwise.
  */
+/**
+ * What the model needs to hear about the pages it just proposed.
+ *
+ * Said here as well as in the approval diff, because the person who can fix it
+ * is the model: a page longer than the reader's limit is fine on screen and cut
+ * in half on the way back into a conversation. Storage allows 60,000 and the
+ * reader stops at 20,000, so the band between them is silent — the page saves,
+ * renders, and quietly becomes a page the assistant cannot finish.
+ *
+ * Pure, so it can be checked without a database or a pending action.
+ */
+export function docPageAdvice(
+  pages: readonly DocPage[],
+): { tooLongForAssistant: { id: string; chars: number; limit: number }[]; advice: string } | undefined {
+  const overLong = pages.filter((p) => p.body.length > ASSISTANT_PAGE_READ_LIMIT);
+  if (overLong.length === 0) return undefined;
+  return {
+    tooLongForAssistant: overLong.map((p) => ({
+      id: p.id,
+      chars: p.body.length,
+      limit: ASSISTANT_PAGE_READ_LIMIT,
+    })),
+    advice:
+      "这些页面对读者是完整的，但助手读它们时会在 " +
+      `${ASSISTANT_PAGE_READ_LIMIT} 字符处被截断——你之后从这一页拿到的会是半张表。` +
+      "按语言或能力拆成多页，一页一类再提交。",
+  };
+}
+
 async function proposeDocPages(
   args: Record<string, unknown>,
   ctx: ToolContext,
@@ -1685,6 +1715,8 @@ async function proposeDocPages(
   for (const dupe of new Set(dupes)) problems.push(`id「${dupe}」重复了`);
   if (problems.length) return fail(`这些页面不能用：\n- ${problems.join("\n- ")}`);
 
+  const advice = docPageAdvice(pages);
+
   const { docPages } = await getSettings();
   const summary =
     typeof args.summary === "string" && args.summary.trim() ? args.summary.trim() : "未说明的变更";
@@ -1705,10 +1737,12 @@ async function proposeDocPages(
     removed: before.filter((b) => !pages.some((p) => p.id === b.id)).map((b) => b.id),
     kept: before.filter((b) => pages.some((p) => p.id === b.id)).map((b) => b.id),
     added: pages.filter((p) => !before.some((b) => b.id === p.id)).map((p) => p.id),
+    ...(advice ? { advice } : {}),
   });
 }
 
-async function probeProviderHost(args: Record<string, unknown>): Promise<ToolResult> {  const providerId = z.string().min(1).safeParse(args.providerId);
+async function probeProviderHost(args: Record<string, unknown>): Promise<ToolResult> {
+  const providerId = z.string().min(1).safeParse(args.providerId);
   const baseUrl = z.string().min(1).safeParse(args.baseUrl);
   if (!providerId.success || !baseUrl.success) return fail("需要 providerId 和 baseUrl。");
 

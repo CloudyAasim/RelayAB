@@ -29,6 +29,17 @@ import { WEB_DOC_SECTIONS } from "./docs-index.generated";
  */
 const MAX_PAGE_CHARS = 20_000;
 
+/**
+ * The same number, named for what it means to somebody deciding how to write a
+ * page rather than for where it is applied.
+ *
+ * Exported so the approval diff can say "this page is longer than the assistant
+ * can read" using the reader's own constant. Two copies of 20 000 would drift,
+ * and the failure is silent: a page that saves, renders whole, and gets cut in
+ * half on the way to the model.
+ */
+export const ASSISTANT_PAGE_READ_LIMIT = MAX_PAGE_CHARS;
+
 export interface DocIndexEntry {
   /** `user:openai`, `admin:providers` — the id to pass back. */
   topic: string;
