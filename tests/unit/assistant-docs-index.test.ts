@@ -91,7 +91,7 @@ describe("the index is usable", () => {
   });
 });
 
-describe("the operator's own chapter, which is written at runtime", () => {
+describe("the parameters guide, which is written at runtime", () => {
   const pages = [
     { id: "rate-limits", title: "限流", body: "每分钟 30 次。", order: 0 },
     { id: "draft", title: "草稿", body: "还没写完。", hidden: true },
@@ -99,35 +99,49 @@ describe("the operator's own chapter, which is written at runtime", () => {
   const custom = createDocReader(pages);
 
   it("appears in the index only when there is something to read", () => {
-    expect(custom.index.some((e) => e.topic === "user:notes")).toBe(true);
-    expect(reader().index.some((e) => e.topic === "user:notes")).toBe(false);
+    expect(custom.index.some((e) => e.topic === "user:parameters")).toBe(true);
+    expect(reader().index.some((e) => e.topic === "user:parameters")).toBe(false);
   });
 
   it("lists each published page, and not the drafts", () => {
     const topics = custom.index.map((e) => e.topic);
-    expect(topics).toContain("user:notes#rate-limits");
+    expect(topics).toContain("user:parameters#rate-limits");
     expect(topics.some((t) => t.includes("draft"))).toBe(false);
   });
 
   it("reads a page by its slug", () => {
-    const result = custom.read("user:notes#rate-limits", "zh-CN", "user");
+    const result = custom.read("user:parameters#rate-limits", "zh-CN", "user");
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.text).toBe("每分钟 30 次。");
   });
 
   it("a draft is not readable through a link either", () => {
-    const result = custom.read("user:notes#draft", "zh-CN", "user");
+    const result = custom.read("user:parameters#draft", "zh-CN", "user");
     expect(result.ok).toBe(false);
+  });
+
+  it("reports a page's real length, so a reference can be chosen by size", () => {
+    // It was 1 for every page — a claim the model had no way to check. So it
+    // read a 327-row voice table the same way it read a one-paragraph rate
+    // limit: either swallowed the lot or skipped it. Someone asking for the
+    // Korean voices should not have to read the Portuguese ones.
+    const big = createDocReader([
+      { id: "voices-korean", title: "音色 · 韩文", body: "a\nb\nc\nd\ne" },
+      { id: "limits", title: "限流", body: "每分钟 30 次。" },
+    ]);
+    const byTopic = new Map(big.index.map((e) => [e.topic, e.lines]));
+    expect(byTopic.get("user:parameters#voices-korean")).toBe(5);
+    expect(byTopic.get("user:parameters#limits")).toBe(1);
   });
 
   it("a deployment with only drafts has no chapter at all", () => {
     const allDrafts = createDocReader([{ id: "x", title: "X", body: "…", hidden: true }]);
-    expect(allDrafts.index.some((e) => e.topic === "user:notes")).toBe(false);
+    expect(allDrafts.index.some((e) => e.topic === "user:parameters")).toBe(false);
   });
 });
 
-describe("the operator's own chapter, which is written at runtime", () => {
+describe("the parameters guide, which is written at runtime", () => {
   const pages = [
     { id: "rate-limits", title: "限流", body: "每分钟 30 次。", order: 0 },
     { id: "draft", title: "草稿", body: "还没写完。", hidden: true },
@@ -135,37 +149,37 @@ describe("the operator's own chapter, which is written at runtime", () => {
   const custom = createDocReader(pages);
 
   it("appears in the index only when there is something to read", () => {
-    expect(custom.index.some((e) => e.topic === "user:notes")).toBe(true);
-    expect(reader().index.some((e) => e.topic === "user:notes")).toBe(false);
+    expect(custom.index.some((e) => e.topic === "user:parameters")).toBe(true);
+    expect(reader().index.some((e) => e.topic === "user:parameters")).toBe(false);
   });
 
   it("lists each published page, and not the drafts", () => {
     const topics = custom.index.map((e) => e.topic);
-    expect(topics).toContain("user:notes#rate-limits");
+    expect(topics).toContain("user:parameters#rate-limits");
     expect(topics.some((t) => t.includes("draft"))).toBe(false);
   });
 
   it("reads a page by its slug", () => {
-    const result = custom.read("user:notes#rate-limits", "zh-CN", "user");
+    const result = custom.read("user:parameters#rate-limits", "zh-CN", "user");
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.text).toBe("每分钟 30 次。");
   });
 
   it("a draft is not readable through a link either", () => {
-    const result = custom.read("user:notes#draft", "zh-CN", "user");
+    const result = custom.read("user:parameters#draft", "zh-CN", "user");
     expect(result.ok).toBe(false);
   });
 
   it("a deployment with only drafts has no chapter at all", () => {
     const allDrafts = createDocReader([{ id: "x", title: "X", body: "…", hidden: true }]);
-    expect(allDrafts.index.some((e) => e.topic === "user:notes")).toBe(false);
+    expect(allDrafts.index.some((e) => e.topic === "user:parameters")).toBe(false);
   });
 
   it("and reading the chapter itself returns every page in it", () => {
     // The chapter is a chapter: the model can read the whole thing in one go
     // rather than discovering page by page that it exists.
-    const result = custom.read("user:notes", "zh-CN", "user");
+    const result = custom.read("user:parameters", "zh-CN", "user");
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.text).toContain("每分钟 30 次。");

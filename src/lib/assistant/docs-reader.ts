@@ -16,7 +16,7 @@
  */
 import { translate, type Locale } from "../i18n/dict";
 import type { DocPage } from "../db/settings";
-import { visibleDocPages, NOTES_SECTION } from "../docs/custom";
+import { visibleDocPages, PARAMETERS_SECTION } from "../docs/custom";
 import { WEB_DOC_SECTIONS } from "./docs-index.generated";
 
 /**
@@ -64,7 +64,7 @@ export function createDocReader(pages: readonly DocPage[] | undefined): DocReade
       // drift guard compares it against the outline and the outline owns the
       // id. Whether a reader is *offered* it is a separate question, and the
       // answer is no when the operator has written nothing.
-      (s) => !(s.surface === "user" && s.id === NOTES_SECTION) || operator.length > 0,
+      (s) => !(s.surface === "user" && s.id === PARAMETERS_SECTION) || operator.length > 0,
     ).map((s) => ({
       topic: `${s.surface}:${s.id}`,
       surface: s.surface,
@@ -72,16 +72,26 @@ export function createDocReader(pages: readonly DocPage[] | undefined): DocReade
       lines: s.keys.length,
     })),
     ...operator.map((p) => ({
-      topic: `user:${NOTES_SECTION}#${p.id}`,
+      topic: `user:${PARAMETERS_SECTION}#${p.id}`,
       surface: "user" as const,
       summary: p.title,
-      lines: 1,
+      /**
+       * The real length, not 1.
+       *
+       * It was 1 for every operator page, which is a claim the model had no way
+       * to check and no reason to distrust — so it read a 327-row voice table
+       * the same way it read a one-paragraph rate limit, and either swallowed
+       * the lot or skipped it. A reference page is *chosen* by size: someone
+       * asking for Korean voices should not have to read the Portuguese ones to
+       * find out.
+       */
+      lines: p.body.split("\n").length,
     })),
   ];
 
   const ofSurface = (surface: "user" | "admin") => index.filter((e) => e.surface === surface);
 
-  /** The whole operator chapter, as one labelled block. */
+  /** The whole parameters guide, as one labelled block. */
   const notesBlock = (): string =>
     operator.map((p) => `## ${p.title}\n${p.body}`).join("\n\n");
 
@@ -90,15 +100,15 @@ export function createDocReader(pages: readonly DocPage[] | undefined): DocReade
     const [rawSurface, rest] = want.includes(":") ? [want.slice(0, want.indexOf(":")), want.slice(want.indexOf(":") + 1)] : [visibleSurface, want];
     const surface = rawSurface === "admin" ? "admin" : "user";
 
-    // `user:notes#rate-limits` — one page of the operator's chapter.
-    if (rest.startsWith(`${NOTES_SECTION}#`)) {
-      const slug = rest.slice(NOTES_SECTION.length + 1);
+    // `user:parameters#rate-limits` — one page of the parameters guide.
+    if (rest.startsWith(`${PARAMETERS_SECTION}#`)) {
+      const slug = rest.slice(PARAMETERS_SECTION.length + 1);
       const page = operator.find((p) => p.id === slug);
       if (!page) {
         return {
           ok: false,
           topic,
-          reason: `站长补充里没有 id 为「${slug}」的页面。可用的是：${operator.map((p) => p.id).join(", ") || "（这一章还是空的）"}`,
+          reason: `参数指南里没有 id 为「${slug}」的页面。可用的是：${operator.map((p) => p.id).join(", ") || "（这一章还是空的）"}`,
         };
       }
       const body =
@@ -107,7 +117,7 @@ export function createDocReader(pages: readonly DocPage[] | undefined): DocReade
           : page.body;
       return {
         ok: true,
-        topic: `user:${NOTES_SECTION}#${page.id}`,
+        topic: `user:${PARAMETERS_SECTION}#${page.id}`,
         title: page.title,
         text: body,
         truncated: body.length < page.body.length,
@@ -129,13 +139,13 @@ export function createDocReader(pages: readonly DocPage[] | undefined): DocReade
       };
     }
 
-    // The operator's own chapter is a chapter like any other: it is read by its
-    // own topic, not folded into a built-in one.
-    if (section.surface === "user" && section.id === NOTES_SECTION) {
+    // The parameters guide is a guide like any other: it is read by its own
+    // topic, not folded into a built-in one.
+    if (section.surface === "user" && section.id === PARAMETERS_SECTION) {
       const text = notesBlock();
       return {
         ok: true,
-        topic: `user:${NOTES_SECTION}`,
+        topic: `user:${PARAMETERS_SECTION}`,
         title: section.summary,
         text,
         truncated: text.length > MAX_PAGE_CHARS ? false : text.length < MAX_PAGE_CHARS,

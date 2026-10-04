@@ -19,9 +19,12 @@ import { ModelCatalog } from "@/components/docs/ModelCatalog";
 export async function UserDocsScreen({
   basePath,
   section,
+  initialPage = null,
 }: {
   basePath: string;
   section: string;
+  /** Which page of the parameters guide a deep link names, if any. */
+  initialPage?: string | null;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
@@ -39,6 +42,7 @@ export async function UserDocsScreen({
         <IntegrationDocs
           basePath={basePath}
           section={section}
+          initialPage={initialPage}
           docPages={docPages}
           catalogue={
             <ModelCatalog

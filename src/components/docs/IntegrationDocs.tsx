@@ -1,7 +1,7 @@
 import { getT } from "@/lib/i18n/server";
 import { resolvePublicUrl } from "@/lib/public-url";
 import { UserDocsApp } from "./UserDocsApp";
-import { visibleDocPages, userDocOutline } from "@/lib/docs/custom";
+import { userDocGuides } from "@/lib/docs/custom";
 import { getSettings } from "@/lib/db/settings";
 import type { ReactNode } from "react";
 
@@ -20,11 +20,14 @@ import type { ReactNode } from "react";
 export async function IntegrationDocs({
   basePath,
   section,
+  initialPage = null,
   docPages,
   catalogue,
 }: {
   basePath: string;
   section: string;
+  /** Which page of the parameters guide a deep link names, if any. */
+  initialPage?: string | null;
   docPages?: Awaited<ReturnType<typeof getSettings>>["docPages"];
   catalogue?: ReactNode;
 }) {
@@ -33,14 +36,14 @@ export async function IntegrationDocs({
 
   return (
     <UserDocsApp
-      sections={userDocOutline(t, docPages)}
+      guides={userDocGuides(t, docPages)}
       initial={section}
+      initialPage={initialPage}
       basePath={basePath}
       base={base}
       openaiBase={`${base}/v1`}
       anthropicBase={`${base}/anthropic`}
       responsesBase={`${base}/v1`}
-      pages={visibleDocPages(docPages)}
       catalogue={catalogue}
       outlineLabel={t("docs.sections")}
       copyPageLabel={t("docs.copyPage")}

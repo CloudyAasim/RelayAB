@@ -154,8 +154,9 @@ const NOTES: Note[] = [
       "<API 地址>/chat/completions —— 网关没有 chat→responses 的请求转换，",
       "厂商不提供该端点就会 404。",
       "",
-      "用户文档的「站长补充」那一章：list_doc_pages 先读，propose_doc_pages 再写。",
+      "用户文档的「参数指南」：list_doc_pages 先读，propose_doc_pages 再写。",
       "propose_doc_pages 是整份替换，只发新加的那一页会把其余页面全删掉。",
+      "一页只写一类，页面大了模型会读不动：索引里报的是真实行数，",
     ].join("\n"),
   },
 ];

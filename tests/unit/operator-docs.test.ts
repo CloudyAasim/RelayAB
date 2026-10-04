@@ -25,8 +25,10 @@ import {
   visibleDocPages,
   hasVisibleDocPages,
   userDocOutline,
-  NOTES_SECTION,
+  userDocGuides,
+  PARAMETERS_SECTION,
 } from "@/lib/docs/custom";
+import { INTEGRATION_GUIDE } from "@/lib/docs/sections";
 import { markdownToHtml } from "@/lib/markdown";
 
 const SECTIONS = readFileSync(join(process.cwd(), "src", "lib", "docs", "sections.ts"), "utf-8");
@@ -42,7 +44,7 @@ const FRAME = readFileSync(
 );
 const NEXT_CONFIG = readFileSync(join(process.cwd(), "next.config.mjs"), "utf-8");
 const NOTES = readFileSync(
-  join(process.cwd(), "src", "app", "(user)", "dashboard", "docs", "DocsNotes.tsx"),
+  join(process.cwd(), "src", "app", "(user)", "dashboard", "docs", "DocsParameters.tsx"),
   "utf-8",
 );
 const INTEGRATION = readFileSync(
@@ -95,7 +97,7 @@ describe("where a page goes", () => {
   });
 
   it("and the chapter has a slug of its own, so the outline can carry it", () => {
-    expect(NOTES_SECTION).toBe("notes");
+    expect(PARAMETERS_SECTION).toBe("parameters");
   });
 
   it("the type has no chapter field, so the decision cannot be re-made by accident", () => {
@@ -109,6 +111,49 @@ describe("where a page goes", () => {
 });
 
 describe("the outline", () => {
+  it("is two guides, and the operator's is absent until there is something in it", () => {
+    // The document was ten tabs in a row, with the chapter that explains how to
+    // call this sitting next to the chapter holding a 327-row voice table. The
+    // two are read for different reasons at different moments, and a reader
+    // arriving for either picked from a list where nothing was relevant.
+    const withPages = userDocGuides(t, pages);
+    expect(withPages.map((g) => g.id)).toEqual([INTEGRATION_GUIDE, PARAMETERS_SECTION]);
+    // One half of a guide, never both: a guide carrying chapters *and* pages is
+    // the single long list this split exists to end.
+    for (const g of withPages) {
+      expect(
+        g.id === INTEGRATION_GUIDE ? g.pages.length : g.chapters.length,
+        `${g.id} carries both halves`,
+      ).toBe(0);
+    }
+    // And a deployment with nothing written reads exactly as it did before
+    // custom docs existed: one guide, no switch, nothing saying it is empty.
+    for (const nothing of [undefined, [], [{ id: "x", title: "X", body: "…", hidden: true }]]) {
+      const guides = userDocGuides(t, nothing as never);
+      expect(guides.map((g) => g.id)).toEqual([INTEGRATION_GUIDE]);
+    }
+  });
+
+  it("the switch is only there when there is something to switch to", () => {
+    // With nothing written, there is one guide — and a switch with one option
+    // on it is a control that does nothing, which reads as broken rather than
+    // as absent.
+    expect(APP).toMatch(/\{guides\.length > 1 && \(/);
+  });
+
+  it("and the chapter tabs do not render while the parameters guide is open", () => {
+    // The whole point of the split. The long list came back the moment the
+    // chapters' tabs and the parameters guide's page list shared a screen.
+    expect(APP).toMatch(/\{!onParameters && \(/);
+    expect(APP).toMatch(/const onParameters = guide === PARAMETERS_SECTION && parameters;/);
+  });
+
+  it("and a deep link names a guide, not a chapter inside either one", () => {
+    expect(APP).toMatch(/guides\.some\(\(g\) => g\.id === initial\)/);
+    // The page within the parameters guide travels in the query, because the
+    // route is one segment deep and a second segment would mean a second route.
+    expect(APP).toMatch(/\$\{basePath\}\/\$\{PARAMETERS_SECTION\}\?p=\$\{encodeURIComponent\(id\)\}/);
+  });
   const pages = [
     { id: "limits", title: "限流", body: "…" },
     { id: "pick", title: "选型建议", body: "…" },
@@ -126,10 +171,10 @@ describe("the outline", () => {
       "sdks",
       "media",
       "catalog",
-      "notes",
+      "parameters",
     ]);
     // One chapter, however many pages. Two pages must not become two chapters.
-    expect(ids.filter((id) => id === NOTES_SECTION)).toHaveLength(1);
+    expect(ids.filter((id) => id === PARAMETERS_SECTION)).toHaveLength(1);
   });
 
   it("the chapter disappears when the operator has written nothing", () => {
@@ -138,7 +183,7 @@ describe("the outline", () => {
     // exactly as it did before the feature existed.
     for (const nothing of [undefined, [], [{ id: "x", title: "X", body: "…", hidden: true }]]) {
       const outline = userDocOutline(t, nothing as never);
-      expect(outline.map((s) => s.id)).not.toContain(NOTES_SECTION);
+      expect(outline.map((s) => s.id)).not.toContain(PARAMETERS_SECTION);
       expect(outline.every((s) => !s.children)).toBe(true);
     }
   });
@@ -146,8 +191,8 @@ describe("the outline", () => {
   it("it is drawn from the document's own chapter list, not a second one", () => {
     // The outline has to be built with the answer already in hand; a reader that
     // discovers the page afterwards is a reader who saw it vanish.
-    expect(CUSTOM).toMatch(/const built = userDocSections\(t\)\.filter\(\(s\) => s\.id !== NOTES_SECTION\)/);
-    expect(INTEGRATION).toMatch(/sections=\{userDocOutline\(t, docPages\)\}/);
+    expect(CUSTOM).toMatch(/const built = userDocSections\(t\)\.filter\(\(s\) => s\.id !== PARAMETERS_SECTION\)/);
+    expect(INTEGRATION).toMatch(/guides=\{userDocGuides\(t, docPages\)\}/);
   });
 
   it("and the built-in list is not offered its own notes chapter as well", () => {
@@ -155,16 +200,16 @@ describe("the outline", () => {
     // it without stripping it first put two identically-labelled tabs in the
     // outline.
     const ids = userDocOutline(t, [{ id: "x", title: "X", body: "…" }]).map((s) => s.id);
-    expect(ids.filter((id) => id === NOTES_SECTION)).toHaveLength(1);
+    expect(ids.filter((id) => id === PARAMETERS_SECTION)).toHaveLength(1);
   });
 
   it("and the pages render only in that chapter, never inside a built-in one", () => {
     // The version that let a page name its own chapter rendered the operator's
     // prose at the bottom of a built-in chapter, which is how it came to look
     // like it had vanished when the reader moved tab. One chapter, or none.
-    expect(APP).toMatch(/active === "notes" \? visibleDocPages\(pages\) : \[\]/);
+    expect(APP).toMatch(/const pages = onParameters \? parameters\.pages : \[\];/);
     // There is no branch that renders them alongside `<DocsContent>`.
-    expect(APP).not.toMatch(/<DocsContent[\s\S]{0,400}<DocsNotes/);
+    expect(APP).not.toMatch(/<DocsContent[\s\S]{0,400}<DocsParameters/);
   });
 });
 
@@ -198,7 +243,9 @@ describe("the document is one page, not one route per chapter", () => {
   it("a deep link still opens the right chapter, and a stale one lands somewhere real", () => {
     // Against the offered tabs, not the configured ones: a deep link to the
     // catalogue on a deployment that does not publish it has to land somewhere.
-    expect(APP).toMatch(/tabs\.some\(\(s\) => s\.id === initial\) \? initial : first/);
+    expect(APP).toMatch(
+      /chapters\.some\(\(s\) => s\.id === initial\) \? initial : \(chapters\[0\]\?\.id \?\? "start"\)/,
+    );
   });
 
   it("and the back button moves between chapters", () => {
@@ -209,11 +256,11 @@ describe("the document is one page, not one route per chapter", () => {
     // Fifteen models of table above the outline meant the first thing every
     // reader saw was a table they had not come for yet, and the first thing
     // they had to scroll past to reach the chapter they wanted.
-    expect(APP).toMatch(/active === "catalog" \? \(/);
+    expect(APP).toMatch(/chapter === "catalog" \? \(/);
     expect(APP).toMatch(/catalogue \?\? null/);
     // Inside the tab panel, so it is not in the document at all until its own
     // tab is opened — and absent from every other chapter.
-    expect(APP.indexOf('active === "catalog"')).toBeGreaterThan(APP.indexOf('role="tabpanel"'));
+    expect(APP.indexOf('chapter === "catalog"')).toBeGreaterThan(APP.indexOf('role="tabpanel"'));
     expect(APP.indexOf('role="tablist"')).toBeLessThan(APP.indexOf('role="tabpanel"'));
   });
 
@@ -222,8 +269,8 @@ describe("the document is one page, not one route per chapter", () => {
     // that opens onto an empty panel is worse than no tab at all, and this was
     // shipped once: the chapter was in the outline unconditionally and the
     // public surface had nothing to put in it.
-    expect(APP).toMatch(/sections\.filter\(\(s\) => s\.id !== "catalog" \|\| catalogue\)/);
-    expect(APP).toMatch(/tabs\.some\(\(s\) => s\.id === initial\)/);
+    expect(APP).toMatch(/integration\.chapters\.filter\(\(s\) => s\.id !== "catalog" \|\| catalogue\)/);
+    expect(APP).toMatch(/chapters\.some\(\(s\) => s\.id === initial\)/);
   });
 
   it("and the chapter slug is still a real route, so old links are not dead", () => {
@@ -288,16 +335,21 @@ describe("the body is prose, not markup", () => {
     expect(html).toContain("<li>");
   });
 
-  it("it is one chapter, introduced as a chapter", () => {
-    // Scoped past the empty state, which also renders a CardHeader. Matching the
-    // whole file would let the guard be satisfied by the one page nobody with
-    // content ever sees.
-    const main = NOTES.slice(NOTES.indexOf("if (visible.length === 0)"));
-    expect(main).toMatch(
-      /<CardHeader title=\{t\("docs\.notes\.title"\)\} description=\{t\("docs\.notes\.desc"\)\} \/>/,
-    );
-    // The inline variant is gone: these are a chapter, not a footnote to one.
-    expect(NOTES).not.toMatch(/variant/);
+  it("and it pages: one page on screen, never the whole column", () => {
+    // It rendered every page in the chapter as one long column, which is fine
+    // for two pages and unusable for twenty-four — a 327-row voice table pushed
+    // everything above it off the screen, and a reader looking for the Korean
+    // voices had to scroll past the Portuguese ones to learn there were any.
+    expect(NOTES).toMatch(/const page = pages\[at\];/);
+    // The page list is not a nicety: a 24-page guide navigated only by
+    // "previous" is a linear walk with no way to jump to a page you know.
+    expect(NOTES).toMatch(/\{pages\.map\(\(p, i\) =>/);
+    expect(NOTES).toMatch(/docs\.notes\.prev/);
+    expect(NOTES).toMatch(/docs\.notes\.next/);
+    expect(NOTES).toMatch(/docs\.notes\.pageLabel/);
+    // And the whole guide is not rendered behind the one page: this is the
+    // defect, so the guard is its absence.
+    expect(NOTES).not.toMatch(/\{visible\.map\(\(page\) =>/);
   });
 });
 
@@ -472,6 +524,6 @@ describe("reading order", () => {
     const body = SECTIONS.slice(SECTIONS.indexOf("const USER_LABEL_KEYS"));
     // Quoted, because `admin.docs.nav.media` contains `docs.nav.media`.
     expect(body.lastIndexOf('"docs.nav.media"')).toBeGreaterThan(-1);
-    expect(body.lastIndexOf('"docs.nav.media"')).toBeLessThan(body.lastIndexOf('"docs.nav.notes"'));
+    expect(body.lastIndexOf('"docs.nav.media"')).toBeLessThan(body.lastIndexOf('"docs.guide.parameters"'));
   });
 });

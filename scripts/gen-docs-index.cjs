@@ -83,12 +83,13 @@ const NOT_PROSE = {
     "（docs/模型适配协议/README.md）和 spec-check 脚本（scripts/spec-check.ts）。" +
     "它们是给「写 spec 的 AI」用的原文，不是网关文档。需要其中某一份的内容，"+
     "请用 fetch_page 或让用户从管理界面复制。",
-  // The operator's chapter. Written at runtime from the admin form, so it has
+  // The parameters guide. Written at runtime from the admin form, so it has
   // no keys here at all — this index covers the built-in pages, and
-  // `createDocReader` adds that one from the settings row.
-  "user:notes":
-    "站长自己写的补充说明。这一章不属于内置文档，是管理员在后台自己写的，" +
-    "每次提问都按当时的版本读取。",
+  // `createDocReader` adds the guide and its pages from the settings row.
+  "user:parameters":
+    "参数参考：管理员在后台自己写的取值表——音色、尺寸、每个字段有哪些合法值。" +
+    "一次读一整页，页很大，所以先看索引里的行数再决定读哪一页，" +
+    "不要一上来就把整本吞掉。",
 };
 
 // ---------------------------------------------------------------------------
@@ -125,7 +126,7 @@ const TITLES = {
   "user:sdks": "官方 SDK 接法：Python / Node / CLI",
   "user:media": "媒体能力总览与模型目录：图片、视频、语音、音乐",
   "user:catalog": "本部署的模型目录：实时读取服务商表，分对话与媒体两张表",
-  "user:notes": "站长自己写的补充说明（如果管理员写了的话）",
+  "user:parameters": "管理员自己写的参数参考（如果管理员写了的话）",
   "admin:overview": "管理员文档总览",
   "admin:providers": "服务商配置：新增、编辑、启用、优先级、格式",
   "admin:faces": "OpenAI 面与 Anthropic 面：分别接哪些模型、为什么要分",

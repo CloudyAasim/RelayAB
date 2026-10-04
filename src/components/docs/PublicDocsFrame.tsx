@@ -18,9 +18,12 @@ import { ModelCatalogPanel } from "./ModelCatalogPanel";
 export async function PublicDocsFrame({
   basePath,
   section,
+  initialPage = null,
 }: {
   basePath: string;
   section: string;
+  /** Which page of the parameters guide a deep link names, if any. */
+  initialPage?: string | null;
 }) {
   const { t } = await getT();
   const user = await getCurrentUser().catch(() => null);
@@ -86,6 +89,7 @@ export async function PublicDocsFrame({
             <IntegrationDocs
               basePath={basePath}
               section={section}
+              initialPage={initialPage}
               docPages={docPages}
               catalogue={catalogue}
             />

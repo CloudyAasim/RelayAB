@@ -17,12 +17,32 @@
  * everything in it, one place to look.
  */
 import type { DocPage } from "@/lib/db/settings";
-import { userDocSections, type DocSection, type TFn } from "./sections";
+import {
+  userDocSections,
+  INTEGRATION_GUIDE,
+  type DocSection,
+  type GuideId,
+  type TFn,
+} from "./sections";
 
 export type { DocPage };
 
-/** The chapter the operator's pages live in. Its own id, so the outline can carry it. */
-export const NOTES_SECTION = "notes";
+/**
+ * The guide the operator's own pages live in. Its own id, so the outline can
+ * carry it and a deep link can name it.
+ *
+ * Renamed from `notes` to `parameters` because that is what the chapter is for.
+ * "Notes" is what a deployment accumulates; "parameters" is what a reader comes
+ * for — the voice list, the image sizes, the fields each endpoint takes. The
+ * rename is deliberate on both sides: the id in the url and the topic the
+ * assistant's `read_docs` tool takes both change, and a stale `user:notes#…`
+ * in a prompt or a bookmark should read as not-found rather than silently
+ * resolving to something else.
+ */
+export const PARAMETERS_SECTION = "parameters";
+
+/** Kept so a bookmark from before the rename still lands somewhere real. */
+export const NOTES_SECTION = PARAMETERS_SECTION;
 
 const ID_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -70,16 +90,60 @@ export function hasVisibleDocPages(pages: readonly DocPage[] | undefined): boole
 }
 
 /**
- * The reader's outline: the built-in chapters, plus the operator's own when
- * there is something in it.
+ * One of the two guides the reader picks between.
  *
- * `notes` is stripped from the built-in list first. It is in `USER_SECTION_IDS`
- * so that `/docs/notes` is a real route and the generated index has an id to
- * compare against — but the outline only offers it when there is something in
- * it, and appending it without stripping first would offer it twice.
+ * Only one of `chapters` and `pages` is ever populated, which is the point: the
+ * integration guide is a handful of built-in chapters, and the parameters guide
+ * is a list of operator pages long enough to need its own paging. A guide with
+ * both would be the single long list this split exists to end.
+ */
+export interface DocGuide {
+  id: GuideId;
+  label: string;
+  /** Built-in chapters. Empty for the parameters guide. */
+  chapters: DocSection[];
+  /** Operator pages, in reading order. Empty for the integration guide. */
+  pages: DocPage[];
+}
+
+/**
+ * The document, as two guides.
+ *
+ * The parameters guide is absent when the operator has written nothing, so a
+ * deployment with nothing written reads exactly as it did before custom docs
+ * existed — one guide, no switch, nothing saying "there is nothing here".
+ */
+export function userDocGuides(t: TFn, pages: readonly DocPage[] | undefined): DocGuide[] {
+  const guides: DocGuide[] = [
+    {
+      id: INTEGRATION_GUIDE,
+      label: t("docs.guide.integration"),
+      chapters: userDocSections(t).filter((s) => s.id !== PARAMETERS_SECTION),
+      pages: [],
+    },
+  ];
+  const visible = visibleDocPages(pages);
+  if (visible.length > 0) {
+    guides.push({
+      id: PARAMETERS_SECTION,
+      label: t("docs.guide.parameters"),
+      chapters: [],
+      pages: visible,
+    });
+  }
+  return guides;
+}
+
+/**
+ * The integration guide's chapters on their own.
+ *
+ * Kept because the generated index is compared against it: the index carries an
+ * entry for the parameters guide — so `/docs/parameters` has an id to resolve —
+ * and that entry has to be subtracted before the comparison or the guard reports
+ * a chapter that exists in both places as drift.
  */
 export function userDocOutline(t: TFn, pages: readonly DocPage[] | undefined): DocSection[] {
-  const built = userDocSections(t).filter((s) => s.id !== NOTES_SECTION);
+  const built = userDocSections(t).filter((s) => s.id !== PARAMETERS_SECTION);
   if (!hasVisibleDocPages(pages)) return built;
-  return [...built, { id: NOTES_SECTION, label: t("docs.nav.notes") }];
+  return [...built, { id: PARAMETERS_SECTION, label: t("docs.guide.parameters") }];
 }

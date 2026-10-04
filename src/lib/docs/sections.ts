@@ -49,10 +49,10 @@ const USER_SECTION_IDS = [
   // document, because a wall is the first thing every reader scrolls past and
   // the last thing they come back to.
   "catalog",
-  // The operator's own chapter. The only id here that can be absent from the
-  // outline: a deployment with nothing written has no such chapter, and an
+  // The operator's own guide. The only id here that can be absent from the
+  // outline: a deployment with nothing written has no such guide, and an
   // outline entry pointing at nothing is worse than a shorter outline.
-  "notes",
+  "parameters",
 ] as const;
 export type UserDocId = (typeof USER_SECTION_IDS)[number];
 
@@ -65,7 +65,24 @@ export type UserDocId = (typeof USER_SECTION_IDS)[number];
  * reaches `DocsContent` from falling through to the last branch and rendering
  * the media page under a heading about models.
  */
-export type ProseUserDocId = Exclude<UserDocId, "catalog" | "notes">;
+export type ProseUserDocId = Exclude<UserDocId, "catalog" | "parameters">;
+
+/**
+ * The document is two guides, and a reader picks one.
+ *
+ * It used to be one list of ten tabs, and that is the shape the complaint came
+ * from: the chapters that answer "how do I call this" sat shoulder to shoulder
+ * with the chapter holding a 327-row voice table, so opening the document meant
+ * choosing from a list that had nothing to do with each other.
+ *
+ * Splitting them is not a cosmetic grouping. The two halves are read for
+ * different reasons and at different moments — the integration guide once, while
+ * wiring something up; the parameters guide repeatedly, while choosing a value —
+ * and only the second one is long enough to need paging.
+ */
+export type GuideId = "integration" | "parameters";
+
+export const INTEGRATION_GUIDE = "integration" satisfies GuideId;
 
 /** Exported for tests: the exact slugs the admin docs outline accepts. */
 export const ADMIN_SECTION_IDS = [
@@ -111,7 +128,11 @@ const USER_LABEL_KEYS = [
   "docs.nav.sdks",
   "docs.nav.media",
   "docs.nav.catalog",
-  "docs.nav.notes",
+  // The operator's guide is not a chapter among these any more — it is one of
+  // the two guides the document is split into, and it carries its own paging.
+  // The id stays in the list so `/docs/parameters` is a real route and the
+  // generated index has an id to compare against.
+  "docs.guide.parameters",
 ] as const;
 
 /**
