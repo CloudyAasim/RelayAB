@@ -690,7 +690,17 @@ function ReasoningCombobox({
 }) {
   const t = useT();
   const typed = (value ?? "").trim();
-  const options = levels && levels.length > 0 ? levels : [...ASSISTANT_REASONING_SUGGESTIONS];
+  /**
+   * What this model is known to take, and nothing else.
+   *
+   * It used to fall back to the common spellings when the deployment knew
+   * nothing about this model — which made every un-fetched model look like a
+   * five-step one, and a default list is a claim: it tells somebody who cannot
+   * check that these are this model's levels. So an empty list stays empty and
+   * the form says the vendor published none. The common spellings are still
+   * offered, as hints to click rather than options to pick from.
+   */
+  const options = levels ?? [];
   const isCustom = typed !== "" && !options.includes(typed);
   const [custom, setCustom] = useState(isCustom);
   useEffect(() => {
@@ -711,7 +721,7 @@ function ReasoningCombobox({
           setCustom(false);
           onChange(e.target.value === "" ? null : e.target.value);
         }}
-        className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+        className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground"
       >
         <option value="">{t("assistant.settings.reasoningOff")}</option>
         {options.map((level) => (
@@ -723,7 +733,33 @@ function ReasoningCombobox({
           {custom && typed ? `自定义：${typed}` : t("assistant.settings.reasoningCustom")}
         </option>
       </select>
+      {/*
+        *Why* the list is this short, said before anybody clicks. A select with
+        only "not sent" and "custom" reads as a failed load; the difference
+        between "this model has two levels" and "nobody has told us what this
+        model has" is exactly the thing that has to be on screen.
+      */}
+      {options.length === 0 && (
+        <>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+            {t("assistant.settings.reasoningUnknown")}
+          </p>
+          <p className="mt-1 flex flex-wrap gap-1">
+            {ASSISTANT_REASONING_SUGGESTIONS.map((level) => (
+              <button
+                key={level}
+                type="button"
+                onClick={() => onChange(level)}
+                className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                {level}
+              </button>
+            ))}
+          </p>
+        </>
+      )}
       {custom && (
+        <>
         <input
           id={`${id}-text`}
           type="text"
@@ -731,8 +767,9 @@ function ReasoningCombobox({
           placeholder={t("assistant.settings.reasoningCustomPlaceholder")}
           value={typed}
           onChange={(e) => onChange(e.target.value.trim() || null)}
-          className="mt-1.5 h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+          className="mt-1.5 h-9 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground"
         />
+        </>
       )}
     </>
   );

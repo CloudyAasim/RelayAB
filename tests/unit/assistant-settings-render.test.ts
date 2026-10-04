@@ -183,10 +183,10 @@ describe("the thinking level offers this model's own words", () => {
     }
   });
 
-  it("falls back to the common spellings when the vendor published nothing", () => {
-    // An empty list is the honest answer for a model that does not think, and a
-    // suggestion list is still better than an empty box. The field beside it
-    // takes anything either way.
+  it("offers nothing when the vendor published nothing, and says why", () => {
+    // It used to offer the five common spellings here, which made an un-fetched
+    // model look like a five-step one. A default list is a claim; an empty one
+    // with a reason is an answer. The pins are in reasoning-levels-honest.test.
     const html = render({
       initial: {
         baseUrl: "",
@@ -198,8 +198,8 @@ describe("the thinking level offers this model's own words", () => {
       accountModels: ["plain"],
       accountFacts: { plain: { contextLength: 64000, maxOutputTokens: 8192, reasoningLevels: [] } },
     });
-    expect(html, "no suggestions at all").toContain(">minimal<");
     expect(html, "the custom option is missing").toContain("自定义");
+    expect(html, "no reason given for the empty list").toContain("厂商的模型列表里没有公布");
   });
 });
 
