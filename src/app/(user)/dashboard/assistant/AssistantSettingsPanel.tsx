@@ -49,6 +49,7 @@ type RefreshResponse =
           asked?: number;
           learned?: number;
           unanswered?: number;
+          reasons?: string[];
           error?: string;
         }>;
       };
@@ -278,12 +279,20 @@ export function AssistantSettingsPanel({
       // timeouts and nine refusals are the same sentence otherwise, and they
       // call for opposite next moves.
       const unanswered = outcomes.reduce((n, o) => n + (o.unanswered ?? 0), 0);
+      // The cause, deduplicated. Four attempts at this ended in "it does not
+      // work" for want of this string: a timeout, a refused connection and a
+      // wrong URL all arrive as the same empty outcome, and only the cause
+      // tells them apart.
+      const reasons = [...new Set(outcomes.flatMap((o) => o.reasons ?? []))].slice(0, 3);
       const names = failed.map((o) => `${o.name}（${o.error ?? "—"}）`).join("、");
       setRefreshNote(
         failed.length > 0
           ? t("assistant.settings.refreshPartial", { n: updated, names })
           : unanswered > 0
-            ? t("assistant.settings.refreshUnanswered", { n: unanswered, asked })
+            ? [
+                t("assistant.settings.refreshUnanswered", { n: unanswered, asked }),
+                ...reasons.map((r) => `${r}`),
+              ].join(" · ")
             : asked > 0
               ? t(
                   learned > 0

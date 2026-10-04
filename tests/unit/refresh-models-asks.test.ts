@@ -51,26 +51,33 @@ describe("the refresh button", () => {
     );
   });
 
-  it("is given time to answer, and a timeout is not a silence", () => {
-    // The third layer, and the same mistake again: `callUpstream` gives a
-    // request eight seconds, which is a model-list budget. Every ask to a model
-    // that thinks first timed out, and a timeout arrives as `status: 0` with no
-    // body — the same shape as a refusal that said nothing useful, so all nine
-    // read as nine silences.
-    expect(ROUTE, "the ask still uses the eight-second default").toMatch(
+  it("is given time to answer, and a failure to answer is named as one", () => {
+    // Not a timeout in the end: nine asks came back in seconds, which is a
+    // connection-level failure, not a slow one. What the round established is
+    // that the *distinction* has to survive to the screen, and that the cause
+    // has to come with it — a timeout, a refused connection and a wrong URL all
+    // arrive as the same empty outcome.
+    expect(ROUTE, "the ask still uses the shared eight-second default").toMatch(
       /timeoutMs: ASK_TIMEOUT_MS/,
     );
     expect(ROUTE, "no ceiling is named").toContain("const ASK_TIMEOUT_MS");
     // And the outcome that means "we did not find out" is kept apart from the
-    // one that means "the vendor declined to say".
-    expect(ROUTE, "a timeout is still reported as a refusal").not.toMatch(
+    // one that means "the vendor declined to say" — and it carries why, because
+    // a fast failure is a different bug from a slow one and neither is
+    // fixable without knowing which.
+    expect(ROUTE, "timeouts are not counted apart").toMatch(/unanswered \+= 1;/);
+    expect(ROUTE, "a no-body result is still treated as a refusal").not.toMatch(
       /if \(!said\) return \{ levels: refusalVocabulary\(\"\)/,
     );
-    expect(ROUTE).toMatch(/if \(!said\) return \{ levels: null, said: null, unanswered: true \};/);
-    expect(ROUTE, "timeouts are not counted").toMatch(/unanswered \+= 1;/);
+    expect(ROUTE).toMatch(/if \(!said\) \{/);
+    expect(ROUTE, "the reason is not carried out").toContain(
+      "reason: r.error ?? \"no response body\"",
+    );
+    expect(ROUTE, "reasons are not collected").toMatch(/reasons\.push\(/);
     expect(PANEL, "the panel cannot tell a timeout from a silence").toContain(
       "assistant.settings.refreshUnanswered",
     );
+    expect(PANEL, "the panel does not show the cause").toContain("o.reasons ?? []");
     expect(DICT).toContain("assistant.settings.refreshUnanswered");
   });
 
