@@ -82,8 +82,8 @@ export interface SaveAssistantSettingsInput {
   maxOutputTokens?: number | null;
   temperature?: number | null;
   topP?: number | null;
-  /** How hard the model thinks. `null` clears it; omitted leaves it alone. */
-  reasoningEffort?: "minimal" | "low" | "medium" | "high" | null;
+  /** How hard the model thinks, in its own spelling. `null` clears it. */
+  reasoningEffort?: string | null;
 }
 
 /**

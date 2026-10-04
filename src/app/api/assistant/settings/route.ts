@@ -52,10 +52,11 @@ const PutSchema = z.object({
   maxOutputTokens: z.number().int().positive().max(100_000_000).nullable().optional(),
   temperature: z.number().min(0).max(2).nullable().optional(),
   topP: z.number().min(0).max(1).nullable().optional(),
-  // The published effort levels, as the vendor spells them. A closed list here
-  // rather than a number, so the value that reaches the upstream is one the
-  // upstream recognises.
-  reasoningEffort: z.enum(["minimal", "low", "medium", "high"]).nullable().optional(),
+  // Free text, because the levels are published per model and some models can
+  // switch thinking off entirely. A closed list here would be wrong for most of
+  // the models on a deployment, and the request would carry a value the vendor
+  // ignores or refuses.
+  reasoningEffort: z.string().min(1).max(64).nullable().optional(),
 });
 
 const ProbeSchema = z.object({

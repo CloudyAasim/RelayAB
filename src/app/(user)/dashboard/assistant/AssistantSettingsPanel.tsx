@@ -27,12 +27,14 @@ import { Input } from "@/components/ui/Input";
 import { useT } from "@/components/i18n/I18nProvider";
 import { ModelCombobox } from "./ModelCombobox";
 import {
-  ASSISTANT_REASONING_EFFORTS,
+  ASSISTANT_REASONING_SUGGESTIONS,
   resolveMode,
   type AssistantCredentialMode,
   type AssistantReasoningEffort,
 } from "@/lib/assistant/config";
 import { useCredentialStore } from "@/lib/assistant/credential-store";
+
+const CUSTOM_EFFORT = "__custom_effort__";
 
 /**
  * Empty box → null ("do not send"), and never NaN.
@@ -456,49 +458,23 @@ export function AssistantSettingsPanel({
             >
               {t("assistant.settings.reasoning")}
             </label>
-            <select
+            {/*
+              A picker with a way out, and the way out is the point.
+              
+              The levels are published per model: some offer four, some three,
+              some can be switched off entirely, and a model that does not think
+              has none to publish. A closed list is therefore wrong for most of
+              the models on a deployment, and wrong silently — the request
+              carries a name the vendor either ignores or refuses. So the list is
+              a suggestion and the field takes anything.
+            */}
+            <ReasoningCombobox
               id="assistant-reasoning"
-              name="reasoningEffort"
-              value={reasoningEffort ?? ""}
-              onChange={(e) =>
-                setReasoningEffort(
-                  e.target.value === "" ? null : (e.target.value as AssistantReasoningEffort),
-                )
-              }
-              className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-            >
-              {/* Not the lowest level: "do not send it" and "send the lowest"
-                  are different answers, and the first is the one that leaves the
-                  decision — and the bill — with the model. */}
-              <option value="">{t("assistant.settings.reasoningOff")}</option>
-              {ASSISTANT_REASONING_EFFORTS.map((level) => (
-                <option key={level} value={level}>
-                  {t(`assistant.settings.reasoning.${level}`)}
-                </option>
-              ))}
-            </select>
+              value={reasoningEffort}
+              onChange={setReasoningEffort}
+            />
             <p className="font-mono text-[10px] text-muted-foreground">reasoning_effort</p>
           </div>
-          <ParamField
-            id="assistant-temperature"
-            label={t("assistant.settings.temperature")}
-            wire="temperature"
-            step="0.1"
-            min={0}
-            max={2}
-            value={temperature}
-            onChange={setTemperature}
-          />
-          <ParamField
-            id="assistant-top-p"
-            label={t("assistant.settings.topP")}
-            wire="top_p"
-            step="0.05"
-            min={0}
-            max={1}
-            value={topP}
-            onChange={setTopP}
-          />
           <ParamField
             id="assistant-max-output"
             label={t("assistant.settings.maxOutput")}
@@ -507,15 +483,52 @@ export function AssistantSettingsPanel({
             value={maxOutputTokens}
             onChange={setMaxOutputTokens}
           />
-          <ParamField
-            id="assistant-context-length"
-            label={t("assistant.settings.contextLength")}
-            wire="context_length"
-            min={1}
-            value={contextLength}
-            onChange={setContextLength}
-          />
         </div>
+
+        {/*
+          The sampling parameters, folded away.
+
+          They change the shape of an answer rather than its length or its
+          effort, they are the two everybody leaves at the vendor's default, and
+          four boxes in a 384px drawer is four things to read past the two that
+          matter. Open it when you mean it.
+        */}
+        <details className="mt-3 rounded-md border border-border/70 px-2.5 py-1.5">
+          <summary className="cursor-pointer list-none text-xs font-medium text-muted-foreground marker:hidden">
+            {t("assistant.settings.advanced")}
+          </summary>
+          <div className="grid grid-cols-2 gap-3 pt-2.5">
+            <ParamField
+              id="assistant-temperature"
+              label={t("assistant.settings.temperature")}
+              wire="temperature"
+              step="0.1"
+              min={0}
+              max={2}
+              value={temperature}
+              onChange={setTemperature}
+            />
+            <ParamField
+              id="assistant-top-p"
+              label={t("assistant.settings.topP")}
+              wire="top_p"
+              step="0.05"
+              min={0}
+              max={1}
+              value={topP}
+              onChange={setTopP}
+            />
+            <ParamField
+              id="assistant-context-length"
+              label={t("assistant.settings.contextLength")}
+              wire="context_length"
+              min={1}
+              value={contextLength}
+              onChange={setContextLength}
+            />
+          </div>
+        </details>
+
         <p className="mt-2.5 text-xs text-muted-foreground">
           {t("assistant.settings.modelParamsHint")}
         </p>
@@ -560,6 +573,76 @@ export function AssistantSettingsPanel({
         </p>
       )}
     </div>
+  );
+}
+
+/**
+ * The thinking level: a list of suggestions and a field that takes anything.
+ *
+ * The same shape as the model picker, for the same reason. The levels belong to
+ * the model, not to this system — four names on one vendor, three on the next,
+ * an on/off switch on a third, and nothing at all on a model that does not
+ * think. Suggesting is helpful; deciding is not ours to do.
+ */
+function ReasoningCombobox({
+  id,
+  value,
+  onChange,
+}: {
+  id: string;
+  value: string | null;
+  onChange: (value: string | null) => void;
+}) {
+  const t = useT();
+  const typed = (value ?? "").trim();
+  const known = typed !== "" && !ASSISTANT_REASONING_SUGGESTIONS.includes(typed as never);
+  // A value this form has never heard of is exactly the case the free-text
+  // option exists for, so it starts there rather than showing as blank.
+  const [custom, setCustom] = useState(known);
+  useEffect(() => {
+    const isCustom =
+      typed !== "" && !ASSISTANT_REASONING_SUGGESTIONS.includes(typed as never);
+    if (isCustom) setCustom(true);
+  }, [typed]);
+
+  return (
+    <>
+      <select
+        id={id}
+        name="reasoningEffort"
+        value={custom ? CUSTOM_EFFORT : typed}
+        onChange={(e) => {
+          if (e.target.value === CUSTOM_EFFORT) {
+            setCustom(true);
+            return;
+          }
+          setCustom(false);
+          onChange(e.target.value === "" ? null : e.target.value);
+        }}
+        className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+      >
+        <option value="">{t("assistant.settings.reasoningOff")}</option>
+        {ASSISTANT_REASONING_SUGGESTIONS.map((level) => (
+          <option key={level} value={level}>
+            {level}
+          </option>
+        ))}
+        <option value={CUSTOM_EFFORT}>
+          {custom && typed ? `自定义：${typed}` : t("assistant.settings.reasoningCustom")}
+        </option>
+      </select>
+      {custom && (
+        <input
+          id={`${id}-text`}
+          type="text"
+          autoComplete="off"
+          placeholder={t("assistant.settings.reasoningCustomPlaceholder")}
+          value={typed}
+          onChange={(e) => onChange(e.target.value.trim() || null)}
+          className="mt-1.5 h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+        />
+      )}
+    </>
   );
 }
 

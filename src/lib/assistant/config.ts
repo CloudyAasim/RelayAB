@@ -43,16 +43,33 @@ export interface AssistantModelParams {
 }
 
 /**
- * The thinking levels, in the spelling the APIs use.
+ * How hard the model thinks, as whatever this model calls its levels.
  *
- * A closed set rather than a free number: `minimal` / `low` / `medium` /
- * `high` is what OpenAI-style endpoints accept, and a vendor that does not
- * support thinking ignores or rejects the field. It is optional for that
- * reason — a closed list that is always sent would be a feature that only works
- * on the models that already had it.
+ * A string, not one of four names, and that is the whole point. The levels are
+ * published per model and per vendor: some offer four, some three, some let you
+ * switch thinking off entirely, and a model that does not think at all has no
+ * levels to offer. A closed list here is a list that is wrong for most of the
+ * models on the deployment, and the wrongness is silent — the request carries a
+ * value the vendor either ignores or refuses.
+ *
+ * So it is free text, sent as typed, with a small set of suggestions when the
+ * deployment knows them. Blank is "do not send it", which is a real answer and
+ * not the same as any level.
  */
-export const ASSISTANT_REASONING_EFFORTS = ["minimal", "low", "medium", "high"] as const;
-export type AssistantReasoningEffort = (typeof ASSISTANT_REASONING_EFFORTS)[number];
+export type AssistantReasoningEffort = string;
+
+/**
+ * The spellings seen in the wild, offered as a starting point only.
+ *
+ * Suggestions, not a contract. Anything typed is sent as typed — see the type
+ * above for why a closed set cannot be the answer.
+ */
+export const ASSISTANT_REASONING_SUGGESTIONS = [
+  "minimal",
+  "low",
+  "medium",
+  "high",
+] as const;
 
 export interface AssistantConfig {
   mode: AssistantCredentialMode;

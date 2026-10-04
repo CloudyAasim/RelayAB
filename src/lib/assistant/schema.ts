@@ -11,7 +11,6 @@
  * `db/types.ts` uses: one Zod schema, read straight through on every load.
  */
 import { z } from "zod";
-import { ASSISTANT_REASONING_EFFORTS } from "./config";
 
 /**
  * How the user's own upstream speaks. Only OpenAI-compatible chat completions
@@ -64,13 +63,14 @@ export const AssistantSettingsSchema = z.object({
   temperature: z.number().min(0).max(2).nullable().optional(),
   topP: z.number().min(0).max(1).nullable().optional(),
   /**
-   * How hard the model thinks, as one of the published effort levels.
+   * How hard the model thinks, as this model's own spelling of its levels.
    *
-   * Nullable and not defaulted: a model that cannot think ignores the field, one
-   * that can will change both the answer and the bill, and "I have not chosen"
-   * has to stay expressible so the vendor's own default is what runs.
+   * Free text rather than an enum, and nullable on top of that: the levels are
+   * published per model, some models can switch thinking off, and a model that
+   * does not think has none to publish. An enum would be a list that is wrong
+   * for most of the models here, and wrong silently.
    */
-  reasoningEffort: z.enum(ASSISTANT_REASONING_EFFORTS).nullable().optional(),
+  reasoningEffort: z.string().min(1).max(64).nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

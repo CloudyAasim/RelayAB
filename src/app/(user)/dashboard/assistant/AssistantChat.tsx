@@ -45,20 +45,19 @@ import { useId } from "react";
  * which put a *setting* and a *per-turn secret* in one control and gave the
  * setting no storage. Splitting them is what makes both honest: the mode is
  * decided in the settings form and read from the server, and this is only ever
- * a value that exists while the tab does.
+ * a value that exists while the tab does. The section around it is gated on that
+ * same saved mode, so neither the field nor its heading survives a path that
+ * has no key.
  */
 function PerTurnKeyField({
   value,
   onChange,
-  active,
 }: {
   value: string;
   onChange: (value: string) => void;
-  active: boolean;
 }) {
   const t = useT();
   const id = `${useId()}-per-turn-key`;
-  if (!active) return null;
   return (
     <div className="space-y-1.5">
       <label htmlFor={id} className="block text-sm font-medium text-foreground">
@@ -1216,27 +1215,28 @@ export function AssistantChat({
             </section>
 
             {/*
-              The relay key is not configuration, and deliberately does not join
-              the form above: it is a per-turn secret, pasted to spend this
-              conversation and never written anywhere. Storing it would be a
-              stored key; not storing it means it is asked for per turn, which
-              is the trade the hint under the field says out loud.
+              The per-turn relay key, and the whole section with it.
+
+              Only the input used to be conditional, so on the account path this
+              left a heading and a paragraph about "which identity the tools
+              should use" standing over nothing — a question the mode switch
+              above already answers, re-asked in the same drawer. Gating the
+              section rather than the field is the fix: on the account path there
+              is no such key, so there is nothing here to say.
             */}
-            <section className="space-y-2">
-              <header>
-                <h3 className="text-sm font-medium text-foreground">
-                  {t("assistant.tools.title")}
-                </h3>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {t("assistant.tools.desc")}
-                </p>
-              </header>
-              <PerTurnKeyField
-                value={relayKey}
-                onChange={setRelayKey}
-                active={credentialMode === "key"}
-              />
-            </section>
+            {credentialMode === "key" && (
+              <section className="space-y-2">
+                <header>
+                  <h3 className="text-sm font-medium text-foreground">
+                    {t("assistant.credential.perTurnTitle")}
+                  </h3>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {t("assistant.credential.perTurnDesc")}
+                  </p>
+                </header>
+                <PerTurnKeyField value={relayKey} onChange={setRelayKey} />
+              </section>
+            )}
           </div>
         </SheetContent>
       </Sheet>

@@ -328,7 +328,7 @@ describe("credential UI: one form, and a model on both paths", () => {
     // Not `credentialMode === "key" && ...`. That conditional is what left the
     // account path with nothing to configure, and what made the same setting
     // have two homes.
-    expect(CHAT).not.toMatch(/credentialMode === "key" && \(\s*<section/);
+    expect(SETTINGS_PANEL_SRC).not.toMatch(/credentialMode === "key"/);
     expect(CHAT).toContain("{settingsPanel}");
     // And the mode switch lives in the form, not beside it.
     expect(SETTINGS_PANEL_SRC).toMatch(/const \[mode, setMode\] = useState<AssistantCredentialMode>/);
@@ -535,7 +535,11 @@ describe("credential UI: one form, and a model on both paths", () => {
     // The closed list is shared with the validator rather than retyped: a form
     // that spelled the levels out would drift from what the API accepts. Matched
     // on the use, because an import nothing renders documents nothing.
-    expect(SETTINGS_PANEL_SRC).toMatch(/ASSISTANT_REASONING_EFFORTS\.map\(/);
+    expect(SETTINGS_PANEL_SRC).toMatch(/ASSISTANT_REASONING_SUGGESTIONS\.map\(/);
+    // …and the free-text half, which is the part that makes the list safe: a
+    // vendor's own word for a level has to survive being typed.
+    expect(SETTINGS_PANEL_SRC).toMatch(/assistant\.settings\.reasoningCustomPlaceholder/);
+    expect(SETTINGS_PANEL_SRC).toMatch(/e\.target\.value === CUSTOM_EFFORT/);
     expect(configSrc).toMatch(/params\.reasoningEffort != null/);
   });
 

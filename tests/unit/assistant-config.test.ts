@@ -13,11 +13,12 @@
  */
 import { describe, it, expect } from "vitest";
 import {
-  ASSISTANT_REASONING_EFFORTS,
+  ASSISTANT_REASONING_SUGGESTIONS,
   modelParamsForRequest,
   resolveAssistantConfig,
   resolveMode,
   resolveModel,
+  type AssistantReasoningEffort,
 } from "@/lib/assistant/config";
 
 /** A fully configured key-path row, the shape an existing deployment has. */
@@ -168,19 +169,33 @@ describe("the parameters are one setting, on both paths", () => {
  * That is why the option list starts with a blank rather than with `minimal`.
  */
 describe("the thinking level", () => {
-  it("is the spelling the APIs publish, and nothing else", () => {
-    expect([...ASSISTANT_REASONING_EFFORTS]).toEqual(["minimal", "low", "medium", "high"]);
-  });
-
-  it("reaches the request as reasoning_effort, and only when chosen", () => {
+  it("is the model's own spelling, not one of ours", () => {
+    // The regression this replaced: a closed list of four. The levels are
+    // published per model — some have four, some three, some an off switch,
+    // some nothing at all — so a list is a suggestion and the field is free.
+    // Typed as a plain string, and a vendor's own word survives the round trip
+    // whether or not anybody here has heard of it.
+    expect(modelParamsForRequest({ ...EMPTY, reasoningEffort: "high" })).toEqual({
+      reasoningEffort: "high",
+    });
     expect(
-      modelParamsForRequest({ ...EMPTY, reasoningEffort: "medium" }),
-    ).toEqual({ reasoningEffort: "medium" });
+      modelParamsForRequest({ ...EMPTY, reasoningEffort: "xhigh" as AssistantReasoningEffort }),
+    ).toEqual({ reasoningEffort: "xhigh" });
+    expect(modelParamsForRequest({ ...EMPTY, reasoningEffort: "off" })).toEqual({
+      reasoningEffort: "off",
+    });
     expect(modelParamsForRequest({ ...EMPTY, reasoningEffort: null })).toEqual({});
     // Read back from a row, so the storage spelling is covered too.
     expect(
-      modelParamsForRequest(resolveAssistantConfig({ ...keyRow, reasoningEffort: "high" }).params),
-    ).toEqual({ reasoningEffort: "high" });
+      modelParamsForRequest(resolveAssistantConfig({ ...keyRow, reasoningEffort: "medium" }).params),
+    ).toEqual({ reasoningEffort: "medium" });
+  });
+
+  it("offers the common spellings as suggestions, and nothing more", () => {
+    // A starting point for a person who does not want to look it up, and
+    // explicitly not a contract: the option list is a convenience, the text
+    // field is the answer.
+    expect([...ASSISTANT_REASONING_SUGGESTIONS]).toEqual(["minimal", "low", "medium", "high"]);
   });
 });
 
