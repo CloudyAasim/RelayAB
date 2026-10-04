@@ -360,6 +360,21 @@ function ModelRows({ model: m, isChat }: { model: CatalogModel; isChat: boolean 
               <Detail label={t("docs.catalog.upstream")} value={m.upstreamId ?? "—"} mono />
               <Detail label={t("docs.catalog.context")} value={fmt(m.contextLength)} />
               <Detail label={t("docs.catalog.maxOutput")} value={fmt(m.maxOutputTokens)} />
+              {/*
+                  Stated, not inferred. A model with no declared levels shows
+                  that, rather than an empty cell that reads like a rendering
+                  failure — and never a default list, which would be a claim
+                  about the model that nobody on this page can check.
+                */}
+              <Detail
+                label={t("docs.catalog.reasoningLevels")}
+                value={
+                  m.reasoningLevels.length > 0
+                    ? m.reasoningLevels.join(" / ")
+                    : t("docs.catalog.reasoningNone")
+                }
+                mono
+              />
               {m.source.priority !== null && (
                 <Detail label={t("docs.catalog.priority")} value={String(m.source.priority)} />
               )}

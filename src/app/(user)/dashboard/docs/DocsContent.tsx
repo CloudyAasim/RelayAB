@@ -247,6 +247,16 @@ console.log(msg.content);`}
             value={`curl -H "Authorization: Bearer $RELAYAB_KEY" ${openaiBase}/models`}
           />
         </div>
+        {/*
+          Where a model's parameters come from, and — the part a reader gets
+          wrong — that the thinking levels are declared rather than detected.
+          A deployment that lists none is not missing them; nobody has said what
+          they are.
+        */}
+        <div className="mt-4 space-y-1 border-t border-border pt-3">
+          <h4 className="text-sm font-medium">{t("docs.models.paramsTitle")}</h4>
+          <p className="text-xs text-muted-foreground">{t("docs.models.params")}</p>
+        </div>
       </Card>
     );
   }
