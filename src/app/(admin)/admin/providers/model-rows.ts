@@ -19,6 +19,8 @@ export interface ProviderModelRow {
   upstreamId: string;
   contextLength: number;
   maxOutputTokens: number;
+  /** The thinking levels the vendor publishes for this model. Empty = said nothing. */
+  reasoningLevels: string[];
   inputCost: number;
   outputCost: number;
   /**
@@ -48,6 +50,7 @@ export function newModelRow(partial: Partial<Omit<ProviderModelRow, "id">> = {})
     upstreamId: "",
     contextLength: DEFAULT_CONTEXT_LENGTH,
     maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS,
+    reasoningLevels: [],
     inputCost: 0,
     outputCost: 0,
     ...partial,
@@ -62,6 +65,8 @@ interface StoredModelConfig {
   outputCost?: number;
   cachedInputCost?: number;
   cacheWriteCost?: number;
+  /** What the vendor published for this model, or absent when it published nothing. */
+  reasoningLevels?: string[];
 }
 
 /**
@@ -82,6 +87,10 @@ export function rowsFromProvider(
       upstreamId: config.upstreamId ?? upstreamId,
       contextLength: config.contextLength ?? DEFAULT_CONTEXT_LENGTH,
       maxOutputTokens: config.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
+      // What the vendor published, or nothing. Not a default list: a model that
+      // does not think has no levels, and inventing four is the mistake this
+      // whole path exists to avoid.
+      reasoningLevels: config.reasoningLevels ?? [],
       inputCost: config.inputCost ?? 0,
       outputCost: config.outputCost ?? 0,
       // Not `?? 0`: a row whose cache was never priced has to read back as
@@ -122,6 +131,9 @@ export function rowsToPayload(rows: ProviderModelRow[]): {
     // written, while blank has to stay absent so the input price applies.
     if (row.cachedInputCost !== undefined) config.cachedInputCost = row.cachedInputCost;
     if (row.cacheWriteCost !== undefined) config.cacheWriteCost = row.cacheWriteCost;
+    // Written whenever the probe found something, and an empty list is written
+    // too: that is how a model stops offering levels a vendor has withdrawn.
+    if (row.reasoningLevels !== undefined) config.reasoningLevels = row.reasoningLevels;
     modelConfigs[clientId] = config;
   }
 
@@ -165,6 +177,10 @@ export function mergeFetchedModels(
         upstreamId: e.id,
         ...(e.contextLength !== undefined ? { contextLength: e.contextLength } : {}),
         ...(e.maxOutputTokens !== undefined ? { maxOutputTokens: e.maxOutputTokens } : {}),
+        // Only when the vendor published them. A model that said nothing about
+        // thinking gets an empty list rather than a default four, so the
+        // assistant's picker offers the vendor's words or none.
+        ...(e.reasoningLevels !== undefined ? { reasoningLevels: e.reasoningLevels } : {}),
       }),
     );
   return additions.length > 0 ? [...rows, ...additions] : rows;

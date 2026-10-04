@@ -45,6 +45,15 @@ export interface CatalogModel {
    */
   cachedInputCost: number | null;
   /**
+   * The thinking levels this model takes, as the vendor published them.
+   *
+   * Empty for most models, and empty is the honest answer: a vendor publishes
+   * levels only for models that think. Carried so the assistant's picker can
+   * offer this model's own words instead of a list of four that is wrong for
+   * most of them — and a model with none still takes something typed.
+   */
+  reasoningLevels: string[];
+  /**
    * Credits per 1M tokens charged for writing a prompt into the upstream cache,
    * under the same rule as `cachedInputCost`: null means the write is charged the
    * input price and there is no separate number worth showing.
@@ -162,6 +171,7 @@ export async function buildModelCatalog(): Promise<ModelCatalog> {
         capability: null,
         contextLength: cfg?.contextLength ?? null,
         maxOutputTokens: cfg?.maxOutputTokens ?? null,
+        reasoningLevels: cfg?.reasoningLevels ?? [],
         inputCost: cost ? cost.inputCost : null,
         outputCost: cost ? cost.outputCost : null,
         // Resolved, not raw: unset means "the input price", and the reader
@@ -217,6 +227,7 @@ export async function buildModelCatalog(): Promise<ModelCatalog> {
         maxOutputTokens: null,
         cachedInputCost: null,
         cacheWriteCost: null,
+        reasoningLevels: [],
         inputCost:
           typeof (model as { pricePerItem?: unknown }).pricePerItem === "number"
             ? (model as { pricePerItem: number }).pricePerItem

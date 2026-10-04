@@ -535,7 +535,10 @@ describe("credential UI: one form, and a model on both paths", () => {
     // The closed list is shared with the validator rather than retyped: a form
     // that spelled the levels out would drift from what the API accepts. Matched
     // on the use, because an import nothing renders documents nothing.
-    expect(SETTINGS_PANEL_SRC).toMatch(/ASSISTANT_REASONING_SUGGESTIONS\.map\(/);
+    expect(SETTINGS_PANEL_SRC).toMatch(/\{options\.map\(\(level\) => \(/);
+    // …and the generic spellings are the *fallback*, used only when the
+    // deployment has nothing for this model.
+    expect(CONFIG).toMatch(/ASSISTANT_REASONING_SUGGESTIONS/);
     // …and the free-text half, which is the part that makes the list safe: a
     // vendor's own word for a level has to survive being typed.
     expect(SETTINGS_PANEL_SRC).toMatch(/assistant\.settings\.reasoningCustomPlaceholder/);
@@ -557,7 +560,10 @@ describe("credential UI: one form, and a model on both paths", () => {
     // proxy enforces.
     const page = read("app/(user)/dashboard/assistant/page.tsx");
     expect(page).toContain("accountFacts");
-    expect(page).toMatch(/accountFacts\[m\.id\] = \{ contextLength: m\.contextLength/);
+    expect(page).toMatch(/accountFacts\[m\.id\] = \{/);
+    expect(page, "the per-model levels are not handed to the form").toMatch(
+      /reasoningLevels: m\.reasoningLevels/,
+    );
   });
 
   it("and the account path still needs its upstream, and still says so", () => {

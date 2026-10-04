@@ -68,11 +68,20 @@ export default async function AssistantPage() {
    * actually have. A model with nothing configured resolves to nulls, and the
    * form leaves those two boxes blank rather than inventing numbers.
    */
-  const accountFacts: Record<string, { contextLength: number | null; maxOutputTokens: number | null }> =
-    {};
+  const accountFacts: Record<
+    string,
+    { contextLength: number | null; maxOutputTokens: number | null; reasoningLevels: string[] }
+  > = {};
   for (const m of catalog.models) {
     if (m.kind !== "chat") continue;
-    accountFacts[m.id] = { contextLength: m.contextLength, maxOutputTokens: m.maxOutputTokens };
+    accountFacts[m.id] = {
+      contextLength: m.contextLength,
+      maxOutputTokens: m.maxOutputTokens,
+      // The vendor's own list for this model, or nothing. Empty is the answer
+      // for a model that does not think, and the picker falls back to a field
+      // the operator fills rather than to four names that would be wrong.
+      reasoningLevels: m.reasoningLevels ?? [],
+    };
   }
 
   return (

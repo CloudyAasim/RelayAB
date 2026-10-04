@@ -46,6 +46,8 @@ describe("rowsFromProvider", () => {
         upstreamId: "gpt-4o-2024-08-06",
         contextLength: 200000,
         maxOutputTokens: 16384,
+        // What the vendor published; empty is a real answer, not a missing one.
+        reasoningLevels: [],
         inputCost: 12,
         outputCost: 34,
       },
@@ -87,6 +89,7 @@ describe("rowsToPayload", () => {
       enabled: true,
       contextLength: 200000,
       maxOutputTokens: 16384,
+      reasoningLevels: [],
       inputCost: 12,
       outputCost: 34,
     });
@@ -107,7 +110,15 @@ describe("rowsToPayload", () => {
     const { modelConfigs } = rowsToPayload([
       newModelRow({ clientId: "m", upstreamId: "up", contextLength: 0, maxOutputTokens: 0 }),
     ]);
-    expect(modelConfigs.m).toEqual({ clientId: "m", upstreamId: "up", enabled: true });
+    // `reasoningLevels` is written even when empty, because an empty list is
+    // how a model stops offering levels a vendor has withdrawn. It is not a
+    // number, so "blank means let the default apply" does not apply to it.
+    expect(modelConfigs.m).toEqual({
+      clientId: "m",
+      upstreamId: "up",
+      enabled: true,
+      reasoningLevels: [],
+    });
   });
 
   it("lets the last row win when a client model id is duplicated", () => {

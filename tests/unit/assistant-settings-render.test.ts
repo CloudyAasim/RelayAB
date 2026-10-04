@@ -60,8 +60,8 @@ function render(overrides: Partial<PanelProps> = {}): string {
     initial: null,
     accountModels: ["gpt-4o", "deepseek-chat"],
     accountFacts: {
-      "gpt-4o": { contextLength: 128000, maxOutputTokens: 16384 },
-      "deepseek-chat": { contextLength: 64000, maxOutputTokens: 8192 },
+      "gpt-4o": { contextLength: 128000, maxOutputTokens: 16384, reasoningLevels: [] },
+      "deepseek-chat": { contextLength: 64000, maxOutputTokens: 8192, reasoningLevels: [] },
     },
     ...overrides,
   });
@@ -150,6 +150,56 @@ describe("the account path fills the model's own numbers from the catalogue", ()
     });
     expect(html, "the stored window is not on the page").toContain('value="128000"');
     expect(html, "the stored output cap is not on the page").toContain('value="16384"');
+  });
+});
+
+describe("the thinking level offers this model's own words", () => {
+  it("and not the generic four when the deployment knows better", () => {
+    // Read from the catalogue, which read it from the provider config, which the
+    // probe filled from the vendor. A model that publishes two levels gets two —
+    // offering four on top of those is the same mistake as having offered only
+    // four.
+    const html = render({
+      initial: {
+        baseUrl: "",
+        model: "",
+        accountModel: "gpt-4o",
+        credentialMode: "account",
+        hasApiKey: false,
+      },
+      accountFacts: {
+        "gpt-4o": {
+          contextLength: 128000,
+          maxOutputTokens: 16384,
+          reasoningLevels: ["think_low", "think_high"],
+        },
+      },
+    });
+    expect(html, "the vendor's own level is not offered").toContain("think_low");
+    expect(html, "the vendor's own level is not offered").toContain("think_high");
+    // …and the generic ones are not, because this model did not publish them.
+    for (const generic of ["minimal", "medium"]) {
+      expect(html, `the generic level ${generic} is offered anyway`).not.toContain(`>${generic}<`);
+    }
+  });
+
+  it("falls back to the common spellings when the vendor published nothing", () => {
+    // An empty list is the honest answer for a model that does not think, and a
+    // suggestion list is still better than an empty box. The field beside it
+    // takes anything either way.
+    const html = render({
+      initial: {
+        baseUrl: "",
+        model: "",
+        accountModel: "plain",
+        credentialMode: "account",
+        hasApiKey: false,
+      },
+      accountModels: ["plain"],
+      accountFacts: { plain: { contextLength: 64000, maxOutputTokens: 8192, reasoningLevels: [] } },
+    });
+    expect(html, "no suggestions at all").toContain(">minimal<");
+    expect(html, "the custom option is missing").toContain("自定义");
   });
 });
 

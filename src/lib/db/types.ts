@@ -190,6 +190,16 @@ export const ModelConfigSchema = z.object({
   contextLength: z.number().int().positive().default(128000),
   /** Maximum output tokens */
   maxOutputTokens: z.number().int().positive().default(8192),
+  /**
+   * The thinking levels this model takes, as the vendor spells them.
+   *
+   * An empty list is the honest answer for most models: a vendor publishes
+   * levels only for models that think, and one that does not think has none to
+   * publish. It is stored rather than defaulted to a set of four, because a
+   * default is a list that is wrong for most of the models here — and wrong
+   * silently, as a value the vendor ignores.
+   */
+  reasoningLevels: z.array(z.string().min(1).max(64)).max(24).default([]),
   /** Credit cost per 1M input tokens */
   inputCost: z.number().nonnegative().default(0),
   /** Credit cost per 1M output tokens */

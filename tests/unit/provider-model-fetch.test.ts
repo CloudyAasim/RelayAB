@@ -145,7 +145,7 @@ describe("merging what came back into the editor's rows", () => {
     // matching on either one avoids the duplicate row.
     const existing = {
       id: "r", clientId: "mine", upstreamId: "theirs",
-      contextLength: 1, maxOutputTokens: 2, inputCost: 0, outputCost: 0,
+      contextLength: 1, maxOutputTokens: 2, inputCost: 0, outputCost: 0, reasoningLevels: [],
     };
     const rows = mergeFetchedModels([existing], ["mine", "theirs", "new-one"]);
     // The existing row is returned untouched, and only the genuinely new model

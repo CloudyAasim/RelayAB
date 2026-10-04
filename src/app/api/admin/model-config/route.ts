@@ -32,6 +32,15 @@ const ModelEntrySchema = z.object({
   // not the same thing here: this route merges, so absent means "leave it".
   cachedInputCost: z.number().nonnegative().max(1_000_000).nullable().optional(),
   cacheWriteCost: z.number().nonnegative().max(1_000_000).nullable().optional(),
+  /**
+   * The thinking levels the vendor publishes for this model.
+   *
+   * A list rather than a choice, because the levels are the model's: four on one
+   * vendor, three on the next, an on/off pair on a third, none on a model that
+   * does not think. An empty list is a real answer and means "we do not know",
+   * which is why it is not defaulted to a set of four here either.
+   */
+  reasoningLevels: z.array(z.string().min(1).max(64)).max(24).optional(),
   enabled: z.boolean().optional(),
 });
 
@@ -110,6 +119,10 @@ export async function POST(req: Request): Promise<Response> {
         ...(entry.displayName !== undefined ? { displayName: entry.displayName } : {}),
         contextLength: entry.contextLength ?? existing?.contextLength ?? 128000,
         maxOutputTokens: entry.maxOutputTokens ?? existing?.maxOutputTokens ?? 8192,
+        // What the vendor published for this model, kept across an edit that did
+        // not mention it. Dropping it here would make every save of an unrelated
+        // field quietly un-teach the assistant this model's thinking levels.
+        reasoningLevels: entry.reasoningLevels ?? existing?.reasoningLevels ?? [],
         inputCost: entry.inputCost ?? existing?.inputCost ?? 0,
         outputCost: entry.outputCost ?? existing?.outputCost ?? 0,
         enabled: entry.enabled ?? existing?.enabled ?? true,

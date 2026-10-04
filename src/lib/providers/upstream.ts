@@ -159,6 +159,16 @@ export interface ModelEntryFacts {
   id: string;
   contextLength?: number;
   maxOutputTokens?: number;
+  /**
+   * The thinking levels this model publishes, as its own spelling of them.
+   *
+   * Read rather than invented because the list is a property of the model: some
+   * publish four, some three, some an on/off pair, and some publish nothing
+   * because they do not think. Absent means "the vendor said nothing", which the
+   * editor keeps as a blank the operator can fill — a guessed list is a list
+   * that is wrong for most of the models here, and wrong silently.
+   */
+  reasoningLevels?: string[];
   /** Anything else the vendor published, kept rather than dropped. */
   extra?: Record<string, unknown>;
 }
@@ -182,6 +192,70 @@ const OUTPUT_KEYS = [
   "output_limit",
   "max_output",
 ] as const;
+
+/**
+ * Where a vendor publishes which thinking levels a model takes.
+ *
+ * Two shapes in the wild: a list of names (`["low", "high"]`) and a nested
+ * object under `reasoning` or `thinking` with an `effort`/`levels` list. Both
+ * are read, because a vendor that publishes levels at all publishes them in one
+ * of them, and a miss here means the operator types them instead.
+ */
+const REASONING_KEYS = [
+  "supported_reasoning_efforts",
+  "reasoning_efforts",
+  "reasoning_levels",
+  "supported_efforts",
+] as const;
+
+const REASONING_NESTED_KEYS = ["reasoning", "thinking"] as const;
+const REASONING_NESTED_LIST_KEYS = ["effort", "efforts", "levels", "supported"] as const;
+
+function stringList(value: unknown): string[] | undefined {
+  const raw = Array.isArray(value)
+    ? value
+    : // Some vendors publish an enum as `{"enum": ["low", "high"]}`.
+      isPlainRecord(value) && Array.isArray((value as { enum?: unknown }).enum)
+      ? ((value as { enum: unknown[] }).enum as unknown[])
+      : undefined;
+  if (!raw) return undefined;
+  const out: string[] = [];
+  for (const item of raw) {
+    // An effort can be a bare name or `{effort: "high", …}`; both are read and
+    // normalised to the name, because the name is what goes on the wire.
+    const name =
+      typeof item === "string"
+        ? item
+        : isPlainRecord(item) && typeof item.effort === "string"
+          ? item.effort
+          : isPlainRecord(item) && typeof item.name === "string"
+            ? item.name
+            : "";
+    const trimmed = name.trim();
+    if (trimmed && !out.includes(trimmed)) out.push(trimmed);
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function isPlainRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function reasoningLevels(record: Record<string, unknown>): string[] | undefined {
+  for (const key of REASONING_KEYS) {
+    const list = stringList(record[key]);
+    if (list) return list;
+  }
+  for (const nested of REASONING_NESTED_KEYS) {
+    const inner = record[nested];
+    if (!isPlainRecord(inner)) continue;
+    for (const key of REASONING_NESTED_LIST_KEYS) {
+      const list = stringList(inner[key]);
+      if (list) return list;
+    }
+  }
+  return undefined;
+}
 
 function firstNumber(source: Record<string, unknown>, keys: readonly string[]): number | undefined {
   for (const k of keys) {
@@ -212,7 +286,14 @@ export function extractModelEntries(raw: unknown): ModelEntryFacts[] {
     if (!id) continue;
     const contextLength = firstNumber(record, CONTEXT_KEYS);
     const maxOutputTokens = firstNumber(record, OUTPUT_KEYS);
-    const known = new Set<string>(["id", ...CONTEXT_KEYS, ...OUTPUT_KEYS]);
+    const levels = reasoningLevels(record);
+    const known = new Set<string>([
+      "id",
+      ...CONTEXT_KEYS,
+      ...OUTPUT_KEYS,
+      ...REASONING_KEYS,
+      ...REASONING_NESTED_KEYS,
+    ]);
     const extra: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(record)) {
       if (!known.has(k) && v !== null && v !== undefined) extra[k] = v;
@@ -221,6 +302,7 @@ export function extractModelEntries(raw: unknown): ModelEntryFacts[] {
       id,
       ...(contextLength !== undefined ? { contextLength } : {}),
       ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
+      ...(levels !== undefined ? { reasoningLevels: levels } : {}),
       ...(Object.keys(extra).length > 0 ? { extra } : {}),
     });
   }

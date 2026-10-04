@@ -53,6 +53,8 @@ function blankToNull(raw: string): number | null {
 export interface AssistantModelFacts {
   contextLength: number | null;
   maxOutputTokens: number | null;
+  /** The thinking levels this model's vendor publishes. Empty = said nothing. */
+  reasoningLevels: string[];
 }
 
 export interface AssistantSettingsView {
@@ -472,6 +474,7 @@ export function AssistantSettingsPanel({
               id="assistant-reasoning"
               value={reasoningEffort}
               onChange={setReasoningEffort}
+              levels={mode === "account" ? (facts?.reasoningLevels ?? []) : []}
             />
             <p className="font-mono text-[10px] text-muted-foreground">reasoning_effort</p>
           </div>
@@ -588,22 +591,30 @@ function ReasoningCombobox({
   id,
   value,
   onChange,
+  levels,
 }: {
   id: string;
   value: string | null;
   onChange: (value: string | null) => void;
+  /**
+   * The levels this model's own vendor publishes, when the deployment knows.
+   *
+   * They replace the generic list rather than joining it: offering four names
+   * the model does not take is the same mistake as having no picker at all, one
+   * step further from the truth. Empty falls back to the common spellings,
+   * because a suggestion list is still better than an empty box — and the field
+   * beside it takes anything either way.
+   */
+  levels?: string[];
 }) {
   const t = useT();
   const typed = (value ?? "").trim();
-  const known = typed !== "" && !ASSISTANT_REASONING_SUGGESTIONS.includes(typed as never);
-  // A value this form has never heard of is exactly the case the free-text
-  // option exists for, so it starts there rather than showing as blank.
-  const [custom, setCustom] = useState(known);
+  const options = levels && levels.length > 0 ? levels : [...ASSISTANT_REASONING_SUGGESTIONS];
+  const isCustom = typed !== "" && !options.includes(typed);
+  const [custom, setCustom] = useState(isCustom);
   useEffect(() => {
-    const isCustom =
-      typed !== "" && !ASSISTANT_REASONING_SUGGESTIONS.includes(typed as never);
-    if (isCustom) setCustom(true);
-  }, [typed]);
+    if (typed !== "" && !options.includes(typed)) setCustom(true);
+  }, [typed, options.join(" ")]);
 
   return (
     <>
@@ -622,7 +633,7 @@ function ReasoningCombobox({
         className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
       >
         <option value="">{t("assistant.settings.reasoningOff")}</option>
-        {ASSISTANT_REASONING_SUGGESTIONS.map((level) => (
+        {options.map((level) => (
           <option key={level} value={level}>
             {level}
           </option>
