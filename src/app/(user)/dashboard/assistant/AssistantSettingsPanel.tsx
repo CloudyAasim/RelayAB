@@ -42,14 +42,12 @@ type RefreshResponse =
       ok: boolean;
       data?: {
         updated: number;
+        seen?: number;
         outcomes: Array<{
           name: string;
           ok: boolean;
           updated: number;
-          asked?: number;
-          learned?: number;
-          unanswered?: number;
-          reasons?: string[];
+          seen?: number;
           error?: string;
         }>;
       };
@@ -271,36 +269,15 @@ export function AssistantSettingsPanel({
         setRefreshNote(json?.error?.message ?? t("common.failed"));
         return;
       }
-      const { updated, outcomes } = json.data ?? { updated: 0, outcomes: [] };
+      const { updated, seen, outcomes } = json.data ?? { updated: 0, seen: 0, outcomes: [] };
       const failed = outcomes.filter((o) => !o.ok);
-      const asked = outcomes.reduce((n, o) => n + (o.asked ?? 0), 0);
-      const learned = outcomes.reduce((n, o) => n + (o.learned ?? 0), 0);
-      // Our own impatience, counted apart from the vendor's silence. Nine
-      // timeouts and nine refusals are the same sentence otherwise, and they
-      // call for opposite next moves.
-      const unanswered = outcomes.reduce((n, o) => n + (o.unanswered ?? 0), 0);
-      // The cause, deduplicated. Four attempts at this ended in "it does not
-      // work" for want of this string: a timeout, a refused connection and a
-      // wrong URL all arrive as the same empty outcome, and only the cause
-      // tells them apart.
-      const reasons = [...new Set(outcomes.flatMap((o) => o.reasons ?? []))].slice(0, 3);
       const names = failed.map((o) => `${o.name}（${o.error ?? "—"}）`).join("、");
       setRefreshNote(
         failed.length > 0
           ? t("assistant.settings.refreshPartial", { n: updated, names })
-          : unanswered > 0
-            ? [
-                t("assistant.settings.refreshUnanswered", { n: unanswered, asked }),
-                ...reasons.map((r) => `${r}`),
-              ].join(" · ")
-            : asked > 0
-              ? t(
-                  learned > 0
-                    ? "assistant.settings.refreshLearned"
-                    : "assistant.settings.refreshSilent",
-                  { asked, n: updated },
-                )
-              : t("assistant.settings.refreshNone"),
+          : (seen ?? 0) > 0
+            ? t("assistant.settings.refreshDone", { n: updated })
+            : t("assistant.settings.refreshNone"),
       );
       // The refreshed numbers are what the fields above should show, so the
       // server has to send them again rather than this form re-reading its own
