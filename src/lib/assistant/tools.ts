@@ -530,7 +530,8 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
       name: "propose_model_config_update",
       description:
         "提出一次【单个模型】的配置变更，需要管理员确认才执行。\n" +
-        "改的是网关真实生效的东西：上下文长度、最大输出、积分价格、是否启用、显示名、上游模型名。\n" +
+        "改的是网关真实生效的东西：上下文长度、最大输出、思考等级、积分价格、是否启用、显示名、上游模型名。\n" +
+        "思考等级是**本部署声明**的，不是自动检测出来的：查厂商官方文档确认这个模型接受哪几档，再照原样写进 reasoningLevels；厂商文档里没有就留空数组。\n" +
         "文档里显示的上下文和价格读的就是这些值，所以改这里等于同时改文档。\n" +
         "媒体模型（图片/视频/语音）由 spec 驱动，这里改不了，请用 propose_media_provider_update。",
       parameters: {
@@ -543,6 +544,12 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
           upstreamId: { type: "string" },
           contextLength: { type: "integer", description: "上下文长度（输入 token 上限）" },
           maxOutputTokens: { type: "integer" },
+          reasoningLevels: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "这个模型接受的思考等级，照厂商文档的原样写，不要翻译也不要归一化。例：MiniMax-M3.1-Flash-Preview 接受 low, medium, high, xhigh, max。空数组 = 这个模型不支持思考等级。先查官方文档确认再写，不确定就别写。",
+          },
           inputCost: { type: "number", description: "每 100 万输入 token 的积分" },
           outputCost: { type: "number", description: "每 100 万输出 token 的积分" },
           cachedInputCost: {
@@ -1480,6 +1487,10 @@ async function listProvidersTool(): Promise<ToolResult> {
           id,
           contextLength: c.contextLength ?? null,
           maxOutputTokens: c.maxOutputTokens ?? null,
+          // Declared here, not discovered there. An empty list means this relay
+          // has not been told what the model takes — a fact about the
+          // configuration, not about the vendor.
+          reasoningLevels: c.reasoningLevels ?? [],
           enabled: c.enabled,
         })),
         // Never the key itself: the model has no need for it and the transcript
@@ -1585,6 +1596,7 @@ async function proposeModelConfigUpdate(
   for (const [key, label] of [
     ["contextLength", "上下文长度"],
     ["maxOutputTokens", "最大输出"],
+    ["reasoningLevels", "思考等级"],
     ["inputCost", "输入价格"],
     ["outputCost", "输出价格"],
     ["cachedInputCost", "缓存读价格"],
@@ -1627,6 +1639,7 @@ async function proposeModelConfigUpdate(
       upstreamId: existing.upstreamId,
       contextLength: existing.contextLength,
       maxOutputTokens: existing.maxOutputTokens,
+      reasoningLevels: existing.reasoningLevels ?? [],
       inputCost: existing.inputCost,
       outputCost: existing.outputCost,
       ...(existing.cachedInputCost !== undefined
