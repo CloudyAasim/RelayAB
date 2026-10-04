@@ -96,6 +96,18 @@ export function levelsFromRefusal(error: string): string[] {
     }
   }
 
+  // A parenthesised or bare comma-separated run straight after the lead-in:
+  // `(allowed: low, medium, high)` — which is what MiniMax actually answers, and
+  // which the three passes above all miss, because there are no quotes, no
+  // brackets and no pipe in it. Found by sending a real invalid value at the
+  // real vendor rather than by reading this file: the shape everybody guesses
+  // is not the shape that comes back.
+  const segment = tail.split(/[\)\]\}\n]/)[0] ?? "";
+  for (const part of segment.split(/[,;|]/)) {
+    const name = part.trim().replace(/^['"`]+|['"`]+$/g, "");
+    if (name) add(name);
+  }
+
   function add(raw: string) {
     const name = raw.trim();
     if (!name || name.length > 24) return;

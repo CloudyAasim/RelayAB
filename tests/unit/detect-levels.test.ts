@@ -135,28 +135,46 @@ describe("what gets stored", () => {
 });
 
 /**
- * The end-to-end shape, on a recorded MiniMax-style answer.
+ * The real answer, from the real vendor.
  *
- * Its documented example is `reasoning_effort = "max"`, and the control exists
- * on one model only — which is the exact case a model list could never have
- * told us, and the reason the probe exists.
+ * Recorded by sending an invalid `reasoning_effort` at MiniMax through this
+ * deployment, after the proxy was fixed to stop discarding the upstream's body:
+ *
+ *   Upstream 400: invalid params, invalid reasoning_effort:
+ *   "__relayab_not_a_level__" (allowed: low, medium, high, xhigh, max) (2013)
+ *
+ * Two things this caught that nothing else did. There is no `minimal` — the
+ * level this system had been offering does not exist for this model. And the
+ * shape is a parenthesised comma-separated run with no quotes, no brackets and
+ * no pipe, which every "obvious" parser skips: the detector reported the
+ * vocabulary it had *guessed*, having read nothing.
  */
-describe("a vendor whose vocabulary only exists in its refusals", () => {
-  it("is found in one call, and confirmed in two", () => {
-    const refusal =
-      "Invalid value for 'reasoning_effort': must be one of \"minimal\", \"low\", \"medium\", \"high\", \"max\".";
-    const vocabulary = refusalVocabulary(refusal);
-    expect(vocabulary).toEqual(["minimal", "low", "medium", "high", "max"]);
+describe("the real answer, from the real vendor", () => {
+  const REAL =
+    'invalid params, invalid reasoning_effort: "__relayab_not_a_level__" (allowed: low, medium, high, xhigh, max) (2013)';
 
-    const candidates = candidatesFor({ declared: [], fromRefusal: vocabulary, fallback: [] });
+  it("is read, in full, and the rejected value is not in it", () => {
+    expect(refusalVocabulary(REAL)).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    // The value that was sent is the one thing that must never come back as a
+    // level of the model.
+    expect(levelsFromRefusal(REAL)).not.toContain(PROBE_SENTINEL);
+  });
+
+  it("and it corrects what the presets claimed", () => {
+    // The presets were `minimal` first. This model does not take it, and the
+    // vendor said so in the first refusal anyone actually read.
+    expect(levelsFromRefusal(REAL)).not.toContain("minimal");
+    expect(levelsFromRefusal(REAL)).toContain("xhigh");
+    expect(levelsFromRefusal(REAL)).toContain("max");
+  });
+
+  it("and the sentinel still leads, so this costs one request", () => {
+    const candidates = candidatesFor({
+      declared: [],
+      fromRefusal: refusalVocabulary(REAL),
+      fallback: [],
+    });
     expect(candidates[0]).toBe(PROBE_SENTINEL);
-
-    // The vendor accepts three of the five it named.
-    const probes = candidates.slice(1).map((level) =>
-      ["minimal", "low", "medium", "high", "max"].includes(level)
-        ? { level, accepted: ["low", "high", "max"].includes(level), status: 200 }
-        : { level, accepted: false, status: 400 },
-    );
-    expect(decideLevels(probes)).toEqual(["low", "high", "max"]);
+    expect(candidates.slice(1)).toEqual(["low", "medium", "high", "xhigh", "max"]);
   });
 });
