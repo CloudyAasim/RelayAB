@@ -201,6 +201,23 @@ describe("credential UI: the page never rests on an unusable option", () => {
   it("shows the key field only while the key path is selected", () => {
     expect(PANEL).toMatch(/\{mode === "key" && \(/);
   });
+
+  it("gives each instance its own radio group", () => {
+    // The model test page mounts two of these and the assistant drawer a third.
+    // A constant `name` makes them one group to the browser, so choosing an
+    // option in one panel unchecks the others' radios — while each panel's
+    // `checked` is controlled by its own state and does not hear about it. What
+    // is left on screen is not what the next call is made with, which is the
+    // part that makes this a bug rather than a cosmetic one.
+    expect(PANEL, "the radio group name is shared by every instance").not.toMatch(
+      /const modeGroup = "/,
+    );
+    expect(PANEL).toMatch(/const modeGroup = `\$\{instanceId\}-mode`;/);
+    // …and the id it is built from is per instance, like the key field beside it.
+    expect(PANEL).toMatch(/const instanceId = useId\(\);/);
+    // Both radios in one group, so they are still exclusive within a panel.
+    expect((PANEL.match(/name=\{modeGroup\}/g) ?? []).length).toBe(2);
+  });
 });
 
 /**

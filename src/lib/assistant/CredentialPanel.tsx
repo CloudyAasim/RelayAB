@@ -235,8 +235,24 @@ export function CredentialChoice({
 }) {
   const t = useT();
   const { data: state, loaded } = useCredentialStore();
-  const keyFieldId = useId();
-  const modeGroup = "assistant-credential-mode";
+  /**
+   * Per instance, and both of them.
+   *
+   * The radio `name` was a constant, which is invisible until the page mounts
+   * two of these: the model test page has a chat tester and a media tester, and
+   * the assistant drawer has a third. Native radio grouping is by name across
+   * the whole document, not by component, so picking one option in one panel
+   * silently unchecked the identically named radio in the others — while each
+   * panel's `checked` is controlled by its own state and knew nothing about it.
+   * The result was a dot on screen that did not match the state the next call
+   * would be made with.
+   *
+   * `useId` is already how the key field's id is made unique, one line down, for
+   * the same reason and on the same page.
+   */
+  const instanceId = useId();
+  const keyFieldId = `${instanceId}-key`;
+  const modeGroup = `${instanceId}-mode`;
 
   /**
    * Whether the account option has ever been picked on purpose. Until it has,
