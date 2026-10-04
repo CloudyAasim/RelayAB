@@ -1,5 +1,6 @@
 import { getT } from "@/lib/i18n/server";
 import { resolvePublicUrl } from "@/lib/public-url";
+import { userChapterAnswers } from "@/lib/docs/sections";
 import { UserDocsApp } from "./UserDocsApp";
 import { userDocGuides } from "@/lib/docs/custom";
 import { getSettings } from "@/lib/db/settings";
@@ -44,6 +45,9 @@ export async function IntegrationDocs({
       openaiBase={`${base}/v1`}
       anthropicBase={`${base}/anthropic`}
       catalogue={catalogue}
+      chapterAnswers={userChapterAnswers(t)}
+      prevChapterLabel={t("docs.chapter.prev")}
+      nextChapterLabel={t("docs.chapter.next")}
       outlineLabel={t("docs.sections")}
       copyPageLabel={t("docs.copyPage")}
       copiedLabel={t("docs.copy.copied")}

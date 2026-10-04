@@ -145,8 +145,35 @@ export function userDocSections(t: TFn): Omit<DocSection, "children">[] {
   return USER_LABEL_KEYS.map((key, i) => ({ id: USER_SECTION_IDS[i], label: t(key) }));
 }
 
-export function adminDocSections(t: TFn): DocSection[] {
-  return [
+/**
+ * The question each chapter answers, keyed by chapter id.
+ *
+ * A tab title says *which* chapter; it does not say *why this is the one you
+ * want*, and a reader who lands in the wrong chapter cannot tell from the title
+ * alone. So each chapter carries its own question, and a missing one is absent
+ * from the map rather than rendered as an empty line.
+ *
+ * Written as literal keys rather than a template, so the strings are greppable
+ * and the dictionary can be checked for keys nothing resolves.
+ */
+const CHAPTER_ANSWER_KEYS: Readonly<Record<string, string>> = {
+  start: "docs.chapter.answers.start",
+  endpoints: "docs.chapter.answers.endpoints",
+  openai: "docs.chapter.answers.openai",
+  anthropic: "docs.chapter.answers.anthropic",
+  responses: "docs.chapter.answers.responses",
+  models: "docs.chapter.answers.models",
+  sdks: "docs.chapter.answers.sdks",
+  media: "docs.chapter.answers.media",
+};
+
+export function userChapterAnswers(t: TFn): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [id, key] of Object.entries(CHAPTER_ANSWER_KEYS)) out[id] = t(key);
+  return out;
+}
+
+export function adminDocSections(t: TFn): DocSection[] {  return [
     { id: "overview", label: t("admin.docs.nav.overview") },
     { id: "providers", label: t("admin.docs.nav.providers") },
     { id: "faces", label: t("admin.docs.nav.faces") },

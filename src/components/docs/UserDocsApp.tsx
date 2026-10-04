@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
-import { Check, Copy } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Copy } from "lucide-react";
 import { DocsContent } from "@/app/(user)/dashboard/docs/DocsContent";
 import { DocsParameters } from "@/app/(user)/dashboard/docs/DocsParameters";
 import { INTEGRATION_GUIDE, type DocSection, type GuideId, type ProseUserDocId } from "@/lib/docs/sections";
@@ -42,6 +42,10 @@ export function UserDocsApp({
   openaiBase,
   anthropicBase,
   catalogue,
+  /** Each chapter's own question, keyed by chapter id. */
+  chapterAnswers,
+  prevChapterLabel,
+  nextChapterLabel,
   outlineLabel,
   copyPageLabel,
   copiedLabel,
@@ -67,6 +71,10 @@ export function UserDocsApp({
    * front of them.
    */
   catalogue?: ReactNode;
+  chapterAnswers: Record<string, string>;
+  /** Fallback text when a chapter has no neighbour on that side. */
+  prevChapterLabel: string;
+  nextChapterLabel: string;
   outlineLabel: string;
   copyPageLabel: string;
   copiedLabel: string;
@@ -155,6 +163,23 @@ export function UserDocsApp({
   const pages = onParameters ? parameters.pages : [];
   const activePage = pages.find((p) => p.id === pageId) ?? pages[0] ?? null;
 
+  /**
+   * Where this chapter sits in the guide, and what it is for.
+   *
+   * The tabs answer "which chapter"; they do not answer "why is this the one I
+   * want", and a reader who lands in the wrong chapter has no way to tell from
+   * the title alone. The line is the chapter's own question, so recognising the
+   * wrong page takes one sentence rather than scrolling to the bottom to find
+   * out you are somewhere else.
+   *
+   * Resolved through the dictionary rather than a table here, so the key is
+   * visible where the chapter list is and `i18n-usage` can see it used.
+   */
+  const at = chapters.findIndex((s) => s.id === chapter);
+  const prevChapter = at > 0 ? chapters[at - 1] : null;
+  const nextChapter = at >= 0 && at < chapters.length - 1 ? chapters[at + 1] : null;
+  const answer = chapterAnswers[chapter] ?? null;
+
   return (
     <div className="space-y-5">
       {/*
@@ -242,6 +267,43 @@ export function UserDocsApp({
           )}
         </Button>
       </div>
+
+      {/*
+        The chapter's own question, and the way on. Both are here rather than
+        inside `DocsContent` so the panel stays about prose and this stays about
+        where you are — and so the parameters guide, which has its own paging
+        and no chapters, does not inherit either.
+      */}
+      {!onParameters && answer && (
+        <>
+          <p className="-mt-2 text-xs text-muted-foreground">{answer}</p>
+
+          {(prevChapter || nextChapter) && (
+            <div className="flex items-center justify-between gap-3 border-t pt-3">
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={!prevChapter}
+                onClick={() => prevChapter && toIntegration(prevChapter.id)}
+              >
+                <ChevronLeft className="mr-1 h-3.5 w-3.5" />
+                {prevChapter ? prevChapter.label : prevChapterLabel}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={!nextChapter}
+                onClick={() => nextChapter && toIntegration(nextChapter.id)}
+              >
+                {nextChapter ? nextChapter.label : nextChapterLabel}
+                <ChevronRight className="ml-1 h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )}
+        </>
+      )}
 
       <div ref={bodyRef} role="tabpanel" className="scroll-mt-20 space-y-5">
         {/*

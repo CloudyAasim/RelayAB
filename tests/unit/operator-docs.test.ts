@@ -28,7 +28,7 @@ import {
   userDocGuides,
   PARAMETERS_SECTION,
 } from "@/lib/docs/custom";
-import { INTEGRATION_GUIDE } from "@/lib/docs/sections";
+import { INTEGRATION_GUIDE, userChapterAnswers } from "@/lib/docs/sections";
 import { ASSISTANT_PAGE_READ_LIMIT } from "@/lib/assistant/docs-reader";
 import { renderDocPagesDiff } from "@/lib/assistant/diff";
 import { docPageAdvice } from "@/lib/assistant/tools";
@@ -56,6 +56,10 @@ const INTEGRATION = readFileSync(
 );
 const FORM = readFileSync(
   join(process.cwd(), "src", "app", "(admin)", "admin", "settings", "DocsPagesForm.tsx"),
+  "utf-8",
+);
+const SECTIONS_SRC = readFileSync(
+  join(process.cwd(), "src", "lib", "docs", "sections.ts"),
   "utf-8",
 );
 const CONTENT = readFileSync(
@@ -226,6 +230,35 @@ describe("the integration guide renders what it says it renders", () => {
     // …and the OpenAI chapter says which chapter it is shared with, so the
     // claim is findable from either side.
     expect(CONTENT).toMatch(/t\("docs\.openai\.sharesBase"\)/);
+  });
+  it("each chapter says what it answers, and offers a way on", () => {
+    // A tab title says which chapter. It does not say why this is the one you
+    // want, and a reader who lands in the wrong chapter cannot tell from the
+    // title alone — so the chapter carries its own question, one line, above
+    // the prose.
+    const answers = userChapterAnswers(t);
+    for (const id of ["start", "endpoints", "openai", "anthropic", "responses", "models", "sdks", "media"]) {
+      expect(answers[id], `the "${id}" chapter has no question`).toBeTruthy();
+    }
+    // Keys are literals rather than a template, so the strings stay greppable
+    // and a dictionary key nothing resolves is findable.
+    expect(SECTIONS_SRC).toMatch(/start: "docs\.chapter\.answers\.start"/);
+    // …and the catalogue is not a chapter with prose, so it gets no question.
+    expect(answers.catalog).toBeUndefined();
+    expect(answers.parameters).toBeUndefined();
+
+    // Prev/next read the same filtered array the tabs read, so they cannot
+    // disagree with the order on screen — including when the catalogue tab is
+    // absent because this deployment does not publish one.
+    expect(APP).toMatch(/const prevChapter = at > 0 \? chapters\[at - 1\] : null;/);
+    expect(APP).toMatch(/const nextChapter = at >= 0 && at < chapters\.length - 1 \? chapters\[at \+ 1\] : null;/);
+    expect(APP).toMatch(/onClick=\{\(\) => prevChapter && toIntegration\(prevChapter\.id\)\}/);
+  });
+
+  it("and neither of them appears in the parameters guide", () => {
+    // It has its own paging and no chapters. Inheriting either would put a
+    // chapter's question above a page of voices.
+    expect(APP).toMatch(/\{!onParameters && answer && \(/);
   });
 });
 
