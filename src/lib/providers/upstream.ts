@@ -23,6 +23,29 @@ export interface UpstreamFetchOptions {
   timeoutMs?: number;
 }
 
+/**
+ * The text of an upstream refusal, from whatever `callUpstream` filled in.
+ *
+ * `callUpstream` puts a response that arrived and said no in `body` — parsed
+ * when it is JSON, the first 500 characters when it is not — and leaves `error`
+ * for a request that never got an answer at all. The two are not
+ * interchangeable: reading `error` on a 400 yields `undefined` every time, so a
+ * detector built on that reports "this vendor publishes nothing" for every
+ * vendor, permanently, with nothing anywhere to notice it by.
+ *
+ * Found by pressing the button that uses it: nine models asked, none answered,
+ * while the same vendor had answered this same system in plain sight.
+ */
+export function refusalText(body: unknown): string {
+  if (typeof body === "string") return body;
+  if (body === null || body === undefined) return "";
+  try {
+    return JSON.stringify(body);
+  } catch {
+    return String(body);
+  }
+}
+
 export interface UpstreamFetchResult {
   ok: boolean;
   status: number;
