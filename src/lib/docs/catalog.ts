@@ -44,6 +44,12 @@ export interface CatalogModel {
    * price and there is nothing cheaper to advertise.
    */
   cachedInputCost: number | null;
+  /**
+   * Credits per 1M tokens charged for writing a prompt into the upstream cache,
+   * under the same rule as `cachedInputCost`: null means the write is charged the
+   * input price and there is no separate number worth showing.
+   */
+  cacheWriteCost: number | null;
   /** Protocol faces this model is reachable through. */
   faces: string[];
   tags: string[];
@@ -165,6 +171,13 @@ export async function buildModelCatalog(): Promise<ModelCatalog> {
           cost && cost.cachedInputCost !== undefined && cost.cachedInputCost !== cost.inputCost
             ? cost.cachedInputCost
             : null,
+        // Same rule, and it needs saying because the two are charged differently
+        // by most vendors: a read is usually a tenth of the input price, a write
+        // is usually a premium on it. Collapsing them would understate the write.
+        cacheWriteCost:
+          cost && cost.cacheWriteCost !== undefined && cost.cacheWriteCost !== cost.inputCost
+            ? cost.cacheWriteCost
+            : null,
         faces: faceNames,
         ...note,
         meta: {},
@@ -203,6 +216,7 @@ export async function buildModelCatalog(): Promise<ModelCatalog> {
         contextLength: null,
         maxOutputTokens: null,
         cachedInputCost: null,
+        cacheWriteCost: null,
         inputCost:
           typeof (model as { pricePerItem?: unknown }).pricePerItem === "number"
             ? (model as { pricePerItem: number }).pricePerItem

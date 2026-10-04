@@ -179,9 +179,41 @@ export function ModelCatalog({ models, providers, site, publicUrl }: Props) {
                         <th className="py-2 pr-3 font-medium">{t("docs.catalog.endpoint")}</th>
                       </>
                     )}
-                    <th className="py-2 pr-3 font-medium">
-                      {isChat ? t("docs.catalog.price") : t("docs.catalog.pricePerItem")}
-                    </th>
+                    {isChat ? (
+                      <>
+                        <th className="py-2 pr-3 font-medium">
+                          {t("docs.catalog.rateIn")}
+                          <span className="block text-[10px] font-normal text-muted-foreground">
+                            {t("docs.catalog.perMillion")}
+                          </span>
+                        </th>
+                        <th className="py-2 pr-3 font-medium">
+                          {t("docs.catalog.rateOut")}
+                          <span className="block text-[10px] font-normal text-muted-foreground">
+                            {t("docs.catalog.perMillion")}
+                          </span>
+                        </th>
+                        <th className="py-2 pr-3 font-medium">
+                          {t("docs.catalog.rateCachedRead")}
+                          <span className="block text-[10px] font-normal text-muted-foreground">
+                            {t("docs.catalog.perMillion")}
+                          </span>
+                        </th>
+                        <th className="py-2 pr-3 font-medium">
+                          {t("docs.catalog.rateCachedWrite")}
+                          <span className="block text-[10px] font-normal text-muted-foreground">
+                            {t("docs.catalog.perMillion")}
+                          </span>
+                        </th>
+                      </>
+                    ) : (
+                      <th className="py-2 pr-3 font-medium">
+                        {t("docs.catalog.pricePerItem")}
+                        <span className="block text-[10px] font-normal text-muted-foreground">
+                          {t("docs.catalog.perItem")}
+                        </span>
+                      </th>
+                    )}
                     <th className="py-2 font-medium" />
                   </tr>
                 </thead>
@@ -281,36 +313,28 @@ function ModelRows({ model: m, isChat }: { model: CatalogModel; isChat: boolean 
             <td className="py-2 pr-3 font-mono text-[11px]">{m.source.endpoint ?? "—"}</td>
           </>
         )}
-        <td className="py-2 pr-3 text-xs">
-          {isChat ? (
-            <>
-              {/* Both halves. A rate you cannot see the other half of is
-                  half a price. */}
-              <span className="whitespace-nowrap">
-                {t("docs.catalog.rateIn")} {cost(m.inputCost)}
-              </span>{" "}
-              <span className="whitespace-nowrap">
-                {t("docs.catalog.rateOut")} {cost(m.outputCost)}
-              </span>
-              {/*
-                Only when it is actually cheaper. A cached rate equal to the
-                input rate is not a discount, and printing it would advertise a
-                saving that does not exist. Printed raw rather than through
-                `cost()` because 0 here means "the cache is free", which is an
-                answer and not an absence.
-              */}
-              {m.cachedInputCost !== null && m.cachedInputCost < (m.inputCost ?? 0) && (
-                <span className="block whitespace-nowrap text-[10px] text-muted-foreground">
-                  {t("docs.catalog.cachedInput")} {m.cachedInputCost}
-                </span>
-              )}
-            </>
-          ) : m.inputCost ? (
-            `${(m.inputCost / 1000).toFixed(3)} 积分`
-          ) : (
-            "—"
-          )}
-        </td>
+        {isChat ? (
+          <>
+            <td className="py-2 pr-3 text-xs">{cost(m.inputCost)}</td>
+            <td className="py-2 pr-3 text-xs">{cost(m.outputCost)}</td>
+            <td className="py-2 pr-3 text-xs">
+              {/* Not through `cost()`'s zero rule: 0 here means the cache is
+                  free, which is an answer and not an absence. */}
+              {m.cachedInputCost === null ? cost(null) : cost(m.cachedInputCost)}
+            </td>
+            <td className="py-2 pr-3 text-xs">
+              {/* A hardcoded dash here would be a column that can never answer.
+                  Both cache cells read the configured rate, and both treat an
+                  unset rate as the input price — so the dash means "no separate
+                  price", not "no data". 0 stays 0: a free cache is an answer. */}
+              {m.cacheWriteCost === null ? cost(null) : cost(m.cacheWriteCost)}
+            </td>
+          </>
+        ) : (
+          <td className="py-2 pr-3 text-xs">
+            {m.inputCost ? `${(m.inputCost / 1000).toFixed(3)} 积分` : cost(null)}
+          </td>
+        )}
         <td className="py-2 text-right">
           <button
             type="button"
@@ -324,7 +348,7 @@ function ModelRows({ model: m, isChat }: { model: CatalogModel; isChat: boolean 
       </tr>
       {open && (
         <tr className="border-b border-border/60 bg-muted/20">
-          <td colSpan={6} className="px-3 py-2">
+          <td colSpan={isChat ? 9 : 6} className="px-3 py-2">
             <dl className="grid gap-x-6 gap-y-1 text-xs sm:grid-cols-2 lg:grid-cols-3">
               <Detail label={t("docs.catalog.base")} value={m.source.baseUrl ?? "—"} mono />
               <Detail

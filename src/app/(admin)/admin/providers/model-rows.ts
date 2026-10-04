@@ -8,6 +8,8 @@
  * client-facing model id.
  */
 
+import type { ModelEntryFacts } from "@/lib/providers/upstream";
+
 export interface ProviderModelRow {
   /** React key only — never a user-editable value. */
   id: string;
@@ -137,16 +139,33 @@ export function duplicateClientIds(rows: ProviderModelRow[]): string[] {
   return [...seen.entries()].filter(([, count]) => count > 1).map(([id]) => id);
 }
 
-/** Append the upstream ids that are not represented yet (used by "fetch models"). */
+/**
+ * Append the upstream models that are not represented yet ("fetch models").
+ *
+ * The whole entry, not just its id, because that is the point of fetching: an
+ * upstream that publishes a context window or an output cap has answered the
+ * question, and the operator should not be asked it again. A field the vendor
+ * did not publish is left at the row's own default rather than guessed —
+ * `undefined` here would become a stored number nobody chose.
+ */
 export function mergeFetchedModels(
   rows: ProviderModelRow[],
-  upstreamIds: string[],
+  fetched: readonly (string | ModelEntryFacts)[],
   defaults: Partial<Omit<ProviderModelRow, "id">> = {},
 ): ProviderModelRow[] {
+  const entries = fetched.map((f) => (typeof f === "string" ? { id: f } : f));
   const known = new Set(rows.flatMap((row) => [row.clientId.trim(), row.upstreamId.trim()]));
-  const additions = upstreamIds
-    .map((id) => id.trim())
-    .filter((id) => id.length > 0 && !known.has(id))
-    .map((id) => newModelRow({ ...defaults, clientId: id, upstreamId: id }));
+  const additions = entries
+    .map((e) => ({ ...e, id: e.id.trim() }))
+    .filter((e) => e.id.length > 0 && !known.has(e.id))
+    .map((e) =>
+      newModelRow({
+        ...defaults,
+        clientId: e.id,
+        upstreamId: e.id,
+        ...(e.contextLength !== undefined ? { contextLength: e.contextLength } : {}),
+        ...(e.maxOutputTokens !== undefined ? { maxOutputTokens: e.maxOutputTokens } : {}),
+      }),
+    );
   return additions.length > 0 ? [...rows, ...additions] : rows;
 }

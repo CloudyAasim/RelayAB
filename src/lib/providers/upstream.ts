@@ -138,15 +138,101 @@ function joinUrl(base: string, path: string): string {
  * Some upstreams return:                  ["model-a", "model-b"]
  */
 export function extractModelIds(raw: unknown): string[] {
-  if (!raw) return [];
-  if (Array.isArray(raw)) {
-    return raw
-      .map((m) => (typeof m === "string" ? m : m?.id ?? ""))
-      .filter(Boolean);
+  return extractModelEntries(raw).map((e) => e.id);
+}
+
+/**
+ * What one entry in a `/models` response says about the model, read past the id.
+ *
+ * The id is the only thing most upstreams publish, and it is all this function
+ * used to keep — so a gateway that *does* report a context window or an output
+ * cap had it discarded, and the operator was asked to type the same number by
+ * hand. Every field here is optional and read from the spellings in use, because
+ * a vendor that publishes one of these and the caller ignores it is worse than a
+ * vendor that publishes none.
+ *
+ * **Nothing is inferred.** A missing field stays missing, and the editor shows
+ * it as unset rather than filling a default that would then be stored as if the
+ * operator had chosen it.
+ */
+export interface ModelEntryFacts {
+  id: string;
+  contextLength?: number;
+  maxOutputTokens?: number;
+  /** Anything else the vendor published, kept rather than dropped. */
+  extra?: Record<string, unknown>;
+}
+
+/** The spellings in use for a declared context window. */
+const CONTEXT_KEYS = [
+  "context_length",
+  "context_length_tokens",
+  "max_context_tokens",
+  "max_context_length",
+  "max_input_tokens",
+  "context_window",
+  "context",
+] as const;
+
+/** …and for a declared output cap. */
+const OUTPUT_KEYS = [
+  "max_output_tokens",
+  "max_completion_tokens",
+  "max_tokens",
+  "output_limit",
+  "max_output",
+] as const;
+
+function firstNumber(source: Record<string, unknown>, keys: readonly string[]): number | undefined {
+  for (const k of keys) {
+    const raw = source[k];
+    if (typeof raw !== "number" && typeof raw !== "string") continue;
+    // JSON is untyped in practice: gateways built on older stacks serialise
+    // every number as a string, and a window of "200000" is a window, not
+    // junk. Coerce rather than discard, but still refuse anything that is not
+    // a finite positive number once coerced.
+    const n = typeof raw === "string" ? Number(raw.trim()) : raw;
+    if (Number.isFinite(n) && n > 0) return Math.trunc(n);
   }
-  const obj = raw as { data?: unknown; models?: unknown };
-  if (Array.isArray(obj?.data)) return extractModelIds(obj.data);
-  if (Array.isArray(obj?.models)) return extractModelIds(obj.models);
+  return undefined;
+}
+
+export function extractModelEntries(raw: unknown): ModelEntryFacts[] {
+  const rows = toRows(raw);
+  const out: ModelEntryFacts[] = [];
+  for (const row of rows) {
+    if (typeof row === "string") {
+      const id = row.trim();
+      if (id) out.push({ id });
+      continue;
+    }
+    if (!row || typeof row !== "object") continue;
+    const record = row as Record<string, unknown>;
+    const id = typeof record.id === "string" ? record.id.trim() : "";
+    if (!id) continue;
+    const contextLength = firstNumber(record, CONTEXT_KEYS);
+    const maxOutputTokens = firstNumber(record, OUTPUT_KEYS);
+    const known = new Set<string>(["id", ...CONTEXT_KEYS, ...OUTPUT_KEYS]);
+    const extra: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(record)) {
+      if (!known.has(k) && v !== null && v !== undefined) extra[k] = v;
+    }
+    out.push({
+      id,
+      ...(contextLength !== undefined ? { contextLength } : {}),
+      ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
+      ...(Object.keys(extra).length > 0 ? { extra } : {}),
+    });
+  }
+  return out;
+}
+
+/** The list itself, wherever the vendor put it. */
+function toRows(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw;
+  const obj = raw as { data?: unknown; models?: unknown } | null;
+  if (Array.isArray(obj?.data)) return obj.data;
+  if (Array.isArray(obj?.models)) return obj.models;
   return [];
 }
 

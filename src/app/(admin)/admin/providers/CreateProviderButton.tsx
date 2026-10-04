@@ -108,10 +108,14 @@ export function CreateProviderButton({ onCreated }: Props) {
       }
       let data: {
         ok?: boolean;
-        models?: string[];
+        /** Whole entries, not ids: an upstream that publishes a context window
+         *  has answered the question, and the id alone would discard it. */
+        models?: Array<string | { id: string; contextLength?: number; maxOutputTokens?: number }>;
         status?: number;
         latencyMs?: number;
         error?: string;
+        /** Why the list came back empty — what was tried and what each one said. */
+        notice?: string;
       };
       try {
         data = JSON.parse(text);
@@ -129,6 +133,10 @@ export function CreateProviderButton({ onCreated }: Props) {
           count: data.models?.length ?? 0,
           status: data.status ?? 0,
           latencyMs: data.latencyMs ?? 0,
+          // Said rather than shown as a silent zero: a vendor that publishes only
+          // ids leaves the window and the cap to be typed, and a reader who does
+          // not know that will assume the fetch filled them.
+          ...(data.models?.length === 0 && data.notice ? { error: data.notice } : {}),
         });
         setModelRows((prev) => mergeFetchedModels(prev, data.models ?? [], activeTemplateModelDefaults));
       } else {
