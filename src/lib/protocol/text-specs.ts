@@ -96,6 +96,43 @@ export function specForSurface(
 }
 
 /**
+ * Which of a provider's two configurations is live.
+ *
+ * A row holds both: the faces that decide what answers, and the per-interface
+ * rules that decide what happens to the parameters. They are two ways of
+ * describing the same vendor, and the operator picks which one is in effect —
+ * so the other one is kept, not thrown away, and nothing is lost by switching.
+ *
+ * A row written before the field existed has no opinion, so it keeps the
+ * behaviour it always had: rules apply when it has any. Defaulting the other
+ * way would silently stop them applying to every existing provider on upgrade.
+ */
+export function activeModeOf(provider: {
+  activeMode?: string | null;
+  textSpecs?: readonly string[] | null;
+}): "simple" | "advanced" {
+  if (provider.activeMode === "simple" || provider.activeMode === "advanced") {
+    return provider.activeMode;
+  }
+  return provider.textSpecs?.length ? "advanced" : "simple";
+}
+
+/**
+ * The rule that governs this surface *if that configuration is the live one*.
+ *
+ * Every proxy path goes through this rather than `specForSurface`, so "inactive"
+ * is a fact the engine holds rather than a thing the interface says. Three
+ * call sites exist and none of them should have to remember.
+ */
+export function activeSpecFor(
+  provider: Parameters<typeof activeModeOf>[0],
+  protocol: string,
+): TextSpec | null {
+  if (activeModeOf(provider) !== "advanced") return null;
+  return specForSurface(readTextSpecs(provider), protocol);
+}
+
+/**
  * Validate a whole list the editor is about to send.
  *
  * Rejects a duplicate protocol outright: two entries for one surface means one

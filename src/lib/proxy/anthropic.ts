@@ -22,7 +22,7 @@ import { settleUsage } from "./billing";
 import { ssePassthrough } from "./stream-tap";
 import { providerFaces, type ApiKey, type Provider, type User } from "../db/types";
 import { applyParameterPolicy } from "../protocol/parameter-policy";
-import { readTextSpecs, specForSurface } from "../protocol/text-specs";
+import { readTextSpecs, specForSurface, activeSpecFor } from "../protocol/text-specs";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -164,7 +164,7 @@ async function doProxy(args: {
   // into anything.
   const { body: policed } = applyParameterPolicy(
     forwardable,
-    specForSurface(readTextSpecs(provider), "anthropic-messages") ?? undefined,
+    activeSpecFor(provider, "anthropic-messages") ?? undefined,
   );
 
   // Streaming clients ask for SSE; buffered clients get a single JSON body.

@@ -182,9 +182,11 @@ describe("the advanced half is a list, one entry per interface", () => {
     const entries = [spec("openai-chat"), spec("anthropic-messages")];
     const stored = readTextSpecs({ textSpecs: entries });
     expect(specForSurface(stored, "openai-responses")).toBeNull();
-    expect(OPENAI).toMatch(/specForSurface\(readTextSpecs\(provider\), "openai-chat"\)/);
-    expect(OPENAI).toMatch(/specForSurface\(readTextSpecs\(provider\), "openai-responses"\)/);
-    expect(ANTHROPIC).toMatch(/specForSurface\(readTextSpecs\(provider\), "anthropic-messages"\)/);
+    // Through the gate, which also decides whether that rule is in effect at
+    // all: a provider whose active mode is simple keeps these and ignores them.
+    expect(OPENAI).toMatch(/activeSpecFor\(provider, "openai-chat"\)/);
+    expect(OPENAI).toMatch(/activeSpecFor\(provider, "openai-responses"\)/);
+    expect(ANTHROPIC).toMatch(/activeSpecFor\(provider, "anthropic-messages"\)/);
   });
 
   it("no entry for a surface means the request is forwarded as sent", () => {

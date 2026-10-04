@@ -29,7 +29,7 @@ import { settleUsage } from "./billing";
 import { ssePassthrough } from "./stream-tap";
 import { providerFaces, type ApiKey, type Provider, type User } from "../db/types";
 import { applyParameterPolicy } from "../protocol/parameter-policy";
-import { readTextSpecs, specForSurface } from "../protocol/text-specs";
+import { readTextSpecs, specForSurface, activeSpecFor } from "../protocol/text-specs";
 
 
 // ---------------------------------------------------------------------------
@@ -683,7 +683,7 @@ export async function proxyChatCompletion(args: {
   // why an unconfigured deployment loses nothing.
   const { body: policed } = applyParameterPolicy(
     forwardable,
-    specForSurface(readTextSpecs(provider), "openai-chat") ?? undefined,
+    activeSpecFor(provider, "openai-chat") ?? undefined,
   );
 
   // 5. Forward the request. Streaming clients get stream=true with the
@@ -934,7 +934,7 @@ async function proxyResponsesNative(args: {
   // entry that governs the surface the client actually called.
   const { body: policed } = applyParameterPolicy(
     forwardable,
-    specForSurface(readTextSpecs(provider), "openai-responses") ?? undefined,
+    activeSpecFor(provider, "openai-responses") ?? undefined,
   );
 
   // 5. Forward request
