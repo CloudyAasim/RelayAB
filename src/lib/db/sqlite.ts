@@ -207,6 +207,13 @@ CREATE TABLE IF NOT EXISTS assistant_settings (
   model              TEXT NOT NULL,
   protocol           TEXT NOT NULL DEFAULT 'openai',
   extra_headers      TEXT NOT NULL DEFAULT '{}',
+  -- The model's own parameters. Nullable throughout, and nullable is the
+  -- default: absent means "do not send it", so a row written before these
+  -- columns existed keeps making exactly the requests it used to.
+  context_length     INTEGER,
+  max_output_tokens  INTEGER,
+  temperature        REAL,
+  top_p              REAL,
   created_at         TEXT NOT NULL,
   updated_at         TEXT NOT NULL
 );
@@ -426,6 +433,14 @@ const ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; type: string
   // vendor reported no cache" stays distinguishable from "0 cached".
   { table: "usage_logs", column: "cached_prompt_tokens", type: "INTEGER" },
   { table: "usage_logs", column: "cache_write_tokens", type: "INTEGER" },
+  // The assistant's model parameters. All four nullable and all four default
+  // to null, so upgrading cannot change the requests an existing assistant
+  // makes — the failure mode of a defaulted sampling parameter is a model
+  // that quietly answers differently after a deploy.
+  { table: "assistant_settings", column: "context_length", type: "INTEGER" },
+  { table: "assistant_settings", column: "max_output_tokens", type: "INTEGER" },
+  { table: "assistant_settings", column: "temperature", type: "REAL" },
+  { table: "assistant_settings", column: "top_p", type: "REAL" },
 ];
 
 function addColumnIfMissing(

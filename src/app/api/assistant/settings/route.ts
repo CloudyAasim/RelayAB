@@ -33,6 +33,13 @@ const PutSchema = z.object({
   model: z.string().min(1, "模型名不能为空").max(200),
   protocol: z.enum(["openai"]).optional(),
   extraHeaders: z.record(z.string(), z.string()).optional(),
+  // Nullable, not optional-and-defaulted: an empty box sends `null` and has
+  // to mean "stop sending this". Optional alone would make clearing the box
+  // a no-op, and a stored temperature would outlive the form that set it.
+  contextLength: z.number().int().positive().max(100_000_000).nullable().optional(),
+  maxOutputTokens: z.number().int().positive().max(100_000_000).nullable().optional(),
+  temperature: z.number().min(0).max(2).nullable().optional(),
+  topP: z.number().min(0).max(1).nullable().optional(),
 });
 
 const ProbeSchema = z.object({

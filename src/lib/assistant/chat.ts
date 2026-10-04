@@ -60,6 +60,51 @@ export const MAX_TURN_MS = 10 * 60 * 1000;
 const MAX_HISTORY_MESSAGES = 40;
 
 /**
+ * Fit the history to the model's declared window, and to the message cap.
+ *
+ * The cap alone was not a bound on anything real: forty messages of a long
+ * conversation, plus an image, plus a documentation page the model read, is
+ * already more than a 32k model will take — and the failure is an upstream 400
+ * on somebody's turn rather than a shorter conversation.
+ *
+ * **Whole messages are dropped from the front**, never a message cut in half,
+ * because half a tool result is a fact the model will act on. The window is
+ * spent on the most recent turns, and the system prompt is charged against it
+ * separately by the caller, which is why the reserve below is not the whole
+ * budget.
+ *
+ * Unset window means the message cap alone, which is what every conversation
+ * did before this field existed.
+ */
+function fitToWindow<T extends { role: string; content: string }>(
+  history: readonly T[],
+  contextLength: number | null | undefined,
+): T[] {
+  const recent = history.slice(-MAX_HISTORY_MESSAGES);
+  if (!contextLength) return recent;
+
+  // Roughly four characters per token is the same conversion the estimator
+  // below uses, so the budget and the measurement cannot disagree.
+  const budgetChars = Math.max(0, (contextLength - RESERVED_TOKENS) * 4);
+  const kept: T[] = [];
+  let used = 0;
+  for (let i = recent.length - 1; i >= 0; i--) {
+    const cost = recent[i].content.length;
+    if (used + cost > budgetChars) break;
+    used += cost;
+    kept.unshift(recent[i]);
+  }
+  // Always keep the newest message, even when it alone overruns the budget.
+  // Dropping the turn somebody just typed and answering without it would be
+  // worse than sending something too long.
+  if (kept.length === 0 && recent.length > 0) return [recent[recent.length - 1]];
+  return kept;
+}
+
+/** Held back from the declared window for the system prompt and the answer. */
+const RESERVED_TOKENS = 4_000;
+
+/**
  * The ceiling on one tool result.
  *
  * Sized against the largest payload a tool legitimately returns — the media
@@ -269,17 +314,31 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
   // Which of the two upstreams this turn uses, decided once. The stored upstream
   // wins when both are present, and the account path is the one that has no key
   // to decrypt at all — so this cannot be left as a field read at the call site.
-  const upstream: { baseUrl?: string; apiKey?: string; model: string; extraHeaders?: Record<string, string>; transport?: UpstreamTransport } =
+  const upstream: {
+    baseUrl?: string;
+    apiKey?: string;
+    model: string;
+    extraHeaders?: Record<string, string>;
+    transport?: UpstreamTransport;
+    maxTokens?: number;
+    temperature?: number;
+    topP?: number;
+  } =
     settings
       ? {
           baseUrl: settings.baseUrl,
           apiKey: decryptSecret(settings.encryptedApiKey),
           model: settings.model,
           ...(settings.extraHeaders ? { extraHeaders: settings.extraHeaders } : {}),
+          // The caller's own model parameters. `!= null` so that a configured 0
+          // — a legal temperature — is sent, and an unset one is not.
+          ...(settings.maxOutputTokens != null ? { maxTokens: settings.maxOutputTokens } : {}),
+          ...(settings.temperature != null ? { temperature: settings.temperature } : {}),
+          ...(settings.topP != null ? { topP: settings.topP } : {}),
         }
       : opts.inProcessUpstream
         ? { model: opts.inProcessUpstream.model, transport: opts.inProcessUpstream.transport }
-        : { model: "", baseUrl: "", apiKey: "" };
+        : { model: "" };
   const isAdmin = user.role === "admin";
   const tools = toolDefinitions(isAdmin);
   const ctx: ToolContext = {
@@ -305,7 +364,7 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
   const history = await listAssistantMessages(thread.id);
   const messages: ChatMessage[] = [
     { role: "system", content: systemPrompt(isAdmin) },
-    ...(await toWireMessages(history.slice(-MAX_HISTORY_MESSAGES), user.id)),
+    ...(await toWireMessages(fitToWindow(history, settings?.contextLength), user.id)),
   ];
 
   const pendingActions: string[] = [];
@@ -325,6 +384,11 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
     try {
       turn = await callAssistantModel({
         model: upstream.model,
+        // From the settings, so a configured parameter is one the request
+        // actually carries. `null` means "not configured" and is left off.
+        ...(upstream.maxTokens != null ? { maxTokens: upstream.maxTokens } : {}),
+        ...(upstream.temperature != null ? { temperature: upstream.temperature } : {}),
+        ...(upstream.topP != null ? { topP: upstream.topP } : {}),
         ...(upstream.baseUrl ? { baseUrl: upstream.baseUrl } : {}),
         ...(upstream.apiKey ? { apiKey: upstream.apiKey } : {}),
         ...(upstream.extraHeaders ? { extraHeaders: upstream.extraHeaders } : {}),

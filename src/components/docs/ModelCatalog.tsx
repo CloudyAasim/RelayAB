@@ -32,11 +32,20 @@ function fmt(n: number | null): string {
   return String(n);
 }
 
-function cost(n: number | null): string {
-  // Credits are stored in 0.001-credit units; 0 means "not priced", which is
-  // different from "free" and should not be rendered as a price.
-  if (n === null || n === 0) return "—";
-  return `${(n / 1_000_000).toFixed(4)} / 1M`;
+/**
+ * One half of a token rate, in the units it is stored in.
+ *
+ * The stored number *is* credits per 1M tokens, so it is printed as-is. Dividing
+ * by a million again — the token-count formatter's idiom, which is right for a
+ * count and wrong for a rate — turned a configured 250 into "0.0003 / 1M".
+ *
+ * 0 means "not priced", which is a different fact from "free" and is rendered
+ * as a dash. A free *cache* is the exception and is printed as 0, because that
+ * one really is an answer.
+ */
+function cost(n: number | null, dash = "—"): string {
+  if (n === null || n === 0) return dash;
+  return String(n);
 }
 
 export function ModelCatalog({ models, providers, site, publicUrl }: Props) {
@@ -275,15 +284,24 @@ function ModelRows({ model: m, isChat }: { model: CatalogModel; isChat: boolean 
         <td className="py-2 pr-3 text-xs">
           {isChat ? (
             <>
-              {cost(m.inputCost)}
+              {/* Both halves. A rate you cannot see the other half of is
+                  half a price. */}
+              <span className="whitespace-nowrap">
+                {t("docs.catalog.rateIn")} {cost(m.inputCost)}
+              </span>{" "}
+              <span className="whitespace-nowrap">
+                {t("docs.catalog.rateOut")} {cost(m.outputCost)}
+              </span>
               {/*
                 Only when it is actually cheaper. A cached rate equal to the
                 input rate is not a discount, and printing it would advertise a
-                saving that does not exist.
+                saving that does not exist. Printed raw rather than through
+                `cost()` because 0 here means "the cache is free", which is an
+                answer and not an absence.
               */}
               {m.cachedInputCost !== null && m.cachedInputCost < (m.inputCost ?? 0) && (
-                <span className="block text-[10px] text-muted-foreground">
-                  {t("docs.catalog.cachedInput")} {cost(m.cachedInputCost)}
+                <span className="block whitespace-nowrap text-[10px] text-muted-foreground">
+                  {t("docs.catalog.cachedInput")} {m.cachedInputCost}
                 </span>
               )}
             </>
