@@ -375,11 +375,27 @@ describe("credential UI: the credential comes first, the upstream only on the ke
   it("and the composer is not blocked by a missing upstream on the account path", () => {
     // The mirror of the old bug: it used to refuse to send, and sent the user
     // to a settings drawer that, in this mode, had nothing to configure.
-    expect(CHAT).toMatch(/const canSend = credentialMode === "account" \|\| configured;/);
-    expect(CHAT).toMatch(/const missingUpstream = credentialMode === "key" && !configured;/);
+    //
+    // But a turn still needs a model on *both* paths. A stored row with a blank
+    // model used to look configured, and the send went out to be refused
+    // mid-conversation rather than by a field that would not let you.
+    expect(CHAT).toMatch(/const missingModel = !modelLabel\.trim\(\);/);
+    expect(CHAT).toMatch(/const canSend =[\s\S]{0,90}!missingModel/);
+    expect(CHAT).toMatch(
+      /const missingUpstream = credentialMode === "key" && \(!configured \|\| missingModel\);/,
+    );
     expect(CHAT).toMatch(/busy \|\| !canSend\) return;/);
     // The "not configured" banner is the key path's, for the same reason.
     expect(CHAT).toMatch(/\{missingUpstream && \(/);
+  });
+
+  it("and the model answering is named on screen", () => {
+    // "Which model is this" decides what the answer is worth, and it used to be
+    // unanswerable: the label fell back to "no model configured" on the account
+    // path and to nothing at all once a row existed.
+    expect(CHAT).toMatch(/const effectiveModelLabel =/);
+    expect(CHAT).toMatch(/effectiveModelLabel/);
+    expect(CHAT).not.toMatch(/\{modelLabel\}\s*$/m);
   });
 
   it("the key path still needs its upstream, and still says so", () => {

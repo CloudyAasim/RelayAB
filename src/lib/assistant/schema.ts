@@ -29,24 +29,6 @@ export const AssistantSettingsSchema = z.object({
   protocol: AssistantProtocolSchema.default("openai"),
   /** Extra headers some gateways require (e.g. an OpenAI org id). Never the key. */
   extraHeaders: z.record(z.string(), z.string()).default({}),
-  /**
-   * The model's own parameters, all optional.
-   *
-   * The assistant's model is the caller's own upstream rather than one of the
-   * operator's provider rows, so nothing forced these to exist — and the
-   * consequences were real: the history was bounded by a message count with
-   * no idea what it weighed, and the upstream chose the answer length.
-   *
-   * **No defaults.** Absent means "do not send this", not "send a sensible
-   * one": a defaulted temperature makes a model answer differently after a
-   * deploy, and a defaulted output cap silently shortens long answers.
-   */
-  /** Declared context window; the history is trimmed to fit it. */
-  contextLength: z.number().int().positive().nullable().optional(),
-  /** Sent as `max_tokens`; absent leaves the length to the upstream. */
-  maxOutputTokens: z.number().int().positive().nullable().optional(),
-  temperature: z.number().min(0).max(2).nullable().optional(),
-  topP: z.number().min(0).max(1).nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -186,12 +168,6 @@ export function rowToAssistantSettings(row: Record<string, unknown>): AssistantS
     model: row.model,
     protocol: row.protocol,
     extraHeaders: parseJson(row.extra_headers, {}),
-    // Passed through as null rather than coerced: absent and 0 are different
-    // for `temperature`, and only one of them is a number the upstream wants.
-    contextLength: (row.context_length as number | null) ?? null,
-    maxOutputTokens: (row.max_output_tokens as number | null) ?? null,
-    temperature: (row.temperature as number | null) ?? null,
-    topP: (row.top_p as number | null) ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });

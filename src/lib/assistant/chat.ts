@@ -60,32 +60,29 @@ export const MAX_TURN_MS = 10 * 60 * 1000;
 const MAX_HISTORY_MESSAGES = 40;
 
 /**
- * Fit the history to the model's declared window, and to the message cap.
+ * Fit the history to the message cap, and to a budget.
  *
  * The cap alone was not a bound on anything real: forty messages of a long
  * conversation, plus an image, plus a documentation page the model read, is
  * already more than a 32k model will take — and the failure is an upstream 400
  * on somebody's turn rather than a shorter conversation.
  *
- * **Whole messages are dropped from the front**, never a message cut in half,
- * because half a tool result is a fact the model will act on. The window is
- * spent on the most recent turns, and the system prompt is charged against it
- * separately by the caller, which is why the reserve below is not the whole
- * budget.
+ * **A module valve, not a per-user setting.** The settings form answers "which
+ * model", and it should: a model this gateway does not own has its own context
+ * window, its own defaults and its own idea of what a turn costs the person who
+ * runs it. Inventing a number per conversation and calling it the model's window
+ * would be me choosing a parameter for somebody's model.
  *
- * Unset window means the message cap alone, which is what every conversation
- * did before this field existed.
+ * So the budget is one number, here, sized to leave a long conversation intact
+ * on a small model. Whole messages are dropped from the front, never a message
+ * cut in half: half a tool result is a fact the model will act on.
  */
-function fitToWindow<T extends { role: string; content: string }>(
-  history: readonly T[],
-  contextLength: number | null | undefined,
-): T[] {
+function fitToWindow<T extends { role: string; content: string }>(history: readonly T[]): T[] {
   const recent = history.slice(-MAX_HISTORY_MESSAGES);
-  if (!contextLength) return recent;
 
   // Roughly four characters per token is the same conversion the estimator
   // below uses, so the budget and the measurement cannot disagree.
-  const budgetChars = Math.max(0, (contextLength - RESERVED_TOKENS) * 4);
+  const budgetChars = Math.max(0, HISTORY_BUDGET_TOKENS * 4);
   const kept: T[] = [];
   let used = 0;
   for (let i = recent.length - 1; i >= 0; i--) {
@@ -101,8 +98,16 @@ function fitToWindow<T extends { role: string; content: string }>(
   return kept;
 }
 
-/** Held back from the declared window for the system prompt and the answer. */
-const RESERVED_TOKENS = 4_000;
+/**
+ * The history budget, in tokens, system prompt and answer held back.
+ *
+ * Sized for a conversation that is long rather than for the largest model
+ * anyone might point this at: the model is the caller's own, its window is
+ * whatever that vendor says, and the way to find out is their documentation.
+ * What this stops is the case where a long thread becomes an upstream 400 on
+ * somebody's turn.
+ */
+const HISTORY_BUDGET_TOKENS = 24_000;
 
 /**
  * The ceiling on one tool result.
@@ -320,9 +325,6 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
     model: string;
     extraHeaders?: Record<string, string>;
     transport?: UpstreamTransport;
-    maxTokens?: number;
-    temperature?: number;
-    topP?: number;
   } =
     settings
       ? {
@@ -330,11 +332,6 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
           apiKey: decryptSecret(settings.encryptedApiKey),
           model: settings.model,
           ...(settings.extraHeaders ? { extraHeaders: settings.extraHeaders } : {}),
-          // The caller's own model parameters. `!= null` so that a configured 0
-          // — a legal temperature — is sent, and an unset one is not.
-          ...(settings.maxOutputTokens != null ? { maxTokens: settings.maxOutputTokens } : {}),
-          ...(settings.temperature != null ? { temperature: settings.temperature } : {}),
-          ...(settings.topP != null ? { topP: settings.topP } : {}),
         }
       : opts.inProcessUpstream
         ? { model: opts.inProcessUpstream.model, transport: opts.inProcessUpstream.transport }
@@ -364,7 +361,7 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
   const history = await listAssistantMessages(thread.id);
   const messages: ChatMessage[] = [
     { role: "system", content: systemPrompt(isAdmin) },
-    ...(await toWireMessages(fitToWindow(history, settings?.contextLength), user.id)),
+    ...(await toWireMessages(fitToWindow(history), user.id)),
   ];
 
   const pendingActions: string[] = [];
@@ -386,9 +383,6 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
         model: upstream.model,
         // From the settings, so a configured parameter is one the request
         // actually carries. `null` means "not configured" and is left off.
-        ...(upstream.maxTokens != null ? { maxTokens: upstream.maxTokens } : {}),
-        ...(upstream.temperature != null ? { temperature: upstream.temperature } : {}),
-        ...(upstream.topP != null ? { topP: upstream.topP } : {}),
         ...(upstream.baseUrl ? { baseUrl: upstream.baseUrl } : {}),
         ...(upstream.apiKey ? { apiKey: upstream.apiKey } : {}),
         ...(upstream.extraHeaders ? { extraHeaders: upstream.extraHeaders } : {}),

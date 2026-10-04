@@ -525,12 +525,32 @@ export function AssistantChat({
    * would make switching credentials look like it changed nothing — and with no
    * upstream stored at all, it would name a model that is not in the call.
    */
+  /**
+   * What actually answers a turn, named on screen.
+   *
+   * The label used to fall back to "no model configured" for the account path
+   * and to nothing at all once a row existed, so a conversation could be having
+   * its replies written by a model the reader had no way to name. "Which model is
+   * this" is not a detail: it decides what the answer is worth.
+   */
   const effectiveModelLabel =
     credentialMode === "account"
       ? accountModel || t("assistant.accountModelAuto")
       : modelLabel;
-  const canSend = credentialMode === "account" || configured;
-  const missingUpstream = credentialMode === "key" && !configured;
+
+  /**
+   * A turn needs somewhere to go: an address, a key **and a model**.
+   *
+   * The row existed, so `configured` was true, and a turn went out with a model
+   * the reader had never chosen — or with none at all, because the save that
+   * created the row had left it blank. The chat route answers 400 for an empty
+   * model, so the failure was a refusal in the middle of a conversation rather
+   * than a field that would not let you.
+   */
+  const missingModel = !modelLabel.trim();
+  const canSend =
+    (credentialMode === "account" || (configured && !missingModel)) && !missingModel;
+  const missingUpstream = credentialMode === "key" && (!configured || missingModel);
 
   async function send() {
     const text = input.trim();
