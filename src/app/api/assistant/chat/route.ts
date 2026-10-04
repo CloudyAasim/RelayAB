@@ -256,21 +256,11 @@ export async function POST(req: Request): Promise<Response> {
    */
   const stored = await getAssistantSettings(me.id);
   const config = resolveAssistantConfig(stored);
-  const credential = await resolveToolCredential({
-    userId: me.id,
-    mode: config.mode,
-    ...(relayKey ? { relayKey } : {}),
-  });
-  const onAccount = credential.kind === "account";
 
   /**
-   * A model is required, on both paths, and there is no fallback.
-   *
-   * The account path used to answer with `allowed[0]` when the browser sent no
-   * model, which is why an assistant with nothing configured still worked: the
-   * symptom looked like a saved setting, and it was a guess made per request.
-   * The guess is gone. A turn with no chosen model is refused, with a message
-   * that says which field to fill.
+   * A model is required, on both paths, and there is no fallback. Checked
+   * before the credential, because it is a read of the row already in hand and
+   * because it is the thing a person can fix in the panel they are looking at.
    */
   if (!config.ready) {
     const message =
@@ -278,7 +268,7 @@ export async function POST(req: Request): Promise<Response> {
         ? "还没有填写接口地址。请到助手设置里补上。"
         : config.missing === "no-key"
           ? "还没有配置密钥。请到助手设置里补上。"
-          : onAccount
+          : config.mode === "account"
             ? "还没有选模型。请到助手设置里选一个模型。"
             : "还没有填写模型名。请到助手设置里补上。";
     return Response.json(
@@ -287,6 +277,47 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
+  const credential = await resolveToolCredential({
+    userId: me.id,
+    mode: config.mode,
+    ...(relayKey ? { relayKey } : {}),
+  });
+
+  /**
+   * "Neither" is fatal on the account path, and only there.
+   *
+   * It arrives when somebody chose the account path without having created and
+   * switched on an account credential — which the assistant's own form did not
+   * mention, because the form is not the place that switch lives. Falling
+   * through treated it as the key path, so the turn went out with no model and
+   * the only configuration that worked was somebody else's key. It is refused
+   * here, and the refusal names the switch rather than a key: the account path
+   * needs no secret at any point, and saying "key" there is what sent people
+   * looking for one.
+   *
+   * **On the key path it is not an error.** That turn spends the caller's own
+   * stored upstream key and never touches a relay key, so "neither" only means
+   * the *tools* have nothing to spend — which they already report themselves.
+   * Refusing the turn there would have made an attachment or a plain message
+   * fail because an unrelated switch was off.
+   */
+  if (config.mode === "account" && credential.kind === "none") {
+    return Response.json(
+      {
+        ok: false,
+        error: {
+          code: "no_credential",
+          message:
+            credential.reason === "switch_off"
+              ? "「用我的账号身份」已关闭。请到设置里打开，或改用「用我自己配置的密钥」。"
+              : "还没有开启「用我的账号身份」。请到设置里创建并打开它，或者改用「用我自己配置的密钥」。",
+        },
+      },
+      { status: 409 },
+    );
+  }
+
+  const onAccount = credential.kind === "account";
   const settings = onAccount ? null : stored;
 
   /**
@@ -377,6 +408,11 @@ export async function POST(req: Request): Promise<Response> {
           // vendor: the stored upstream when there is one, the in-process proxy
           // when the account credential is paying.
           ...(settings ? { settings } : {}),
+          // The parameters on the account path too. They belong to the model the
+          // person chose, and the account path's models are this deployment's
+          // own — so the form fills those in from the catalogue, and the values
+          // still belong to them rather than to the provider that answers.
+          ...(onAccount ? { modelParams: config.params } : {}),
           ...(onAccount
             ? {
                 inProcessUpstream: {

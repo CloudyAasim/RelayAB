@@ -52,10 +52,16 @@ async function capture(
 
 describe("what actually goes on the wire", () => {
   it("a configured parameter is sent", async () => {
-    const body = await capture({ maxTokens: 4096, temperature: 0.3, topP: 0.9 });
+    const body = await capture({
+      maxTokens: 4096,
+      temperature: 0.3,
+      topP: 0.9,
+      reasoningEffort: "high",
+    });
     expect(body.max_tokens).toBe(4096);
     expect(body.temperature).toBe(0.3);
     expect(body.top_p).toBe(0.9);
+    expect(body.reasoning_effort).toBe("high");
   });
 
   it("an unset parameter is not sent at all", async () => {
@@ -63,9 +69,9 @@ describe("what actually goes on the wire", () => {
     // the JSON body once serialised, and a key the upstream fills in is a
     // default this system chose rather than one the caller did.
     const body = await capture();
-    expect(Object.keys(body)).not.toContain("temperature");
-    expect(Object.keys(body)).not.toContain("top_p");
-    expect(Object.keys(body)).not.toContain("max_tokens");
+    for (const key of ["temperature", "top_p", "max_tokens", "reasoning_effort"]) {
+      expect(Object.keys(body), `${key} was sent unchosen`).not.toContain(key);
+    }
   });
 
   it("a configured zero is sent, because zero is a real setting", async () => {

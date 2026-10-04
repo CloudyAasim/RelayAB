@@ -60,6 +60,21 @@ export default async function AssistantPage() {
    */
   const config = resolveAssistantConfig(settings);
 
+  /**
+   * What this deployment knows about its own models, for the account path.
+   *
+   * Read live from the provider tables, which is the same source the proxy
+   * enforces, so the window the form fills in is the window the turn will
+   * actually have. A model with nothing configured resolves to nulls, and the
+   * form leaves those two boxes blank rather than inventing numbers.
+   */
+  const accountFacts: Record<string, { contextLength: number | null; maxOutputTokens: number | null }> =
+    {};
+  for (const m of catalog.models) {
+    if (m.kind !== "chat") continue;
+    accountFacts[m.id] = { contextLength: m.contextLength, maxOutputTokens: m.maxOutputTokens };
+  }
+
   return (
     // No page title: the app header already says "AI 助手", and a chat screen
     // that greets you with its own name twice reads as two different screens.
@@ -72,6 +87,7 @@ export default async function AssistantPage() {
               initial={settings}
               suggestedModels={suggestedModels}
               accountModels={suggestedModels}
+              accountFacts={accountFacts}
             />
           }
           pendingPanel={isAdmin ? <PendingActions isAdmin={isAdmin} /> : null}

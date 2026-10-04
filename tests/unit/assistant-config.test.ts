@@ -13,6 +13,7 @@
  */
 import { describe, it, expect } from "vitest";
 import {
+  ASSISTANT_REASONING_EFFORTS,
   modelParamsForRequest,
   resolveAssistantConfig,
   resolveMode,
@@ -118,7 +119,14 @@ describe("the key path still needs what it uses", () => {
 
 describe("the parameters are one setting, on both paths", () => {
   it("read from the row whichever mode is active", () => {
-    const row = { ...keyRow, temperature: 0.3, maxOutputTokens: 1024, topP: 0.9, contextLength: 128000 };
+    const row = {
+      ...keyRow,
+      temperature: 0.3,
+      maxOutputTokens: 1024,
+      topP: 0.9,
+      contextLength: 128000,
+      reasoningEffort: "high" as const,
+    };
     for (const mode of ["account", "key"] as const) {
       const config = resolveAssistantConfig({ ...row, credentialMode: mode });
       expect(config.params, mode).toEqual({
@@ -126,6 +134,7 @@ describe("the parameters are one setting, on both paths", () => {
         maxOutputTokens: 1024,
         temperature: 0.3,
         topP: 0.9,
+        reasoningEffort: "high",
       });
     }
   });
@@ -137,6 +146,7 @@ describe("the parameters are one setting, on both paths", () => {
       maxOutputTokens: null,
       temperature: null,
       topP: null,
+      reasoningEffort: null,
     });
   });
 
@@ -149,3 +159,35 @@ describe("the parameters are one setting, on both paths", () => {
     ).toEqual({ maxTokens: 512, temperature: 0, topP: 0.7 });
   });
 });
+
+/**
+ * The thinking level, which is not a number and not a scale of our own.
+ *
+ * "Not set" and "the lowest level" have to stay different answers: the first
+ * leaves the decision — and the bill — with the model, the second takes it away.
+ * That is why the option list starts with a blank rather than with `minimal`.
+ */
+describe("the thinking level", () => {
+  it("is the spelling the APIs publish, and nothing else", () => {
+    expect([...ASSISTANT_REASONING_EFFORTS]).toEqual(["minimal", "low", "medium", "high"]);
+  });
+
+  it("reaches the request as reasoning_effort, and only when chosen", () => {
+    expect(
+      modelParamsForRequest({ ...EMPTY, reasoningEffort: "medium" }),
+    ).toEqual({ reasoningEffort: "medium" });
+    expect(modelParamsForRequest({ ...EMPTY, reasoningEffort: null })).toEqual({});
+    // Read back from a row, so the storage spelling is covered too.
+    expect(
+      modelParamsForRequest(resolveAssistantConfig({ ...keyRow, reasoningEffort: "high" }).params),
+    ).toEqual({ reasoningEffort: "high" });
+  });
+});
+
+const EMPTY = {
+  contextLength: null,
+  maxOutputTokens: null,
+  temperature: null,
+  topP: null,
+  reasoningEffort: null,
+} as const;

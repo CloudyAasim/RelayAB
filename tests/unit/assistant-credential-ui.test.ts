@@ -446,7 +446,117 @@ describe("credential UI: one form, and a model on both paths", () => {
     expect(CHAT).not.toContain("assistant.accountModelAuto");
   });
 
-  it("the key path still needs its upstream, and still says so", () => {
+  it("the account path says what it needs, instead of failing quietly", () => {
+    // "Use my account identity" spends no secret at any point, but it does need
+    // a switch turned on — and that switch lives in the settings screen, not
+    // here. The form offered the option silently, so choosing it appeared to do
+    // nothing and the only configuration that worked was somebody else's key.
+    // That is what "why does identity auth still need a key" turned out to be.
+    expect(SETTINGS_PANEL_SRC, "the form does not read the credential state").toMatch(
+      /useCredentialStore\(\)/,
+    );
+    // …and the warning is *gated on it*. A hardcoded `{created: true, enabled:
+    // true}` would leave every string in place and every assertion here
+    // satisfied, which is how a warning that never fires gets shipped.
+    expect(SETTINGS_PANEL_SRC).toMatch(/const accountUsable = credentialState\.created && credentialState\.enabled;/);
+    expect(SETTINGS_PANEL_SRC).toMatch(/\{mode === "account" && !accountUsable && \(/);
+    expect(SETTINGS_PANEL_SRC, "the warning has no destination").toContain(
+      "assistant.settings.wayAccountGo",
+    );
+    // And the route refuses the "neither" credential on the account path,
+    // rather than falling through and treating it as the key path.
+    expect(CHAT_ROUTE).toMatch(
+      /if \(config\.mode === "account" && credential\.kind === "none"\) \{/,
+    );
+    expect(CHAT_ROUTE).toMatch(/code: "no_credential"/);
+    // …and only there: on the key path the turn spends the caller's own stored
+    // upstream key and never touches a relay key, so refusing there would fail a
+    // plain message because an unrelated switch was off.
+    expect(CHAT_ROUTE, "the key path is refused for a missing tool credential").not.toMatch(
+      /if \(credential\.kind === "none"\) \{/,
+    );
+    // The refusal has to point at the account credential — that is the thing the
+    // reader has to go and do. Mentioning the other path as an alternative is
+    // fine and useful; claiming a key is *required* is the bug, so the assertion
+    // is on the destination rather than on a banned word.
+    const noCredential = CHAT_ROUTE.slice(
+      CHAT_ROUTE.indexOf('if (config.mode === "account" && credential.kind === "none")'),
+      CHAT_ROUTE.indexOf('if (config.mode === "account" && credential.kind === "none")') + 900,
+    );
+    expect(noCredential, "the refusal does not say which option is unavailable").toContain(
+      "账号身份",
+    );
+    expect(noCredential, "the refusal does not send them to the switch").toContain("设置");
+    // And the form says the same thing before they send anything.
+    expect(SETTINGS_PANEL_SRC).toContain("assistant.settings.wayAccountOff");
+  });
+
+  it("and no key field is rendered on the account path", () => {
+    // The fields live in the other half of a ternary, so the check is on the
+    // branch rather than on the presence of the label — a key field somewhere
+    // below the mode switch would still read as "identity auth needs a key".
+    const accountBranch = SETTINGS_PANEL_SRC.slice(
+      SETTINGS_PANEL_SRC.indexOf('mode === "account" ?'),
+    );
+    const keyBranch = accountBranch.slice(0, accountBranch.indexOf(") : ("));
+    expect(keyBranch, "the account branch has a key field in it").not.toContain(
+      "assistant.settings.apiKey",
+    );
+    expect(keyBranch, "the account branch has an address field in it").not.toContain(
+      "assistant.settings.baseUrl",
+    );
+    // The condition itself, because inverting it puts the key form in front of
+    // somebody who chose the account path while leaving both branches intact —
+    // which is the version of this bug that a per-branch check cannot see.
+    expect(SETTINGS_PANEL_SRC).toMatch(/\{mode === "account" \? \(/);
+    // …and the key path still has both.
+    expect(SETTINGS_PANEL_SRC.slice(SETTINGS_PANEL_SRC.indexOf(") : ("))).toContain(
+      "assistant.settings.apiKey",
+    );
+  });
+
+  it("and the thinking level is stored, sent, and not defaulted", () => {
+    const sqlite = read("lib/db/sqlite.ts");
+    const client = read("lib/assistant/client.ts");
+    const configSrc = read("lib/assistant/config.ts");
+
+    // On the wire under the name the API uses, and only when chosen.
+    expect(client).toContain("reasoning_effort");
+    expect(client).toMatch(
+      /opts\.reasoningEffort !== undefined \? \{ reasoning_effort: opts\.reasoningEffort \}/,
+    );
+    // Stored on an existing deployment, not just in the fresh schema.
+    expect(sqlite).toContain('{ table: "assistant_settings", column: "reasoning_effort"');
+    // The blank option is its own answer rather than the lowest level.
+    expect(SETTINGS_PANEL_SRC, "the blank option is missing").toContain(
+      "assistant.settings.reasoningOff",
+    );
+    expect(SETTINGS_PANEL_SRC).toMatch(/e\.target\.value === "" \? null :/);
+    // The closed list is shared with the validator rather than retyped: a form
+    // that spelled the levels out would drift from what the API accepts. Matched
+    // on the use, because an import nothing renders documents nothing.
+    expect(SETTINGS_PANEL_SRC).toMatch(/ASSISTANT_REASONING_EFFORTS\.map\(/);
+    expect(configSrc).toMatch(/params\.reasoningEffort != null/);
+  });
+
+  it("and the account path fills the model's own numbers from the catalogue", () => {
+    // The account path runs on this deployment's models, whose window and output
+    // cap are already in the provider table. Asking the user to type the same
+    // two numbers is the form treating a fact it holds as a blank — and a
+    // mistyped window silently truncates the conversation.
+    expect(SETTINGS_PANEL_SRC).toContain("accountFacts");
+    expect(SETTINGS_PANEL_SRC).toMatch(
+      /function chooseAccountModel\(next: string\)[\s\S]{0,400}?setContextLength\(known\.contextLength\)/,
+    );
+    expect(SETTINGS_PANEL_SRC).toMatch(/setMaxOutputTokens\(known\.maxOutputTokens\)/);
+    // The page is where the facts come from, read live from the same source the
+    // proxy enforces.
+    const page = read("app/(user)/dashboard/assistant/page.tsx");
+    expect(page).toContain("accountFacts");
+    expect(page).toMatch(/accountFacts\[m\.id\] = \{ contextLength: m\.contextLength/);
+  });
+
+  it("and the account path still needs its upstream, and still says so", () => {
     // Nothing about the key path was relaxed. Without an address or a key it is
     // 409, and the form still asks for them on that path.
     expect(CONFIG, "the key path no longer requires an upstream").toMatch(

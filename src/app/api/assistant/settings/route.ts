@@ -52,6 +52,10 @@ const PutSchema = z.object({
   maxOutputTokens: z.number().int().positive().max(100_000_000).nullable().optional(),
   temperature: z.number().min(0).max(2).nullable().optional(),
   topP: z.number().min(0).max(1).nullable().optional(),
+  // The published effort levels, as the vendor spells them. A closed list here
+  // rather than a number, so the value that reaches the upstream is one the
+  // upstream recognises.
+  reasoningEffort: z.enum(["minimal", "low", "medium", "high"]).nullable().optional(),
 });
 
 const ProbeSchema = z.object({

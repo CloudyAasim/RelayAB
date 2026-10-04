@@ -26,7 +26,13 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useT } from "@/components/i18n/I18nProvider";
 import { ModelCombobox } from "./ModelCombobox";
-import { resolveMode, type AssistantCredentialMode } from "@/lib/assistant/config";
+import {
+  ASSISTANT_REASONING_EFFORTS,
+  resolveMode,
+  type AssistantCredentialMode,
+  type AssistantReasoningEffort,
+} from "@/lib/assistant/config";
+import { useCredentialStore } from "@/lib/assistant/credential-store";
 
 /**
  * Empty box → null ("do not send"), and never NaN.
@@ -42,6 +48,11 @@ function blankToNull(raw: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+export interface AssistantModelFacts {
+  contextLength: number | null;
+  maxOutputTokens: number | null;
+}
+
 export interface AssistantSettingsView {
   baseUrl: string;
   model: string;
@@ -53,12 +64,14 @@ export interface AssistantSettingsView {
   maxOutputTokens?: number | null;
   temperature?: number | null;
   topP?: number | null;
+  reasoningEffort?: AssistantReasoningEffort | null;
 }
 
 export function AssistantSettingsPanel({
   initial,
   suggestedModels = [],
   accountModels = [],
+  accountFacts = {},
 }: {
   initial: AssistantSettingsView | null;
   /**
@@ -72,10 +85,30 @@ export function AssistantSettingsPanel({
   suggestedModels?: string[];
   /** This deployment's own chat models: the only choices on the account path. */
   accountModels?: string[];
+  /**
+   * What this deployment has configured for each of its own models.
+   *
+   * The account path runs on models whose window and output cap are already
+   * known — the operator typed them into the provider table when they added the
+   * model. Asking the user to type the same two numbers again is the form
+   * treating a fact it has as a blank.
+   */
+  accountFacts?: Record<string, AssistantModelFacts>;
 }) {
   const t = useT();
   const router = useRouter();
   const modeGroup = `${useId()}-mode`;
+
+  /**
+   * Whether the account path can actually spend anything.
+   *
+   * Read from the same store the settings screen writes, so the two cannot
+   * disagree about whether the switch is on. The state arrives after mount, so
+   * "not loaded yet" is its own answer and says so rather than flashing a
+   * warning at somebody whose credential is fine.
+   */
+  const { data: credentialState, loaded: credentialLoaded } = useCredentialStore();
+  const accountUsable = credentialState.created && credentialState.enabled;
 
   // The mode comes from the stored row, through the same rule the page and the
   // chat route use. No row at all means the account path, because that is the
@@ -93,6 +126,9 @@ export function AssistantSettingsPanel({
   const [maxOutputTokens, setMaxOutputTokens] = useState<number | null>(initial?.maxOutputTokens ?? null);
   const [temperature, setTemperature] = useState<number | null>(initial?.temperature ?? null);
   const [topP, setTopP] = useState<number | null>(initial?.topP ?? null);
+  const [reasoningEffort, setReasoningEffort] = useState<AssistantReasoningEffort | null>(
+    initial?.reasoningEffort ?? null,
+  );
   const [busy, setBusy] = useState<"probe" | "save" | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -145,6 +181,7 @@ export function AssistantSettingsPanel({
       maxOutputTokens,
       temperature,
       topP,
+      reasoningEffort,
     };
   }
 
@@ -224,6 +261,28 @@ export function AssistantSettingsPanel({
   const missingModel = mode === "account" ? !accountModel.trim() : !model.trim() || !baseUrl.trim();
   const canSave = busy === null && !missingModel;
 
+  /**
+   * Fill the two numbers this deployment already knows about the chosen model.
+   *
+   * The account path runs on this deployment's own models, and the operator
+   * typed their window and output cap into the provider table when they added
+   * them. Asking the user for the same two numbers again is a form treating a
+   * fact it is holding as a blank — and a mistyped window is not a harmless
+   * mistake, it silently truncates the conversation.
+   *
+   * Only on the account path, and only for the two fields the catalogue knows.
+   * The sampling parameters stay blank on purpose: those are the user's choice
+   * and no deployment has an opinion about them.
+   */
+  const facts = accountFacts[accountModel.trim()];
+  function chooseAccountModel(next: string) {
+    setAccountModel(next);
+    const known = accountFacts[next.trim()];
+    if (!known) return;
+    setContextLength(known.contextLength);
+    setMaxOutputTokens(known.maxOutputTokens);
+  }
+
   return (
     // No Card wrapper: this lives inside a drawer that already has a title and
     // a description, so a card around it would just be a box in a box.
@@ -235,8 +294,24 @@ export function AssistantSettingsPanel({
         that matter, and the prose is the same on both sides.
       */}
       <fieldset>
-        <legend className="mb-1.5 text-sm font-medium text-foreground">
+        <legend className="mb-1.5 flex items-baseline justify-between gap-2 text-sm font-medium text-foreground">
           {t("assistant.settings.wayTitle")}
+          {/*
+            Which one is actually in effect, in words.
+            
+            The two options differ by a border colour, and the report this answers
+            was somebody reading a key field and concluding that identity auth
+            needs one — while they were, correctly, on the other option. A row
+            written before the mode existed reads as the key path, because it
+            does have an address and a key in it, so opening on the other option
+            is the right behaviour and an unexplained one. Saying it is cheaper
+            than a screenshot.
+          */}
+          <span className="shrink-0 text-xs font-normal text-muted-foreground">
+            {mode === "account"
+              ? t("assistant.settings.wayActiveAccount")
+              : t("assistant.settings.wayActiveKey")}
+          </span>
         </legend>
         <div className="grid grid-cols-2 gap-1.5" role="none">
           {(["account", "key"] as const).map((m) => (
@@ -266,6 +341,29 @@ export function AssistantSettingsPanel({
             ? t("assistant.settings.wayAccountHint")
             : t("assistant.settings.wayKeyHint")}
         </p>
+        {/*
+          The one thing that made "use my account identity" look like it needed a
+          key.
+
+          That path spends no secret at any point — it runs through this
+          deployment with a credential the system issues and the user never
+          sees. But it does need a switch turned on, and that switch is in the
+          settings screen, not here. The form offered the option silently, so
+          choosing it appeared to do nothing and the only configuration that
+          worked was somebody else's key. So the state is read here and said out
+          loud, with the place that changes it.
+        */}
+        {mode === "account" && !accountUsable && (
+          <p className="mt-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-300">
+            {credentialLoaded
+              ? t("assistant.settings.wayAccountOff")
+              : t("assistant.settings.wayAccountLoading")}
+            {" "}
+            <a href="/dashboard/settings" className="underline underline-offset-2">
+              {t("assistant.settings.wayAccountGo")}
+            </a>
+          </p>
+        )}
       </fieldset>
 
       {mode === "account" ? (
@@ -279,7 +377,7 @@ export function AssistantSettingsPanel({
           <select
             id="assistant-account-model"
             value={accountModel}
-            onChange={(e) => setAccountModel(e.target.value)}
+            onChange={(e) => chooseAccountModel(e.target.value)}
             className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
           >
             <option value="">{t("assistant.settings.accountModelNone")}</option>
@@ -351,6 +449,36 @@ export function AssistantSettingsPanel({
           {t("assistant.settings.modelParams")}
         </legend>
         <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label
+              htmlFor="assistant-reasoning"
+              className="block text-xs font-medium text-foreground"
+            >
+              {t("assistant.settings.reasoning")}
+            </label>
+            <select
+              id="assistant-reasoning"
+              name="reasoningEffort"
+              value={reasoningEffort ?? ""}
+              onChange={(e) =>
+                setReasoningEffort(
+                  e.target.value === "" ? null : (e.target.value as AssistantReasoningEffort),
+                )
+              }
+              className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+            >
+              {/* Not the lowest level: "do not send it" and "send the lowest"
+                  are different answers, and the first is the one that leaves the
+                  decision — and the bill — with the model. */}
+              <option value="">{t("assistant.settings.reasoningOff")}</option>
+              {ASSISTANT_REASONING_EFFORTS.map((level) => (
+                <option key={level} value={level}>
+                  {t(`assistant.settings.reasoning.${level}`)}
+                </option>
+              ))}
+            </select>
+            <p className="font-mono text-[10px] text-muted-foreground">reasoning_effort</p>
+          </div>
           <ParamField
             id="assistant-temperature"
             label={t("assistant.settings.temperature")}
@@ -391,6 +519,13 @@ export function AssistantSettingsPanel({
         <p className="mt-2.5 text-xs text-muted-foreground">
           {t("assistant.settings.modelParamsHint")}
         </p>
+        {/* Says where the two numbers came from, because "filled in by itself"
+            and "you typed this" look identical in a box. */}
+        {mode === "account" && facts && (
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            {t("assistant.settings.filledFromDeployment")}
+          </p>
+        )}
       </fieldset>
 
       <div className="flex flex-wrap items-center gap-2">

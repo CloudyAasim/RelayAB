@@ -33,7 +33,26 @@ export interface AssistantModelParams {
   maxOutputTokens: number | null;
   temperature: number | null;
   topP: number | null;
+  /**
+   * How hard the model thinks before answering, as the effort levels a vendor
+   * publishes rather than a number. `null` is "do not send it", which is not the
+   * same as the lowest level: one leaves the model to pick, the other picks for
+   * it and changes both the latency and the bill.
+   */
+  reasoningEffort: AssistantReasoningEffort | null;
 }
+
+/**
+ * The thinking levels, in the spelling the APIs use.
+ *
+ * A closed set rather than a free number: `minimal` / `low` / `medium` /
+ * `high` is what OpenAI-style endpoints accept, and a vendor that does not
+ * support thinking ignores or rejects the field. It is optional for that
+ * reason — a closed list that is always sent would be a feature that only works
+ * on the models that already had it.
+ */
+export const ASSISTANT_REASONING_EFFORTS = ["minimal", "low", "medium", "high"] as const;
+export type AssistantReasoningEffort = (typeof ASSISTANT_REASONING_EFFORTS)[number];
 
 export interface AssistantConfig {
   mode: AssistantCredentialMode;
@@ -66,6 +85,7 @@ export interface AssistantConfigRow {
   maxOutputTokens?: number | null;
   temperature?: number | null;
   topP?: number | null;
+  reasoningEffort?: AssistantReasoningEffort | null;
 }
 
 /** No row at all is a real state: nothing has been configured yet. */
@@ -121,6 +141,7 @@ export function resolveAssistantConfig(row: MaybeRow): AssistantConfig {
       maxOutputTokens: row?.maxOutputTokens ?? null,
       temperature: row?.temperature ?? null,
       topP: row?.topP ?? null,
+      reasoningEffort: row?.reasoningEffort ?? null,
     },
   };
 }
@@ -137,6 +158,7 @@ export function modelParamsForRequest(params: AssistantModelParams): {
   maxTokens?: number;
   temperature?: number;
   topP?: number;
+  reasoningEffort?: AssistantReasoningEffort;
 } {
   return {
     // `!= null`, never a truthiness test: 0 is the most deterministic
@@ -144,5 +166,6 @@ export function modelParamsForRequest(params: AssistantModelParams): {
     ...(params.maxOutputTokens != null ? { maxTokens: params.maxOutputTokens } : {}),
     ...(params.temperature != null ? { temperature: params.temperature } : {}),
     ...(params.topP != null ? { topP: params.topP } : {}),
+    ...(params.reasoningEffort != null ? { reasoningEffort: params.reasoningEffort } : {}),
   };
 }

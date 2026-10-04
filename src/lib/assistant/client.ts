@@ -81,6 +81,8 @@ export interface CallModelOptions {
   maxTokens?: number;
   temperature?: number;
   topP?: number;
+  /** How hard the model thinks. Left off the body unless one is chosen. */
+  reasoningEffort?: string;
   /**
    * Replaces the HTTP call. `baseUrl` and `apiKey` are then unused, which is why
    * the account path can leave them unset rather than pass a placeholder.
@@ -163,6 +165,7 @@ export async function callAssistantModel(opts: CallModelOptions): Promise<Upstre
     ...(opts.maxTokens !== undefined ? { max_tokens: opts.maxTokens } : {}),
     ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
     ...(opts.topP !== undefined ? { top_p: opts.topP } : {}),
+    ...(opts.reasoningEffort !== undefined ? { reasoning_effort: opts.reasoningEffort } : {}),
     ...(opts.tools && opts.tools.length ? { tools: opts.tools, tool_choice: "auto" } : {}),
   };
 

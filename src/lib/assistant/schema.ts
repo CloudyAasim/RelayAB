@@ -11,6 +11,7 @@
  * `db/types.ts` uses: one Zod schema, read straight through on every load.
  */
 import { z } from "zod";
+import { ASSISTANT_REASONING_EFFORTS } from "./config";
 
 /**
  * How the user's own upstream speaks. Only OpenAI-compatible chat completions
@@ -62,6 +63,14 @@ export const AssistantSettingsSchema = z.object({
   maxOutputTokens: z.number().int().positive().nullable().optional(),
   temperature: z.number().min(0).max(2).nullable().optional(),
   topP: z.number().min(0).max(1).nullable().optional(),
+  /**
+   * How hard the model thinks, as one of the published effort levels.
+   *
+   * Nullable and not defaulted: a model that cannot think ignores the field, one
+   * that can will change both the answer and the bill, and "I have not chosen"
+   * has to stay expressible so the vendor's own default is what runs.
+   */
+  reasoningEffort: z.enum(ASSISTANT_REASONING_EFFORTS).nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -209,6 +218,7 @@ export function rowToAssistantSettings(row: Record<string, unknown>): AssistantS
     maxOutputTokens: (row.max_output_tokens as number | null) ?? null,
     temperature: (row.temperature as number | null) ?? null,
     topP: (row.top_p as number | null) ?? null,
+    reasoningEffort: (row.reasoning_effort as string | null) ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });

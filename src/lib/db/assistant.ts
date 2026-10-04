@@ -82,6 +82,8 @@ export interface SaveAssistantSettingsInput {
   maxOutputTokens?: number | null;
   temperature?: number | null;
   topP?: number | null;
+  /** How hard the model thinks. `null` clears it; omitted leaves it alone. */
+  reasoningEffort?: "minimal" | "low" | "medium" | "high" | null;
 }
 
 /**
@@ -91,7 +93,7 @@ export interface SaveAssistantSettingsInput {
  * settings form that only edits the model name ends up resetting a temperature
  * somebody chose on purpose.
  */
-function pick(next: number | null | undefined, previous: number | null | undefined): number | null {
+function pick<T>(next: T | null | undefined, previous: T | null | undefined): T | null {
   return next === undefined ? (previous ?? null) : next;
 }
 
@@ -143,6 +145,7 @@ export async function saveAssistantSettings(
     maxOutputTokens: pick(input.maxOutputTokens, existing?.maxOutputTokens),
     temperature: pick(input.temperature, existing?.temperature),
     topP: pick(input.topP, existing?.topP),
+    reasoningEffort: pick(input.reasoningEffort, existing?.reasoningEffort),
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
@@ -151,8 +154,8 @@ export async function saveAssistantSettings(
     `INSERT INTO assistant_settings
        (user_id, base_url, encrypted_api_key, model, credential_mode, account_model,
         protocol, extra_headers, context_length, max_output_tokens, temperature, top_p,
-        created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        reasoning_effort, created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
      ON CONFLICT(user_id) DO UPDATE SET
        base_url = excluded.base_url,
        encrypted_api_key = excluded.encrypted_api_key,
@@ -165,6 +168,7 @@ export async function saveAssistantSettings(
        max_output_tokens = excluded.max_output_tokens,
        temperature = excluded.temperature,
        top_p = excluded.top_p,
+       reasoning_effort = excluded.reasoning_effort,
        updated_at = excluded.updated_at`,
     [
       row.userId,
@@ -179,6 +183,7 @@ export async function saveAssistantSettings(
       row.maxOutputTokens ?? null,
       row.temperature ?? null,
       row.topP ?? null,
+      row.reasoningEffort ?? null,
       row.createdAt,
       row.updatedAt,
     ],

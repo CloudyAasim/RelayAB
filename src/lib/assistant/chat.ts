@@ -37,7 +37,7 @@ import {
   renameAssistantThread,
 } from "../db/assistant";
 import type { AssistantSettings, AssistantThread, MessageAttachment } from "./schema";
-import { modelParamsForRequest, type AssistantModelParams } from "./config";
+import { modelParamsForRequest, type AssistantModelParams, type AssistantReasoningEffort } from "./config";
 import type { Locale } from "../i18n/dict";
 import type { DocPage } from "../docs/custom";
 import type { AuthedUser } from "../auth/session";
@@ -66,6 +66,7 @@ const EMPTY_PARAMS: AssistantModelParams = {
   maxOutputTokens: null,
   temperature: null,
   topP: null,
+  reasoningEffort: null,
 };
 
 /**
@@ -368,6 +369,7 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
     maxTokens?: number;
     temperature?: number;
     topP?: number;
+    reasoningEffort?: AssistantReasoningEffort;
   } =
     settings
       ? {
@@ -380,6 +382,9 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
           ...(settings.maxOutputTokens != null ? { maxTokens: settings.maxOutputTokens } : {}),
           ...(settings.temperature != null ? { temperature: settings.temperature } : {}),
           ...(settings.topP != null ? { topP: settings.topP } : {}),
+          ...(settings.reasoningEffort != null
+            ? { reasoningEffort: settings.reasoningEffort }
+            : {}),
         }
       : opts.inProcessUpstream
         ? {
@@ -440,6 +445,7 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
         ...(upstream.maxTokens != null ? { maxTokens: upstream.maxTokens } : {}),
         ...(upstream.temperature != null ? { temperature: upstream.temperature } : {}),
         ...(upstream.topP != null ? { topP: upstream.topP } : {}),
+        ...(upstream.reasoningEffort != null ? { reasoningEffort: upstream.reasoningEffort } : {}),
         ...(upstream.baseUrl ? { baseUrl: upstream.baseUrl } : {}),
         ...(upstream.apiKey ? { apiKey: upstream.apiKey } : {}),
         ...(upstream.extraHeaders ? { extraHeaders: upstream.extraHeaders } : {}),
