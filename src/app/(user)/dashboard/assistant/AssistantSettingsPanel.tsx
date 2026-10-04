@@ -174,6 +174,7 @@ export function AssistantSettingsPanel({
         <ModelCombobox
           id="assistant-model"
           label={t("assistant.settings.model")}
+          customLabel={t("assistant.settings.modelCustom")}
           placeholder="model-name"
           value={model}
           options={knownModels}
