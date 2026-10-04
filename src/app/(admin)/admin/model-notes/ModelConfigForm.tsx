@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { useT } from "@/components/i18n/I18nProvider";
+import { sanitizeLevelList } from "@/lib/providers/reasoning-levels";
 import {
   modelConfigPayload,
   rowProblem,
@@ -60,12 +61,7 @@ const optionalNum = (v: string): number | undefined => {
  * reads the same on the way back.
  */
 function parseLevelList(raw: string): string[] {
-  const out: string[] = [];
-  for (const part of raw.split(/[,，\s]+/)) {
-    const trimmed = part.trim();
-    if (trimmed && !out.includes(trimmed)) out.push(trimmed);
-  }
-  return out;
+  return sanitizeLevelList(raw.split(/[,，\s]+/));
 }
 
 export function ModelConfigForm({ rows }: { rows: ModelConfigRow[] }) {

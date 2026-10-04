@@ -13,6 +13,7 @@
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { sanitizeLevelList } from "@/lib/providers/reasoning-levels";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getProviderById, updateProvider } from "@/lib/db/providers";
 import { getSettings, updateSettings } from "@/lib/db/settings";
@@ -40,7 +41,13 @@ const ModelEntrySchema = z.object({
    * does not think. An empty list is a real answer and means "we do not know",
    * which is why it is not defaulted to a set of four here either.
    */
-  reasoningLevels: z.array(z.string().min(1).max(64)).max(24).optional(),
+  // Filtered on the way in: a level is a value the model accepts, and the
+  // names of the fields in a refusal are not. See lib/providers/reasoning-levels.
+  reasoningLevels: z
+    .array(z.string().min(1).max(64))
+    .max(24)
+    .transform((levels) => sanitizeLevelList(levels))
+    .optional(),
   enabled: z.boolean().optional(),
 });
 

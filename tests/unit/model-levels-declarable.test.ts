@@ -60,7 +60,13 @@ describe("the levels are a field on the model configuration", () => {
 
   it("the API accepts it and keeps it across an edit that did not mention it", () => {
     expect(API, "the route will not take a list").toMatch(
-      /reasoningLevels: z\.array\(z\.string\(\)\.min\(1\)\.max\(64\)\)\.max\(24\)\.optional\(\)/,
+      /reasoningLevels: z[\s\S]{0,120}?\.array\(z\.string\(\)\.min\(1\)\.max\(64\)\)/,
+    );
+    // …and it filters on the way in. A level is a value the model accepts; the
+    // field names in the error that said so are not, and nine models here carried
+    // two of them until this was written.
+    expect(API, "envelope field names can be stored as levels").toMatch(
+      /\.transform\(\(levels\) => sanitizeLevelList\(levels\)\)/,
     );
     // Merging, so an edit of some other field must not quietly drop them —
     // the failure that makes a declared configuration look unset.
