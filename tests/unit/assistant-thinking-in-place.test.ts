@@ -91,4 +91,15 @@ describe("the renderer draws them in that order", () => {
     expect(body).not.toMatch(/splitThinking\(text\)/);
     expect(body).toMatch(/part\.kind === "thinking"/);
   });
+
+  it("and the summary says that clicking it opens it", () => {
+    // `expandLabel` and `collapseLabel` were passed into this component and
+    // never used. The block showed a heading, the browser's small triangle, and
+    // nothing else, so it read as a section with nothing under it — which is
+    // how "the thinking disappeared" was reported by someone who could see it.
+    const body = ARTIFACTS.slice(ARTIFACTS.indexOf("export function AssistantBody"));
+    expect(body).toMatch(/\{expandLabel\}/);
+    expect(body).toMatch(/\{collapseLabel\}/);
+    expect(body).toMatch(/group-open:hidden/);
+  });
 });

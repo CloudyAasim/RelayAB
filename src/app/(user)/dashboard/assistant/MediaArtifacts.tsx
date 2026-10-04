@@ -308,10 +308,23 @@ export function AssistantBody({
         part.kind === "thinking" ? (
           <details
             key={`t-${i}`}
-            className="rounded-md border border-border/60 bg-muted/40"
+            className="group rounded-md border border-border/60 bg-muted/40"
           >
-            <summary className="cursor-pointer list-none px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground">
+            {/*
+              The `summary` is the whole affordance, so it has to say what
+              clicking it does. The browser's own triangle is the only other cue
+              and it is small, next to a label that reads as a heading rather
+              than a control. `expandLabel` and `collapseLabel` were passed in
+              and unused — the reasoning looked like a section that had nothing
+              under it, which is why "where did the thinking go" was the
+              report.
+            */}
+            <summary className="flex cursor-pointer list-none items-center gap-2 px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground">
               <span className="font-medium">{thinkingLabel}</span>
+              <span className="text-[10px] opacity-70 group-open:hidden">{expandLabel}</span>
+              <span className="hidden text-[10px] opacity-70 group-open:inline">
+                {collapseLabel}
+              </span>
             </summary>
             <div className="border-t border-border/60 px-2.5 py-2 text-xs text-muted-foreground">
               <Prose text={part.value} />
