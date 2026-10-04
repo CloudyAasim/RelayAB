@@ -370,14 +370,38 @@ export function ToolResultCard({
   label,
   content,
   downloadLabel,
+  pretty = true,
 }: {
   toolName: string | null | undefined;
   label: string;
   content: string;
   downloadLabel: string;
+  /**
+   * The output-format switch.
+   *
+   * It used to reach only the assistant's prose, so turning it off gave you a
+   * plain-text answer next to a decorated tool card — two renderings of the
+   * same reply, which is the one thing a switch like that is not supposed to
+   * produce. The artefacts stay either way: a picture has no raw form.
+   */
+  pretty?: boolean;
 }) {
   const display = toolContentForDisplay(content);
   const failed = /\n?\s*"ok":\s*false/.test(content) || /^工具执行失败/.test(content);
+  const artifacts = artifactsFromToolContent(content);
+
+  if (!pretty) {
+    return (
+      <div className="space-y-2">
+        {artifacts.length > 0 && <MediaArtifacts artifacts={artifacts} downloadLabel={downloadLabel} />}
+        <div className="whitespace-pre-wrap break-words text-xs text-muted-foreground">
+          <span className="text-foreground">{toolName ?? label}</span>
+          {"\n"}
+          {display}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-2">

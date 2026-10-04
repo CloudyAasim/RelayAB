@@ -770,6 +770,7 @@ export function AssistantChat({ configured, modelLabel, settingsPanel, pendingPa
                   label={t("assistant.toolResult")}
                   content={m.content}
                   downloadLabel={t("assistant.artifact.download")}
+                  pretty={pretty}
                 />
               ) : m.role === "user" ? (
                 <div key={m.id} className="flex flex-col items-end gap-2">
