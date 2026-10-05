@@ -16,6 +16,7 @@ import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
 import { useT } from "@/components/i18n/I18nProvider";
+import { thinkingShape, type ThinkingShape } from "@/lib/docs/thinking";
 import type { CatalogModel } from "@/lib/docs/catalog";
 
 interface Props {
@@ -46,6 +47,26 @@ function fmt(n: number | null): string {
 function cost(n: number | null, dash = "—"): string {
   if (n === null || n === 0) return dash;
   return String(n);
+}
+
+/**
+ * The words for each shape, spelled as literals on purpose.
+ *
+ * `scripts/gen-docs-index.cjs` scans this file for `t("…")` and nothing else,
+ * so a shape chosen by a lookup table would put strings on the page that the
+ * assistant's index of the docs never learns exist — the one reader of this page
+ * who is supposed to be able to explain it. The decision itself lives in
+ * `src/lib/docs/thinking.ts` where it can be tested by running it.
+ */
+function reasoningText(
+  m: CatalogModel,
+  shape: ThinkingShape,
+  t: (key: string) => string,
+): string {
+  if (shape === "levels") return m.reasoningLevels.join(" / ");
+  if (shape === "switchOnly") return t("docs.catalog.reasoningSwitchOnly");
+  if (shape === "alwaysOn") return t("docs.catalog.reasoningAlwaysOn");
+  return t("docs.catalog.reasoningNone");
 }
 
 export function ModelCatalog({ models, providers, site, publicUrl }: Props) {
@@ -367,20 +388,33 @@ function ModelRows({ model: m, isChat }: { model: CatalogModel; isChat: boolean 
               <Detail label={t("docs.catalog.context")} value={fmt(m.contextLength)} />
               <Detail label={t("docs.catalog.maxOutput")} value={fmt(m.maxOutputTokens)} />
               {/*
-                  Stated, not inferred. A model with no declared levels shows
-                  that, rather than an empty cell that reads like a rendering
-                  failure — and never a default list, which would be a claim
-                  about the model that nobody on this page can check.
+                  Stated, not inferred — and stated honestly. A model with no
+                  gear-shifted levels shows which of the three reasons applies,
+                  rather than an empty cell that reads like a rendering failure
+                  and never a default list, which would be a claim about the
+                  model that nobody on this page can check.
                 */}
               <Detail
                 label={t("docs.catalog.reasoningLevels")}
-                value={
-                  m.reasoningLevels.length > 0
-                    ? m.reasoningLevels.join(" / ")
-                    : t("docs.catalog.reasoningNone")
-                }
+                value={reasoningText(m, thinkingShape(m), t)}
                 mono
               />
+              {/*
+                  The other axis, and it fails on its own: a model can have
+                  levels and still be impossible to switch off. Rendered only
+                  when declared, so it says nothing about models nobody has
+                  described — the row above is where "unknown" belongs.
+                */}
+              {m.thinkingSwitchSupported !== null && (
+                <Detail
+                  label={t("docs.catalog.thinkingSwitch")}
+                  value={
+                    m.thinkingSwitchSupported
+                      ? t("docs.catalog.thinkingSwitchYes")
+                      : t("docs.catalog.thinkingSwitchNo")
+                  }
+                />
+              )}
               {m.source.priority !== null && (
                 <Detail label={t("docs.catalog.priority")} value={String(m.source.priority)} />
               )}
