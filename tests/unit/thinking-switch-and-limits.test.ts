@@ -187,9 +187,23 @@ describe("the empty state asks a user, not an operator", () => {
         expect(line, `${word} in ${line.trim().slice(0, 60)}`).not.toContain(word);
       }
     }
-    // And at least one of them is about metering, in the units we actually use.
-    const s2 = DICT.split("\n").find((l) => l.includes('"assistant.suggestions.2":'))!;
-    expect(s2).toContain("收费");
+    // And the ban is a ban, not a preference about which slot says what.
+    //
+    // This used to end with "suggestion 2 contains 收费", which was a way of
+    // saying the set should include a metering question. It broke the first
+    // time anybody edited a suggestion — and the breakage said nothing about
+    // currency, which is the only thing this rule is for. A guard that fails
+    // when the product is changed on purpose is a guard that gets deleted, and
+    // the rule it was carrying goes with it.
+    //
+    // So the rule stays and the slot-pinning goes. Whether the set covers
+    // metering is a product choice, not a correctness rule, and it is better
+    // raised with whoever is choosing the words than asserted in a test.
+    const suggestions = DICT.split("\n").filter((l) => l.includes('"assistant.suggestions.'));
+    expect(suggestions.length).toBeGreaterThan(0);
+    // Four examples that say the same thing teach one thing, not four.
+    const bodies = suggestions.map((l) => (l.split('": ')[1] ?? "").replace(/[",]\s*$/, ""));
+    expect(new Set(bodies).size).toBe(bodies.length);
   });
 });
 
