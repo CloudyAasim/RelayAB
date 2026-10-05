@@ -957,7 +957,7 @@ const zhCN: Dict = {
   "assistant.openSettings": "去设置",
   "assistant.unconfiguredModel": "未配置模型",
   "assistant.suggestions.1": "这个中转站现在提供哪些模型？各自的上下文窗口多大？",
-  "assistant.suggestions.2": "MiniMax-M3 怎么收费？帮我实测一下它能不能用",
+  "assistant.suggestions.2": "我该怎么调用文本模型",
   "assistant.suggestions.3": "我调 /v1/chat/completions 报错了，帮我看看是什么原因",
   "assistant.suggestions.4": "帮我生成一张「戴帽子的猫」",
 
@@ -2067,7 +2067,7 @@ const en: Dict = {
   "assistant.openSettings": "Open settings",
   "assistant.unconfiguredModel": "No model configured",
   "assistant.suggestions.1": "Which models does this gateway serve, and how large is each context window?",
-  "assistant.suggestions.2": "What does MiniMax-M3 cost, and does it actually work right now?",
+  "assistant.suggestions.2": "How do I call a text model?",
   "assistant.suggestions.3": "My /v1/chat/completions call is failing — work out why",
   "assistant.suggestions.4": "Draw a cat wearing a hat",
 
