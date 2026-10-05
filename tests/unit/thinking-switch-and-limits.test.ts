@@ -77,12 +77,12 @@ describe("the ceilings leave room for the work", () => {
   });
 
   it("and a stuck loop is still stopped, without waiting half an hour", () => {
-    // The one guard that matters once the ceiling above is this high, and it is
-    // a backstop rather than a working limit: a model with somewhere to go
-    // interleaves different calls, so a dozen of the *identical* one in a row is
-    // a loop and not a task. A value low enough to fire on real work — four was
-    // — is too low to serve that purpose, which is exactly what happened.
-    expect(MAX_IDENTICAL_CALLS).toBe(12);
+    // The one guard that matters once the ceiling above is this high. It is a
+    // backstop and not a working limit: a model with somewhere to go
+    // interleaves different calls, so many of the *identical* one in a row is a
+    // loop and not a task. A value low enough to fire on real work is too low to
+    // serve that purpose, which is what four was.
+    expect(MAX_IDENTICAL_CALLS).toBeGreaterThanOrEqual(20);
   });
 });
 

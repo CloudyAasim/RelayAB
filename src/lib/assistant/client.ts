@@ -78,6 +78,19 @@ export interface CallModelOptions {
   /** Called for each delta of the model thinking, as it arrives. */
   onReasoning?: (delta: string) => void;
   signal?: AbortSignal;
+  /**
+   * How long one call may take. The caller sets it — the turn loop hands down
+   * whatever is left of its own budget.
+   *
+   * There used to be a two-minute default here, and it is what made long turns
+   * unwinnable: the turn was allowed half an hour and no single step of it was
+   * allowed more than two. A job needing a long step never finished, and
+   * continuing it only started the same long step again.
+   *
+   * Unset now means "no deadline of its own", which is right for a call whose
+   * owner already keeps one. The probe passes an explicit fifteen seconds,
+   * because a probe that has not answered in fifteen was not going to.
+   */
   timeoutMs?: number;
   /**
    * The caller's own model parameters. Omitted from the request when unset,
@@ -162,7 +175,14 @@ function extractErrorMessage(body: string): string {
  */
 export async function callAssistantModel(opts: CallModelOptions): Promise<UpstreamTurn> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 120_000);
+  // Only when the caller asked for one. A call with no deadline of its own runs
+  // until the upstream ends the stream or the caller's signal fires — which is
+  // the difference between a long turn that finishes and one that is cut off
+  // mid-sentence with nothing to say about it.
+  const timer =
+    opts.timeoutMs !== undefined
+      ? setTimeout(() => controller.abort(), opts.timeoutMs)
+      : undefined;
   const onAbort = (): void => controller.abort();
   opts.signal?.addEventListener("abort", onAbort, { once: true });
 

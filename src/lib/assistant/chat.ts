@@ -45,11 +45,13 @@ import type { AuthedUser } from "../auth/session";
 /**
  * Out of the way on purpose.
  *
- * Still a ceiling — an unbounded loop is a hung request and an unbounded
- * upstream bill — but high enough that no real task reaches it. The checks that
- * matter are `MAX_IDENTICAL_CALLS` and `MAX_TURN_MS` below.
+ * A ceiling the reader is told about rather than a silent one — an unbounded loop
+ * is a hung request and an unbounded upstream bill. It is set high enough that
+ * what ends a turn is `MAX_TURN_MS`, which is the ceiling the interface actually
+ * promises. The guards below exist for a model that is not making progress; this
+ * one is a backstop behind them, not a limit anyone should meet.
  */
-const MAX_ROUNDS = 60;
+export const MAX_ROUNDS = 400;
 
 /**
  * The same call, with the same arguments, this many rounds running.
@@ -59,14 +61,14 @@ const MAX_ROUNDS = 60;
  * documentation job re-reads the same page after each edit. At four, a model
  * doing the right thing was told it was stuck.
  *
- * Twelve is not a tuning compromise. A model with somewhere to go interleaves
- * different calls, and a dozen of the *identical* one in a row with nothing
- * between them is not a complex task — it is a loop, and it is stopped by the
- * round and time ceilings above within a minute either way. The number exists
- * to stop a loop burning the thirty-minute ceiling; any value low enough to
- * fire on real work is too low to serve that purpose.
+ * Thirty is not a tuning compromise. A model with somewhere to go interleaves
+ * different calls, and thirty of the *identical* one in a row with nothing
+ * between them is not a complex task — it is a loop, and the time ceiling stops
+ * it either way. This exists so a stuck model does not sit on the connection for
+ * half an hour; it is not a limit real work should meet, and it was never the
+ * thing stopping a long turn.
  */
-export const MAX_IDENTICAL_CALLS = 12;
+export const MAX_IDENTICAL_CALLS = 30;
 
 /**
  * A turn nobody would sit and wait for.
@@ -84,8 +86,15 @@ export const MAX_IDENTICAL_CALLS = 12;
  */
 export const MAX_TURN_MS = 30 * 60 * 1000;
 
-/** How much history to replay. Older turns are dropped rather than truncated. */
-const MAX_HISTORY_MESSAGES = 40;
+/**
+ * How much history to replay, oldest dropped rather than half a message cut.
+ *
+ * Forty was very short beside a window this size, and the summariser it falls
+ * back to wrote 512 tokens, so a long conversation lost most of itself and then
+ * kept a scrap of what it lost. Both numbers moved together: more turns to keep,
+ * and a summary with room to be worth reading.
+ */
+export const MAX_HISTORY_MESSAGES = 200;
 
 /** No parameters configured — nothing to put on the request. */
 const EMPTY_PARAMS: AssistantModelParams = {
@@ -242,7 +251,7 @@ const SUMMARY_HEADER =
 const SUMMARY_MIN_CHARS = 2_000;
 /** What is fed to the summariser; the rest of the prefix is already gone. */
 const SUMMARY_INPUT_CHARS = 12_000;
-const SUMMARY_MAX_TOKENS = 512;
+const SUMMARY_MAX_TOKENS = 2_000;
 
 /** Held back from a declared window for the system prompt and the answer. */
 const RESERVED_TOKENS = 4_000;
@@ -267,7 +276,7 @@ const RESERVED_TOKENS = 4_000;
  * per-turn ceiling below is what bounds a turn that reads many of them; raising
  * this is about not corrupting one result, not about removing a limit.
  */
-export const MAX_TOOL_RESULT_CHARS = 60_000;
+export const MAX_TOOL_RESULT_CHARS = 200_000;
 
 /**
  * What makes a tool call the *same* call.
@@ -579,6 +588,22 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
   let rounds = 0;
   const signatures: string[] = [];
   const startedAt = Date.now();
+  /**
+   * The one ceiling on this turn, handed down to every call in it.
+   *
+   * Each model call used to carry its own two-minute timeout, which contradicted
+   * the half-hour turn ceiling: the turn was allowed half an hour and no single
+   * step of it was allowed more than two. The symptom was the worst shape a
+   * timeout can take — the stream aborts part-way through a sentence, the partial
+   * text is thrown away, and asking again starts the model thinking from the top
+   * only to be cut off again. Long work could not be finished by continuing,
+   * because continuing was the thing being cut off.
+   *
+   * So a call now inherits whatever is left of the turn. The deadline is
+   * unchanged and still the only one; there is simply no second, smaller one
+   * underneath it for a long job to collide with.
+   */
+  const remaining = () => MAX_TURN_MS - (Date.now() - startedAt);
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
     rounds = round + 1;
@@ -599,6 +624,10 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
         messages,
         tools,
         signal,
+        // At least a minute even if the turn is nearly spent, so a call that is
+        // milliseconds from the deadline is not aborted before it can reply —
+        // which is the turn ceiling's job to report, not this one's.
+        timeoutMs: Math.max(remaining(), 60_000),
         onText: (delta) => emit({ type: "delta", text: delta }),
         onReasoning: (delta) => emit({ type: "reasoning", text: delta }),
       });

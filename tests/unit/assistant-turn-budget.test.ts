@@ -1,54 +1,37 @@
 /**
- * tests/unit/assistant-turn-budget.test.ts
+ * One ceiling, not five stacked under it.
  *
- * The turn loop is no longer cut off after eight rounds.
+ * The symptom was an answer that stopped part-way through a sentence with no
+ * message, and asking again started the model thinking from the top only to be
+ * cut off at the same place. Continuing could not finish the work, because
+ * continuing was the thing being cut off.
  *
- * It was, and that number was below what a real task needs: look up the model,
- * read the provider, probe the host, propose the change — four rounds before
- * the conversation has even started, and then "已达到 8 轮工具调用上限". The
- * budget went up, but the point is not the number: it is that the two ways a
- * loop actually goes wrong are now caught on their own terms.
+ * The cause was a two-minute timeout on every individual model call, sitting
+ * underneath a turn that was allowed half an hour. Nothing in the interface said
+ * the turn had thirty minutes and no single step of it had two; the two numbers
+ * contradicted each other and the smaller one won, silently, mid-stream.
+ *
+ * So a call now inherits what is left of the turn. The turn ceiling is unchanged
+ * and is the only one the reader is told about; the guards below it exist to stop
+ * a model going nowhere, not to stop a model working.
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   callSignature,
-  repeatedCall,
+  MAX_HISTORY_MESSAGES,
   MAX_IDENTICAL_CALLS,
+  MAX_ROUNDS,
+  MAX_TOOL_RESULT_CHARS,
   MAX_TURN_MS,
+  repeatedCall,
 } from "@/lib/assistant/chat";
 
-const CHAT = readFileSync(join(process.cwd(), "src", "lib", "assistant", "chat.ts"), "utf-8");
-
-describe("assistant: a turn is not eight rounds long", () => {
-  it("does not stop at eight", () => {
-    // The cap the user actually hit, asserted directly so nobody re-lands on it.
-    expect(CHAT).not.toContain("已达到 ${MAX_ROUNDS} 轮工具调用上限");
-    expect(CHAT).not.toMatch(/MAX_ROUNDS = 8\b/);
-    const cap = Number(CHAT.match(/const MAX_ROUNDS = (\d+)/)?.[1]);
-    expect(cap).toBeGreaterThanOrEqual(20);
-  });
-
-  it("keeps a ceiling, because an unbounded loop is a hung request", () => {
-    // A ceiling the reader is told about, not a silent one.
-    expect(MAX_TURN_MS).toBeGreaterThan(0);
-    expect(CHAT).toContain("stopReason");
-  });
-
-  it("checks the clock, and not only the round count", () => {
-    // A model that makes a *different* call every round never trips the repeat
-    // detector, and forty rounds of a slow upstream is a request that hangs
-    // open until something upstream gives up. The deadline is the only thing
-    // that catches it.
-    expect(CHAT).toMatch(/Date\.now\(\) - startedAt > MAX_TURN_MS/);
-    expect(CHAT).toMatch(/MAX_TURN_MS \/ 60000/);
-  });
-
-  it("names MAX_ROUNDS in the message, so the reader can see the ceiling", () => {
-    expect(CHAT).toMatch(/这一轮用完了 \$\{MAX_ROUNDS\} 次模型往返/);
-  });
-});
+const ROOT = process.cwd();
+const read = (...p: string[]): string => readFileSync(join(ROOT, ...p), "utf8");
+const CHAT = read("src", "lib", "assistant", "chat.ts");
+const CLIENT = read("src", "lib", "assistant", "client.ts");
 
 describe("assistant: what a stuck model looks like", () => {
   it("calls two things with the same arguments the same call", () => {
@@ -85,10 +68,12 @@ describe("assistant: what a stuck model looks like", () => {
 
   it("the threshold is the one the guard exports", () => {
     // So a change to the loop guard cannot leave the test asserting a number the
-    // code no longer uses. Twelve is high enough that only an actual loop
-    // reaches it, and low enough to stop one inside the turn ceiling.
-    expect(MAX_IDENTICAL_CALLS).toBe(12);
-    expect(repeatedCall(new Array(12).fill("a(1)"))).toBe("a(1)");
+    // code no longer uses. The threshold is asserted against the constant rather
+    // than a number, so retuning it does not leave this test asserting a value
+    // the code no longer uses — which is how it came to disagree with the loop
+    // guard in the first place.
+    expect(MAX_IDENTICAL_CALLS).toBeGreaterThanOrEqual(20);
+    expect(repeatedCall(new Array(MAX_IDENTICAL_CALLS).fill("a(1)"))).toBe("a(1)");
   });
 
   it("needs the whole tail to match, not just part of it", () => {
@@ -123,5 +108,61 @@ describe("assistant: what a stuck model looks like", () => {
     const check = CHAT.indexOf("repeatedCall(signatures)");
     expect(push).toBeGreaterThan(-1);
     expect(check).toBeGreaterThan(push);
+  });
+});
+
+describe("a call inherits the turn's ceiling instead of a smaller one", () => {
+  it("and the turn hands down what is left of its budget", () => {
+    // Without this the call falls back to whatever the client defaults to, and
+    // the two numbers drift apart again the moment a limit is retuned.
+    expect(CHAT).toMatch(/const remaining = \(\) => MAX_TURN_MS - \(Date\.now\(\) - startedAt\)/);
+    expect(CHAT).toMatch(/timeoutMs: Math\.max\(remaining\(\), 60_000\)/);
+  });
+
+  it("there is no default deadline on a call that was not given one", () => {
+    // The line that caused it. A two-minute floor under a thirty-minute ceiling
+    // meant a long job could not be completed by continuing, because every
+    // continuation met the same two minutes.
+    expect(CLIENT).not.toMatch(/opts\.timeoutMs \?\? 120_000/);
+    expect(CLIENT).toMatch(
+      /opts\.timeoutMs !== undefined[\s\S]{0,120}setTimeout\(\(\) => controller\.abort\(\), opts\.timeoutMs\)/,
+    );
+  });
+
+  it("a probe still answers quickly, because it is a different job", () => {
+    // It is a reachability check with a user waiting on a button, not a turn.
+    // Fifteen seconds is the right ceiling for that and must not be swept up
+    // with the change above.
+    expect(CLIENT).toMatch(/opts\.timeoutMs \?\? 15_000/);
+  });
+
+  it("the turn ceiling is still thirty minutes", () => {
+    expect(MAX_TURN_MS).toBe(30 * 60 * 1000);
+    expect(CHAT).toMatch(/Date\.now\(\) - startedAt > MAX_TURN_MS/);
+  });
+});
+
+describe("the guards behind it do not stop work", () => {
+  it("none of them is small enough to be what ends a real turn", () => {
+    // Each is a backstop behind the time ceiling. If one of these is low enough
+    // to fire on a job someone actually needs doing, the time ceiling is
+    // decorative and the reader is being told thirty minutes they cannot have.
+    expect(MAX_ROUNDS).toBeGreaterThanOrEqual(200);
+    expect(MAX_IDENTICAL_CALLS).toBeGreaterThanOrEqual(20);
+    expect(MAX_TOOL_RESULT_CHARS).toBeGreaterThanOrEqual(200_000);
+    expect(MAX_HISTORY_MESSAGES).toBeGreaterThanOrEqual(100);
+  });
+
+  it("and the ones that stay say so in the message the reader gets", () => {
+    // A turn that ends on the clock has to say which clock, or it reads as the
+    // assistant giving up.
+    expect(CHAT).toContain("这一轮已经跑了");
+    expect(CHAT).toContain("分钟");
+  });
+
+  it("a tool result big enough to hold a vendor page is not cut", () => {
+    // 60,000 was enough for most pages and not for all, and a page cut mid-sentence
+    // is not a shorter page — it is a page the model then re-fetches.
+    expect(MAX_TOOL_RESULT_CHARS).toBeGreaterThanOrEqual(200_000);
   });
 });
