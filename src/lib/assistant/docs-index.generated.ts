@@ -142,7 +142,7 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     surface: "admin",
     id: "trouble",
     summary: "排错：常见报错与对应原因",
-    keys: ["admin.docs.trouble.title","admin.docs.trouble.desc","admin.docs.trouble.step1","admin.docs.trouble.step2","admin.docs.trouble.step3","admin.docs.ops.title","admin.docs.ops.desc","docs.title"],
+    keys: ["admin.docs.trouble.title","admin.docs.trouble.desc","admin.docs.trouble.step1","admin.docs.trouble.step2","admin.docs.trouble.step3"],
   },
   {
     surface: "admin",
@@ -150,5 +150,11 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     summary: "运维参考件（非文字说明）",
     note: "这一页不是文字说明，而是两份从仓库文件实时渲染的参考件：媒体适配协议（docs/模型适配协议/README.md）和 spec-check 脚本（scripts/spec-check.ts）。它们是给「写 spec 的 AI」用的原文，不是网关文档。需要其中某一份的内容，请用 fetch_page 或让用户从管理界面复制。",
     keys: [],
+  },
+  {
+    surface: "admin",
+    id: "assistant",
+    summary: "怎么用 AI 助手：它能体检和批量改配置、能核对厂商文档，以及它做不到什么（改动都要你确认、撤不回已生效的提案、看不到密钥）",
+    keys: ["admin.docs.assistant.title","admin.docs.assistant.desc","admin.docs.assistant.audit","admin.docs.assistant.bulk","admin.docs.assistant.docs","admin.docs.assistant.limits.title","admin.docs.assistant.limits.desc","admin.docs.assistant.limits.approval","admin.docs.assistant.limits.withdraw","admin.docs.assistant.limits.keys","admin.docs.assistant.limits.budget","admin.docs.assistant.ask.title","admin.docs.assistant.ask.desc","admin.docs.assistant.ask.oneShot","admin.docs.assistant.ask.verify","admin.docs.assistant.ask.source","admin.docs.ops.title","admin.docs.ops.desc","docs.title"],
   },
 ];

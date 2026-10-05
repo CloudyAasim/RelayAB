@@ -7,10 +7,13 @@
 import Link from "next/link";
 import {
   BookOpen,
+  Bot,
   Coins,
   LifeBuoy,
+  MessageSquare,
   Route,
   Server,
+  ShieldAlert,
   Split,
   Tags,
   Wrench,
@@ -286,6 +289,53 @@ export function AdminDocsContent({ section, t }: { section: AdminDocId; t: TFn }
           <li>{t("admin.docs.trouble.step3")}</li>
         </ol>
       </Card>
+    );
+  }
+
+  if (section === "assistant") {
+    return (
+      <>
+        <Card>
+          <CardHeader
+            title={
+              <CardTitle icon={<Bot className="h-4 w-4" />}>{t("admin.docs.assistant.title")}</CardTitle>
+            }
+            description={t("admin.docs.assistant.desc")}
+          />
+          <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
+            <li>{t("admin.docs.assistant.audit")}</li>
+            <li>{t("admin.docs.assistant.bulk")}</li>
+            <li>{t("admin.docs.assistant.docs")}</li>
+          </ul>
+        </Card>
+        <Card>
+          <CardHeader
+            title={
+              <CardTitle icon={<ShieldAlert className="h-4 w-4" />}>{t("admin.docs.assistant.limits.title")}</CardTitle>
+            }
+            description={t("admin.docs.assistant.limits.desc")}
+          />
+          <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
+            <li>{t("admin.docs.assistant.limits.approval")}</li>
+            <li>{t("admin.docs.assistant.limits.withdraw")}</li>
+            <li>{t("admin.docs.assistant.limits.keys")}</li>
+            <li>{t("admin.docs.assistant.limits.budget")}</li>
+          </ul>
+        </Card>
+        <Card>
+          <CardHeader
+            title={
+              <CardTitle icon={<MessageSquare className="h-4 w-4" />}>{t("admin.docs.assistant.ask.title")}</CardTitle>
+            }
+            description={t("admin.docs.assistant.ask.desc")}
+          />
+          <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
+            <li>{t("admin.docs.assistant.ask.oneShot")}</li>
+            <li>{t("admin.docs.assistant.ask.verify")}</li>
+            <li>{t("admin.docs.assistant.ask.source")}</li>
+          </ul>
+        </Card>
+      </>
     );
   }
 

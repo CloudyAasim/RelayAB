@@ -128,6 +128,8 @@ const TITLES = {
   "user:catalog": "本部署的模型目录：实时读取服务商表，分对话与媒体两张表",
   "user:parameters": "管理员自己写的参数参考（如果管理员写了的话）",
   "admin:overview": "管理员文档总览",
+  "admin:assistant":
+    "怎么用 AI 助手：它能体检和批量改配置、能核对厂商文档，以及它做不到什么（改动都要你确认、撤不回已生效的提案、看不到密钥）",
   "admin:providers": "服务商配置：新增、编辑、启用、优先级、格式",
   "admin:faces": "OpenAI 面与 Anthropic 面：分别接哪些模型、为什么要分",
   "admin:routes": "路由规则：一个模型名会走到哪个上游",

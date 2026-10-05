@@ -86,6 +86,43 @@ describe("the ceilings leave room for the work", () => {
   });
 });
 
+describe("the administrator's page about the assistant is a real page", () => {
+  const SECTIONS = read("src", "lib", "docs", "sections.ts");
+  const CONTENT = read("src", "app", "(admin)", "admin", "docs", "AdminDocsContent.tsx");
+
+  it("registered in the admin outline, not among the user's chapters", () => {
+    // Separate because what the assistant can change, and what it cannot, is a
+    // question only the person behind the relay has. Filing it under the user
+    // documentation would answer it for people who cannot act on it.
+    expect(SECTIONS).toMatch(/export const ADMIN_SECTION_IDS = \[[\s\S]*"assistant"/);
+    const userBlock = SECTIONS.slice(
+      SECTIONS.indexOf("USER_SECTION_IDS"),
+      SECTIONS.indexOf("ADMIN_SECTION_IDS"),
+    );
+    expect(userBlock).not.toContain('"assistant"');
+  });
+
+  it("and rendered from source rather than left to the operator to write", () => {
+    // The operator's pages live in the database and the assistant can write
+    // them. This one describing the assistant's own limits belongs in the
+    // repository, where a deploy cannot remove it and where it cannot be
+    // edited into saying something untrue.
+    expect(CONTENT).toMatch(/if \(section === "assistant"\)/);
+    expect(CONTENT).toContain("admin.docs.assistant.limits.approval");
+    expect(SECTIONS).toContain('"admin.docs.nav.assistant"');
+  });
+
+  it("and it says plainly that nothing happens without the administrator", () => {
+    const DICT = read("src", "lib", "i18n", "dict.ts");
+    expect(DICT).toContain("admin.docs.assistant.limits.approval");
+    const line = DICT
+      .split("\n")
+      .find((l) => l.includes('"admin.docs.assistant.limits.approval"'))!;
+    expect(line).toContain("不能直接改");
+    expect(line).toContain("确认");
+  });
+});
+
 describe("the empty state asks a user, not an operator", () => {
   const DICT = read("src", "lib", "i18n", "dict.ts");
 
@@ -119,6 +156,40 @@ describe("the empty state asks a user, not an operator", () => {
     // as broken text rather than as a bug, which is why one has been sitting in
     // the admin model-configuration description without anyone noticing.
     expect(DICT.includes("�")).toBe(false);
+  });
+
+  it("and it is one sentence, mentioning that it draws things", () => {
+    // It is an invitation, not a summary of what the deployment is. It used to
+    // run to a list of things the system can do and offered "I just set up
+    // Dokku" as a suggestion, which is a question from whoever stands behind
+    // the relay rather than from anyone using it.
+    //
+    // Found by the Chinese line, which is the one that has to be short; the
+    // English one is wrapped across two lines in the file and a matcher
+    // written for one layout silently finds nothing in the other.
+    const line = DICT.split("\n").find((l) => l.includes('"assistant.emptyState": "'))!;
+    expect(line).toBeTruthy();
+    // The string literal including its quotes, so the trailing `",` is not
+    // mistaken for a second sentence.
+    const text = line.slice(line.indexOf('": "') + 2).replace(/",$/, "");
+    expect(text.split("。").filter((s) => s.length > 0)).toHaveLength(1);
+    expect(text).toContain("图片");
+    expect(text).not.toContain("部署");
+    expect(text).not.toContain("环境变量");
+  });
+
+  it("the suggestions ask about credits, never about money", () => {
+    // This is a self-hosted relay that meters in credits. A page that talks
+    // about cost in currency is describing something this deployment is not.
+    for (const line of DICT.split("\n")) {
+      if (!line.includes('"assistant.suggestions.')) continue;
+      for (const word of ["多少钱", "美元", "美金", "人民币", "元/", "花费", "付费"]) {
+        expect(line, `${word} in ${line.trim().slice(0, 60)}`).not.toContain(word);
+      }
+    }
+    // And at least one of them is about metering, in the units we actually use.
+    const s2 = DICT.split("\n").find((l) => l.includes('"assistant.suggestions.2":'))!;
+    expect(s2).toContain("收费");
   });
 });
 

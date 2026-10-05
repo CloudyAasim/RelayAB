@@ -100,6 +100,11 @@ export const ADMIN_SECTION_IDS = [
   "usage",
   "trouble",
   "ops",
+  // How to use the assistant, which is a page about the assistant rather than
+  // about the gateway. It is separate from the user documentation on purpose:
+  // what the assistant can change, and what it cannot, is a question only the
+  // person standing behind the relay has.
+  "assistant",
 ] as const;
 export type AdminDocId = (typeof ADMIN_SECTION_IDS)[number];
 
@@ -185,6 +190,7 @@ export function adminDocSections(t: TFn): DocSection[] {  return [
     { id: "usage", label: t("admin.docs.nav.usage") },
     { id: "trouble", label: t("admin.docs.nav.trouble") },
     { id: "ops", label: t("admin.docs.nav.ops") },
+    { id: "assistant", label: t("admin.docs.nav.assistant") },
   ];
 }
 
