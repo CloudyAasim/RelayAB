@@ -17,7 +17,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { toolDefinitions } from "@/lib/assistant/tools";
-import { ModelConfigPatchSchema } from "@/lib/db/types";
+import { ModelConfigPatchSchema, ModelConfigSchema } from "@/lib/db/types";
 
 const ROOT = process.cwd();
 const read = (...p: string[]): string => readFileSync(join(ROOT, ...p), "utf8");
@@ -59,14 +59,43 @@ describe("the configuration read-back covers the configuration write paths", () 
     }
   });
 
-  it("distinguishes an undeclared effort support from a declared one", () => {
-    // Three states, and the middle one is the trap: `false` and "never
-    // declared" both read as a control that should or should not be switched
-    // off. Reporting `c.reasoningEffortSupported` raw would put a stored `true`
-    // next to a stored absent, which are the same answer wearing two values.
-    expect(TOOLS).toMatch(
-      /reasoningEffortSupported:\s*\n?\s*c\.reasoningEffortSupported === false \? false : null/,
-    );
+  it("reports all three states of a declared-or-not flag, not two", () => {
+    // This used to read `=== false ? false : null`, folding a stored `true` into
+    // "nobody declared it". That was accurate for as long as
+    // `ModelConfigSchema` defaulted an absent field to `true`, which made the
+    // two genuinely indistinguishable. That default is gone, so the read reports
+    // what is stored: `true` says the vendor supports it, `false` says it does
+    // not, `null` says nobody has said.
+    //
+    // Folding them again is not a simplification — it is how a model with a
+    // working thinking switch was described as having no switch at all, after
+    // the switch had been correctly declared.
+    for (const field of ["reasoningEffortSupported", "thinkingSwitchSupported"]) {
+      expect(TOOLS, `${field} is not reported as stored`).toMatch(
+        new RegExp(`${field}: c\\.${field} \\?\\? null`),
+      );
+      expect(TOOLS, `${field} still folds a declared yes into "not declared"`).not.toMatch(
+        new RegExp(`${field}:\\s*\\n?\\s*c\\.${field} === false`),
+      );
+    }
+  });
+
+  it("and the stored value is what a read produces, not a default", () => {
+    // The read is only honest if the three states actually reach it. A schema
+    // that fills an absent field in cannot report "nobody said", and the two
+    // guards above would both pass while the tool lied to the model reading it.
+    const undeclared = ModelConfigSchema.parse({ upstreamId: "m", clientId: "c" });
+    expect(undeclared.thinkingSwitchSupported).toBeUndefined();
+    expect(undeclared.reasoningEffortSupported).toBeUndefined();
+
+    const declared = ModelConfigSchema.parse({
+      upstreamId: "m",
+      clientId: "c",
+      thinkingSwitchSupported: true,
+      reasoningEffortSupported: true,
+    });
+    expect(declared.thinkingSwitchSupported).toBe(true);
+    expect(declared.reasoningEffortSupported).toBe(true);
   });
 });
 

@@ -39,11 +39,28 @@ describe("a switch the model ignores is greyed out", () => {
   it("the field exists, and it is separate from the levels", () => {
     // Merging them would mean one answer for two questions, and this deployment
     // has a model that takes neither.
+    //
+    // An undeclared field stays undefined. It used to be asserted as `true` here,
+    // and that assertion was the bug: a schema that fills in "the vendor supports
+    // it" for a row where nobody ever said is a claim made on the vendor's behalf,
+    // and it is what made a correctly-declared `true` indistinguishable from
+    // silence. Every reader below tests `!== false`, so an undefined field still
+    // leaves the control enabled — the upgrade safety this default was for does
+    // not need the default to get.
     const row = ModelConfigSchema.parse({ upstreamId: "m", clientId: "c" });
-    expect(row.thinkingSwitchSupported).toBe(true);
-    expect(row.reasoningEffortSupported).toBe(true);
+    expect(row.thinkingSwitchSupported).toBeUndefined();
+    expect(row.reasoningEffortSupported).toBeUndefined();
     expect(ModelConfigSchema.parse({ upstreamId: "m", clientId: "c", thinkingSwitchSupported: false })
       .thinkingSwitchSupported).toBe(false);
+    expect(ModelConfigSchema.parse({ upstreamId: "m", clientId: "c", thinkingSwitchSupported: true })
+      .thinkingSwitchSupported).toBe(true);
+  });
+
+  it("and an undeclared field still leaves the control enabled", () => {
+    // The property the removed default was protecting, tested where it is
+    // actually consumed. `undefined` is not `false`, so nothing is greyed.
+    expect(undefined !== false).toBe(true);
+    expect(PANEL).toContain("facts?.thinkingSwitchSupported === false");
   });
 
   it("the form switches it off on an explicit false and not otherwise", () => {

@@ -1784,13 +1784,11 @@ async function listProvidersTool(): Promise<ToolResult> {
            * collapsing them would either grey out every model on the deployment
            * or none of them.
            */
-          reasoningEffortSupported:
-            c.reasoningEffortSupported === false ? false : null,
-          // The same three states for the thinking switch, and reported for the
-          // same reason: a stored `true` and an absent field mean the same thing
-          // to every reader, and the question worth answering is whether anyone
-          // has declared the opposite.
-          thinkingSwitchSupported: c.thinkingSwitchSupported === false ? false : null,
+          reasoningEffortSupported: c.reasoningEffortSupported ?? null,
+          // The same three states for the thinking switch, and reported
+          // separately for the same reason: reading back "not false" where a
+          // model was told "yes" hides the very answer the reader asked for.
+          thinkingSwitchSupported: c.thinkingSwitchSupported ?? null,
           enabled: c.enabled,
         })),
         // Never the key itself: the model has no need for it and the transcript

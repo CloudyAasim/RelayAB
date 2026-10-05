@@ -212,12 +212,19 @@ export const ModelConfigSchema = z.object({
    * accepts a choice, and does nothing, which is the worst of the three
    * outcomes: worse than a refusal, because nothing reports the failure.
    *
-   * So it is declared rather than inferred. `true` is the default, deliberately:
-   * a row written before this field existed must keep a working dropdown rather
-   * than have one silently disabled by an upgrade. Turning it off is a claim,
-   * and a claim is somebody's to make.
+   * So it is declared rather than inferred. Turning it off is a claim, and a
+   * claim is somebody's to make — so nothing here invents one.
+   *
+   * This was `.default(true)`, so that a row written before the field existed
+   * kept a working dropdown instead of being disabled by an upgrade. Every
+   * reader of this field already tests `!== false`, which treats an absent field
+   * exactly as `true`, so the default was never what protected the control — it
+   * was only ever what *hid the difference* between "nobody has said" and
+   * "somebody said yes". The docs catalogue needs that difference: it is the
+   * whole reason a model that always reasons can be told apart from one that
+   * takes a switch.
    */
-  reasoningEffortSupported: z.boolean().default(true),
+  reasoningEffortSupported: z.boolean().optional(),
   /**
    * Whether this model acts on the thinking **switch** at all.
    *
@@ -229,8 +236,13 @@ export const ModelConfigSchema = z.object({
    *
    * A live control for any of the first two is a control that stores a choice,
    * sends it on every request, and changes nothing.
+   *
+   * Optional for the same reason as the field above, and it is not optional for
+   * the same reason it is not `default(true)`: absent means nobody has declared
+   * this model's thinking switch either way, and the catalogue says so rather
+   * than guessing on the vendor's behalf.
    */
-  thinkingSwitchSupported: z.boolean().default(true),
+  thinkingSwitchSupported: z.boolean().optional(),
   /** Credit cost per 1M input tokens */
   inputCost: z.number().nonnegative().default(0),
   /** Credit cost per 1M output tokens */

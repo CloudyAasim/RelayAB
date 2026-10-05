@@ -184,12 +184,13 @@ export async function buildModelCatalog(): Promise<ModelCatalog> {
         contextLength: cfg?.contextLength ?? null,
         maxOutputTokens: cfg?.maxOutputTokens ?? null,
         reasoningLevels: cfg?.reasoningLevels ?? [],
-        // Only an explicit false is a fact about the vendor. A row written
-        // before the field existed reads as "not stated", which is what it is.
-        reasoningEffortSupported:
-          cfg?.reasoningEffortSupported === false ? false : null,
-        thinkingSwitchSupported:
-          cfg?.thinkingSwitchSupported === false ? false : null,
+        // The stored state, all three of it. This used to read `=== false ?
+        // false : null`, which was true to itself for as long as nobody had
+        // reason to write `true` — but `true` is a real answer, and folding it
+        // into "nobody said" is how a model with a working switch came to be
+        // described as having no switch at all.
+        reasoningEffortSupported: cfg?.reasoningEffortSupported ?? null,
+        thinkingSwitchSupported: cfg?.thinkingSwitchSupported ?? null,
         inputCost: cost ? cost.inputCost : null,
         outputCost: cost ? cost.outputCost : null,
         // Resolved, not raw: unset means "the input price", and the reader
