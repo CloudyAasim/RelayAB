@@ -66,6 +66,7 @@ function reasoningText(
   if (shape === "levels") return m.reasoningLevels.join(" / ");
   if (shape === "switchOnly") return t("docs.catalog.reasoningSwitchOnly");
   if (shape === "alwaysOn") return t("docs.catalog.reasoningAlwaysOn");
+  if (shape === "effortOnly") return t("docs.catalog.reasoningEffortOnly");
   return t("docs.catalog.reasoningNone");
 }
 

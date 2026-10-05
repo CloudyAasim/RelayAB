@@ -2012,6 +2012,21 @@ async function auditProviderConfig(
           blocking: false,
         });
       }
+      // Half-declared, and the two halves fail independently. Without this the
+      // gap is invisible until somebody reads the model page, where an
+      // undeclared switch is shown as "always on" — a claim about the vendor
+      // that nobody in this deployment ever made.
+      if (cfg.reasoningEffortSupported === false && cfg.thinkingSwitchSupported == null) {
+        findings.push({
+          code: "unit_mismatch" as const,
+          clientId,
+          message:
+            "已经声明「不支持思考等级」，但 thinkingSwitchSupported 从来没有声明过。" +
+            "这两个是会各自失败的独立字段：只声明一个，模型说明页只能显示「思考开关尚未声明」，" +
+            "不会替你断言这个模型能不能关掉思考。要补的话照厂商文档填 true 或 false。",
+          blocking: false,
+        });
+      }
       if (cfg.contextLength === undefined || cfg.maxOutputTokens === undefined) {
         findings.push({
           code: "cache_write_unset" as const,

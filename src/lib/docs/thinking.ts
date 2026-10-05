@@ -24,6 +24,8 @@ export type ThinkingShape =
   | "switchOnly"
   /** Reasons every time and cannot be told not to. */
   | "alwaysOn"
+  /** Declared to take no levels, with nobody having said anything about the switch. */
+  | "effortOnly"
   /** Nobody has said anything about this model's thinking. */
   | "undeclared";
 
@@ -44,7 +46,15 @@ export function thinkingShape(m: ThinkingFields): ThinkingShape {
   // means nobody has said, and must not be read as "this model cannot think" —
   // that mistake is what greyed out every reasoning control on upgrade day.
   if (m.reasoningEffortSupported === false) {
-    return m.thinkingSwitchSupported === true ? "switchOnly" : "alwaysOn";
+    if (m.thinkingSwitchSupported === true) return "switchOnly";
+    // Declared unswitchable and never declared are not the same answer, and
+    // this is the row that had collapsed them. "Always on" is a claim about
+    // what a vendor will do; reaching it from an absent field asserts it
+    // without anybody having said so. A model whose switch is still undeclared
+    // gets its own line instead, which is also the line that tells the
+    // operator there is one field left to fill in.
+    if (m.thinkingSwitchSupported === false) return "alwaysOn";
+    return "effortOnly";
   }
   return "undeclared";
 }

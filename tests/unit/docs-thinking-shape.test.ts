@@ -71,6 +71,17 @@ describe("a model that thinks but cannot shift", () => {
       thinkingShape(model({ reasoningEffortSupported: false, thinkingSwitchSupported: false })),
     ).toBe("alwaysOn");
   });
+
+  it("and an undeclared switch is not the same as one that cannot close", () => {
+    // This is the shape the row got wrong, and it got it wrong while carrying a
+    // comment saying it must not. `null` means nobody has said; "always on" is a
+    // claim about what a vendor will do. Reaching it from an absent field
+    // asserts it on the vendor's behalf, and it is the shape a model is left in
+    // whenever somebody fills one field and forgets the other.
+    expect(
+      thinkingShape(model({ reasoningEffortSupported: false, thinkingSwitchSupported: null })),
+    ).toBe("effortOnly");
+  });
 });
 
 describe("a model nobody has described", () => {
@@ -81,8 +92,11 @@ describe("a model nobody has described", () => {
   it("stays undeclared when only one of the two was answered", () => {
     // One `false` on its own is not a claim about the other field. Reading the
     // second from the first is what would grey out a switch nobody has ruled on.
-    expect(thinkingShape(model({ reasoningEffortSupported: false }))).toBe("alwaysOn");
+    // And the reverse — a switch declared with no ruling on the levels — is its
+    // own shape, because a switch with no declared levels is a real model.
+    expect(thinkingShape(model({ reasoningEffortSupported: false }))).toBe("effortOnly");
     expect(thinkingShape(model({ thinkingSwitchSupported: false }))).toBe("undeclared");
+    expect(thinkingShape(model({ thinkingSwitchSupported: true }))).toBe("undeclared");
   });
 });
 
@@ -96,9 +110,10 @@ describe("the row itself", () => {
     );
   });
 
-  it("has a word for each of the three empty-list cases, not one", () => {
+  it("has a word for each of the four empty-list cases, not one", () => {
     expect(COMPONENT).toMatch(/t\("docs\.catalog\.reasoningSwitchOnly"\)/);
     expect(COMPONENT).toMatch(/t\("docs\.catalog\.reasoningAlwaysOn"\)/);
+    expect(COMPONENT).toMatch(/t\("docs\.catalog\.reasoningEffortOnly"\)/);
     expect(COMPONENT).toMatch(/t\("docs\.catalog\.reasoningNone"\)/);
   });
 
@@ -117,6 +132,7 @@ describe("the words", () => {
     for (const key of [
       "reasoningSwitchOnly",
       "reasoningAlwaysOn",
+      "reasoningEffortOnly",
       "thinkingSwitch",
       "thinkingSwitchYes",
       "thinkingSwitchNo",
@@ -127,12 +143,15 @@ describe("the words", () => {
   });
 
   it("and say something different from each other", () => {
-    // Three keys that quietly rendered the same string would pass every other
+    // Four keys that quietly rendered the same string would pass every other
     // test here while putting the old lie back on the page.
-    const values = ["reasoningSwitchOnly", "reasoningAlwaysOn", "reasoningNone"].map(
-      (key) => DICT.match(new RegExp(`"docs\\.catalog\\.${key}": "([^"]*)"`))?.[1],
-    );
-    expect(new Set(values).size).toBe(3);
+    const values = [
+      "reasoningSwitchOnly",
+      "reasoningAlwaysOn",
+      "reasoningEffortOnly",
+      "reasoningNone",
+    ].map((key) => DICT.match(new RegExp(`"docs\\.catalog\\.${key}": "([^"]*)"`))?.[1]);
+    expect(new Set(values).size).toBe(4);
     for (const v of values) expect(v).toBeTruthy();
   });
 });
