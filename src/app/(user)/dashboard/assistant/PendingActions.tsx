@@ -16,6 +16,7 @@
  * writing twice, and the UI should not pretend otherwise.
  */
 import { useCallback, useEffect, useState } from "react";
+import { announcePendingChanged, onPendingChanged } from "@/lib/assistant/pending-bus";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { useT } from "@/components/i18n/I18nProvider";
@@ -68,6 +69,16 @@ export function PendingActions({ isAdmin }: { isAdmin: boolean }) {
     void load();
   }, [load]);
 
+  /**
+   * The other half of the page.
+   *
+   * This list used to be read on mount and after this component's own approve
+   * or reject, and at no other time. A turn that created proposals updated the
+   * badge above and left this list showing nothing, and returning to a tab left
+   * both showing whatever was true when it was last looked at.
+   */
+  useEffect(() => onPendingChanged(() => void load()), [load]);
+
   async function decide(id: string, decision: "approve" | "reject") {
     setBusyId(id);
     setError(null);
@@ -100,6 +111,9 @@ export function PendingActions({ isAdmin }: { isAdmin: boolean }) {
         return;
       }
       await load();
+      // The badge over this panel keeps its own copy of the count. Announcing
+      // after the list settles means the two are never briefly disagreeing.
+      announcePendingChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

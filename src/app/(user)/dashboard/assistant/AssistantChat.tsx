@@ -32,6 +32,7 @@ import { useT } from "@/components/i18n/I18nProvider";
 import { readPretty, writePretty } from "@/lib/assistant/pretty";
 import { latestRead } from "@/lib/assistant/latest-read";
 import type { AssistantConfig } from "@/lib/assistant/config";
+import { announcePendingChanged, onPendingChanged } from "@/lib/assistant/pending-bus";
 import { MediaArtifacts, ToolResultCard, AssistantBody } from "./MediaArtifacts";
 import type { ArtifactRef } from "@/lib/db/assistant-artifacts";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";
@@ -315,6 +316,12 @@ export function AssistantChat({
     // and rendering one way then switching would flash the wrong form.
     setPretty(readPretty());
   }, []);
+
+  // The badge and the list each keep a copy of the pending count, and a turn
+  // only ever refreshed the one that happened to be here. The other half of
+  // this page was then showing a number from whenever it was last mounted —
+  // which, on a tab left open beside a long conversation, is a long time ago.
+  useEffect(() => onPendingChanged(() => void loadPendingCount()), [loadPendingCount]);
 
   useEffect(() => {
     void loadThreads();
@@ -686,6 +693,10 @@ export function AssistantChat({
           setLiveArtifacts((prev) => [...prev, ...evt.artifacts!]);
         } else if (evt.type === "done" && evt.data?.pendingActions?.length) {
           void loadPendingCount();
+          // The badge and the list are two components holding two copies of one
+          // number, and this one only ever refreshed its own. Without the second
+          // line the count says 3 while the panel under it says 0.
+          announcePendingChanged();
           router.refresh();
         }
       };
