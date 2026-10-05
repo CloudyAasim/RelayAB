@@ -36,6 +36,7 @@ import {
   listAssistantActions,
   withdrawAssistantAction,
 } from "../db/assistant";
+import { auditModelConfigs, describeFindings } from "../providers/config-audit";
 import { getPublicUrl } from "../config";
 import { knownModelOrDefault } from "../providers/known-models";
 import { decryptSecret } from "../crypto/secrets";
@@ -412,6 +413,25 @@ const USER_TOOLS: AssistantToolDef[] = [
 ];
 
 const ADMIN_TOOLS: AssistantToolDef[] = [
+  {
+    type: "function",
+    function: {
+      name: "audit_provider_config",
+      description:
+        "体检一个聊天服务商的模型配置，找出**具体哪几个模型、哪个字段**有问题。\n" +
+        "用户问「这个服务商的配置有没有问题」「为什么有的模型不收钱」时先调这个，" +
+        "拿到清单再用 propose_model_configs_update 一次改完。\n" +
+        "只读，不改任何东西。检查项：价格全为 0 的模型、积分与元混用、缓存读取有价但写入没填、" +
+        "声明了不支持思考等级却仍然有档位、上下文或输出上限缺失。",
+      parameters: {
+        type: "object",
+        properties: {
+          providerId: { type: "string", description: "要体检的服务商 id；省略则体检全部" },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
   {
     type: "function",
     function: {
@@ -905,6 +925,8 @@ export async function executeTool(
       return mediaGenerate(args, ctx, "video");
 
     // ---- admin only ----------------------------------------------------
+    case "audit_provider_config":
+      return auditProviderConfig(args);
     case "propose_model_configs_update":
       return proposeModelConfigsUpdate(args, ctx);
     case "withdraw_proposal":
@@ -1923,6 +1945,78 @@ export function buildModelConfigPatch(args: Record<string, unknown>):
  * `propose_model_config_update` in between, composes with it instead of
  * reverting it.
  */
+/**
+ * Report what is wrong with a provider's models, by name.
+ *
+ * The question this answers is "is anything wrong with this", and a model
+ * cannot answer it by being asked — it has to be told what to look at. A
+ * configuration with five models billing nothing and one priced a hundredth
+ * of the going rate is not visibly wrong from the outside; the numbers are
+ * plausible, the schema accepts them, and the catalogue prints them. So the
+ * known failure modes are checked and named, and the operator is handed a list
+ * they can act on in one proposal.
+ */
+async function auditProviderConfig(
+  args: Record<string, unknown>,
+): Promise<ToolResult> {
+  const wanted =
+    typeof args.providerId === "string" && args.providerId.trim()
+      ? args.providerId.trim()
+      : null;
+  const providers = await listProviders();
+  const subjects = wanted ? providers.filter((p) => p.id === wanted) : providers;
+  if (subjects.length === 0) {
+    return fail(wanted ? `找不到服务商 ${wanted}。` : "没有任何服务商。");
+  }
+
+  const report = subjects.map((p) => {
+    const configs = (p.modelConfigs ?? {}) as Record<string, Record<string, unknown>>;
+    const findings = auditModelConfigs(configs);
+
+    // Beyond the arithmetic: a model that declares the effort parameter
+    // unsupported while offering a list of levels is offering a choice that does
+    // nothing, and the two fields contradict each other.
+    for (const [clientId, cfg] of Object.entries(configs)) {
+      const levels = Array.isArray(cfg.reasoningLevels) ? cfg.reasoningLevels : [];
+      if (cfg.reasoningEffortSupported === false && levels.length > 0) {
+        findings.push({
+          code: "unit_mismatch" as const,
+          clientId,
+          message:
+            `声明了「不支持思考等级」，但 reasoningLevels 里又有 ${levels.length} 档` +
+            `（${levels.join("/")}）。两个字段互相矛盾：档位下拉会显示一个选了没反应的控件。`,
+          blocking: false,
+        });
+      }
+      if (cfg.contextLength === undefined || cfg.maxOutputTokens === undefined) {
+        findings.push({
+          code: "cache_write_unset" as const,
+          clientId,
+          message: "缺少上下文长度或最大输出，模型目录里会显示为未知。",
+          blocking: false,
+        });
+      }
+    }
+
+    return {
+      provider: p.name,
+      providerId: p.id,
+      models: Object.keys(configs).length,
+      findings: describeFindings(findings),
+      healthy: findings.length === 0,
+    };
+  });
+
+  const total = report.reduce((n, r) => n + r.findings.length, 0);
+  return ok({
+    summary:
+      total === 0
+        ? "没有发现问题。"
+        : `发现 ${total} 个问题，分列在下面。用 propose_model_configs_update 一次改完。`,
+    providers: report,
+  });
+}
+
 async function proposeModelConfigsUpdate(
   args: Record<string, unknown>,
   ctx: ToolContext,
@@ -1967,6 +2061,30 @@ async function proposeModelConfigsUpdate(
       ? args.summary.trim()
       : `配置 ${targets.length} 个模型`;
 
+  /**
+   * Look at the outcome before offering to write it.
+   *
+   * Every one of these passes the schema, stores cleanly and bills — which is
+   * why five models sat at zero for a day and one at a hundredth of the right
+   * rate, with nothing anywhere reporting a problem. The check is deliberately
+   * before the proposal: a question asked now is cheap, and the same question
+   * asked of the administrator after they approve is not.
+   */
+  const findings = auditModelConfigs(
+    preview as Record<string, Record<string, unknown>>,
+  );
+  const blocking = findings.filter((f) => f.blocking);
+  if (blocking.length > 0) {
+    return fail(
+      `这份配置有几个地方看起来是错的，我先没有提交。请先确认或改掉：\n` +
+        describeFindings(blocking).join("\n") +
+        (findings.length > blocking.length
+          ? `\n（另有 ${findings.length - blocking.length} 条提醒，确认后会附在提案里。）`
+          : "") +
+        `\n确认无误就再说一次，我按你说的值提交。`,
+    );
+  }
+
   const action = await createAssistantAction({
     userId: ctx.user.id,
     kind: "provider.update",
@@ -1981,6 +2099,10 @@ async function proposeModelConfigsUpdate(
     summary,
     provider: provider.name,
     models: targets.map((t) => t.clientId),
+    // Not failures, and saying so matters: a price that is merely unusual is
+    // not the same as one that is wrong, and the difference is the operator's
+    // call rather than this system's.
+    warnings: findings.map((f) => `${f.clientId}：${f.message}`),
     note: "一次提案，管理员点一次确认；还没生效。",
   });
 }
