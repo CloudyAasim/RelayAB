@@ -122,6 +122,61 @@ describe("the assistant is told the truth about turning thinking off", () => {
   });
 });
 
+describe("a bulk configuration job is two stores, not one", () => {
+  const PROMPTS = read("src", "lib", "assistant", "prompts.ts");
+
+  it("says the configuration and the document are different places", () => {
+    // The failure this replaces: a handsome parameter table in the docs, and a
+    // provider row whose prices are still empty. Both look finished, the second
+    // one was never written, and the user finds out when a model bills at zero.
+    expect(PROMPTS).toContain("两个地方");
+    expect(PROMPTS).toContain("只写文档等于配置一个字都没改");
+  });
+
+  it("names both stores, so one request is not one call", () => {
+    expect(PROMPTS).toContain("list_providers");
+    expect(PROMPTS).toContain("propose_model_config_update");
+    expect(PROMPTS).toContain("propose_doc_pages");
+  });
+
+  it("says to work from the full model list rather than the models in view", () => {
+    // A job phrased as "fill in what is missing" reads as a one-off, and one-off
+    // work touches the model that was in the conversation. The list is the
+    // work list.
+    expect(PROMPTS).toContain("完整模型清单");
+  });
+
+  it("and to report what was skipped instead of dropping it", () => {
+    // Silence is indistinguishable from done. Nine models and eight proposals
+    // is the shape of the failure.
+    expect(PROMPTS).toContain("回报一张表");
+    expect(PROMPTS).toContain("跳过");
+  });
+
+  it("forbids filling a number in rather than looking it up", () => {
+    // A wrong unit price is silent forever: nothing errors, and nothing reports
+    // that it is wrong. The only defence is refusing to guess.
+    //
+    // Anchored on the words, not the sentence: the prompt is hard-wrapped, so
+    // any phrase long enough to be readable is a phrase that a reflow will
+    // split across a newline, and the assertion would fail on a reformat.
+    expect(PROMPTS).toContain("数字不许编");
+    expect(PROMPTS).toContain("查不到");
+  });
+
+  it("forbids adding models to a job that was about filling in", () => {
+    // The request said "完善配置", not "add models" — and the media endpoints
+    // this deployment does not serve are the ones that would be added.
+    expect(PROMPTS).toContain("补全 ≠ 新增");
+    expect(PROMPTS).toContain("不要加视频和音乐模型");
+  });
+
+  it("points at the tool table for these two jobs", () => {
+    expect(PROMPTS).toContain("改某个模型的上下文");
+    expect(PROMPTS).toContain("改参数指南");
+  });
+});
+
 describe("the settings form does not let 'default' stand for 'off'", () => {
   const DICT = read("src", "lib", "i18n", "dict.ts");
   const PANEL = read("src", "app", "(user)", "dashboard", "assistant", "AssistantSettingsPanel.tsx");
