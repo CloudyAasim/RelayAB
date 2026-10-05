@@ -21,6 +21,13 @@ export interface ProviderModelRow {
   maxOutputTokens: number;
   /** The thinking levels the vendor publishes for this model. Empty = said nothing. */
   reasoningLevels: string[];
+  /**
+   * Whether this model acts on `reasoning_effort`. Distinct from an empty
+   * `reasoningLevels`, which is equally "said nothing" and "has none": one is a
+   * gap in our knowledge and the other is a fact about the model, and the
+   * assistant's settings form has to treat them differently.
+   */
+  reasoningEffortSupported: boolean;
   inputCost: number;
   outputCost: number;
   /**
@@ -51,6 +58,10 @@ export function newModelRow(partial: Partial<Omit<ProviderModelRow, "id">> = {})
     contextLength: DEFAULT_CONTEXT_LENGTH,
     maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS,
     reasoningLevels: [],
+    // A new row assumes it works. An operator has to say otherwise, and a model
+    // added before this field existed keeps a live dropdown rather than one
+    // switched off by an upgrade it never opted into.
+    reasoningEffortSupported: true,
     inputCost: 0,
     outputCost: 0,
     ...partial,
@@ -67,6 +78,8 @@ interface StoredModelConfig {
   cacheWriteCost?: number;
   /** What the vendor published for this model, or absent when it published nothing. */
   reasoningLevels?: string[];
+  /** Absent on rows written before the field existed; false means the vendor ignores it. */
+  reasoningEffortSupported?: boolean;
 }
 
 /**
@@ -91,6 +104,10 @@ export function rowsFromProvider(
       // does not think has no levels, and inventing four is the mistake this
       // whole path exists to avoid.
       reasoningLevels: config.reasoningLevels ?? [],
+      // `!== false`, not a truthiness test: absent means the field was written
+      // before this existed, and a row that predates a flag must not come back
+      // from the database claiming the model does not take an effort.
+      reasoningEffortSupported: config.reasoningEffortSupported !== false,
       inputCost: config.inputCost ?? 0,
       outputCost: config.outputCost ?? 0,
       // Not `?? 0`: a row whose cache was never priced has to read back as
@@ -134,6 +151,10 @@ export function rowsToPayload(rows: ProviderModelRow[]): {
     // Written whenever the probe found something, and an empty list is written
     // too: that is how a model stops offering levels a vendor has withdrawn.
     if (row.reasoningLevels !== undefined) config.reasoningLevels = row.reasoningLevels;
+    // Always written, both ways. Saving the form must not quietly re-enable an
+    // effort dropdown somebody had switched off, and it must not write a
+    // redundant `true` over a row that never had the field either.
+    if (row.reasoningEffortSupported === false) config.reasoningEffortSupported = false;
     modelConfigs[clientId] = config;
   }
 

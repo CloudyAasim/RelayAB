@@ -294,6 +294,35 @@ export function ModelConfigForm({ rows }: { rows: ModelConfigRow[] }) {
                                 })
                               }
                             />
+                            {/*
+                              The declaration, and the reason it is a checkbox
+                              rather than more empty state.
+
+                              Leaving the levels blank is ambiguous: it reads the
+                              same for "nobody has written them down yet" and for
+                              "this model has none, the vendor ignores the
+                              parameter" — which is a fact about a real model
+                              here, and the one that must switch the assistant's
+                              control off. Only somebody who has read the vendor's
+                              documentation can tell the two apart, so the box
+                              asks them to. Left ticked by default, because a model
+                              nobody has checked must keep a working control.
+                            */}
+                            <label className="flex items-start gap-2 text-xs text-muted-foreground">
+                              <input
+                                type="checkbox"
+                                className="mt-0.5"
+                                checked={row.reasoningEffortSupported !== false}
+                                onChange={(e) =>
+                                  update(index, {
+                                    reasoningEffortSupported: e.target.checked,
+                                  })
+                                }
+                              />
+                              <span>
+                                {t("admin.providers.create.reasoningEffortSupported")}
+                              </span>
+                            </label>
                             <Input
                               type="number"
                               label={t("admin.providers.create.inputCost")}

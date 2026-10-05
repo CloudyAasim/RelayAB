@@ -146,6 +146,10 @@ describe("merging what came back into the editor's rows", () => {
     const existing = {
       id: "r", clientId: "mine", upstreamId: "theirs",
       contextLength: 1, maxOutputTokens: 2, inputCost: 0, outputCost: 0, reasoningLevels: [],
+      // Deliberately the pessimistic value: a row that claims the vendor ignores
+      // effort must come back from a merge still claiming it, or a save would
+      // quietly re-enable a dropdown the operator had switched off.
+      reasoningEffortSupported: false,
     };
     const rows = mergeFetchedModels([existing], ["mine", "theirs", "new-one"]);
     // The existing row is returned untouched, and only the genuinely new model

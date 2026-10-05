@@ -201,6 +201,23 @@ export const ModelConfigSchema = z.object({
    * silently, as a value the vendor ignores.
    */
   reasoningLevels: z.array(z.string().min(1).max(64)).max(24).default([]),
+  /**
+   * Whether this model acts on `reasoning_effort` at all.
+   *
+   * **The empty list above cannot answer this question, and the difference
+   * matters.** An empty list means either "nobody has written the levels down
+   * yet" or "this model has no levels, the vendor ignores the parameter" —
+   * MiniMax-M3 is the second, and its documentation says so in as many words.
+   * Offering a dropdown for the second case produces a control that looks right,
+   * accepts a choice, and does nothing, which is the worst of the three
+   * outcomes: worse than a refusal, because nothing reports the failure.
+   *
+   * So it is declared rather than inferred. `true` is the default, deliberately:
+   * a row written before this field existed must keep a working dropdown rather
+   * than have one silently disabled by an upgrade. Turning it off is a claim,
+   * and a claim is somebody's to make.
+   */
+  reasoningEffortSupported: z.boolean().default(true),
   /** Credit cost per 1M input tokens */
   inputCost: z.number().nonnegative().default(0),
   /** Credit cost per 1M output tokens */
@@ -261,6 +278,12 @@ export const ModelConfigPatchSchema = z.object({
     .transform((levels) => sanitizeLevelList(levels))
     .optional(),
   enabled: z.boolean().optional(),
+  /**
+   * Whether this model acts on `reasoning_effort`. Optional, because a patch
+   * that does not mention it must not turn somebody's working dropdown into a
+   * disabled one.
+   */
+  reasoningEffortSupported: z.boolean().optional(),
 });
 export type ModelConfigPatch = z.infer<typeof ModelConfigPatchSchema>;
 export const ProviderSchema = z.object({

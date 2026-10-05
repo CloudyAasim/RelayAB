@@ -54,6 +54,11 @@ const row = (over: Partial<ModelConfigRow> = {}): ModelConfigRow => ({
   maxOutputTokens: 8192,
   // What the vendor published, or what the operator declared beside the window.
   reasoningLevels: ["low", "medium", "high"],
+  // The row below is a model that takes levels, so the default here is the one
+  // that leaves the assistant's control live. A test row that silently carried
+  // `false` would pass a rendering assertion about a disabled control it never
+  // asked for.
+  reasoningEffortSupported: true,
   inputCost: 1,
   outputCost: 2,
   enabled: true,

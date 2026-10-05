@@ -36,6 +36,11 @@ import { parseTextSpec } from "@/lib/protocol/text-spec";
 const ROOT = process.cwd();
 const read = (...p: string[]): string => readFileSync(join(ROOT, ...p), "utf8");
 
+const PANEL_SOURCE = read("src", "app", "(user)", "dashboard", "assistant", "AssistantSettingsPanel.tsx");
+const FORM_SOURCE = read("src", "app", "(admin)", "admin", "model-notes", "ModelConfigForm.tsx");
+const DICT_SOURCE = read("src", "lib", "i18n", "dict.ts");
+const TOOLS_SOURCE = read("src", "lib", "assistant", "tools.ts");
+
 /** The declared parameters of a preset, as the background page would list them. */
 function declared(protocol: keyof typeof TEXT_PROTOCOL_PRESETS): string[] {
   return Object.keys(TEXT_PROTOCOL_PRESETS[protocol].parameters ?? {});
@@ -101,5 +106,37 @@ describe("the settings form does not let 'default' stand for 'off'", () => {
     // about what happens when the user does nothing, so it belongs where the
     // option they are about to pick is.
     expect(PANEL).toContain("reasoningDefaultIsNotOff");
+  });
+});
+
+describe("a model that ignores the effort parameter has its control switched off", () => {
+  it("the panel disables it, and only on an explicit false", () => {
+    // The distinction the whole flag exists for. An empty level list is also
+    // what a model nobody has declared anything about looks like, and that one
+    // must keep a live free-text field — otherwise adding the column would have
+    // switched off a working control for every model on the deployment.
+    expect(PANEL_SOURCE).toContain("facts?.reasoningEffortSupported === false");
+    expect(PANEL_SOURCE).toMatch(/disabled=\{effortUnsupported\}/);
+  });
+
+  it("and tells the user why, instead of only greying it out", () => {
+    // A disabled control with no explanation reads as a bug, and the user has no
+    // way to tell which of "broken" and "this model has no levels" it is. The
+    // second half of the sentence — use the switch beside it — is what makes it
+    // an answer rather than a dead end.
+    expect(PANEL_SOURCE).toContain("reasoningNotSupported");
+    expect(DICT_SOURCE).toContain("assistant.settings.reasoningNotSupported");
+    expect(DICT_SOURCE).toContain("思考开关");
+  });
+
+  it("the operator can declare it, and the default leaves controls alone", () => {
+    // Declared, not inferred. Someone has to have read the vendor's
+    // documentation to know this, and the checkbox is how that reaches us.
+    expect(FORM_SOURCE).toMatch(/type="checkbox"/);
+    expect(FORM_SOURCE).toContain("row.reasoningEffortSupported !== false");
+  });
+
+  it("the assistant can set the same declaration", () => {
+    expect(TOOLS_SOURCE).toContain("reasoningEffortSupported");
   });
 });

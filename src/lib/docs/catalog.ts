@@ -54,6 +54,16 @@ export interface CatalogModel {
    */
   reasoningLevels: string[];
   /**
+   * Whether the model acts on `reasoning_effort`, or null when nobody has said.
+   *
+   * Three states on purpose, because the empty `reasoningLevels` above collapses
+   * two of them: "we have not written the levels down yet" and "this model has
+   * none, the vendor ignores the parameter" both read as an empty list, and only
+   * the second deserves a control that is switched off. `null` keeps the unknown
+   * case open; `false` is a claim somebody made about the vendor.
+   */
+  reasoningEffortSupported: boolean | null;
+  /**
    * Credits per 1M tokens charged for writing a prompt into the upstream cache,
    * under the same rule as `cachedInputCost`: null means the write is charged the
    * input price and there is no separate number worth showing.
@@ -172,6 +182,10 @@ export async function buildModelCatalog(): Promise<ModelCatalog> {
         contextLength: cfg?.contextLength ?? null,
         maxOutputTokens: cfg?.maxOutputTokens ?? null,
         reasoningLevels: cfg?.reasoningLevels ?? [],
+        // Only an explicit false is a fact about the vendor. A row written
+        // before the field existed reads as "not stated", which is what it is.
+        reasoningEffortSupported:
+          cfg?.reasoningEffortSupported === false ? false : null,
         inputCost: cost ? cost.inputCost : null,
         outputCost: cost ? cost.outputCost : null,
         // Resolved, not raw: unset means "the input price", and the reader
@@ -228,6 +242,11 @@ export async function buildModelCatalog(): Promise<ModelCatalog> {
         cachedInputCost: null,
         cacheWriteCost: null,
         reasoningLevels: [],
+        // Not "unknown" here: a media endpoint does not take a token parameter at
+        // all, so nothing would work whatever were typed. Declared rather than
+        // left open, because the alternative is a free-text field for a
+        // parameter this surface has never had.
+        reasoningEffortSupported: false,
         inputCost:
           typeof (model as { pricePerItem?: unknown }).pricePerItem === "number"
             ? (model as { pricePerItem: number }).pricePerItem

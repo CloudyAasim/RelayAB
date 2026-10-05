@@ -62,6 +62,16 @@ export interface ModelConfigRow {
    * where somebody needs it.
    */
   reasoningLevels: string[];
+  /**
+   * Whether the model acts on `reasoning_effort`, as a fact about the vendor.
+   *
+   * Its own field because the empty `reasoningLevels` above cannot carry it: an
+   * empty list is equally "nobody has written the levels down" and "this model
+   * has none, the vendor ignores the parameter". Only the second should grey the
+   * assistant's control out, and only somebody who has read the documentation
+   * can tell them apart — so it is stored, not guessed.
+   */
+  reasoningEffortSupported: boolean;
   inputCost: number;
   outputCost: number;
   /**
@@ -132,6 +142,9 @@ export function buildModelRows(
         contextLength: DEFAULTS.contextLength,
         maxOutputTokens: DEFAULTS.maxOutputTokens,
         reasoningLevels: [],
+        // A media endpoint has no token parameters at all, so nothing typed here
+        // would ever reach one. Declared rather than left open.
+        reasoningEffortSupported: false,
         inputCost: 0,
         outputCost: 0,
         enabled: cfg.enabled,
@@ -156,6 +169,14 @@ function chatRow(
     maxOutputTokens?: number;
     /** What the vendor published, or what the operator declared. Absent on older rows. */
     reasoningLevels?: string[];
+    /**
+     * `false` when the vendor documents that it ignores `reasoning_effort`.
+     *
+     * Absent is a third answer, not the same one: nobody has declared anything.
+     * Collapsing it into false would switch off the assistant's control for every
+     * model written before this field existed, so only an explicit false does it.
+     */
+    reasoningEffortSupported?: boolean;
     inputCost?: number;
     outputCost?: number;
     cachedInputCost?: number;
@@ -180,6 +201,10 @@ function chatRow(
     // Empty rather than the common spellings: this is what the vendor's
     // model list said, and for most of them it said nothing.
     reasoningLevels: cfg?.reasoningLevels ?? [],
+    // `!== false`, not a truthiness test: a row written before the field existed
+    // has not declared anything, which is not the same as having declared that
+    // the model takes no effort. Only the second switches a control off.
+    reasoningEffortSupported: cfg?.reasoningEffortSupported !== false,
     inputCost: cfg?.inputCost ?? DEFAULTS.inputCost,
     outputCost: cfg?.outputCost ?? DEFAULTS.outputCost,
     // Spread, not `?? 0`: a cache nobody priced must read back as blank,
@@ -236,6 +261,8 @@ export interface ModelConfigPayload {
     maxOutputTokens?: number;
     /** What the vendor published, or what the operator declared. Absent on older rows. */
     reasoningLevels?: string[];
+    /** `false` clears the declaration; absent on the form means "leave it as it is". */
+    reasoningEffortSupported?: boolean;
     inputCost?: number;
     outputCost?: number;
     /** `null` = clear the price, because this route merges and absent means keep. */

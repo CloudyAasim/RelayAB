@@ -551,6 +551,15 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
               "这个模型接受的思考等级，照厂商文档的原样写，不要翻译也不要归一化。例：MiniMax-M3.1-Flash-Preview 接受 low, medium, high, xhigh, max。空数组 = 这个模型不支持思考等级。先查官方文档确认再写，不确定就别写。\n" +
               "注意：这个字段是**界面上给用户选的档位**，不是「能不能关思考」。同一个模型可能档位写了五档、却一个都关不掉（发 disabled 直接 400），也可能档位根本不调深度、真正的开关在另一个字段上。分不清就照文档写档位，别把开关混进来。",
           },
+          reasoningEffortSupported: {
+            type: "boolean",
+            description:
+              "这个模型是否支持 reasoning_effort 思考等级。\n" +
+              "**厂商文档明确写了它不读这个参数，就填 false**（例：MiniMax-M3 只有 thinking 开关，" +
+              "reasoning_effort 会被直接忽略）。填 false 之后，助手设置里对应的下拉会置灰——" +
+              "因为那是一个选了、存了、发出去了、但完全不生效的控件。\n" +
+              "不确定就**不要传**：没声明过和声明过「不支持」是两回事，只有传了才会置灰。",
+          },
           inputCost: { type: "number", description: "每 100 万输入 token 的积分" },
           outputCost: { type: "number", description: "每 100 万输出 token 的积分" },
           cachedInputCost: {
@@ -1627,6 +1636,15 @@ export function buildModelConfigPatch(args: Record<string, unknown>):
     patch[key] = n;
   }
   if (typeof args.enabled === "boolean") patch.enabled = args.enabled;
+  // Out of the loop above and read as itself. A boolean pushed through
+  // `Number(false)` is 0 — a price of nothing rather than a statement about
+  // whether a parameter exists — and the difference between a working
+  // dropdown and a disabled one in the assistant's settings is exactly this
+  // field. Left out entirely when absent, so "not declared" stays distinct from
+  // "declared unsupported".
+  if (typeof args.reasoningEffortSupported === "boolean") {
+    patch.reasoningEffortSupported = args.reasoningEffortSupported;
+  }
 
   if (Object.keys(patch).length === 0) return { error: "没有提供任何要修改的字段。" };
   return { patch };

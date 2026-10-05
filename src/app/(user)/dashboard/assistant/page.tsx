@@ -70,7 +70,19 @@ export default async function AssistantPage() {
    */
   const accountFacts: Record<
     string,
-    { contextLength: number | null; maxOutputTokens: number | null; reasoningLevels: string[] }
+    {
+      contextLength: number | null;
+      maxOutputTokens: number | null;
+      reasoningLevels: string[];
+      /**
+       * Whether the model acts on `reasoning_effort`. Carried separately from
+       * the levels because an empty list is ambiguous on its own — it is also
+       * the answer for a model that has no levels *because the vendor ignores
+       * the parameter*, and the form has to grey that out rather than offer a
+       * free-text field for it.
+       */
+      reasoningEffortSupported: boolean;
+    }
   > = {};
   for (const m of catalog.models) {
     if (m.kind !== "chat") continue;
@@ -81,6 +93,10 @@ export default async function AssistantPage() {
       // for a model that does not think, and the picker falls back to a field
       // the operator fills rather than to four names that would be wrong.
       reasoningLevels: m.reasoningLevels ?? [],
+      // Absent from the catalogue means the row predates the flag, which is not
+      // the same as the vendor refusing it. Only an explicit false greys the
+      // control out.
+      reasoningEffortSupported: m.reasoningEffortSupported !== false,
     };
   }
 

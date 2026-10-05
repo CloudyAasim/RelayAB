@@ -122,6 +122,11 @@ export async function POST(req: Request): Promise<Response> {
         // not mention it. Dropping it here would make every save of an unrelated
         // field quietly un-teach the assistant this model's thinking levels.
         reasoningLevels: entry.reasoningLevels ?? existing?.reasoningLevels ?? [],
+        // Same reasoning one line up, for a different reason. This one decides
+        // whether the assistant shows a working dropdown or a disabled one, so
+        // an edit that does not mention it must not quietly re-enable a model
+        // whose vendor ignores the parameter.
+        reasoningEffortSupported: entry.reasoningEffortSupported ?? existing?.reasoningEffortSupported ?? true,
         inputCost: entry.inputCost ?? existing?.inputCost ?? 0,
         outputCost: entry.outputCost ?? existing?.outputCost ?? 0,
         enabled: entry.enabled ?? existing?.enabled ?? true,

@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useT } from "@/components/i18n/I18nProvider";
 import { ModelCombobox } from "./ModelCombobox";
+import { cn } from "@/lib/utils";
 import {
   ASSISTANT_REASONING_SUGGESTIONS,
   resolveMode,
@@ -75,6 +76,15 @@ export interface AssistantModelFacts {
   maxOutputTokens: number | null;
   /** The thinking levels this model's vendor publishes. Empty = said nothing. */
   reasoningLevels: string[];
+  /**
+   * Whether this model acts on `reasoning_effort`, or null when nobody has said.
+   *
+   * Null leaves the control live with a free-text field, because an empty
+   * `reasoningLevels` is genuinely ambiguous. `false` is a declaration that the
+   * vendor ignores the parameter, and a live picker in that case is a control
+   * that takes a value, stores it, and does nothing.
+   */
+  reasoningEffortSupported?: boolean | null;
 }
 
 export interface AssistantSettingsView {
@@ -349,6 +359,15 @@ export function AssistantSettingsPanel({
    * and no deployment has an opinion about them.
    */
   const facts = accountFacts[accountModel.trim()];
+  /**
+   * Whether the effort control is switched off for the selected model.
+   *
+   * Only an explicit `false`. `null` — nobody has declared anything, which is
+   * every row written before the flag existed and every model the vendor has not
+   * been asked about — leaves the control alone, because an open question and a
+   * closed one must not look the same on screen.
+   */
+  const effortUnsupported = facts?.reasoningEffortSupported === false;
   function chooseAccountModel(next: string) {
     setAccountModel(next);
     const known = accountFacts[next.trim()];
@@ -524,15 +543,30 @@ export function AssistantSettingsPanel({
         </legend>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
+            {/*
+              Greyed when the operator has declared that this model's vendor
+              ignores the parameter.
+
+              The two cases look identical from the levels alone — both are an
+              empty list — and they need opposite answers. Unknown means leave a
+              way to type the value in. Declared-ignored means there is no value
+              worth typing: a live control here would take a selection, store it,
+              send it on every request and produce no difference at all, and
+              nothing anywhere would report that it did nothing. That is worse
+              than a refusal, so the control is switched off and says why.
+            */}
             <label
               htmlFor="assistant-reasoning"
-              className="block text-xs font-medium text-foreground"
+              className={cn(
+                "block text-xs font-medium",
+                effortUnsupported ? "text-muted-foreground" : "text-foreground",
+              )}
             >
               {t("assistant.settings.reasoning")}
             </label>
             {/*
               A picker with a way out, and the way out is the point.
-              
+
               The levels are published per model: some offer four, some three,
               some can be switched off entirely, and a model that does not think
               has none to publish. A closed list is therefore wrong for most of
@@ -544,21 +578,34 @@ export function AssistantSettingsPanel({
               id="assistant-reasoning"
               value={reasoningEffort}
               onChange={setReasoningEffort}
+              disabled={effortUnsupported}
               levels={mode === "account" ? (facts?.reasoningLevels ?? []) : []}
             />
             <p className="font-mono text-[10px] text-muted-foreground">reasoning_effort</p>
-            {/*
-              Next to the field, because the option list cannot say it. The empty
-              option is labelled "default" and is honest, but "default" is a
-              different claim in each direction: for a model whose default is its
-              deepest level it is the most expensive choice on this list, and for
-              a model that thinks unless told otherwise it means thinking stays
-              on. A user who wants to spend less and picks the default gets the
-              opposite, and nothing on screen says so.
-            */}
-            <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-              {t("assistant.settings.reasoningDefaultIsNotOff")}
-            </p>
+            {effortUnsupported ? (
+              // The one explanation that fits: not "there are no levels known"
+              // but "this model does not read this parameter at all", and where
+              // to go instead. Without the second half the user is left looking
+              // for the setting that does it.
+              <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                {t("assistant.settings.reasoningNotSupported")}
+              </p>
+            ) : (
+              <>
+                {/*
+                  Next to the field, because the option list cannot say it. The
+                  empty option is labelled "default" and is honest, but "default"
+                  is a different claim in each direction: for a model whose default
+                  is its deepest level it is the most expensive choice on this
+                  list, and for a model that thinks unless told otherwise it means
+                  thinking stays on. A user who wants to spend less and picks the
+                  default gets the opposite, and nothing on screen says so.
+                */}
+                <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                  {t("assistant.settings.reasoningDefaultIsNotOff")}
+                </p>
+              </>
+            )}
           </div>
           <div className="space-y-1">
             {/*
@@ -739,10 +786,24 @@ function ReasoningCombobox({
   value,
   onChange,
   levels,
+  disabled = false,
 }: {
   id: string;
   value: string | null;
   onChange: (value: string | null) => void;
+  /**
+   * Set when the operator has declared that this model's vendor ignores
+   * `reasoning_effort`.
+   *
+   * The distinction from an empty `levels` is the whole point of the flag: an
+   * empty list says the deployment has not written the levels down, and a field
+   * that takes anything is the right answer for that. This says the parameter
+   * is not read — so every value on offer is equally inert, and the honest thing
+   * is to stop offering any. A live control here would accept a selection, store
+   * it, send it on every request and change nothing, with no signal anywhere
+   * that it had done nothing.
+   */
+  disabled?: boolean;
   /**
    * The levels this model's own vendor publishes, when the deployment knows.
    *
@@ -786,6 +847,7 @@ function ReasoningCombobox({
         id={id}
         name="reasoningEffort"
         value={custom ? CUSTOM_EFFORT : typed}
+        disabled={disabled}
         onChange={(e) => {
           if (e.target.value === CUSTOM_EFFORT) {
             setCustom(true);
@@ -794,7 +856,12 @@ function ReasoningCombobox({
           setCustom(false);
           onChange(e.target.value === "" ? null : e.target.value);
         }}
-        className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground"
+        className={cn(
+          "h-9 w-full rounded-md border border-input bg-background px-2 text-sm",
+          // Muted rather than a browser default, so a disabled control here looks
+          // like the rest of this form switched off rather than broken.
+          disabled ? "cursor-not-allowed text-muted-foreground opacity-60" : "text-foreground",
+        )}
       >
         <option value="">{t("assistant.settings.reasoningOff")}</option>
         {options.map((level) => (
@@ -811,8 +878,11 @@ function ReasoningCombobox({
         only "not sent" and "custom" reads as a failed load; the difference
         between "this model has two levels" and "nobody has told us what this
         model has" is exactly the thing that has to be on screen.
+
+        Suppressed when the control is off: a note explaining a list you cannot
+        use is noise, and the field's own explanation is the relevant one.
       */}
-      {!fromVendor && (
+      {!fromVendor && !disabled && (
         <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
           {t("assistant.settings.reasoningUnknown")}
         </p>
@@ -823,10 +893,14 @@ function ReasoningCombobox({
           id={`${id}-text`}
           type="text"
           autoComplete="off"
+          disabled={disabled}
           placeholder={t("assistant.settings.reasoningCustomPlaceholder")}
           value={typed}
           onChange={(e) => onChange(e.target.value.trim() || null)}
-          className="mt-1.5 h-9 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground"
+          className={cn(
+            "mt-1.5 h-9 w-full rounded-md border border-input bg-background px-2 text-sm",
+            disabled ? "cursor-not-allowed text-muted-foreground opacity-60" : "text-foreground",
+          )}
         />
         </>
       )}

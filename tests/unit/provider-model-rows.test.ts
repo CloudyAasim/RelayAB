@@ -27,8 +27,7 @@ const SRC = join(__dirname, "..", "..", "src");
 const read = (relative: string): string => readFileSync(join(SRC, relative), "utf-8");
 
 describe("rowsFromProvider", () => {
-  it("loads the mapping together with its per-model config", () => {
-    const rows = rowsFromProvider(
+  it("loads the mapping together with its per-model config", () => {    const rows = rowsFromProvider(
       { "gpt-4o": "gpt-4o-2024-08-06" },
       {
         "gpt-4o": {
@@ -49,6 +48,10 @@ describe("rowsFromProvider", () => {
         maxOutputTokens: 16384,
         // What the vendor published; empty is a real answer, not a missing one.
         reasoningLevels: [],
+        // Absent from the stored config above, so the row claims the model does
+        // take an effort. A row predating the flag must not come back declaring
+        // the opposite, which would grey a working control out on upgrade.
+        reasoningEffortSupported: true,
         inputCost: 12,
         outputCost: 34,
       },
@@ -60,6 +63,49 @@ describe("rowsFromProvider", () => {
     expect(row.contextLength).toBe(DEFAULT_CONTEXT_LENGTH);
     expect(row.maxOutputTokens).toBe(DEFAULT_MAX_OUTPUT_TOKENS);
     expect(row.inputCost).toBe(0);
+  });
+
+  describe("the declared effort support", () => {
+    it("reads a row that predates the flag as undeclared, not unsupported", () => {
+      // The upgrade case. A model whose vendor documents that it ignores
+      // `reasoning_effort` is a claim somebody made; a model whose row simply has
+      // no such field is a gap in our knowledge. Reading the second as the first
+      // would grey out a working control on every model at once, the day the
+      // column appeared.
+      const [row] = rowsFromProvider({ m: "m" }, { m: { upstreamId: "m" } });
+      expect(row.reasoningEffortSupported).toBe(true);
+    });
+
+    it("reads an explicit false as a fact about the vendor", () => {
+      const [row] = rowsFromProvider(
+        { m: "m" },
+        { m: { upstreamId: "m", reasoningEffortSupported: false } },
+      );
+      expect(row.reasoningEffortSupported).toBe(false);
+    });
+
+    it("survives a save of an unrelated field", () => {
+      // Saving the form rewrites the whole config. If the declaration were not
+      // written back, editing a price would silently hand the operator a working
+      // dropdown again for a model that does not have one.
+      const [row] = rowsFromProvider(
+        { m: "m" },
+        { m: { upstreamId: "m", reasoningEffortSupported: false } },
+      );
+      const { modelConfigs } = rowsToPayload([{ ...row, inputCost: 5 }]);
+      const saved = modelConfigs.m as Record<string, unknown>;
+      expect(saved.reasoningEffortSupported).toBe(false);
+      expect(saved.inputCost).toBe(5);
+    });
+
+    it("writes no flag at all for a model that takes an effort", () => {
+      // Redundant `true` on every row of every deployment, for a field the read
+      // schema already defaults. Absent is the same answer for a third of the
+      // bytes.
+      const [row] = rowsFromProvider({ m: "m" }, { m: { upstreamId: "m" } });
+      const { modelConfigs } = rowsToPayload([row]);
+      expect(modelConfigs.m).not.toHaveProperty("reasoningEffortSupported");
+    });
   });
 
   it("gives rows ids that do not depend on the client model id", () => {
