@@ -206,11 +206,24 @@ const MODEL_DIFF_FIELDS: ReadonlyArray<{ key: string; label: string }> = [
   { key: "maxOutputTokens", label: "最大输出" },
   { key: "reasoningLevels", label: "思考等级" },
   { key: "reasoningEffortSupported", label: "支持思考等级" },
+  { key: "thinkingSwitchSupported", label: "支持思考开关" },
   { key: "inputCost", label: "输入积分/百万 token" },
   { key: "outputCost", label: "输出积分/百万 token" },
   { key: "cachedInputCost", label: "缓存读积分/百万 token" },
   { key: "cacheWriteCost", label: "缓存写积分/百万 token" },
 ];
+
+/**
+ * Exported so a guard can hold this list to the write schema.
+ *
+ * The invariant above — every field a write path accepts is named here — is the
+ * kind that decays silently. Nothing at runtime complained: a proposal that set
+ * only the thinking switch rendered no diff, no error, and an approval screen
+ * that looked identical to an empty one. A field added to the schema and
+ * forgotten here is accepted, stored, and never shown to the person asked to
+ * approve it.
+ */
+export const MODEL_DIFF_KEYS: readonly string[] = MODEL_DIFF_FIELDS.map((f) => f.key);
 
 /** Deep-enough equality for the values these fields hold. */
 function sameValue(a: unknown, b: unknown): boolean {
