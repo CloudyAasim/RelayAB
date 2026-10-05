@@ -30,7 +30,7 @@ import { getProviderById, listProviders } from "../db/providers";
 import { listUsers, getUserById } from "../db/users";
 import { listApiKeysByUser } from "../db/keys";
 import { aggregateByKeyMany, listRecentUsage } from "../db/usage";
-import { createAssistantAction } from "../db/assistant";
+import { createAssistantAction, listAssistantActions } from "../db/assistant";
 import { getPublicUrl } from "../config";
 import { knownModelOrDefault } from "../providers/known-models";
 import { decryptSecret } from "../crypto/secrets";
@@ -407,6 +407,29 @@ const USER_TOOLS: AssistantToolDef[] = [
 ];
 
 const ADMIN_TOOLS: AssistantToolDef[] = [
+  {
+    type: "function",
+    function: {
+      name: "list_my_proposals",
+      description:
+        "列出你（当前用户）提交过的配置变更提案，以及每一条现在是待确认、已生效还是被拒绝。\n" +
+        "**你在界面上点过确认之后，用这个来核实**，不要靠猜：propose_* 只是把变更放进待确认队列，" +
+        "你自己看不到队列状态，所以之前几次只能说「不知道有没有生效」。\n" +
+        "确认后再用 list_providers 读回配置，两个一对比就知道改动到底落下没有。",
+      parameters: {
+        type: "object",
+        properties: {
+          status: {
+            type: "string",
+            description:
+              "只看某一种状态：pending（待确认）/ applied（已生效）/ rejected（被拒绝）/ failed（应用失败）。省略则全部返回。",
+            enum: ["pending", "applied", "rejected", "failed"],
+          },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
   {
     type: "function",
     function: {
@@ -792,6 +815,8 @@ export async function executeTool(
       return mediaGenerate(args, ctx, "video");
 
     // ---- admin only ----------------------------------------------------
+    case "list_my_proposals":
+      return listMyProposals(args, ctx);
     case "list_providers":
       if (!isAdmin) return fail("这是管理员功能。");
       return listProvidersTool();
@@ -1476,6 +1501,56 @@ async function getMyUsage(ctx: ToolContext): Promise<ToolResult> {
   });
 }
 
+/**
+ * The proposals this user has submitted and where each of them stands.
+ *
+ * Added because the model could propose a change and then had no way to find out
+ * whether it had happened. It answered "still pending" on the strength of a
+ * config read that simply did not include the changed fields — a guess, dressed
+ * as a finding, and wrong in the direction that matters. A tool that reports the
+ * queue is the difference between "I don't know" and "not yet".
+ */
+async function listMyProposals(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
+  const status = args.status;
+  if (status !== undefined && typeof status !== "string") {
+    return fail("status 只能是字符串。");
+  }
+  const parsed = status as
+    | "pending"
+    | "applied"
+    | "rejected"
+    | "failed"
+    | undefined;
+  if (parsed !== undefined && !["pending", "applied", "rejected", "failed"].includes(parsed)) {
+    return fail("status 只能是 pending / applied / rejected / failed 之一。");
+  }
+
+  const actions = await listAssistantActions(ctx.user.id, parsed, 50);
+  const pending = actions.filter((a) => a.status === "pending").length;
+  return ok({
+    // Stated in the same shape every time, because the question being answered is
+    // "is it done yet" and that is a count before it is a list.
+    statusSummary: {
+      pending,
+      applied: actions.filter((a) => a.status === "applied").length,
+      rejected: actions.filter((a) => a.status === "rejected").length,
+      failed: actions.filter((a) => a.status === "failed").length,
+    },
+    proposals: actions.map((a) => ({
+      id: a.id,
+      kind: a.kind,
+      targetId: a.targetId,
+      summary: a.summary,
+      status: a.status,
+      createdAt: a.createdAt,
+      // Named `resolvedAt` on the row because it covers rejection as well as
+      // application. Reported as itself rather than renamed to `appliedAt`,
+      // which would claim a rejected proposal was applied.
+      resolvedAt: a.resolvedAt ?? null,
+    })),
+  });
+}
+
 async function listProvidersTool(): Promise<ToolResult> {
   const providers = await listProviders();
   return ok(
@@ -1501,6 +1576,36 @@ async function listProvidersTool(): Promise<ToolResult> {
           // has not been told what the model takes — a fact about the
           // configuration, not about the vendor.
           reasoningLevels: c.reasoningLevels ?? [],
+          /**
+           * The prices and the effort declaration, because a tool that cannot
+           * read them cannot be used to check a change made with the tools next
+           * door to it.
+           *
+           * This list used to stop at the fields above, and the cost was a
+           * specific wrong conclusion twice in one session: the assistant saw
+           * no prices in the output, said the prices had never been configured,
+           * and the proposal's own before-snapshot went on to show four models
+           * priced at zero and two priced in yuan rather than credits. A missing
+           * key in a read is not a missing value in the row, and the two are
+           * indistinguishable from here unless the key is returned.
+           *
+           * `null` rather than a zero default, for the same reason the
+           * declaration is not a boolean: unset is a real answer and so is
+           * zero, and the difference between "free" and "never priced" is the
+           * difference between a bill and a leak.
+           */
+          inputCost: c.inputCost ?? null,
+          outputCost: c.outputCost ?? null,
+          cachedInputCost: c.cachedInputCost ?? null,
+          cacheWriteCost: c.cacheWriteCost ?? null,
+          /**
+           * `null` = never declared, `false` = the vendor ignores the parameter.
+           * The two are reported separately rather than as one boolean because
+           * collapsing them would either grey out every model on the deployment
+           * or none of them.
+           */
+          reasoningEffortSupported:
+            c.reasoningEffortSupported === false ? false : null,
           enabled: c.enabled,
         })),
         // Never the key itself: the model has no need for it and the transcript
