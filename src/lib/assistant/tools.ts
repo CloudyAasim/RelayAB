@@ -473,6 +473,13 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
                     "厂商是否支持 reasoning_effort。填 false 会让助手设置里的档位下拉置灰。" +
                     "不确定就别传——没声明过和声明过「不支持」是两回事，只有传了才会置灰。",
                 },
+                thinkingSwitchSupported: {
+                  type: "boolean",
+                  description:
+                    "厂商是否接受 thinking 开关（关掉思考）。填 false 会让助手设置里的「思考开关」置灰。\n" +
+                    "**厂商会拒绝关闭请求时填 false**：M2.x 系列收下 disabled 却照样思考；" +
+                    "M3.1-Flash-Preview 直接返回 400。只有 MiniMax-M3 认这个开关。",
+                },
                 inputCost: { type: "number", description: "每 100 万输入 token 的积分" },
                 outputCost: { type: "number", description: "每 100 万输出 token 的积分" },
                 cachedInputCost: {
@@ -692,6 +699,14 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
               "reasoning_effort 会被直接忽略）。填 false 之后，助手设置里对应的下拉会置灰——" +
               "因为那是一个选了、存了、发出去了、但完全不生效的控件。\n" +
               "不确定就**不要传**：没声明过和声明过「不支持」是两回事，只有传了才会置灰。",
+          },
+          thinkingSwitchSupported: {
+            type: "boolean",
+            description:
+              "这个模型是否接受 thinking 开关（关掉思考）。\n" +
+              "**厂商会拒绝关闭请求时填 false**：M2.x 系列收下 disabled 却照样思考，" +
+              "M3.1-Flash-Preview 直接返回 400。只有 MiniMax-M3 认这个开关。\n" +
+              "填 false 之后助手设置里的「思考开关」会置灰。不确定就不要传。",
           },
           inputCost: { type: "number", description: "每 100 万输入 token 的积分" },
           outputCost: { type: "number", description: "每 100 万输出 token 的积分" },
@@ -1771,6 +1786,11 @@ async function listProvidersTool(): Promise<ToolResult> {
            */
           reasoningEffortSupported:
             c.reasoningEffortSupported === false ? false : null,
+          // The same three states for the thinking switch, and reported for the
+          // same reason: a stored `true` and an absent field mean the same thing
+          // to every reader, and the question worth answering is whether anyone
+          // has declared the opposite.
+          thinkingSwitchSupported: c.thinkingSwitchSupported === false ? false : null,
           enabled: c.enabled,
         })),
         // Never the key itself: the model has no need for it and the transcript
@@ -1914,6 +1934,12 @@ export function buildModelConfigPatch(args: Record<string, unknown>):
   // "declared unsupported".
   if (typeof args.reasoningEffortSupported === "boolean") {
     patch.reasoningEffortSupported = args.reasoningEffortSupported;
+  }
+  // The thinking switch, which fails differently from the levels: a model can
+  // take no levels and still obey a disable, or take both and refuse either.
+  // Left out entirely when absent, same as above.
+  if (typeof args.thinkingSwitchSupported === "boolean") {
+    patch.thinkingSwitchSupported = args.thinkingSwitchSupported;
   }
 
   if (Object.keys(patch).length === 0) return { error: "没有提供任何要修改的字段。" };

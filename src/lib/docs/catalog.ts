@@ -63,6 +63,8 @@ export interface CatalogModel {
    * case open; `false` is a claim somebody made about the vendor.
    */
   reasoningEffortSupported: boolean | null;
+  /** Whether the model acts on the thinking switch. Null = never declared. */
+  thinkingSwitchSupported: boolean | null;
   /**
    * Credits per 1M tokens charged for writing a prompt into the upstream cache,
    * under the same rule as `cachedInputCost`: null means the write is charged the
@@ -186,6 +188,8 @@ export async function buildModelCatalog(): Promise<ModelCatalog> {
         // before the field existed reads as "not stated", which is what it is.
         reasoningEffortSupported:
           cfg?.reasoningEffortSupported === false ? false : null,
+        thinkingSwitchSupported:
+          cfg?.thinkingSwitchSupported === false ? false : null,
         inputCost: cost ? cost.inputCost : null,
         outputCost: cost ? cost.outputCost : null,
         // Resolved, not raw: unset means "the input price", and the reader
@@ -247,6 +251,9 @@ export async function buildModelCatalog(): Promise<ModelCatalog> {
         // left open, because the alternative is a free-text field for a
         // parameter this surface has never had.
         reasoningEffortSupported: false,
+        // A media endpoint has no token parameters at all, so nothing typed into
+        // either of these would ever reach one. Declared rather than left open.
+        thinkingSwitchSupported: false,
         inputCost:
           typeof (model as { pricePerItem?: unknown }).pricePerItem === "number"
             ? (model as { pricePerItem: number }).pricePerItem

@@ -76,10 +76,17 @@ describe("assistant: what a stuck model looks like", () => {
     expect(callSignature("t", "{oops")).not.toBe(callSignature("t", "{fine"));
   });
 
-  it("stops on three of the same, and not on two", () => {
-    // Two in a row is normal: read a provider, then act on what you read.
-    expect(repeatedCall(["a(1)", "a(1)"])).toBeNull();
-    expect(repeatedCall(["a(1)", "a(1)", "a(1)"])).toBe("a(1)");
+  it("stops on four of the same, and not on three", () => {
+    // Two or three in a row is normal: read a provider, act on what you read,
+    // check the result. Four is a model that is not learning anything.
+    expect(repeatedCall(["a(1)", "a(1)", "a(1)"])).toBeNull();
+    expect(repeatedCall(["a(1)", "a(1)", "a(1)", "a(1)"])).toBe("a(1)");
+  });
+
+  it("the threshold is the one the guard exports", () => {
+    // So a change to the loop guard cannot leave the test asserting a number the
+    // code no longer uses.
+    expect(MAX_IDENTICAL_CALLS).toBe(4);
   });
 
   it("needs the whole tail to match, not just part of it", () => {
@@ -93,9 +100,11 @@ describe("assistant: what a stuck model looks like", () => {
     expect(repeatedCall(sigs)).toBeNull();
   });
 
-  it("uses three as the threshold and will take another", () => {
-    expect(MAX_IDENTICAL_CALLS).toBe(3);
+  it("honours an explicit threshold, and will take another below it", () => {
+    // The exported constant is the one callers use; this checks the parameter
+    // still works, which is what the ceiling above is actually for.
     expect(repeatedCall(["x()", "x()"], 2)).toBe("x()");
+    expect(repeatedCall(["x()", "x()"], 3)).toBeNull();
   });
 
   it("says which tool was stuck, so the reader can act on it", () => {

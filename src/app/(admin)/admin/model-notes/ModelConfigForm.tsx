@@ -323,6 +323,29 @@ export function ModelConfigForm({ rows }: { rows: ModelConfigRow[] }) {
                                 {t("admin.providers.create.reasoningEffortSupported")}
                               </span>
                             </label>
+                            {/*
+                              The switch, and it is a separate box because the two
+                              fail differently. A model that cannot take an effort
+                              may still obey a disable, and one that obeys a
+                              disable may have no levels at all. Ticking both off
+                              is a real configuration — it is a model that thinks
+                              on its own terms and answers in one shot.
+                            */}
+                            <label className="flex items-start gap-2 text-xs text-muted-foreground">
+                              <input
+                                type="checkbox"
+                                className="mt-0.5"
+                                checked={row.thinkingSwitchSupported !== false}
+                                onChange={(e) =>
+                                  update(index, {
+                                    thinkingSwitchSupported: e.target.checked,
+                                  })
+                                }
+                              />
+                              <span>
+                                {t("admin.providers.create.thinkingSwitchSupported")}
+                              </span>
+                            </label>
                             <Input
                               type="number"
                               label={t("admin.providers.create.inputCost")}

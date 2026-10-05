@@ -61,6 +61,16 @@ function renderInline(text: string): string {
     const code = codes[Number(index)] ?? "";
     return `<code class="rounded bg-muted px-1 py-0.5 text-[0.85em]">${escapeHtml(code)}</code>`;
   });
+  // Whatever backticks are left were never paired. The pairs are gone by now —
+  // they are `<code>` elements — so these are the leftovers from a model that
+  // opened a code span and then wrote prose instead, or closed one that was
+  // never opened. Rendering them puts a stray character at the end of a
+  // sentence, and a run of text after a URL is exactly what a browser decides
+  // is a link: the reader gets a long blue thing that is not one, with a
+  // backtick hanging off the end of it, and no way to tell which half is
+  // punctuation. Dropping the character leaves the words, which is what the
+  // model meant.
+  out = out.replace(/`/g, "");
   return out;
 }
 

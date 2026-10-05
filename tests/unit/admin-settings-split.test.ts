@@ -59,6 +59,9 @@ const row = (over: Partial<ModelConfigRow> = {}): ModelConfigRow => ({
   // `false` would pass a rendering assertion about a disabled control it never
   // asked for.
   reasoningEffortSupported: true,
+  // A row that predates the field has not declared anything, which is not the
+  // same as having declared that the model cannot be switched off.
+  thinkingSwitchSupported: true,
   inputCost: 1,
   outputCost: 2,
   enabled: true,

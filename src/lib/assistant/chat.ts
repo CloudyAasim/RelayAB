@@ -49,13 +49,35 @@ import type { AuthedUser } from "../auth/session";
  * upstream bill — but high enough that no real task reaches it. The checks that
  * matter are `MAX_IDENTICAL_CALLS` and `MAX_TURN_MS` below.
  */
-const MAX_ROUNDS = 40;
+const MAX_ROUNDS = 60;
 
-/** The same call, with the same arguments, this many rounds running. */
-export const MAX_IDENTICAL_CALLS = 3;
+/**
+ * The same call, with the same arguments, this many rounds running.
+ *
+ * Four rather than the three it was, and no further. This is the guard against a
+ * model re-issuing one call with the same answer forever, and the turn ceiling
+ * below is now half an hour — so this number is how long a stuck loop can run
+ * before it is stopped, and it is the only thing standing between a loop and
+ * half an hour of upstream spend. Three was the right answer against a ten
+ * minute ceiling; it is the wrong one against this one.
+ */
+export const MAX_IDENTICAL_CALLS = 4;
 
-/** A turn nobody would sit and wait for. */
-export const MAX_TURN_MS = 10 * 60 * 1000;
+/**
+ * A turn nobody would sit and wait for.
+ *
+ * Ten minutes was below what a real configuration job takes. Reading a vendor's
+ * price list, cross-checking it against a model list, comparing two generations
+ * of the same family and writing five pages of documentation is a long
+ * afternoon's work compressed into one turn, and cutting it off at ten minutes
+ * produced an answer that stopped mid-job with nothing said about it — the worst
+ * of the three outcomes, because the conversation looks finished and is not.
+ *
+ * Thirty is a ceiling rather than a target. The loop guard above is what stops a
+ * turn that is not making progress; this stops one that is making progress too
+ * slowly to finish, which is the rarer case and the one that was firing.
+ */
+export const MAX_TURN_MS = 30 * 60 * 1000;
 
 /** How much history to replay. Older turns are dropped rather than truncated. */
 const MAX_HISTORY_MESSAGES = 40;
@@ -223,12 +245,24 @@ const RESERVED_TOKENS = 4_000;
 /**
  * The ceiling on one tool result.
  *
- * Sized against the largest payload a tool legitimately returns — the media
- * provider configuration, which is a few thousand characters of spec documents
- * that the model has to be able to read in full and copy. Set too low it does
- * not shorten a result so much as corrupt it.
+ * Sized against the largest payload a tool legitimately returns, which is
+ * `fetch_page`: a vendor's API reference is tens of thousands of characters of
+ * prose and tables, and the model can only quote it if it can read it.
+ *
+ * It used to be 24,000, chosen against the *media provider* configuration — a
+ * few thousand characters — and that was the wrong yardstick. A 200k HTML page
+ * came back at 24k, which is twelve percent of it, cut mid-sentence. The visible
+ * result was a model that fetched the same documentation four and five times,
+ * each time seeing a different fragment, and said so: the fetches were being
+ * truncated, and it kept trying to get past the truncation by fetching again.
+ * That is a loop caused by a limit, not by the model, and it is also most of
+ * what made a long configuration turn look like it was stopping on its own.
+ *
+ * 60,000 fits a full vendor reference page for a single tool call. The
+ * per-turn ceiling below is what bounds a turn that reads many of them; raising
+ * this is about not corrupting one result, not about removing a limit.
  */
-export const MAX_TOOL_RESULT_CHARS = 24_000;
+export const MAX_TOOL_RESULT_CHARS = 60_000;
 
 /**
  * What makes a tool call the *same* call.

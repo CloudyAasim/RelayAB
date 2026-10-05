@@ -82,6 +82,12 @@ export default async function AssistantPage() {
        * free-text field for it.
        */
       reasoningEffortSupported: boolean;
+      /**
+       * Whether the model obeys a request to stop thinking. The same three
+       * states, and the same reason: a model can take levels and still refuse to
+       * be switched off, and only an explicit false should grey the control.
+       */
+      thinkingSwitchSupported: boolean;
     }
   > = {};
   for (const m of catalog.models) {
@@ -97,6 +103,8 @@ export default async function AssistantPage() {
       // the same as the vendor refusing it. Only an explicit false greys the
       // control out.
       reasoningEffortSupported: m.reasoningEffortSupported !== false,
+      // Same three states, same reason: only an explicit false greys the switch.
+      thinkingSwitchSupported: m.thinkingSwitchSupported !== false,
     };
   }
 

@@ -72,6 +72,11 @@ export interface ModelConfigRow {
    * can tell them apart — so it is stored, not guessed.
    */
   reasoningEffortSupported: boolean;
+  /**
+   * Whether the model acts on the thinking switch. `false` when the vendor
+   * refuses a disable or accepts it and thinks anyway.
+   */
+  thinkingSwitchSupported: boolean;
   inputCost: number;
   outputCost: number;
   /**
@@ -145,6 +150,9 @@ export function buildModelRows(
         // A media endpoint has no token parameters at all, so nothing typed here
         // would ever reach one. Declared rather than left open.
         reasoningEffortSupported: false,
+        // A media endpoint has no token parameters at all, so nothing typed into
+        // either of these would ever reach one. Declared for the same reason.
+        thinkingSwitchSupported: false,
         inputCost: 0,
         outputCost: 0,
         enabled: cfg.enabled,
@@ -177,6 +185,8 @@ function chatRow(
      * model written before this field existed, so only an explicit false does it.
      */
     reasoningEffortSupported?: boolean;
+    /** The same, for the thinking switch. Absent means "leave it as it is". */
+    thinkingSwitchSupported?: boolean;
     inputCost?: number;
     outputCost?: number;
     cachedInputCost?: number;
@@ -205,6 +215,10 @@ function chatRow(
     // has not declared anything, which is not the same as having declared that
     // the model takes no effort. Only the second switches a control off.
     reasoningEffortSupported: cfg?.reasoningEffortSupported !== false,
+    // `!== false`, not a truthiness test, for the same reason one line up: a row
+    // written before the field existed has not declared anything, and reading
+    // that as "cannot be switched off" would grey a working control.
+    thinkingSwitchSupported: cfg?.thinkingSwitchSupported !== false,
     inputCost: cfg?.inputCost ?? DEFAULTS.inputCost,
     outputCost: cfg?.outputCost ?? DEFAULTS.outputCost,
     // Spread, not `?? 0`: a cache nobody priced must read back as blank,
@@ -263,6 +277,8 @@ export interface ModelConfigPayload {
     reasoningLevels?: string[];
     /** `false` clears the declaration; absent on the form means "leave it as it is". */
     reasoningEffortSupported?: boolean;
+    /** The same, for the thinking switch. Absent means "leave it as it is". */
+    thinkingSwitchSupported?: boolean;
     inputCost?: number;
     outputCost?: number;
     /** `null` = clear the price, because this route merges and absent means keep. */

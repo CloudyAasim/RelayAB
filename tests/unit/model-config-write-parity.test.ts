@@ -92,6 +92,13 @@ const FIELD_SAMPLES: Record<string, unknown> = {
    * this field's value and only stored the key.
    */
   reasoningEffortSupported: false,
+  /**
+   * `false` rather than `true` on purpose: the sample has to prove a write path
+   * carries the field that switches a control *off*, which is the one that
+   * matters. A `true` sample would pass against a schema that quietly ignored
+   * this field's value and only stored the key.
+   */
+  thinkingSwitchSupported: false,
   enabled: true,
 };
 

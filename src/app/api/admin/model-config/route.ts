@@ -126,7 +126,13 @@ export async function POST(req: Request): Promise<Response> {
         // whether the assistant shows a working dropdown or a disabled one, so
         // an edit that does not mention it must not quietly re-enable a model
         // whose vendor ignores the parameter.
-        reasoningEffortSupported: entry.reasoningEffortSupported ?? existing?.reasoningEffortSupported ?? true,
+        reasoningEffortSupported:
+          entry.reasoningEffortSupported ?? existing?.reasoningEffortSupported ?? true,
+        // Same reasoning one line up. This one decides whether the assistant's
+        // thinking switch is offered at all, so an edit that does not mention it
+        // must not quietly hand back a control the operator had switched off.
+        thinkingSwitchSupported:
+          entry.thinkingSwitchSupported ?? existing?.thinkingSwitchSupported ?? true,
         inputCost: entry.inputCost ?? existing?.inputCost ?? 0,
         outputCost: entry.outputCost ?? existing?.outputCost ?? 0,
         enabled: entry.enabled ?? existing?.enabled ?? true,

@@ -85,6 +85,8 @@ export interface AssistantModelFacts {
    * that takes a value, stores it, and does nothing.
    */
   reasoningEffortSupported?: boolean | null;
+  /** Whether the model obeys a request to stop thinking. Null = never declared. */
+  thinkingSwitchSupported?: boolean | null;
 }
 
 export interface AssistantSettingsView {
@@ -368,6 +370,14 @@ export function AssistantSettingsPanel({
    * closed one must not look the same on screen.
    */
   const effortUnsupported = facts?.reasoningEffortSupported === false;
+  /**
+   * The same question about the switch, and it has a different answer per model:
+   * one refuses a disable with an error, another accepts it and thinks anyway.
+   * Both look identical from the request side — a value stored, sent, and
+   * ignored — so both get the same treatment, and the explanation points at the
+   * level field instead because that is the one that does work.
+   */
+  const switchUnsupported = facts?.thinkingSwitchSupported === false;
   function chooseAccountModel(next: string) {
     setAccountModel(next);
     const known = accountFacts[next.trim()];
@@ -631,17 +641,29 @@ export function AssistantSettingsPanel({
               id="assistant-thinking"
               name="thinkingType"
               value={thinkingType ?? ""}
+              disabled={switchUnsupported}
               onChange={(e) => setThinkingType(e.target.value || null)}
-              className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground"
+              className={cn(
+                "h-9 w-full rounded-md border border-input bg-background px-2 text-sm",
+                switchUnsupported
+                  ? "cursor-not-allowed text-muted-foreground opacity-60"
+                  : "text-foreground",
+              )}
             >
               <option value="">{t("assistant.settings.thinkingVendorDefault")}</option>
               <option value="adaptive">{t("assistant.settings.thinkingOn")}</option>
               <option value="disabled">{t("assistant.settings.thinkingOff")}</option>
             </select>
             <p className="font-mono text-[10px] text-muted-foreground">thinking.type</p>
-            <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-              {t("assistant.settings.thinkingModeHint")}
-            </p>
+            {switchUnsupported ? (
+              <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                {t("assistant.settings.thinkingSwitchNotSupported")}
+              </p>
+            ) : (
+              <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                {t("assistant.settings.thinkingModeHint")}
+              </p>
+            )}
           </div>
           <ParamField
             id="assistant-max-output"

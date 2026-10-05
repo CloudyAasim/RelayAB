@@ -218,6 +218,19 @@ export const ModelConfigSchema = z.object({
    * and a claim is somebody's to make.
    */
   reasoningEffortSupported: z.boolean().default(true),
+  /**
+   * Whether this model acts on the thinking **switch** at all.
+   *
+   * The counterpart to the field above, and separate for the same reason: a
+   * model can take depth levels and still refuse to be switched off, or take a
+   * switch and have no levels. On this deployment both shapes exist — one model
+   * answers a request to disable with an error, another accepts it and thinks
+   * anyway, and only a third really obeys.
+   *
+   * A live control for any of the first two is a control that stores a choice,
+   * sends it on every request, and changes nothing.
+   */
+  thinkingSwitchSupported: z.boolean().default(true),
   /** Credit cost per 1M input tokens */
   inputCost: z.number().nonnegative().default(0),
   /** Credit cost per 1M output tokens */
@@ -284,6 +297,8 @@ export const ModelConfigPatchSchema = z.object({
    * disabled one.
    */
   reasoningEffortSupported: z.boolean().optional(),
+  /** Absent means nobody has declared it; only an explicit false greys the switch. */
+  thinkingSwitchSupported: z.boolean().optional(),
 });
 export type ModelConfigPatch = z.infer<typeof ModelConfigPatchSchema>;
 
