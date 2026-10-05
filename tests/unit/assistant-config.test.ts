@@ -127,6 +127,10 @@ describe("the parameters are one setting, on both paths", () => {
       topP: 0.9,
       contextLength: 128000,
       reasoningEffort: "high" as const,
+      // The switch alongside the level: same row, same read, both paths. They
+      // are two answers to two questions and a config that kept only one of them
+      // would still pass the level assertions above.
+      thinkingType: "adaptive" as const,
     };
     for (const mode of ["account", "key"] as const) {
       const config = resolveAssistantConfig({ ...row, credentialMode: mode });
@@ -136,6 +140,7 @@ describe("the parameters are one setting, on both paths", () => {
         temperature: 0.3,
         topP: 0.9,
         reasoningEffort: "high",
+        thinkingType: "adaptive",
       });
     }
   });
@@ -148,6 +153,7 @@ describe("the parameters are one setting, on both paths", () => {
       temperature: null,
       topP: null,
       reasoningEffort: null,
+      thinkingType: null,
     });
   });
 
@@ -212,4 +218,5 @@ const EMPTY = {
   temperature: null,
   topP: null,
   reasoningEffort: null,
+  thinkingType: null,
 } as const;

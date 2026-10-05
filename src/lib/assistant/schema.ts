@@ -71,6 +71,15 @@ export const AssistantSettingsSchema = z.object({
    * for most of the models here, and wrong silently.
    */
   reasoningEffort: z.string().min(1).max(64).nullable().optional(),
+  /**
+   * Whether the model thinks, in the vendor's own spelling.
+   *
+   * Its own field rather than another value of `reasoningEffort` because on the
+   * wire it is a different parameter with a different shape — a level answers
+   * "how hard", this answers "whether at all", and a vendor that accepts one
+   * does not accept the other.
+   */
+  thinkingType: z.string().min(1).max(64).nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -219,6 +228,7 @@ export function rowToAssistantSettings(row: Record<string, unknown>): AssistantS
     temperature: (row.temperature as number | null) ?? null,
     topP: (row.top_p as number | null) ?? null,
     reasoningEffort: (row.reasoning_effort as string | null) ?? null,
+    thinkingType: (row.thinking_type as string | null) ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });

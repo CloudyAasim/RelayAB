@@ -57,6 +57,11 @@ const PutSchema = z.object({
   // the models on a deployment, and the request would carry a value the vendor
   // ignores or refuses.
   reasoningEffort: z.string().min(1).max(64).nullable().optional(),
+  // Whether it thinks, which the level above cannot express. A schema that
+  // named only the effort would strip this — the field would be accepted by
+  // the form, dropped on save, and read back as "never configured", with
+  // nothing to tell the user that it had been set.
+  thinkingType: z.string().min(1).max(64).nullable().optional(),
 });
 
 const ProbeSchema = z.object({

@@ -84,6 +84,15 @@ export interface SaveAssistantSettingsInput {
   topP?: number | null;
   /** How hard the model thinks, in its own spelling. `null` clears it. */
   reasoningEffort?: string | null;
+  /**
+   * Whether it thinks at all, in the vendor's own spelling. `null` clears it.
+   *
+   * Its own field because that is how the wire has it. MiniMax answers a
+   * request carrying only `reasoning_effort` with a level, never a switch, so
+   * without this column a user whose model supports turning thinking off has no
+   * way to turn it off and no way to say so.
+   */
+  thinkingType?: string | null;
 }
 
 /**
@@ -146,6 +155,7 @@ export async function saveAssistantSettings(
     temperature: pick(input.temperature, existing?.temperature),
     topP: pick(input.topP, existing?.topP),
     reasoningEffort: pick(input.reasoningEffort, existing?.reasoningEffort),
+    thinkingType: pick(input.thinkingType, existing?.thinkingType),
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
@@ -154,8 +164,8 @@ export async function saveAssistantSettings(
     `INSERT INTO assistant_settings
        (user_id, base_url, encrypted_api_key, model, credential_mode, account_model,
         protocol, extra_headers, context_length, max_output_tokens, temperature, top_p,
-        reasoning_effort, created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        reasoning_effort, thinking_type, created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
      ON CONFLICT(user_id) DO UPDATE SET
        base_url = excluded.base_url,
        encrypted_api_key = excluded.encrypted_api_key,
@@ -169,6 +179,7 @@ export async function saveAssistantSettings(
        temperature = excluded.temperature,
        top_p = excluded.top_p,
        reasoning_effort = excluded.reasoning_effort,
+       thinking_type = excluded.thinking_type,
        updated_at = excluded.updated_at`,
     [
       row.userId,
@@ -184,6 +195,7 @@ export async function saveAssistantSettings(
       row.temperature ?? null,
       row.topP ?? null,
       row.reasoningEffort ?? null,
+      row.thinkingType ?? null,
       row.createdAt,
       row.updatedAt,
     ],

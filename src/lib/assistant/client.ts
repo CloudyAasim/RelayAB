@@ -84,6 +84,16 @@ export interface CallModelOptions {
   /** How hard the model thinks. Left off the body unless one is chosen. */
   reasoningEffort?: string;
   /**
+   * Whether it thinks at all. Left off the body unless one is chosen.
+   *
+   * Its own option because it is its own parameter. `reasoning_effort` answers
+   * "how hard" on the vendors that publish levels; this answers "whether", and
+   * on MiniMax they are different fields — so a client that could only send the
+   * first had no way to turn thinking off, and no way to say that was what it
+   * wanted. Sent nested, as the vendors that accept it spell it.
+   */
+  thinkingType?: string;
+  /**
    * Replaces the HTTP call. `baseUrl` and `apiKey` are then unused, which is why
    * the account path can leave them unset rather than pass a placeholder.
    */
@@ -166,6 +176,13 @@ export async function callAssistantModel(opts: CallModelOptions): Promise<Upstre
     ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
     ...(opts.topP !== undefined ? { top_p: opts.topP } : {}),
     ...(opts.reasoningEffort !== undefined ? { reasoning_effort: opts.reasoningEffort } : {}),
+    // An object, because a vendor that has this parameter takes a typed one, and
+    // a bare string is a 400 rather than a near miss. Absent entirely when unset:
+    // sending `thinking: {type: null}` would ask the vendor to turn thinking
+    // off in a way it cannot answer, which is the opposite of leaving it alone.
+    ...(opts.thinkingType !== undefined
+      ? { thinking: { type: opts.thinkingType } }
+      : {}),
     ...(opts.tools && opts.tools.length ? { tools: opts.tools, tool_choice: "auto" } : {}),
   };
 

@@ -219,6 +219,13 @@ CREATE TABLE IF NOT EXISTS assistant_settings (
   -- the APIs use and a scale of our own would need inventing values for it.
   -- Nullable, like the rest, so "not sent" stays a real answer.
   reasoning_effort   TEXT,
+  -- Whether the model thinks, as the vendor's own switch. A separate column
+  -- from reasoning_effort because the two are different fields on the wire for
+  -- the vendors that have both, and a request that carries only the effort can
+  -- never turn thinking off. Nullable, like every other parameter here: absent
+  -- means the vendor decides, which on one of these models is its deepest and
+  -- most expensive level rather than "off".
+  thinking_type      TEXT,
   -- Which credential the next turn spends, and the model the account path
   -- uses. Nullable on purpose: a row written before these existed has a key, a
   -- base URL and a model in it, which is exactly what "key" means, so NULL is
@@ -453,6 +460,13 @@ const ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; type: string
   { table: "assistant_settings", column: "temperature", type: "REAL" },
   { table: "assistant_settings", column: "top_p", type: "REAL" },
   { table: "assistant_settings", column: "reasoning_effort", type: "TEXT" },
+  // Whether the model thinks at all, as opposed to how hard. A separate column
+  // because on several vendors the two are different fields: MiniMax tunes depth
+  // with `reasoning_effort` but switches thinking with `thinking.type`, and a
+  // request that can only carry the first can never turn thinking off. Folding
+  // them into one value would have to invent a vocabulary the vendors do not
+  // share.
+  { table: "assistant_settings", column: "thinking_type", type: "TEXT" },
   // Which credential the assistant spends, and the model it spends it on for
   // the account path. Both nullable so that upgrading cannot move anybody: NULL
   // reads as the key path, which is what every existing row is.

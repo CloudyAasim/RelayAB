@@ -67,6 +67,7 @@ const EMPTY_PARAMS: AssistantModelParams = {
   temperature: null,
   topP: null,
   reasoningEffort: null,
+  thinkingType: null,
 };
 
 /**
@@ -463,6 +464,13 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
           ...(settings.topP != null ? { topP: settings.topP } : {}),
           ...(settings.reasoningEffort != null
             ? { reasoningEffort: settings.reasoningEffort }
+            : {}),
+          // Whether it thinks, which is a different parameter from how hard.
+          // A user whose model can be switched off and cannot be switched off
+          // through the assistant is a capability that does not exist, however
+          // well the levels are spelled.
+          ...(settings.thinkingType != null
+            ? { thinkingType: settings.thinkingType }
             : {}),
         }
       : opts.inProcessUpstream

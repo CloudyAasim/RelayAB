@@ -40,6 +40,16 @@ export interface AssistantModelParams {
    * it and changes both the latency and the bill.
    */
   reasoningEffort: AssistantReasoningEffort | null;
+  /**
+   * Whether the model thinks at all, in the vendor's own spelling. `null` is
+   * "do not send it", which is the vendor's own choice and on some models the
+   * most expensive one available.
+   *
+   * Separate from `reasoningEffort` because it is a different parameter: MiniMax
+   * refuses a disabled request on the model that always thinks, and answers it
+   * on the one that does not — so a single field could not be right for both.
+   */
+  thinkingType: AssistantThinkingType | null;
 }
 
 /**
@@ -57,6 +67,16 @@ export interface AssistantModelParams {
  * not the same as any level.
  */
 export type AssistantReasoningEffort = string;
+
+/**
+ * Whether the model thinks, in whatever the vendor calls its switch.
+ *
+ * Free text for the same reason the effort levels are: the spellings do not
+ * agree between vendors, and a closed list here is a list that refuses the value
+ * the model in front of it actually wants. Sent as the vendor wrote it, in the
+ * vendor's own parameter.
+ */
+export type AssistantThinkingType = string;
 
 /**
  * The spellings seen in the wild, offered as a starting point only.
@@ -104,6 +124,7 @@ export interface AssistantConfigRow {
   temperature?: number | null;
   topP?: number | null;
   reasoningEffort?: AssistantReasoningEffort | null;
+  thinkingType?: AssistantThinkingType | null;
 }
 
 /** No row at all is a real state: nothing has been configured yet. */
@@ -160,6 +181,7 @@ export function resolveAssistantConfig(row: MaybeRow): AssistantConfig {
       temperature: row?.temperature ?? null,
       topP: row?.topP ?? null,
       reasoningEffort: row?.reasoningEffort ?? null,
+    thinkingType: row?.thinkingType ?? null,
     },
   };
 }
@@ -177,6 +199,7 @@ export function modelParamsForRequest(params: AssistantModelParams): {
   temperature?: number;
   topP?: number;
   reasoningEffort?: AssistantReasoningEffort;
+  thinkingType?: AssistantThinkingType;
 } {
   return {
     // `!= null`, never a truthiness test: 0 is the most deterministic
@@ -185,5 +208,8 @@ export function modelParamsForRequest(params: AssistantModelParams): {
     ...(params.temperature != null ? { temperature: params.temperature } : {}),
     ...(params.topP != null ? { topP: params.topP } : {}),
     ...(params.reasoningEffort != null ? { reasoningEffort: params.reasoningEffort } : {}),
+    // Same rule, and the same reason it is a separate entry: this one being
+    // absent has to mean "the vendor decides", not "thinking is on".
+    ...(params.thinkingType != null ? { thinkingType: params.thinkingType } : {}),
   };
 }

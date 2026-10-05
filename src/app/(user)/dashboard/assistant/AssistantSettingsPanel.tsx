@@ -31,6 +31,7 @@ import {
   resolveMode,
   type AssistantCredentialMode,
   type AssistantReasoningEffort,
+  type AssistantThinkingType,
 } from "@/lib/assistant/config";
 import { useCredentialStore } from "@/lib/assistant/credential-store";
 
@@ -88,6 +89,12 @@ export interface AssistantSettingsView {
   temperature?: number | null;
   topP?: number | null;
   reasoningEffort?: AssistantReasoningEffort | null;
+  /**
+   * Whether the model thinks. Separate from the level because the vendor keeps
+   * them in different parameters, and a form with only the level cannot express
+   * "do not think" at all.
+   */
+  thinkingType?: AssistantThinkingType | null;
 }
 
 export function AssistantSettingsPanel({
@@ -152,6 +159,9 @@ export function AssistantSettingsPanel({
   const [reasoningEffort, setReasoningEffort] = useState<AssistantReasoningEffort | null>(
     initial?.reasoningEffort ?? null,
   );
+  const [thinkingType, setThinkingType] = useState<AssistantThinkingType | null>(
+    initial?.thinkingType ?? null,
+  );
   const [busy, setBusy] = useState<"probe" | "save" | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshNote, setRefreshNote] = useState<string | null>(null);
@@ -207,6 +217,7 @@ export function AssistantSettingsPanel({
       temperature,
       topP,
       reasoningEffort,
+      thinkingType,
     };
   }
 
@@ -547,6 +558,42 @@ export function AssistantSettingsPanel({
             */}
             <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
               {t("assistant.settings.reasoningDefaultIsNotOff")}
+            </p>
+          </div>
+          <div className="space-y-1">
+            {/*
+              The switch, beside the level, because they are different parameters
+              on the wire and one of them is the only way to stop a model
+              thinking. Without this field the assistant had no way to honour "don't
+              think about it" — it had a level, and a level cannot say that.
+
+              The options are suggestions and the field takes anything, for the
+              same reason the level field does: the spellings do not agree between
+              vendors, and a closed list here refuses the value the model in front
+              of it wants. A vendor that cannot be switched off will answer the
+              request with a 400, which is the vendor's own words rather than a
+              guess made here.
+            */}
+            <label
+              htmlFor="assistant-thinking"
+              className="block text-xs font-medium text-foreground"
+            >
+              {t("assistant.settings.thinkingMode")}
+            </label>
+            <select
+              id="assistant-thinking"
+              name="thinkingType"
+              value={thinkingType ?? ""}
+              onChange={(e) => setThinkingType(e.target.value || null)}
+              className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground"
+            >
+              <option value="">{t("assistant.settings.thinkingVendorDefault")}</option>
+              <option value="adaptive">{t("assistant.settings.thinkingOn")}</option>
+              <option value="disabled">{t("assistant.settings.thinkingOff")}</option>
+            </select>
+            <p className="font-mono text-[10px] text-muted-foreground">thinking.type</p>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+              {t("assistant.settings.thinkingModeHint")}
             </p>
           </div>
           <ParamField
