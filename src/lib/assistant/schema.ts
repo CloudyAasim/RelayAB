@@ -146,6 +146,8 @@ export const AssistantMessageSchema = z.object({
   threadId: z.string().min(1),
   role: AssistantRoleSchema,
   content: z.string(),
+  /** The thinking, or null for a turn that had none or predates the column. */
+  reasoning: z.string().nullable().default(null),
   toolCalls: z.array(ToolCallSchema).default([]),
   toolCallId: z.string().nullable().default(null),
   toolName: z.string().nullable().default(null),
@@ -256,6 +258,9 @@ export function rowToAssistantMessage(row: Record<string, unknown>): AssistantMe
     threadId: row.thread_id,
     role: row.role,
     content: row.content,
+    // Absent on every row written before the column existed, which is correct:
+    // those turns either had no reasoning or lost it before it could be stored.
+    reasoning: (row.reasoning as string | null) ?? null,
     toolCalls: parseJson(row.tool_calls, []),
     toolCallId: row.tool_call_id ?? null,
     toolName: row.tool_name ?? null,

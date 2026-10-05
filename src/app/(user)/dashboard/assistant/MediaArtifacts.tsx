@@ -273,23 +273,44 @@ function Prose({ text }: { text: string }) {
  */
 export function AssistantBody({
   text,
+  reasoning,
   thinkingLabel,
   pretty,
   expandLabel,
   collapseLabel,
+  streaming = false,
 }: {
   text: string;
+  /**
+   * The thinking, arriving as its own stream rather than wrapped in the answer.
+   *
+   * It used to be recovered by parsing `<think>` tags back out of `text`, which
+   * works for exactly one vendor and exactly one configuration: MiniMax sends
+   * it in a separate field, so the tags are absent, and the block that was
+   * written and styled for this — with a summary that says clicking it does
+   * something — had nothing to put in it. Hence "where did the thinking go".
+   */
+  reasoning?: string;
   thinkingLabel: string;
   pretty: boolean;
   expandLabel: string;
   collapseLabel: string;
+  /** True while the answer is still arriving. */
+  streaming?: boolean;
 }) {
-  if (!text) {
+  const stillStreaming = streaming ?? false;  if (!text && !reasoning) {
     return <span className="text-muted-foreground">{thinkingLabel}</span>;
   }
 
+  // Raw mode shows exactly what arrived, and the reasoning arrived as its own
+  // deltas — so it belongs beside the text rather than inside it.
   if (!pretty) {
-    return <div className="whitespace-pre-wrap break-words">{text}</div>;
+    return (
+      <div className="whitespace-pre-wrap break-words">
+        {reasoning ? <div className="opacity-70">{reasoning}</div> : null}
+        {text}
+      </div>
+    );
   }
 
   // In the order the model wrote it, so a second block of reasoning sits above
@@ -297,13 +318,35 @@ export function AssistantBody({
   const parts = splitThinkingParts(text);
   const hasThinking = parts.some((p) => p.kind === "thinking");
   const hasProse = parts.some((p) => p.kind === "text" && p.value.trim());
+  const streamReasoning = reasoning?.trim() ?? "";
+  const showReasoningBlock = !hasThinking && streamReasoning.length > 0;
 
-  if (!hasThinking && !hasProse) {
+  if (!hasThinking && !hasProse && !showReasoningBlock) {
     return <div className="whitespace-pre-wrap">{text}</div>;
   }
 
   return (
     <div className="space-y-2 break-words">
+      {showReasoningBlock && (
+        <details
+          className="group rounded-md border border-border/60 bg-muted/40"
+          // Open while the answer is still coming, so the reasoning is readable
+          // as it happens; closed afterwards, because by then it is history and
+          // it was sitting on top of the thing the reader came for.
+          open={stillStreaming}
+        >
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground">
+            <span className="font-medium">{thinkingLabel}</span>
+            <span className="text-[10px] opacity-70 group-open:hidden">{expandLabel}</span>
+            <span className="hidden text-[10px] opacity-70 group-open:inline">
+              {collapseLabel}
+            </span>
+          </summary>
+          <div className="border-t border-border/60 px-2.5 py-2 text-xs text-muted-foreground">
+            <Prose text={streamReasoning} />
+          </div>
+        </details>
+      )}
       {parts.map((part, i) =>
         part.kind === "thinking" ? (
           <details

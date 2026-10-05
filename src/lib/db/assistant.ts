@@ -297,6 +297,8 @@ export interface AppendMessageInput {
   threadId: string;
   role: AssistantMessage["role"];
   content: string;
+  /** What the model thought, kept so a reload shows the same turn again. */
+  reasoning?: string | null;
   toolCalls?: ToolCall[];
   toolCallId?: string | null;
   toolName?: string | null;
@@ -313,6 +315,7 @@ export async function appendAssistantMessage(
     threadId: input.threadId,
     role: input.role,
     content: input.content,
+    reasoning: input.reasoning ?? null,
     toolCalls: input.toolCalls ?? [],
     toolCallId: input.toolCallId ?? null,
     toolName: input.toolName ?? null,
@@ -321,13 +324,14 @@ export async function appendAssistantMessage(
   };
   run(
     `INSERT INTO assistant_messages
-       (id, thread_id, role, content, tool_calls, tool_call_id, tool_name, attachments, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?)`,
+       (id, thread_id, role, content, reasoning, tool_calls, tool_call_id, tool_name, attachments, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?)`,
     [
       message.id,
       message.threadId,
       message.role,
       message.content,
+      message.reasoning ?? null,
       message.toolCalls.length ? JSON.stringify(message.toolCalls) : null,
       message.toolCallId,
       message.toolName,

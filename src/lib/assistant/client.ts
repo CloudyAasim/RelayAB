@@ -52,6 +52,11 @@ export interface ChatMessage {
 export interface UpstreamTurn {
   /** Text the model produced this turn. */
   content: string;
+  /**
+   * What the model thought, if it thought. Separate from the answer because it
+   * arrives separately on most vendors and inside the text on the rest.
+   */
+  reasoning: string;
   /** Fully reassembled tool calls, if any. */
   toolCalls: Array<{ id: string; type: "function"; function: { name: string; arguments: string } }>;
   /** How the turn finished: "stop" ends the loop, "tool_calls" continues it. */
@@ -70,6 +75,8 @@ export interface CallModelOptions {
   tools?: AssistantToolDef[];
   /** Called for each text delta, as it arrives. */
   onText?: (delta: string) => void;
+  /** Called for each delta of the model thinking, as it arrives. */
+  onReasoning?: (delta: string) => void;
   signal?: AbortSignal;
   timeoutMs?: number;
   /**
@@ -216,7 +223,7 @@ export async function callAssistantModel(opts: CallModelOptions): Promise<Upstre
       stream = res.body;
     }
 
-    return await readTurn(stream, opts.onText);
+    return await readTurn(stream, opts.onText, opts.onReasoning);
   } catch (err) {
     if (err instanceof UpstreamError) throw err;
     if (err instanceof DOMException && err.name === "AbortError") {
@@ -236,15 +243,91 @@ export async function callAssistantModel(opts: CallModelOptions): Promise<Upstre
  * pieces, so the entries have to be merged by index rather than appended — the
  * naive "push each delta" approach yields N fragments instead of N calls.
  */
+const THINK_OPEN = "<think>";
+const THINK_CLOSE = "</think>";
+
+/**
+ * The longest tail of `s` that could still turn into a tag once more text
+ * arrives.
+ *
+ * Both tags have to be checked. A token boundary lands inside `<think>` as often
+ * as inside `</think>`, and holding back only the opening one passes the
+ * simple case while failing the one that actually happens.
+ */
+function undecidedTail(s: string): string {
+  for (let n = Math.min(8, s.length); n > 0; n--) {
+    const tail = s.slice(s.length - n);
+    if (THINK_OPEN.startsWith(tail) || THINK_CLOSE.startsWith(tail)) return tail;
+  }
+  return "";
+}
+
+/**
+ * A splitter for a vendor that wraps its answer in `<think>` tags.
+ *
+ * The tag arrives split across deltas — the opening in one chunk, the closing
+ * several chunks later — so a per-chunk regex either misses it or truncates it.
+ * Whatever could still become a tag is therefore held back and reconsidered with
+ * the next chunk, and the loop runs until no tag is left, because one chunk can
+ * carry several blocks and an answer can sit between them.
+ *
+ * The state lives in a closure created per call rather than in module scope for
+ * a reason that only shows up in production: two turns in flight at once would
+ * otherwise share one half-open tag, and the second would print its answer into
+ * the first one's reasoning.
+ */
+export function makeThinkingSplitter(): (chunk: string) => { reasoning: string; text: string } {
+  let open = false;
+  let held = "";
+
+  return (chunk: string): { reasoning: string; text: string } => {
+    let rest = held ? held + chunk : chunk;
+    let reasoning = "";
+    let text = "";
+    held = "";
+
+    for (;;) {
+      if (open) {
+        const end = rest.indexOf(THINK_CLOSE);
+        if (end < 0) {
+          // No closing tag yet; may be a partial one, so keep the whole thing.
+          held = rest;
+          open = true;
+          return { reasoning, text };
+        }
+        reasoning += rest.slice(0, end);
+        rest = rest.slice(end + THINK_CLOSE.length);
+        open = false;
+        continue;
+      }
+
+      const at = rest.indexOf(THINK_OPEN);
+      if (at < 0) {
+        const keep = undecidedTail(rest);
+        text += keep ? rest.slice(0, rest.length - keep.length) : rest;
+        held = keep;
+        return { reasoning, text };
+      }
+      // Answer text before the tag belongs to the answer, not to the reasoning.
+      text += rest.slice(0, at);
+      rest = rest.slice(at + THINK_OPEN.length);
+      open = true;
+    }
+  };
+}
+
 async function readTurn(
   stream: ReadableStream<Uint8Array>,
   onText?: (delta: string) => void,
+  onReasoning?: (delta: string) => void,
 ): Promise<UpstreamTurn> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
 
   let content = "";
+  let reasoning = "";
+  const takeThinking = makeThinkingSplitter();
   let finishReason: string | null = null;
   let usage: UpstreamTurn["usage"] = null;
   const partialCalls = new Map<number, { id: string; name: string; args: string }>();
@@ -277,9 +360,31 @@ async function readTurn(
     if (choice.finish_reason) finishReason = choice.finish_reason;
 
     const text = choice.delta?.content;
+    // Thinking first, and split out of the text when the vendor inlines it.
+    //
+    // Two shapes reach this point. Some send thinking in its own field; others
+    // wrap the answer in `<think>` tags. Reading only `content` handled the
+    // first as silence and the second as an answer with the model's private
+    // reasoning printed in the middle of it — which is why the reasoning reads
+    // as a formatting problem in one case and as missing output in the other,
+    // and why neither was recognisable as the same defect.
+    const thinking = choice.delta?.reasoning_content ?? choice.delta?.reasoning;
+    if (typeof thinking === "string" && thinking) {
+      reasoning += thinking;
+      onReasoning?.(thinking);
+    }
+
     if (typeof text === "string" && text) {
-      content += text;
-      onText?.(text);
+      const split = takeThinking(text);
+      if (split.reasoning) {
+        reasoning += split.reasoning;
+        onReasoning?.(split.reasoning);
+      }
+      if (split.text) {
+        content += split.text;
+        onText?.(split.text);
+      }
+      return;
     }
 
     for (const call of choice.delta?.tool_calls ?? []) {
@@ -312,7 +417,7 @@ async function readTurn(
     .map(([, c]) => ({ id: c.id, type: "function" as const, function: { name: c.name, arguments: c.args } }))
     .filter((c) => c.function.name);
 
-  return { content, toolCalls, finishReason, usage };
+  return { content, reasoning, toolCalls, finishReason, usage };
 }
 
 interface StreamChunk {
@@ -320,6 +425,15 @@ interface StreamChunk {
     finish_reason?: string | null;
     delta?: {
       content?: string | null;
+      /**
+       * The thinking, when the vendor sends it separately.
+       *
+       * MiniMax puts it here and OpenAI-compatible vendors that think do the
+       * same. It was not read, which is the same as not existing: the model
+       * thought, the tokens were billed, and nothing reached the screen.
+       */
+      reasoning_content?: string | null;
+      reasoning?: string | null;
       tool_calls?: Array<{
         index?: number;
         id?: string;

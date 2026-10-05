@@ -350,7 +350,7 @@ export function redactToolCalls(
 }
 
 export interface ChatEvent {
-  type: "delta" | "tool" | "done" | "error" | "action" | "artifact";
+  type: "delta" | "reasoning" | "tool" | "done" | "error" | "action" | "artifact";
   text?: string;
   toolName?: string;
   data?: unknown;
@@ -600,6 +600,7 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
         tools,
         signal,
         onText: (delta) => emit({ type: "delta", text: delta }),
+        onReasoning: (delta) => emit({ type: "reasoning", text: delta }),
       });
     } catch (err) {
       const message_ =
@@ -621,6 +622,11 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
       threadId: thread.id,
       role: "assistant",
       content: turn.content,
+      // Kept with the turn, not derived from it afterwards. It arrives as its
+      // own deltas on most models and is unwrapped out of the answer on the one
+      // that inlines it, so by the time the text is a finished string there is
+      // nothing left in it to recover the reasoning from.
+      reasoning: turn.reasoning || null,
       toolCalls: redactToolCalls(turn.toolCalls),
     });
 

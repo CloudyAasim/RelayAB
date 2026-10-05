@@ -302,6 +302,11 @@ CREATE TABLE IF NOT EXISTS assistant_messages (
   thread_id     TEXT NOT NULL REFERENCES assistant_threads(id) ON DELETE CASCADE,
   role          TEXT NOT NULL,
   content       TEXT NOT NULL,
+  -- What the model thought, when it thought. Kept apart from content because it
+  -- arrives apart: most vendors send it in their own field, and the one that
+  -- wraps it in the answer is unwrapped at the edge of the stream. Without this
+  -- the reasoning shows during a turn and is gone after a reload.
+  reasoning     TEXT,
   tool_calls    TEXT,
   tool_call_id  TEXT,
   tool_name     TEXT,
@@ -459,6 +464,7 @@ const ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; type: string
   { table: "assistant_settings", column: "max_output_tokens", type: "INTEGER" },
   { table: "assistant_settings", column: "temperature", type: "REAL" },
   { table: "assistant_settings", column: "top_p", type: "REAL" },
+  { table: "assistant_messages", column: "reasoning", type: "TEXT" },
   { table: "assistant_settings", column: "reasoning_effort", type: "TEXT" },
   // Whether the model thinks at all, as opposed to how hard. A separate column
   // because on several vendors the two are different fields: MiniMax tunes depth

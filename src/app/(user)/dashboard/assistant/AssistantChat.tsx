@@ -88,6 +88,15 @@ interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "tool";
   content: string;
+  /**
+   * What the model thought, when it thought.
+   *
+   * Its own field rather than something parsed back out of `content`: most
+   * vendors send it separately, and the one that does not has it split out of
+   * the stream instead. Reconstructing it from the text cannot work, because by
+   * then the tags are gone.
+   */
+  reasoning?: string;
   toolName?: string | null;
   /** Files the user attached, once the server has given them a URL. */
   attachments?: Attachment[];
@@ -154,6 +163,7 @@ function humanSize(bytes: number): string {
 
 type EventPayload =
   | { type: "delta"; text?: string }
+  | { type: "reasoning"; text?: string }
   | { type: "tool"; toolName?: string; text?: string }
   | { type: "artifact"; artifacts?: ArtifactRef[] }
   | { type: "action"; text?: string; data?: { actionId?: string } }
@@ -685,6 +695,14 @@ export function AssistantChat({
           setMessages((prev) =>
             prev.map((m) => (m.id === "streaming" ? { ...m, content: m.content + chunk } : m)),
           );
+        } else if (evt.type === "reasoning" && evt.text) {
+          // Collected into the streaming message rather than printed as it
+          // arrives: it arrives in fragments, and a paragraph that grows under
+          // the reader's eyes is harder to read than one that is simply there.
+          const chunk = evt.text;
+          setMessages((prev) =>
+            prev.map((m) => (m.id === "streaming" ? { ...m, reasoning: (m.reasoning ?? "") + chunk } : m)),
+          );
         } else if (evt.type === "error" && evt.text) {
           setError(evt.text);
         } else if (evt.type === "artifact" && evt.artifacts?.length) {
@@ -913,6 +931,8 @@ export function AssistantChat({
                   <div className="min-w-0 flex-1 pt-0.5 text-sm">
                     <AssistantBody
                       text={m.content}
+                      reasoning={m.reasoning}
+                      streaming={m.id === "streaming"}
                       thinkingLabel={t("assistant.thinkingBlock")}
                       pretty={pretty}
                       expandLabel={t("assistant.expand")}

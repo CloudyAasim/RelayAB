@@ -424,7 +424,10 @@ describe("credential UI: one form, and a model on both paths", () => {
     // the streaming assembly — the two paths must not become two clients.
     expect(CLIENT).toContain("export type UpstreamTransport");
     expect(CLIENT).toMatch(/if \(opts\.transport\) \{[\s\S]{0,400}opts\.transport\(\{ body, signal/);
-    expect(CLIENT).toMatch(/return await readTurn\(stream, opts\.onText\)/);
+    // The reasoning callback rides along with the text one, so the transport
+    // branch above keeps passing both. Asserted on the shape rather than the
+    // whole call so adding a third listener is not a rewrite of this test.
+    expect(CLIENT).toMatch(/return await readTurn\(stream, opts\.onText, opts\.onReasoning\)/);
   });
 
   it("the model on that path is checked, not trusted", () => {
