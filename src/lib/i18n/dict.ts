@@ -278,7 +278,7 @@ const zhCN: Dict = {
   "admin.modelNotes.annotated": "已写 {n} 个",
   "admin.modelNotes.noMatch": "没有匹配的模型。",
   "admin.modelConfig.title": "模型配置与说明",
-  "admin.modelConfig.desc": "这里改的是网关真实生效的配置：模型别���、上下文、最大输出、积分价格、是否启用。保存后文档和网关读的是同一份数据。",
+  "admin.modelConfig.desc": "这里改的是网关真实生效的配置：模型别名、上下文、最大输出、积分价格、是否启用。保存后文档和网关读的是同一份数据。",
   "admin.modelConfig.summary": "共 {total} 个模型 · 已写说明 {annotated} 个 · 网关已停用 {disabled} 个",
   "admin.modelConfig.collapse": "收起",
   "admin.modelConfig.expand": "展开",
@@ -884,7 +884,7 @@ const zhCN: Dict = {
   // ===== AI 助手 =====
   "assistant.title": "AI 助手",
   "assistant.newThread": "新对话",
-  "assistant.emptyState": "问我这个系统有哪些模型、某个模型通不通、怎么部署、怎么排查问题。",
+  "assistant.emptyState": "问我这个中转站有什么模型、某个模型怎么用、遇到问题怎么查——价格和参数我这边能直接查。",
   "assistant.you": "你",
   "assistant.toolResult": "查看工具输出",
   "assistant.gatewayKey": "网关密钥（一般不用填）",
@@ -939,10 +939,10 @@ const zhCN: Dict = {
   "assistant.composerHint": "Enter 发送 · Shift+Enter 换行",
   "assistant.openSettings": "去设置",
   "assistant.unconfiguredModel": "未配置模型",
-  "assistant.suggestions.1": "这个网关现在提供哪些模型？各自的上下文窗口多大？",
-  "assistant.suggestions.2": "帮我实测一下 MiniMax-M3 能不能用",
-  "assistant.suggestions.3": "我新装了一个 Dokku，部署要配哪些环境变量？",
-  "assistant.suggestions.4": "用 generate_image 生成一张「戴帽子的猫」",
+  "assistant.suggestions.1": "这个中转站现在提供哪些模型？各自的上下文窗口多大？",
+  "assistant.suggestions.2": "MiniMax-M3 现在多少钱一万 token？帮我实测一下它能不能用",
+  "assistant.suggestions.3": "我调 /v1/chat/completions 报错了，帮我看看是什么原因",
+  "assistant.suggestions.4": "这个中转站的图片生成怎么调用？能生成什么尺寸？",
 
 
   "assistant.settings.title": "助手设置",
@@ -2033,9 +2033,9 @@ const en: Dict = {
   "assistant.openSettings": "Open settings",
   "assistant.unconfiguredModel": "No model configured",
   "assistant.suggestions.1": "Which models does this gateway serve, and how large is each context window?",
-  "assistant.suggestions.2": "Actually test whether MiniMax-M3 works",
-  "assistant.suggestions.3": "I just set up Dokku — which env vars do I need?",
-  "assistant.suggestions.4": "Generate a picture of a cat wearing a hat with generate_image",
+  "assistant.suggestions.2": "What does MiniMax-M3 cost per 10k tokens, and does it actually work right now?",
+  "assistant.suggestions.3": "My /v1/chat/completions call is failing — work out why",
+  "assistant.suggestions.4": "How do I call the image generation here, and what sizes does it take?",
 
 
 

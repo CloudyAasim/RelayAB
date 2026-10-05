@@ -77,10 +77,48 @@ describe("the ceilings leave room for the work", () => {
   });
 
   it("and a stuck loop is still stopped, without waiting half an hour", () => {
-    // The one guard that matters once the ceiling above is this high. It is
-    // deliberately not raised further: four repeats is not learning, and a loop
-    // that runs to the turn ceiling is half an hour of upstream spend.
-    expect(MAX_IDENTICAL_CALLS).toBe(4);
+    // The one guard that matters once the ceiling above is this high, and it is
+    // a backstop rather than a working limit: a model with somewhere to go
+    // interleaves different calls, so a dozen of the *identical* one in a row is
+    // a loop and not a task. A value low enough to fire on real work — four was
+    // — is too low to serve that purpose, which is exactly what happened.
+    expect(MAX_IDENTICAL_CALLS).toBe(12);
+  });
+});
+
+describe("the empty state asks a user, not an operator", () => {
+  const DICT = read("src", "lib", "i18n", "dict.ts");
+
+  it("points at this gateway rather than at deployment", () => {
+    // "How do I deploy this" and "which env vars do I need" are questions from
+    // the person standing behind the relay. Everyone else is asking what it
+    // serves, what it costs, and why their call failed.
+    const line = DICT.split("\n").find((l) => l.includes('"assistant.emptyState"'))!;
+    expect(line).toContain("中转站");
+    expect(line).not.toContain("部署");
+    expect(line).not.toContain("环境变量");
+  });
+
+  it("and every suggestion is something an ordinary caller would ask", () => {
+    for (const n of ["1", "2", "3", "4"]) {
+      const line = DICT.split("\n").find(
+        (l) => l.includes(`"assistant.suggestions.${n}":`),
+      )!;
+      expect(line, `suggestion ${n} is missing`).toBeTruthy();
+      // The deployment question that used to be suggestion 3.
+      expect(line).not.toContain("Dokku");
+      expect(line).not.toContain("环境变量");
+    }
+    // And they are about *this* deployment, not a generic assistant.
+    const s3 = DICT.split("\n").find((l) => l.includes('"assistant.suggestions.3":'))!;
+    expect(s3).toContain("/v1/chat/completions");
+  });
+
+  it("no replacement characters anywhere in the dictionary", () => {
+    // A character written as three replacement characters is what a reader sees
+    // as broken text rather than as a bug, which is why one has been sitting in
+    // the admin model-configuration description without anyone noticing.
+    expect(DICT.includes("�")).toBe(false);
   });
 });
 

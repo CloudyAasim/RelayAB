@@ -76,17 +76,19 @@ describe("assistant: what a stuck model looks like", () => {
     expect(callSignature("t", "{oops")).not.toBe(callSignature("t", "{fine"));
   });
 
-  it("stops on four of the same, and not on three", () => {
-    // Two or three in a row is normal: read a provider, act on what you read,
-    // check the result. Four is a model that is not learning anything.
-    expect(repeatedCall(["a(1)", "a(1)", "a(1)"])).toBeNull();
-    expect(repeatedCall(["a(1)", "a(1)", "a(1)", "a(1)"])).toBe("a(1)");
+  it("does not stop on a handful of repeats, because real work repeats", () => {
+    // Re-reading a configuration after each write, or a page after each edit, is
+    // what a long job looks like. At four the guard was telling a model that was
+    // doing the right thing that it was stuck.
+    expect(repeatedCall(["a(1)", "a(1)", "a(1)", "a(1)"])).toBeNull();
   });
 
   it("the threshold is the one the guard exports", () => {
     // So a change to the loop guard cannot leave the test asserting a number the
-    // code no longer uses.
-    expect(MAX_IDENTICAL_CALLS).toBe(4);
+    // code no longer uses. Twelve is high enough that only an actual loop
+    // reaches it, and low enough to stop one inside the turn ceiling.
+    expect(MAX_IDENTICAL_CALLS).toBe(12);
+    expect(repeatedCall(new Array(12).fill("a(1)"))).toBe("a(1)");
   });
 
   it("needs the whole tail to match, not just part of it", () => {

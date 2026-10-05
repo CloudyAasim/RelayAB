@@ -54,14 +54,19 @@ const MAX_ROUNDS = 60;
 /**
  * The same call, with the same arguments, this many rounds running.
  *
- * Four rather than the three it was, and no further. This is the guard against a
- * model re-issuing one call with the same answer forever, and the turn ceiling
- * below is now half an hour — so this number is how long a stuck loop can run
- * before it is stopped, and it is the only thing standing between a loop and
- * half an hour of upstream spend. Three was the right answer against a ten
- * minute ceiling; it is the wrong one against this one.
+ * This was three, then four, and a real task kept tripping it: a configuration
+ * job legitimately re-reads the same configuration after each write, and a
+ * documentation job re-reads the same page after each edit. At four, a model
+ * doing the right thing was told it was stuck.
+ *
+ * Twelve is not a tuning compromise. A model with somewhere to go interleaves
+ * different calls, and a dozen of the *identical* one in a row with nothing
+ * between them is not a complex task — it is a loop, and it is stopped by the
+ * round and time ceilings above within a minute either way. The number exists
+ * to stop a loop burning the thirty-minute ceiling; any value low enough to
+ * fire on real work is too low to serve that purpose.
  */
-export const MAX_IDENTICAL_CALLS = 4;
+export const MAX_IDENTICAL_CALLS = 12;
 
 /**
  * A turn nobody would sit and wait for.
