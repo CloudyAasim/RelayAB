@@ -31,7 +31,10 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { ModelConfigPatchSchema } from "@/lib/db/types";
+import {
+  ModelConfigMergePatchSchema,
+  ModelConfigPatchSchema,
+} from "@/lib/db/types";
 import { getCurrentUser, requireAdmin, AuthGuardError, type AuthedUser } from "@/lib/auth/session";
 import {
   claimAssistantAction,
@@ -75,7 +78,7 @@ const DecisionSchema = z.object({
  * body — so using the shared schema drops nothing and cannot drift again.
  */
 
-const ProviderArgsSchema = z
+export const ProviderArgsSchema = z
   .object({
     baseUrl: z.string().nullable().optional(),
     anthropicBaseUrl: z.string().nullable().optional(),
@@ -99,7 +102,11 @@ const ProviderArgsSchema = z
     modelConfigTarget: z
       .object({
         clientId: z.string().min(1).max(200),
-        patch: ModelConfigPatchSchema,
+        // The merge shape, not the row shape. The model is named beside the
+        // patch and only the changed fields travel with it, so requiring the two
+        // identifiers inside the patch rejected every proposal at approval time —
+        // after the administrator had clicked.
+        patch: ModelConfigMergePatchSchema,
       })
       .optional(),
     /**

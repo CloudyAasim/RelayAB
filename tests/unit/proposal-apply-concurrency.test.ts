@@ -19,7 +19,9 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { ModelConfigPatchSchema } from "@/lib/db/types";
+import { ModelConfigMergePatchSchema, ModelConfigPatchSchema } from "@/lib/db/types";
+import { buildModelConfigPatch } from "@/lib/assistant/tools";
+import { ProviderArgsSchema } from "@/app/api/assistant/actions/[id]/route";
 
 const ROOT = process.cwd();
 const read = (...p: string[]): string => readFileSync(join(ROOT, ...p), "utf8");
@@ -37,7 +39,7 @@ type ModelConfigs = Record<string, Record<string, unknown>>;
  * here rather than at approval time.
  */
 function storedIntent(clientId: string, patch: Record<string, unknown>) {
-  const parsed = ModelConfigPatchSchema.parse({ upstreamId: "u", clientId, ...patch });
+  const parsed = ModelConfigMergePatchSchema.parse({ ...patch });
   return { modelConfigTarget: { clientId, patch: parsed } };
 }
 
@@ -133,6 +135,33 @@ describe("approving a proposal composes with the ones before it", () => {
 });
 
 describe("the stored shape is the intent, not a snapshot", () => {
+  it("the merge shape does not require the two identifiers", () => {
+    // The shape the tool actually stores: a price change, a level declaration,
+    // whatever was asked for — and nothing else. Validated against the row shape
+    // it reported, at approval time, that the patch must carry `upstreamId` and
+    // `clientId` — so every proposal failed the moment the administrator clicked,
+    // with a message about two fields the proposal had no reason to have.
+    const patch = ModelConfigMergePatchSchema.parse({
+      inputCost: 420,
+      outputCost: 1680,
+      reasoningEffortSupported: false,
+    });
+    expect(Object.keys(patch).sort()).toEqual([
+      "inputCost",
+      "outputCost",
+      "reasoningEffortSupported",
+    ]);
+  });
+
+  it("but the row shape still does, because a row has to be identifiable", () => {
+    // The two shapes exist for two directions. Confusing them is what put the
+    // requirement in the wrong place.
+    expect(ModelConfigPatchSchema.safeParse({ inputCost: 1 }).success).toBe(false);
+    expect(
+      ModelConfigPatchSchema.safeParse({ upstreamId: "u", clientId: "c", inputCost: 1 }).success,
+    ).toBe(true);
+  });
+
   it("the tool stores which model and which fields", () => {
     expect(TOOLS).toContain("args: { modelConfigTarget: { clientId: clientId.data, patch } }");
     // The preview is still built — the administrator has to see the resulting
@@ -156,5 +185,70 @@ describe("the stored shape is the intent, not a snapshot", () => {
     // It used to list the keys of the stored args. With the intent shape that
     // would report `modelConfigTarget` — a field the provider does not have.
     expect(APPLY).toContain("appliedFields");
+  });
+});
+
+describe("what the tool stores is what the apply path can read", () => {
+  /**
+   * Both sides imported, not reconstructed.
+   *
+   * The failure this section exists for: the tool wrote one shape and the
+   * endpoint read a different one, and nothing noticed until an administrator
+   * clicked approve and got a validation error about two fields the proposal
+   * had no reason to carry. Re-deriving either shape here would have missed the
+   * bug for the same reason the source had it.
+   */
+  it("every field the tool can set survives into the apply path's schema", () => {
+    for (const field of [
+      "inputCost",
+      "outputCost",
+      "cachedInputCost",
+      "cacheWriteCost",
+      "reasoningLevels",
+      "reasoningEffortSupported",
+    ]) {
+      const sample =
+        field === "reasoningLevels"
+          ? ["low", "high"]
+          : field === "reasoningEffortSupported"
+            ? false
+            : 42;
+      const built = buildModelConfigPatch({ [field]: sample, summary: "x" });
+      expect("patch" in built, `${field} was refused by the tool`).toBe(true);
+      if (!("patch" in built)) continue;
+
+      const parsed = ProviderArgsSchema.safeParse({
+        modelConfigTarget: { clientId: "MiniMax-M3", patch: built.patch },
+      });
+      expect(
+        parsed.success,
+        `${field}: the tool stores a shape the apply path rejects — ${
+          parsed.success ? "" : JSON.stringify(parsed.error.issues)
+        }`,
+      ).toBe(true);
+    }
+  });
+
+  it("a real proposal, end to end, applies without an error", () => {
+    // The whole of what the administrator clicked on, from the tool's own output
+    // to the apply path's own schema.
+    const built = buildModelConfigPatch({
+      inputCost: 420,
+      outputCost: 1680,
+      cachedInputCost: 84,
+      cacheWriteCost: 0,
+      reasoningEffortSupported: false,
+      summary: "补 M3 价格",
+    });
+    expect("patch" in built).toBe(true);
+    if (!("patch" in built)) return;
+
+    const parsed = ProviderArgsSchema.safeParse({
+      modelConfigTarget: { clientId: "MiniMax-M3", patch: built.patch },
+    });
+    expect(
+      parsed.success,
+      parsed.success ? "" : JSON.stringify(parsed.error.issues),
+    ).toBe(true);
   });
 });

@@ -286,6 +286,21 @@ export const ModelConfigPatchSchema = z.object({
   reasoningEffortSupported: z.boolean().optional(),
 });
 export type ModelConfigPatch = z.infer<typeof ModelConfigPatchSchema>;
+
+/**
+ * The same fields, every one of them optional — including the two identifiers.
+ *
+ * This is the shape a *merge* carries, as against the shape a *row* is. A
+ * proposal that says "set this model's prices" names the model separately and
+ * lists only the fields it changes, so requiring `upstreamId` and `clientId`
+ * inside the patch would make every such proposal fail to apply — after the
+ * administrator had already approved it, which is the worst moment a shape can
+ * first turn out to be wrong.
+ *
+ * Separate from {@link ModelConfigSchema}, which describes a row that exists.
+ */
+export const ModelConfigMergePatchSchema = ModelConfigPatchSchema.partial();
+export type ModelConfigMergePatch = z.infer<typeof ModelConfigMergePatchSchema>;
 export const ProviderSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1).max(64),
