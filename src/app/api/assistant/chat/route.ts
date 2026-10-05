@@ -71,9 +71,25 @@ function accountTransport(account: {
   };
 }
 
-const MAX_MESSAGE_CHARS = 8000;
-
-/** One file, one ceiling. Matches the media transcriptions route's 25 MB. */
+/**
+ * No ceiling on the message itself.
+ *
+ * There was one, at 8,000 characters, and it was about two percent of the
+ * smallest model on this deployment — a 204,800-token window turned into room
+ * for two or three thousand. It also fired *before* the request left, so the
+ * application was refusing work that the model had already agreed to do, and a
+ * person pasting a stack trace or a log got a refusal instead of a reading.
+ *
+ * The context window is the model's to enforce, and it is better at it than a
+ * character count is: characters do not mean the same thing in two languages,
+ * and a fixed number cannot know how much of the window this conversation has
+ * already spent. If the input genuinely does not fit, the upstream says so and
+ * the turn is reported the way any other upstream failure is.
+ *
+ * Long content goes in a file. The attachment ceiling below is 25 MB and has no
+ * equivalent ceiling on the text beside it, which is the right shape for it:
+ * nobody pastes a repository, and everybody who needs to has a way out.
+ */
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 const MAX_ATTACHMENTS = 6;
 
@@ -226,13 +242,6 @@ export async function POST(req: Request): Promise<Response> {
       { status: 400 },
     );
   }
-  if (message.length > MAX_MESSAGE_CHARS) {
-    return Response.json(
-      { ok: false, error: { code: "too_long", message: `消息过长（上限 ${MAX_MESSAGE_CHARS} 字）` } },
-      { status: 400 },
-    );
-  }
-
   const relayKey = typeof body.relayKey === "string" && body.relayKey.trim()
     ? body.relayKey.trim()
     : undefined;
