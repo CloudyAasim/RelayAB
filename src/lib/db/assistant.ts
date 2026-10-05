@@ -444,6 +444,33 @@ export async function claimAssistantAction(
   return changed > 0 ? getAssistantAction(userId, actionId) : null;
 }
 
+/**
+ * Take a pending proposal back out of the queue.
+ *
+ * Separate from {@link setAssistantActionStatus} because the condition is the
+ * point: only a `pending` row can be withdrawn, and a row that has already been
+ * resolved cannot. Without the predicate, "withdraw" would be a quieter way to
+ * rewrite history — a status update on an applied row would leave the
+ * configuration it produced in place and the queue disagreeing with the
+ * database.
+ *
+ * Returns false when there was nothing pending to withdraw, which is the honest
+ * answer to "did you take it back": a proposal that was already approved is
+ * still approved.
+ */
+export async function withdrawAssistantAction(
+  userId: string,
+  actionId: string,
+  result = "助手撤回",
+): Promise<boolean> {
+  return (
+    run(
+      "UPDATE assistant_actions SET status = 'rejected', result = ?, resolved_at = ? WHERE id = ? AND user_id = ? AND status = 'pending'",
+      [result, new Date().toISOString(), actionId, userId],
+    ) > 0
+  );
+}
+
 export async function setAssistantActionStatus(
   userId: string,
   actionId: string,

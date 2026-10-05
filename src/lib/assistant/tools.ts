@@ -30,7 +30,12 @@ import { getProviderById, listProviders } from "../db/providers";
 import { listUsers, getUserById } from "../db/users";
 import { listApiKeysByUser } from "../db/keys";
 import { aggregateByKeyMany, listRecentUsage } from "../db/usage";
-import { createAssistantAction, listAssistantActions } from "../db/assistant";
+import {
+  createAssistantAction,
+  getAssistantAction,
+  listAssistantActions,
+  withdrawAssistantAction,
+} from "../db/assistant";
 import { getPublicUrl } from "../config";
 import { knownModelOrDefault } from "../providers/known-models";
 import { decryptSecret } from "../crypto/secrets";
@@ -407,6 +412,27 @@ const USER_TOOLS: AssistantToolDef[] = [
 ];
 
 const ADMIN_TOOLS: AssistantToolDef[] = [
+  {
+    type: "function",
+    function: {
+      name: "withdraw_proposal",
+      description:
+        "撤回一条**还在待确认**的提案。propose_* 只能建不能撤，缺了这个工具，助手就只能看着自己" +
+        "提交的东西一直挂在队列里，明知它过时了也收不回来。\n" +
+        "**只能撤待确认的。** 已经生效（applied）的撤不掉——那不是撤回，是想改回去，"+
+        "要改就重新提一条。撤不成功会告诉你原因，别当成已经撤掉了。\n" +
+        "撤回前先 list_my_proposals 确认那条确实是 pending，别凭上一轮的印象撤。",
+      parameters: {
+        type: "object",
+        properties: {
+          actionId: { type: "string", description: "要撤回的提案 id" },
+          reason: { type: "string", description: "一句话说明为什么撤回" },
+        },
+        required: ["actionId"],
+        additionalProperties: false,
+      },
+    },
+  },
   {
     type: "function",
     function: {
@@ -815,6 +841,8 @@ export async function executeTool(
       return mediaGenerate(args, ctx, "video");
 
     // ---- admin only ----------------------------------------------------
+    case "withdraw_proposal":
+      return withdrawProposal(args, ctx);
     case "list_my_proposals":
       return listMyProposals(args, ctx);
     case "list_providers":
@@ -1510,6 +1538,55 @@ async function getMyUsage(ctx: ToolContext): Promise<ToolResult> {
  * as a finding, and wrong in the direction that matters. A tool that reports the
  * queue is the difference between "I don't know" and "not yet".
  */
+/**
+ * Take a pending proposal back, and say plainly when it could not be taken.
+ *
+ * The model raised this itself: it had proposed a correction, the correction
+ * was superseded, and its only tools could create. So it reported a stale
+ * proposal as still queued and left it there.
+ *
+ * The refusal branch matters as much as the success one. A tool that answered
+ * "done" either way would leave the model believing a queue was clean.
+ */
+async function withdrawProposal(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<ToolResult> {
+  const actionId = typeof args.actionId === "string" ? args.actionId.trim() : "";
+  if (!actionId) return fail("要撤回哪一条？给我 actionId。");
+
+  const reason =
+    typeof args.reason === "string" && args.reason.trim()
+      ? args.reason.trim()
+      : "助手撤回";
+
+  const before = await getAssistantAction(ctx.user.id, actionId);
+  if (!before) {
+    return fail(`找不到提案 ${actionId}，它可能不属于当前账号，或者已经被清理了。`);
+  }
+  if (before.status !== "pending") {
+    const how =
+      before.status === "applied"
+        ? "它已经生效了，撤回不会把配置改回去"
+        : "它已经被处理过了";
+    return fail(
+      `提案 ${actionId} 撤不了：当前状态是 ${before.status}，${how}。` +
+        (before.status === "applied"
+          ? "要改回去请重新提一条，管理员确认后才会生效。"
+          : ""),
+    );
+  }
+
+  const withdrawn = await withdrawAssistantAction(ctx.user.id, actionId, `助手撤回：${reason}`);
+  if (!withdrawn) {
+    return fail(
+      `提案 ${actionId} 撤不掉了——状态在查询和撤回之间变了（可能刚被确认）。` +
+        "用 list_my_proposals 重新看一眼。",
+    );
+  }
+  return ok({ actionId, status: "rejected", reason, summary: before.summary });
+}
+
 async function listMyProposals(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
   const status = args.status;
   if (status !== undefined && typeof status !== "string") {

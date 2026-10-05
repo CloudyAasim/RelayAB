@@ -193,6 +193,24 @@ const MediaProviderCreateSchema = z
 
 const CREATE_KINDS = new Set(["provider.create", "media_provider.create"]);
 
+/**
+ * Refresh the pages that render the model catalogue.
+ *
+ * The documentation pages are where an operator looks to see what a change
+ * did, and they are server-rendered. This revalidation used to sit inside the
+ * `doc_pages.update` branch alone, so a price change — which the catalogue
+ * prints — left it showing the old numbers: approve a reprice, go and look,
+ * and the page still says the model is free. The approval screen described the
+ * change and the page that would confirm it did not, which is the same failure
+ * twice.
+ *
+ * Called from every branch that writes something the catalogue reads.
+ */
+async function revalidateCatalog(): Promise<void> {
+  await revalidatePath("/docs", "layout");
+  await revalidatePath("/dashboard/docs", "layout");
+}
+
 export async function POST(
   req: Request,
   context: { params: Promise<{ id: string }> },
@@ -326,6 +344,9 @@ export async function POST(
         ...(textSpecs !== undefined ? { textSpecs: textSpecs ?? [] } : {}),
       });
       if (!updated) throw new Error("找不到该服务商，可能已被删除");
+      // Prices, context and thinking levels are all printed by the catalogue,
+      // so a change here has to be visible there.
+      await revalidateCatalog();
       const appliedFields = Object.keys(rest).concat(
         resolvedModelConfigs !== undefined ? ["modelConfigs"] : [],
         textSpecs !== undefined ? ["textSpecs"] : [],
@@ -387,8 +408,7 @@ export async function POST(
         seen.add(page.id);
       }
       await updateSettings({ docPages: parsedPages.docPages });
-      await revalidatePath("/docs", "layout");
-      await revalidatePath("/dashboard/docs", "layout");
+      await revalidateCatalog();
       await setAssistantActionStatus(
         me.id,
         claimed.id,
