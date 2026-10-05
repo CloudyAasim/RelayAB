@@ -38,7 +38,7 @@ import {
   getAssistantAction,
   setAssistantActionStatus,
 } from "@/lib/db/assistant";
-import { createProvider, updateProvider } from "@/lib/db/providers";
+import { createProvider, getProviderById, updateProvider } from "@/lib/db/providers";
 import { createMediaProvider, updateMediaProvider, MediaProviderValidationError } from "@/lib/db/media-providers";
 import { updateSettings } from "@/lib/db/settings";
 import { validatePage } from "@/lib/docs/custom";
@@ -84,6 +84,34 @@ const ProviderArgsSchema = z
     enabled: z.boolean().optional(),
     priority: z.number().int().optional(),
     modelMapping: z.record(z.string(), z.string()).optional(),
+    /**
+     * What this proposal is for, rather than what it looked like when it was
+     * written.
+     *
+     * A proposal used to carry the whole model table as it stood at creation
+     * time, and approving it replaced the table with that copy. Two proposals
+     * over one provider then overwrote each other in approval order, the last
+     * silently reverting the first — with every status reading `applied` and no
+     * error anywhere. Eight approved price changes, one of them in the
+     * database. Storing the model and the fields means the apply reads the
+     * provider as it stands and merges into it, so order stops mattering.
+     */
+    modelConfigTarget: z
+      .object({
+        clientId: z.string().min(1).max(200),
+        patch: ModelConfigPatchSchema,
+      })
+      .optional(),
+    /**
+     * The whole table, for proposals written before the field above existed and
+     * for anyone who means to replace it.
+     *
+     * Read only when `modelConfigTarget` is absent: two shapes cannot both be
+     * honoured, and the one that loses is the one that would revert the other's
+     * work. Kept because a proposal is already sitting in the queue in this
+     * shape, and dropping it would spend an approval on nothing — the exact
+     * failure the comment above this schema was written about.
+     */
     modelConfigs: z.record(z.string(), ModelConfigPatchSchema).optional(),
     /**
      * The provider's protocol documents, one per compatibility interface.
@@ -254,20 +282,52 @@ export async function POST(
   try {
     if (claimed.kind === "provider.update") {
       if (!claimed.targetId) throw new Error("变更缺少目标服务商 id");
-      const { textSpecs, ...rest } = ProviderArgsSchema.parse(args);
+      const { textSpecs, modelConfigTarget, modelConfigs, ...rest } =
+        ProviderArgsSchema.parse(args);
+
+      let resolvedModelConfigs = modelConfigs;
+      if (modelConfigTarget) {
+        /**
+         * Read the provider *now*, not as it looked when the proposal was
+         * written, and merge the one model's fields into it.
+         *
+         * The stored copy is a snapshot, and a snapshot is only correct for as
+         * long as nothing else writes. Eight price proposals made in one go all
+         * held the same snapshot, so approving them in a row restored the old
+         * prices seven times over and left one model's change standing — with
+         * every row in the queue marked `applied`. Reading here makes each
+         * approval compose with the ones before it instead of undoing them.
+         */
+        const current = await getProviderById(claimed.targetId);
+        if (!current) throw new Error("找不到该服务商，可能已被删除");
+        const live = { ...(current.modelConfigs ?? {}) };
+        live[modelConfigTarget.clientId] = {
+          ...(live[modelConfigTarget.clientId] ?? {}),
+          ...modelConfigTarget.patch,
+        };
+        resolvedModelConfigs = live;
+      }
+
       // `null` on the protocol list means "no protocols at all" — the same
       // thing the editor sends as `[]`. Normalised here so the database layer
       // keeps one shape.
       const updated = await updateProvider(claimed.targetId, {
         ...rest,
+        ...(resolvedModelConfigs !== undefined
+          ? { modelConfigs: resolvedModelConfigs }
+          : {}),
         ...(textSpecs !== undefined ? { textSpecs: textSpecs ?? [] } : {}),
       });
       if (!updated) throw new Error("找不到该服务商，可能已被删除");
+      const appliedFields = Object.keys(rest).concat(
+        resolvedModelConfigs !== undefined ? ["modelConfigs"] : [],
+        textSpecs !== undefined ? ["textSpecs"] : [],
+      );
       await setAssistantActionStatus(
         me.id,
         id,
         "applied",
-        `已更新服务商 ${updated.name}（${Object.keys(args as object).join(", ") || "无字段"}）`,
+        `已更新服务商 ${updated.name}（${appliedFields.join(", ") || "无字段"}）`,
       );
       return NextResponse.json({ ok: true, data: { status: "applied", providerId: updated.id } });
     }

@@ -1786,8 +1786,23 @@ async function proposeModelConfigUpdate(
   if ("error" in built) return fail(built.error);
   const patch = built.patch;
 
-  const merged = { ...(provider.modelConfigs ?? {}) };
-  merged[clientId.data] = { ...existing, ...patch };
+  /**
+   * The preview, and only the preview.
+   *
+   * This used to be what the proposal carried, and the whole record it was
+   * built from went with it. Two proposals made minutes apart therefore each
+   * held a copy of the provider as it stood when *they* were written, and
+   * approving them in a row wrote the second copy over the first one's work:
+   * eight approved model-price changes, every status green, one of them in the
+   * database. The survivor was whichever was approved last, which is not a
+   * coincidence anyone would have predicted.
+   *
+   * The stored intent is now the model and the fields. The apply reads the
+   * provider as it stands at that moment and merges, so the order proposals are
+   * approved in stops mattering.
+   */
+  const preview = { ...(provider.modelConfigs ?? {}) };
+  preview[clientId.data] = { ...existing, ...patch };
   const summary =
     typeof args.summary === "string" && args.summary.trim() ? args.summary.trim() : "未说明的变更";
 
@@ -1796,8 +1811,8 @@ async function proposeModelConfigUpdate(
     kind: "provider.update",
     targetId: provider.id,
     summary,
-    args: { modelConfigs: merged },
-    diff: renderProviderDiff(provider, { modelConfigs: merged }, summary),
+    args: { modelConfigTarget: { clientId: clientId.data, patch } },
+    diff: renderProviderDiff(provider, { modelConfigs: preview }, summary),
   });
 
   return ok({
