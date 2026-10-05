@@ -171,7 +171,11 @@ describe("the stored shape is the intent, not a snapshot", () => {
 
   it("the apply re-reads the provider before merging", () => {
     expect(APPLY).toMatch(/const current = await getProviderById\(claimed\.targetId\)/);
-    expect(APPLY).toMatch(/live\[modelConfigTarget\.clientId\] = \{/);
+    // A loop, not one assignment: the apply now handles a list of merges, and
+    // the line that showed it merging a single model would have been the wrong
+    // thing to keep if it had merely been widened.
+    expect(APPLY).toMatch(/for \(const \{ clientId, patch \} of targets\)/);
+    expect(APPLY).toMatch(/live\[clientId\] = \{ \.\.\.\(live\[clientId\] \?\? \{\}\), \.\.\.patch \};/);
   });
 
   it("a proposal written in the old shape still applies", () => {

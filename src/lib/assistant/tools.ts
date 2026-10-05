@@ -415,6 +415,70 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
   {
     type: "function",
     function: {
+      name: "propose_model_configs_update",
+      description:
+        "**一次性配置一个服务商下多个模型**——上下文、最大输出、思考等级、思考等级支持声明、四个价格、显示名、是否启用。\n" +
+        "管理员点一次确认，全部生效。\n\n" +
+        "**要一次改多个模型就用这个，不要循环调 propose_model_config_update**——" +
+        "那会生成 N 条提案、要点 N 次确认，而且中途失败会留下半配置的状态。\n" +
+        "只改一个模型时两个都行，这个更省事。\n\n" +
+        "models 里只写要改的字段；没写的字段保持原样，不会被清零。",
+      parameters: {
+        type: "object",
+        properties: {
+          providerId: { type: "string", description: "服务商 id，用 list_providers 查" },
+          summary: { type: "string", description: "一句话说明这次变更的目的" },
+          models: {
+            type: "object",
+            description:
+              "模型名 → 该模型要设的字段。只有列出的字段会被写入，其余保持原样。",
+            additionalProperties: {
+              type: "object",
+              properties: {
+                displayName: { type: "string" },
+                upstreamId: { type: "string" },
+                contextLength: { type: "integer", description: "上下文长度（输入 token 上限）" },
+                maxOutputTokens: { type: "integer" },
+                reasoningLevels: {
+                  type: "array",
+                  items: { type: "string" },
+                  description:
+                    "这个模型接受的思考等级，照厂商文档原样写。空数组 = 不支持。\n" +
+                    "厂商文档明确写了它不读这个参数时，同时设 reasoningEffortSupported: false——" +
+                    "界面会把对应的下拉置灰。",
+                },
+                reasoningEffortSupported: {
+                  type: "boolean",
+                  description:
+                    "厂商是否支持 reasoning_effort。填 false 会让助手设置里的档位下拉置灰。" +
+                    "不确定就别传——没声明过和声明过「不支持」是两回事，只有传了才会置灰。",
+                },
+                inputCost: { type: "number", description: "每 100 万输入 token 的积分" },
+                outputCost: { type: "number", description: "每 100 万输出 token 的积分" },
+                cachedInputCost: {
+                  type: "number",
+                  description:
+                    "每 100 万「命中上游提示缓存」的输入 token 的积分。0 = 缓存命中免费。不填 = 按 inputCost 算。",
+                },
+                cacheWriteCost: {
+                  type: "number",
+                  description:
+                    "每 100 万「写入上游缓存」的积分。0 = 写入免费。**留空和 0 不是一回事**：留空会按 inputCost 收钱。",
+                },
+                enabled: { type: "boolean" },
+              },
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ["providerId", "models"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "withdraw_proposal",
       description:
         "撤回一条**还在待确认**的提案。propose_* 只能建不能撤，缺了这个工具，助手就只能看着自己" +
@@ -841,6 +905,8 @@ export async function executeTool(
       return mediaGenerate(args, ctx, "video");
 
     // ---- admin only ----------------------------------------------------
+    case "propose_model_configs_update":
+      return proposeModelConfigsUpdate(args, ctx);
     case "withdraw_proposal":
       return withdrawProposal(args, ctx);
     case "list_my_proposals":
@@ -1839,6 +1905,86 @@ export function buildModelConfigPatch(args: Record<string, unknown>):
  * a context window and prices that an operator may have corrected by hand, and a
  * proposal that silently resets them is worse than no proposal.
  */
+/**
+ * Configure many models of one provider in a single proposal.
+ *
+ * This exists because the alternative does not scale. The single-model tool
+ * exists and works, but a provider with nine models needs nine calls, and nine
+ * calls are nine approvals — the administrator approving the same intention
+ * nine times, and nine chances to stop halfway and leave half the catalogue
+ * repriced. The user's own words: the assistant should be able to configure a
+ * provider in one go.
+ *
+ * The stored form is a **list of per-model merges**, not a copy of the table.
+ * That distinction is the whole reason it can be used for nine models: a copy
+ * is only correct until something else writes, and with one proposal per
+ * approval this is exactly the moment things do. Each entry is merged into the
+ * provider as it stands when it is applied, so a second such proposal, or a
+ * `propose_model_config_update` in between, composes with it instead of
+ * reverting it.
+ */
+async function proposeModelConfigsUpdate(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<ToolResult> {
+  const providerId = z.string().min(1).safeParse(args.providerId);
+  if (!providerId.success) return fail("需要 providerId，先用 list_providers 查。");
+
+  const raw = args.models;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return fail("models 必须是一个对象：模型名 → 该模型要设的字段。");
+  }
+  const names = Object.keys(raw as Record<string, unknown>);
+  if (names.length === 0) return fail("models 是空的，没有要改的模型。");
+  if (names.length > 200) return fail("一次最多改 200 个模型。");
+
+  const provider = await getProviderById(providerId.data);
+  if (!provider) return fail(`找不到服务商 ${providerId.data}。`);
+
+  const live = provider.modelConfigs ?? {};
+  const targets: Array<{ clientId: string; patch: Record<string, unknown> }> = [];
+  const preview: Record<string, unknown> = { ...live };
+
+  for (const name of names) {
+    if (!(name in (provider.modelMapping ?? {})) && !(name in live)) {
+      return fail(
+        `服务商 ${provider.name} 里没有名为 ${name} 的模型。` +
+          `现有的：${Object.keys(provider.modelMapping ?? {}).join(", ") || "（无）"}。` +
+          "新增模型请用 propose_provider_update 改 modelMapping。",
+      );
+    }
+    const built = buildModelConfigPatch((raw as Record<string, unknown>)[name] as Record<
+      string,
+      unknown
+    >);
+    if ("error" in built) return fail(`${name}：${built.error}`);
+    targets.push({ clientId: name, patch: built.patch });
+    preview[name] = { ...(live[name] ?? {}), ...built.patch };
+  }
+
+  const summary =
+    typeof args.summary === "string" && args.summary.trim()
+      ? args.summary.trim()
+      : `配置 ${targets.length} 个模型`;
+
+  const action = await createAssistantAction({
+    userId: ctx.user.id,
+    kind: "provider.update",
+    targetId: provider.id,
+    summary,
+    args: { modelConfigTargets: targets },
+    diff: renderProviderDiff(provider, { modelConfigs: preview }, summary),
+  });
+
+  return ok({
+    actionId: action.id,
+    summary,
+    provider: provider.name,
+    models: targets.map((t) => t.clientId),
+    note: "一次提案，管理员点一次确认；还没生效。",
+  });
+}
+
 async function proposeModelConfigUpdate(
   args: Record<string, unknown>,
   ctx: ToolContext,

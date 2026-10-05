@@ -110,6 +110,25 @@ export const ProviderArgsSchema = z
       })
       .optional(),
     /**
+     * The same merge, for many models at once.
+     *
+     * A provider with nine models would otherwise need nine proposals and nine
+     * approvals to describe one intention, and stopping halfway leaves half the
+     * catalogue repriced. Each entry is still merged into the provider as it
+     * stands at that moment, so a list of them composes with anything applied in
+     * between rather than reverting it.
+     */
+    modelConfigTargets: z
+      .array(
+        z.object({
+          clientId: z.string().min(1).max(200),
+          patch: ModelConfigMergePatchSchema,
+        }),
+      )
+      .min(1)
+      .max(200)
+      .optional(),
+    /**
      * The whole table, for proposals written before the field above existed and
      * for anyone who means to replace it.
      *
@@ -307,14 +326,19 @@ export async function POST(
   try {
     if (claimed.kind === "provider.update") {
       if (!claimed.targetId) throw new Error("变更缺少目标服务商 id");
-      const { textSpecs, modelConfigTarget, modelConfigs, ...rest } =
+      const { textSpecs, modelConfigTarget, modelConfigTargets, modelConfigs, ...rest } =
         ProviderArgsSchema.parse(args);
 
+      // One list, two shapes: a single model and many models carry the same
+      // thing and are applied the same way. `undefined` in an entry means the
+      // field was never mentioned, so merging is what keeps the fields nobody
+      // asked about intact.
+      const targets = modelConfigTargets ?? (modelConfigTarget ? [modelConfigTarget] : undefined);
       let resolvedModelConfigs = modelConfigs;
-      if (modelConfigTarget) {
+      if (targets) {
         /**
          * Read the provider *now*, not as it looked when the proposal was
-         * written, and merge the one model's fields into it.
+         * written, and merge each model's fields into it.
          *
          * The stored copy is a snapshot, and a snapshot is only correct for as
          * long as nothing else writes. Eight price proposals made in one go all
@@ -326,10 +350,9 @@ export async function POST(
         const current = await getProviderById(claimed.targetId);
         if (!current) throw new Error("找不到该服务商，可能已被删除");
         const live = { ...(current.modelConfigs ?? {}) };
-        live[modelConfigTarget.clientId] = {
-          ...(live[modelConfigTarget.clientId] ?? {}),
-          ...modelConfigTarget.patch,
-        };
+        for (const { clientId, patch } of targets) {
+          live[clientId] = { ...(live[clientId] ?? {}), ...patch };
+        }
         resolvedModelConfigs = live;
       }
 
