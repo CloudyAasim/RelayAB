@@ -150,29 +150,78 @@ export function renderProviderDiff(
     out.push("");
   }
 
-  // The context-window check the diff exists to make visible: a model whose
-  // advertised context collapses would quietly reject large prompts upstream.
+  /**
+   * Every model field that actually changed, and what it changes from.
+   *
+   * This section used to render the context window and nothing else, so a
+   * proposal that repriced a model produced a diff that mentioned no price at
+   * all — the administrator was asked to approve a production billing change on
+   * a document that did not describe it. The only price in the output was
+   * whatever the model had happened to type into the summary, which is the one
+   * part of the screen nobody can rely on.
+   *
+   * Rendered per field, from the two sides, because the whole reason this
+   * endpoint exists is that approving is a decision made by reading.
+   */
   if (patch.modelConfigs) {
-    const configs = patch.modelConfigs as Record<string, { contextLength?: number; maxOutputTokens?: number }>;
+    const configs = patch.modelConfigs as Record<string, Record<string, unknown>>;
     const before = provider.modelConfigs ?? {};
     const rows: string[] = [];
+
     for (const [id, cfg] of Object.entries(configs)) {
-      const prev = before[id];
-      if (prev?.contextLength === cfg.contextLength && prev?.maxOutputTokens === cfg.maxOutputTokens) {
-        continue;
-      }
-      rows.push(
-        `      ${id}: 上下文 ${fmtNum(prev?.contextLength)} → ${fmtNum(cfg.contextLength)}，` +
-          `输出 ${fmtNum(prev?.maxOutputTokens)} → ${fmtNum(cfg.maxOutputTokens)}`,
+      const prev = (before[id] ?? {}) as Record<string, unknown>;
+      const changed = MODEL_DIFF_FIELDS.filter(
+        (f) => f.key in cfg && !sameValue(prev[f.key], cfg[f.key]),
       );
+      // A model entry carried but not altered is not news, and nine identical
+      // rows of "unchanged" is how a real change gets lost in the list.
+      if (!changed.length) continue;
+      rows.push(`      ${id}:`);
+      for (const f of changed) {
+        rows.push(
+          `        ${f.label}：${fmtModelValue(prev[f.key])} → ${fmtModelValue(cfg[f.key])}`,
+        );
+      }
     }
     if (rows.length) {
-      out.push("上下文窗口：", ...rows, "");
+      out.push("模型配置：", ...rows, "");
     }
   }
 
   out.push("注意：本次变更不会触碰加密密钥。");
   return out.join("\n");
+}
+
+/**
+ * The per-model fields a diff reports, in the order an operator reads them.
+ *
+ * Every field a write path accepts, so a change cannot be invisible by being
+ * unexpected — the one thing a confirmation screen must not do.
+ */
+const MODEL_DIFF_FIELDS: ReadonlyArray<{ key: string; label: string }> = [
+  { key: "enabled", label: "启用" },
+  { key: "upstreamId", label: "上游模型名" },
+  { key: "displayName", label: "显示名" },
+  { key: "contextLength", label: "上下文" },
+  { key: "maxOutputTokens", label: "最大输出" },
+  { key: "reasoningLevels", label: "思考等级" },
+  { key: "reasoningEffortSupported", label: "支持思考等级" },
+  { key: "inputCost", label: "输入积分/百万 token" },
+  { key: "outputCost", label: "输出积分/百万 token" },
+  { key: "cachedInputCost", label: "缓存读积分/百万 token" },
+  { key: "cacheWriteCost", label: "缓存写积分/百万 token" },
+];
+
+/** Deep-enough equality for the values these fields hold. */
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((v, i) => sameValue(v, b[i]));
+  }
+  // `undefined` and `null` are different stored states — one is "never set",
+  // the other "set to nothing" — so they are not the same value here.
+  if (a === null || b === null || a === undefined || b === undefined) return false;
+  return false;
 }
 
 /** Same shape, for a media provider. */
@@ -229,6 +278,25 @@ export function renderMediaDiff(
 
 function fmtNum(n: unknown): string {
   return typeof n === "number" ? n.toLocaleString() : "(未设置)";
+}
+
+/**
+ * A model field's value, for a line an operator is asked to make a decision on.
+ *
+ * `fmtNum` answers only for numbers, and a model row is not only numbers: a
+ * proposal that switches thinking levels off has a boolean in it, and one that
+ * replaces the level list has an array. Rendering either as "(未设置)" put two
+ * identical words on both sides of an arrow, which is the one thing a diff must
+ * never do — it says the value did not change while showing that it did.
+ */
+function fmtModelValue(v: unknown): string {
+  if (v === undefined) return "(未设置)";
+  if (v === null) return "(空)";
+  if (typeof v === "number") return v.toLocaleString();
+  if (typeof v === "boolean") return v ? "是" : "否";
+  if (Array.isArray(v)) return v.length ? v.map((x) => String(x)).join(" / ") : "（空列表）";
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
 }
 
 /**
