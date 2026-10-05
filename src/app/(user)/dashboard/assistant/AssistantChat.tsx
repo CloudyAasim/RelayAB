@@ -932,7 +932,6 @@ export function AssistantChat({
                     <AssistantBody
                       text={m.content}
                       reasoning={m.reasoning}
-                      streaming={m.id === "streaming"}
                       thinkingLabel={t("assistant.thinkingBlock")}
                       pretty={pretty}
                       expandLabel={t("assistant.expand")}

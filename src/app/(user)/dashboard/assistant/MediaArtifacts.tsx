@@ -278,7 +278,6 @@ export function AssistantBody({
   pretty,
   expandLabel,
   collapseLabel,
-  streaming = false,
 }: {
   text: string;
   /**
@@ -295,10 +294,8 @@ export function AssistantBody({
   pretty: boolean;
   expandLabel: string;
   collapseLabel: string;
-  /** True while the answer is still arriving. */
-  streaming?: boolean;
 }) {
-  const stillStreaming = streaming ?? false;  if (!text && !reasoning) {
+  if (!text && !reasoning) {
     return <span className="text-muted-foreground">{thinkingLabel}</span>;
   }
 
@@ -328,13 +325,21 @@ export function AssistantBody({
   return (
     <div className="space-y-2 break-words">
       {showReasoningBlock && (
-        <details
-          className="group rounded-md border border-border/60 bg-muted/40"
-          // Open while the answer is still coming, so the reasoning is readable
-          // as it happens; closed afterwards, because by then it is history and
-          // it was sitting on top of the thing the reader came for.
-          open={stillStreaming}
-        >
+        /*
+         * No `open` here, deliberately.
+         *
+         * It was `open={streaming}` so the reasoning would be readable as it
+         * arrived — and that made the element controlled, so React wrote the
+         * prop over the reader's own state on every re-render. Open it while the
+         * answer is streaming and the next token snapped it shut. A disclosure
+         * the reader cannot hold open is not a disclosure.
+         *
+         * Left to the element: collapsed by default, opened by the person who
+         * wants it, and staying open. Which is what the block below a `<think>`
+         * tag in the answer has always done — two reasoning blocks with the same
+         * name should behave the same way.
+         */
+        <details className="group rounded-md border border-border/60 bg-muted/40">
           <summary className="flex cursor-pointer list-none items-center gap-2 px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground">
             <span className="font-medium">{thinkingLabel}</span>
             <span className="text-[10px] opacity-70 group-open:hidden">{expandLabel}</span>

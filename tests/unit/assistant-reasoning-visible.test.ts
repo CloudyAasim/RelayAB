@@ -111,4 +111,17 @@ describe("the reasoning reaches the screen", () => {
       /reasoning: \(row\.reasoning as string \| null\) \?\? null/,
     );
   });
+
+  it("collapsed by default, and not a control the reader cannot hold", () => {
+    // It was `open={streaming}` so the reasoning would be readable as it
+    // arrived. That made the element controlled: React wrote the prop over the
+    // reader's own state on every re-render, so opening it mid-stream was undone
+    // by the next token. A disclosure that shuts itself while you are reading it
+    // is not a disclosure.
+    expect(UI, "a details is force-opened").not.toMatch(/<details[^>]*\bopen=/);
+    // Nothing left holding it open either: a prop that outlived its purpose is
+    // the next thing nobody reads.
+    expect(UI).not.toMatch(/stillStreaming/);
+    expect(UI).not.toMatch(/streaming\?: boolean/);
+  });
 });
