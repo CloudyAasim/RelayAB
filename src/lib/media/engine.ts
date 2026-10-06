@@ -354,6 +354,41 @@ function resolveEnumTable(
   return merged;
 }
 
+  /**
+ * A filename a `Content-Disposition` header can actually carry.
+ *
+ * The quoted-string form of that header is printable ASCII and nothing else.
+ * Non-ASCII has to travel as RFC 2047 (`=?UTF-8?B?…?=`) or RFC 5987/2231
+ * (`filename*=UTF-8''…`), and the `FormData` that `fetch` serialises for a
+ * multipart body does neither — it writes the bytes through as they are.
+ *
+ * So an upload called `1 无处安放.mp3` went upstream as a header a Go
+ * `mime.ParseMediaType` rejects outright, and a parser that cannot read a part
+ * reports it the only way it can: the part is absent. `asr-1.0` came back saying
+ * `missing required form field: file`, with the file attached the whole time.
+ *
+ * The extension is kept because a vendor may still read it, and the stem is
+ * transliterated to `_` because this layer has no alphabet to transliterate
+ * into. The name a person uploaded is the caller's to report, not the wire's to
+ * carry — the routes still show it.
+ */
+function safeUploadFilename(raw: string): string {
+  const base = raw.split(/[/\\]/).pop() ?? "";
+  const dot = base.lastIndexOf(".");
+  const ext = dot > 0 ? base.slice(dot) : "";
+  const stem = dot > 0 ? base.slice(0, dot) : base;
+  const clean = (s: string): string =>
+    s
+      .replace(/[^A-Za-z0-9._-]+/g, "_")
+      .replace(/_{2,}/g, "_")
+      .replace(/^[._-]+|[._-]+$/g, "")
+      .slice(0, 64);
+  const stemClean = clean(stem);
+  const extClean = clean(ext).replace(/^[._-]+/, "");
+  const name = `${stemClean}${extClean ? `.${extClean}` : ""}`;
+  return name || "upload";
+}
+
 /**
  * Evaluate a mapping tree against a scope.
  *
@@ -470,10 +505,20 @@ export function applyMapping(node: MediaMapping, scope: unknown): unknown {
     const base64 = isDataUrl
       ? raw.slice(commaAt + 1)
       : raw.replace(/^base64:/, "");
-    const headerType = isDataUrl ? raw.slice(5, commaAt) : "application/octet-stream";
+    const headerType = isDataUrl
+      ? // The media type only. Everything after the first `;` in a data URL is
+        // a *parameter*, and the one that is always there is the encoding marker
+        // — so `data:audio/mpeg;base64,…` says `audio/mpeg`, not
+        // `audio/mpeg;base64`. Reading the slice verbatim put the marker into the
+        // part's own Content-Type, which is not a media type at all, and a parser
+        // that cannot read a part has no way to report it other than as missing.
+        raw.slice(5, commaAt).split(";")[0].trim()
+      : "application/octet-stream";
     return {
       __file: true,
-      filename: params.filename ? String(getPath(scope, String(params.filename)) ?? "upload") : "upload",
+      filename: params.filename
+        ? safeUploadFilename(String(getPath(scope, String(params.filename)) ?? "upload"))
+        : "upload",
       contentType: params.contentType
         ? String(params.contentType)
         : String(headerType),
