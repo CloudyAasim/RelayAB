@@ -136,6 +136,35 @@ export function DocsContent({
             {t("docs.openai.modelListHint", { baseUrl: openaiBase })}
           </p>
         </div>
+
+        <div className="space-y-3 text-xs text-foreground/90 sm:space-y-4 sm:text-sm">
+          <h3 className="text-sm font-semibold">{t("docs.openai.errors.title")}</h3>
+          <p>{t("docs.openai.errors.body")}</p>
+          <CodeBlock
+            label={t("docs.openai.errors.shapeLabel")}
+            value={`{ "error": {
+  "message": "积分 balance exhausted for this account",
+  "type": "insufficient_quota",
+  "code": "quota_exceeded_credits"
+} }`}
+          />
+          <p className="text-xs text-muted-foreground">
+            {t("docs.openai.errors.typeHint")}
+          </p>
+          <p className="text-xs text-amber-600 dark:text-amber-400">
+            {t("docs.openai.errors.quotaTip")}
+          </p>
+
+          <h3 className="pt-2 text-sm font-semibold">{t("docs.openai.quota.title")}</h3>
+          <p>{t("docs.openai.quota.body")}</p>
+          <CodeBlock
+            label={t("docs.openai.quota.headersLabel")}
+            value={`x-ratelimit-limit: 500000      # 额度池上限；0 表示尚未分配，不是「余额为 0」
+x-ratelimit-remaining: 487655  # 剩余，下限为 0，不会出现负数
+x-ratelimit-unit: credits      # 单位；账号按 token 计量时这里就是 tokens`}
+          />
+          <p className="text-xs text-muted-foreground">{t("docs.openai.quota.hint")}</p>
+        </div>
       </Card>
     );
   }

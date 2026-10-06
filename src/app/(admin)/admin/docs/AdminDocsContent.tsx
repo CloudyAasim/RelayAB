@@ -266,6 +266,7 @@ export function AdminDocsContent({ section, t }: { section: AdminDocId; t: TFn }
           <li>{t("admin.docs.usage.rule2")}</li>
           <li>{t("admin.docs.usage.rule3")}</li>
           <li>{t("admin.docs.usage.rule4")}</li>
+          <li>{t("admin.docs.usage.rule5")}</li>
         </ul>
         <p className="mt-3 text-xs text-muted-foreground">
           <Link href="/admin/usage" className="underline underline-offset-2">

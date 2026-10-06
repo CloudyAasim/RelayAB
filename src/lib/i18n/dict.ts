@@ -371,6 +371,20 @@ const zhCN: Dict = {
   "docs.openai.header": "认证头",
   "docs.openai.example": "curl 示例",
   "docs.openai.modelListHint": "想知道你能用哪些模型？GET {baseUrl}/models，参考你的密钥关联的模型映射。",
+  "docs.openai.errors.title": "错误",
+  "docs.openai.errors.body":
+    "失败响应的形状和 OpenAI 一致，可以直接按 OpenAI 的方式处理。",
+  "docs.openai.errors.shapeLabel": "响应体",
+  "docs.openai.errors.typeHint":
+    "message 是写给人看的说明；type 是 OpenAI 的分类，由 HTTP 状态码推导：400 → invalid_request_error，401 → authentication_error，403 → permission_error，404 → not_found_error，429 → rate_limit_error，5xx → server_error。code 是本服务自己的具体原因，和 type 分开看。",
+  "docs.openai.errors.quotaTip":
+    "「额度用完」是 429，但 type 是 insufficient_quota 而不是 rate_limit_error。客户端看到 429 惯例是退避重试，而用完的额度池不会自己恢复——不把这两件事分开，客户端就会一直重试下去。",
+  "docs.openai.quota.title": "余额",
+  "docs.openai.quota.body":
+    "每个 /v1 响应都带着调用方账号的额度状态，不用为了显示余额再多发一次请求。",
+  "docs.openai.quota.headersLabel": "响应头",
+  "docs.openai.quota.hint":
+    "数字是在响应那一刻读的，所以不会过期——也就不存在「刚查到的余额已经被另一个请求花掉」这种窗口。",
   "docs.anthropic.title": "Anthropic Messages",
   "docs.anthropic.desc": "兼容 /anthropic/v1/messages。",
   "docs.anthropic.line1": "Anthropic SDK 默认走 https://api.anthropic.com，需要手动把 baseURL 改成下面的值。",
@@ -740,6 +754,8 @@ const zhCN: Dict = {
   "admin.docs.usage.rule2": "时间范围：今天 / 近 7 天 / 近 30 天 / 全部；统计范围：全部 / 指定密钥 / 指定模型。",
   "admin.docs.usage.rule3": "指标可切换为积分 / Tokens / 请求次数；明细表按所选指标排序。",
   "admin.docs.usage.rule4": "媒体调用按「件」计费，明细里的「张数」列即产出的图片/音频数量。",
+  "admin.docs.usage.rule5":
+    "开了「用我的账号身份」的用户，明细里会出现一把名为「AI 助手专用」的密钥——那是助手代其发起的调用所记的账，扣的是同一个余额池。它不出现在该用户的密钥列表里（不可用，也不占密钥数上限），但会出现在用量页，因为它问的是「余额能经过哪些密钥」而不是「这个人能用哪些密钥」。",
   "admin.docs.link": "管理员文档",
   "admin.providers.test": "测试连接",
   "admin.providers.create.template": "模板",
@@ -1473,6 +1489,20 @@ const en: Dict = {
   "docs.openai.header": "Auth header",
   "docs.openai.example": "curl example",
   "docs.openai.modelListHint": "Curious which models your key can reach? GET {baseUrl}/models — the response is filtered by your key's whitelist.",
+  "docs.openai.errors.title": "Errors",
+  "docs.openai.errors.body":
+    "Failures use OpenAI's own shape, so an OpenAI client can handle them without special-casing this service.",
+  "docs.openai.errors.shapeLabel": "Response body",
+  "docs.openai.errors.typeHint":
+    "`message` is written for a person. `type` is OpenAI's category, derived from the HTTP status: 400 → invalid_request_error, 401 → authentication_error, 403 → permission_error, 404 → not_found_error, 429 → rate_limit_error, 5xx → server_error. `code` is this service's own specific cause, and is read separately from `type`.",
+  "docs.openai.errors.quotaTip":
+    "An exhausted pool is a 429, but its type is `insufficient_quota` rather than `rate_limit_error`. A client that backs off and retries a 429 is following the convention, and a spent pool is not coming back on its own — so the two have to be told apart, or the client retries for ever.",
+  "docs.openai.quota.title": "Balance",
+  "docs.openai.quota.body":
+    "Every /v1 response carries the calling account's quota state, so showing a balance costs no extra request.",
+  "docs.openai.quota.headersLabel": "Response headers",
+  "docs.openai.quota.hint":
+    "The figures are read as the response is produced, so they cannot go stale — and there is no window where a balance you just read has already been spent by another request.",
   "docs.anthropic.title": "Anthropic Messages",
   "docs.anthropic.desc": "Compatible with /anthropic/v1/messages.",
   "docs.anthropic.line1": "The Anthropic SDK defaults to https://api.anthropic.com. Override baseURL to the value below.",
@@ -1844,6 +1874,8 @@ const en: Dict = {
   "admin.docs.usage.rule2": "Range: today / last 7 days / last 30 days / all time. Scope: all / one key / one model.",
   "admin.docs.usage.rule3": "The metric can be credits / tokens / requests; the breakdown table is ranked by the selected metric.",
   "admin.docs.usage.rule4": "Media calls are billed per item — the \"Items\" column is the number of images/audio files produced.",
+  "admin.docs.usage.rule5":
+    "For a user who has switched on \"act as me\", the breakdown shows a key named \"AI assistant only\". That is where the assistant's calls on their behalf are recorded, drawn from the same balance. It does not appear in that user's own key list — it is not usable by them and does not count against their key cap — but it does appear in usage, because usage asks which keys the balance can pass through, not which keys the person can use.",
   "admin.docs.link": "Admin docs",
   "admin.providers.test": "Test connection",
   "admin.providers.create.template": "Template",
