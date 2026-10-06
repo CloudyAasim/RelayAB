@@ -941,7 +941,6 @@ const zhCN: Dict = {
   "assistant.thinkingBlock": "思考过程",
   "assistant.expand": "展开",
   "assistant.collapse": "收起",
-  "assistant.voice.failed": "语音转写失败",
   "assistant.pretty.switch": "输出美化",
   "assistant.pretty.hint": "把回答按 Markdown 排版，思考过程默认折叠起来，生成的图片/语音附带类型与下载。关掉就是模型原样的纯文本。",
   "assistant.artifact.download": "下载",
@@ -2061,7 +2060,6 @@ const en: Dict = {
   "assistant.thinkingBlock": "Reasoning",
   "assistant.expand": "Expand",
   "assistant.collapse": "Collapse",
-  "assistant.voice.failed": "Transcription failed",
   "assistant.pretty.switch": "Pretty output",
   "assistant.pretty.hint":
     "Lay answers out as Markdown, fold the reasoning away by default, and label generated images and audio with their type and a download button. Turn it off for the model's raw text exactly as written.",

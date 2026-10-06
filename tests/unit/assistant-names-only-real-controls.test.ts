@@ -138,9 +138,11 @@ describe("the composer defines which controls exist", () => {
   });
 
   it("the recording control is genuinely gone, not just unreferenced", () => {
-    // Nothing that could record: no capture API, and no route left wired to a
-    // caller. The orphaned /api/assistant/transcribe is the last trace and is
-    // inert; if a mic ever comes back this is where to start.
+    // No capture API anywhere. The route the button used was removed with it:
+    // an endpoint with no caller is not inert — it still authenticates, still
+    // spends the caller's credential and still forwards audio upstream, it just
+    // has nothing behind it to reach it. If a mic ever comes back, that route
+    // is the first thing to rebuild, not the first thing to find.
     const runtime = walk(join(ROOT, "src")).filter((f) => /\.(ts|tsx)$/.test(f));
     const capture = runtime.filter((f) =>
       /MediaRecorder|getUserMedia/.test(stripComments(readFileSync(f, "utf8"))),
