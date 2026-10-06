@@ -256,6 +256,27 @@ export function AssistantChat({
    */
   const renameCancelledRef = useRef(false);
 
+  /**
+   * The box grows with what you type, up to the cap `max-h-40` sets, and
+   * scrolls past it.
+   *
+   * Not cosmetic. Enter inserts a newline now, so composing anything longer
+   * than a sentence means pressing it several times — into a textarea that
+   * stays one row tall and scrolls internally, which puts the caret on a line
+   * nobody can see. The height is written imperatively because a textarea's
+   * height is a property; neither `rows` nor a max-height can derive it from
+   * the content.
+   *
+   * Reset to `auto` first: without that the element can only grow, and clearing
+   * a long message leaves a tall empty box behind it.
+   */
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [input]);
+
   const loadThreads = useCallback(async () => {
     const res = await fetch("/api/assistant/threads", { cache: "no-store" });
     const json = (await res.json().catch(() => null)) as { data?: { threads?: Thread[] } } | null;
@@ -1033,7 +1054,15 @@ export function AssistantChat({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
+                // Enter types a newline and Shift+Enter sends. The placeholder
+                // and the line under the box both say so, so this handler and
+                // those two strings have to move together — a hint describing a
+                // key that does the opposite is worse than no hint.
+                //
+                // `isComposing` guards the IME case: while a candidate is being
+                // assembled Shift+Enter belongs to the input method, and sending
+                // on it would ship half-finished text.
+                if (e.key === "Enter" && e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault();
                   void send();
                 }
