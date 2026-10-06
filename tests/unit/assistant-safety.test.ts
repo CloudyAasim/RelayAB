@@ -593,7 +593,7 @@ describe("assistant: media tools", () => {
       relayKey: "sk-relay-x",
     });
     expect(seen[0]?.url).toContain("/v1/audio/speech");
-    expect(seen[0]?.body.voice).toBe("English_Trustworth_Man");
+    expect(seen[0]?.body.voice).toBe("female-shaonv");
 
     await executeTool("generate_video", JSON.stringify({ model: "minimax-h3", prompt: "a cat" }), {
       user,

@@ -150,7 +150,7 @@ export interface ToolResult {
  * explicit, non-adaptive ratio. A model told the argument was optional will
  * leave it out, and the resulting error names a field it never touched.
  */
-const DEFAULT_TTS_VOICE = "English_Trustworth_Man";
+const DEFAULT_TTS_VOICE = "female-shaonv";
 const DEFAULT_VIDEO_DURATION = 6;
 const DEFAULT_VIDEO_RATIO = "16:9";
 
