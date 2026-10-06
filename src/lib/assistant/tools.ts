@@ -59,6 +59,7 @@ import { DEFAULT_LOCALE, type Locale } from "../i18n/dict";
 import type { DocPage } from "../docs/custom";
 import { NO_CREDENTIAL_MESSAGE, type AccountCredential } from "./credentials";
 import { executeMediaRequest, resultItems } from "../media/handler";
+import { buildModelCatalog } from "../docs/catalog";
 import { proxyChatCompletion } from "../proxy/openai";
 import { getAssistantArtifact } from "../db/assistant-artifacts";
 import type { ArtifactKind } from "../db/assistant-artifacts";
@@ -223,7 +224,10 @@ const USER_TOOLS: AssistantToolDef[] = [
     function: {
       name: "list_gateway_models",
       description:
-        "列出这个 RelayAB 网关当前对外提供的所有模型（聊天与媒体）。回答「有哪些模型」「我能用什么」时先调它，不要凭记忆报模型名。",
+        "列出这个 RelayAB 网关当前对外提供的所有模型（聊天与媒体），**并带上每个聊天模型的" +
+        "上下文窗口、最大输出和它接受的思考等级**。回答「有哪些模型」「上下文多大」" +
+        "「能选哪几档思考」这类问题时先调它，不要凭记忆报模型名，也不要因为看不到" +
+        "管理员配置就说查不到——数字就在这个返回值里。",
       parameters: { type: "object", properties: {}, additionalProperties: false },
     },
   },
@@ -921,7 +925,7 @@ export async function executeTool(
   switch (name) {
     // ---- shared --------------------------------------------------------
     case "list_gateway_models":
-      return listGatewayModels();
+      return listGatewayModels(ctx);
     case "test_gateway_model":
       return testGatewayModel(args, ctx);
     case "get_my_usage":
@@ -992,7 +996,24 @@ export async function executeTool(
   }
 }
 
-async function listGatewayModels(): Promise<ToolResult> {
+/**
+ * What this gateway serves, and what each model can actually take.
+ *
+ * The numbers used to be missing, and the gap was reported as a permissions
+ * problem: a user asked for the context windows, got a list of names, read the
+ * prose page that describes *how* models are configured, and concluded the
+ * figures were admin-only. They were not — they are on the catalogue the model
+ * page renders from, already filtered by the same rule that page uses.
+ *
+ * So the tool answers the question it is asked most often in one call, rather
+ * than leaving the assistant to go looking and then say it cannot find it.
+ *
+ * `chat` is filtered to what the caller may actually use. `chatModels` and
+ * `providers` stay unfiltered and match `GET /v1/models`, because listing a
+ * model and being allowed to call it are different questions and the gateway
+ * answers them differently too.
+ */
+async function listGatewayModels(ctx: ToolContext): Promise<ToolResult> {
   const chat = await listProviders();
   const chatModels = new Set<string>();
   const byProvider: Array<{ name: string; baseUrl: string | null; models: string[] }> = [];
@@ -1007,11 +1028,32 @@ async function listGatewayModels(): Promise<ToolResult> {
   const media = (await listMediaProviders()).filter((m) => m.enabled);
   const mediaModels = media.flatMap((m) => Object.keys(m.models ?? {}));
 
+  // Same rule as `dashboard/models/page.tsx`: an empty list means no
+  // restriction, and a caller who may not use a model is not told its numbers.
+  // The session does not carry the whitelist, so it is read here rather than
+  // widened into `AuthedUser` for one call site.
+  const full = await getUserById(ctx.user.id);
+  const allowed = full?.allowedModels ?? [];
+  const visible = (id: string): boolean => allowed.length === 0 || allowed.includes(id);
+  const catalog = await buildModelCatalog();
+  const details = catalog.models
+    .filter((m) => m.kind === "chat" && visible(m.id))
+    .map((m) => ({
+      id: m.id,
+      contextLength: m.contextLength,
+      maxOutputTokens: m.maxOutputTokens,
+      reasoningLevels: m.reasoningLevels,
+    }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+
   return ok({
     chatModels: [...chatModels].sort(),
     mediaModels: mediaModels.sort(),
     total: chatModels.size + mediaModels.length,
     providers: byProvider,
+    // Per-model limits, for "how big is the context window" and "what thinking
+    // levels does it take" — the questions a name-only list cannot answer.
+    chat: details,
   });
 }
 
