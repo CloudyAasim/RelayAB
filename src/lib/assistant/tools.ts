@@ -28,7 +28,7 @@ import {
 } from "../db/media-providers";
 import { getProviderById, listProviders } from "../db/providers";
 import { listUsers, getUserById } from "../db/users";
-import { listApiKeysByUser } from "../db/keys";
+import { listApiKeysByUser, listApiKeyIdsForUsage } from "../db/keys";
 import { aggregateByKeyMany, listRecentUsage } from "../db/usage";
 import {
   createAssistantAction,
@@ -1676,8 +1676,24 @@ async function getMyUsage(ctx: ToolContext): Promise<ToolResult> {
   const full = await getUserById(ctx.user.id);
   const { keys } = await listApiKeysByUser(ctx.user.id, { limit: 100 });
   const enabled = keys.filter((k) => k.enabled);
-  const agg = await aggregateByKeyMany(keys.map((k) => k.id));
-  const recent = await listRecentUsage(keys.map((k) => k.id), { limit: 15 });
+  /**
+   * Two different sets, on purpose.
+   *
+   * The counts below — `activeKeys`, `totalKeys` — come from the management
+   * list, because the assistant credential is not one of this user's keys and
+   * must not read as one: it is not usable by them and does not consume their
+   * `maxActiveKeys` budget.
+   *
+   * The spending comes from every key the balance can be charged through, which
+   * is a wider set. Answering "what have I used" from the key list left out
+   * every call the assistant made on this user's behalf — while `quotaUsed` on
+   * the same payload, read from the user row, had already counted them. The tool
+   * was contradicting itself: a total that included the assistant's spend above
+   * a breakdown that did not.
+   */
+  const chargeableIds = await listApiKeyIdsForUsage(ctx.user.id);
+  const agg = await aggregateByKeyMany(chargeableIds);
+  const recent = await listRecentUsage(chargeableIds, { limit: 15 });
 
   return ok({
     quotaType: full?.quotaType ?? null,

@@ -258,6 +258,36 @@ export async function listApiKeysByUser(
 }
 
 /**
+ * Every key id a user's spending can be attributed to — their own keys *and*
+ * the assistant credential.
+ *
+ * `listApiKeysByUser` leaves the assistant credential out, and for reasons that
+ * are correct in its own setting: the user must not be shown a key they cannot
+ * use, and it must not consume their `maxActiveKeys` budget. Neither of those
+ * is a claim about where their money went. It is an ordinary `api_keys` row,
+ * and `settleUsage` draws every call made through it from the owner's pool — so
+ * a usage report assembled from the management list omits spending the balance
+ * has already paid for, and the affected person's own page is the only place
+ * they would ever look for it. An admin saw it all along, because
+ * `listAllApiKeys` does not filter; the gap was between the two views of the
+ * same transactions.
+ *
+ * The list somebody picks a key from and the set of keys their money can move
+ * through are two different questions. This answers the second. The assistant
+ * credential is still not offered in the first, so it does not become
+ * selectable in the usage scope picker either.
+ */
+export async function listApiKeyIdsForUsage(userId: string): Promise<string[]> {
+  if (!userId) return [];
+  const rows = await getAll<{ id: string }>(
+    "SELECT id FROM api_keys WHERE user_id = ? ORDER BY id ASC",
+    [userId],
+    (row) => ({ id: String(row.id) }),
+  );
+  return rows.map((row) => row.id);
+}
+
+/**
  * List all keys (admin view). Newest first.
  *
  * The Redis version SCANned the keyspace and had to filter its own index keys

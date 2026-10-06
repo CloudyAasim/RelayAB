@@ -5,7 +5,7 @@ import Link from "next/link";
 
 import { getCurrentUser } from "@/lib/auth/session";
 import { getUserById } from "@/lib/db/users";
-import { listApiKeysByUser } from "@/lib/db/keys";
+import { listApiKeysByUser, listApiKeyIdsForUsage } from "@/lib/db/keys";
 import { getT } from "@/lib/i18n/server";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { SectionPageLayout } from "@/components/layouts";
@@ -59,13 +59,21 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
   const scope: Scope =
     requestedScope === "key" || requestedScope === "model" ? requestedScope : "all";
 
-  const [{ t }, fullUser, keyPage] = await Promise.all([
+  const [{ t }, fullUser, keyPage, usageKeyIds] = await Promise.all([
     getT(),
     getUserById(sessionUser.id),
     listApiKeysByUser(sessionUser.id, { limit: 200 }),
+    listApiKeyIdsForUsage(sessionUser.id),
   ]);
   const keys = keyPage.keys;
-  const universeIds = keys.map((key) => key.id);
+  /**
+   * The scope picker offers the keys this person can actually use. The report
+   * covers every key their balance can be charged through — the assistant
+   * credential included, because `settleUsage` draws its calls from the same
+   * pool. Deriving both from one list is what left the assistant's spending
+   * taken from the balance and absent from the page that reports the balance.
+   */
+  const universeIds = usageKeyIds;
 
   const requestedKeyId = first(sp.keyId);
   const requestedModel = first(sp.model);

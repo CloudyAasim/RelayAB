@@ -7,7 +7,7 @@
  * shape as `/api/admin/usage` minus the per-user breakdown.
  */
 import { NextResponse } from "next/server";
-import { listApiKeysByUser } from "@/lib/db/keys";
+import { listApiKeyIdsForUsage } from "@/lib/db/keys";
 import { getCurrentUser } from "@/lib/auth/session";
 import { loadUsageReportCached } from "@/lib/usage/load";
 import { parseTzOffset, rangeToJson, resolveRange } from "@/lib/usage/report";
@@ -30,9 +30,15 @@ export async function GET(req: Request): Promise<Response> {
     tzOffsetMinutes,
   });
 
-  const keyPage = await listApiKeysByUser(me.id, { limit: 200 });
+  // Every key this account's balance can be charged through, not the subset the
+  // account is allowed to use: the assistant credential is deliberately hidden
+  // from `listApiKeysByUser`, but the calls it makes are billed to this user
+  // and belong in this report. Using the management list here is what made
+  // 「用我的账号身份」 spend money that no usage page would ever show.
+  const keyIds = await listApiKeyIdsForUsage(me.id);
+
   const report = await loadUsageReportCached({
-    keyIds: keyPage.keys.map((key) => key.id),
+    keyIds,
     tzOffsetMinutes,
     range,
   });
