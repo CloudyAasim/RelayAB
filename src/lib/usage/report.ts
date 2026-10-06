@@ -121,11 +121,33 @@ export function addSummary(target: UsageSummary, log: UsageLog): void {
  * prompt tokens and nothing else, so using it here while excluding it from the
  * numerator reports a rate below what the vendor actually served. Both numbers
  * are individually correct, which is why that reads as a plausible figure.
+ *
+ * **The rate and the two figures come back together, from one place.** The page
+ * used to compute the rate over the reported rows and print the hint over all of
+ * them, which put `100.0%` directly above `20,675 / 2,836,513` — a number that
+ * reads as 0.7%. Any caller that formats its own denominator can reintroduce
+ * that, so the denominator is not handed out on its own.
  */
-export function cacheHitRate(summary: UsageSummary): number | null {
+export interface CacheHitRate {
+  /** 0–1. */
+  rate: number;
+  /** Prompt tokens served from cache, over the requests that reported. */
+  cachedTokens: number;
+  /** The denominator, from the same place as `rate`. */
+  reportedPromptTokens: number;
+  /** How many requests reported a cache at all. */
+  reportedRequests: number;
+}
+
+export function cacheHitRate(summary: UsageSummary): CacheHitRate | null {
   if (summary.cacheReportedRequests === 0) return null;
   if (summary.cacheReportedPromptTokens <= 0) return null;
-  return Math.min(1, summary.cachedPromptTokens / summary.cacheReportedPromptTokens);
+  return {
+    rate: Math.min(1, summary.cachedPromptTokens / summary.cacheReportedPromptTokens),
+    cachedTokens: summary.cachedPromptTokens,
+    reportedPromptTokens: summary.cacheReportedPromptTokens,
+    reportedRequests: summary.cacheReportedRequests,
+  };
 }
 
 export function sumSummaries(summaries: readonly UsageSummary[]): UsageSummary {

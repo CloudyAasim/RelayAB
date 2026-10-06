@@ -15,6 +15,7 @@
  * on the page and are both wrong.
  */
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 
 import {
   EMPTY_USAGE_SUMMARY,
@@ -92,7 +93,9 @@ describe("the rate", () => {
   it("is cached over prompt, which is the set the cache is served from", () => {
     // The same subset billing charges the remainder of, so the fraction means
     // the same thing here as it does on an invoice.
-    expect(cacheHitRate(collect([log({ promptTokens: 1000, cachedPromptTokens: 250 })]))).toBe(0.25);
+    expect(cacheHitRate(collect([log({ promptTokens: 1000, cachedPromptTokens: 250 })]))?.rate).toBe(
+      0.25,
+    );
   });
 
   it("denominator covers only the rows that reported", () => {
@@ -104,9 +107,27 @@ describe("the rate", () => {
       log({ promptTokens: 100, cachedPromptTokens: 100 }),
       log({ promptTokens: 100 }),
     ]);
-    expect(cacheHitRate(s)).toBe(1);
+    expect(cacheHitRate(s)?.rate).toBe(1);
     expect(s.promptTokens).toBe(200);
     expect(s.cacheReportedPromptTokens).toBe(100);
+  });
+
+  it("hands back the two figures it was computed from, so a caller cannot print others", () => {
+    // The page once showed `100.0%` directly above `20,675 / 2,836,513` — the
+    // rate over the reporting rows, the hint over the whole period. It read as
+    // 0.7%. The two numbers are returned together precisely so that a caller
+    // formatting its own denominator cannot drift from the one above it.
+    const s = collect([
+      log({ promptTokens: 100, cachedPromptTokens: 100 }),
+      log({ promptTokens: 900_000 }),
+    ]);
+    const hit = cacheHitRate(s)!;
+    expect(hit.rate).toBe(1);
+    expect(hit.cachedTokens).toBe(100);
+    expect(hit.reportedPromptTokens).toBe(100);
+    expect(hit.reportedRequests).toBe(1);
+    // The rate is reproducible from exactly what is printed, to the digit.
+    expect(hit.cachedTokens / hit.reportedPromptTokens).toBe(hit.rate);
   });
 
   it("is unknown, not zero, when nothing reported a cache", () => {
@@ -116,18 +137,18 @@ describe("the rate", () => {
   });
 
   it("is zero when reporting said so", () => {
-    expect(cacheHitRate(collect([log({ promptTokens: 100, cachedPromptTokens: 0 })]))).toBe(0);
+    expect(cacheHitRate(collect([log({ promptTokens: 100, cachedPromptTokens: 0 })]))?.rate).toBe(0);
   });
 
   it("ignores silence in a period where somebody else spoke", () => {
     // Mixed period: the rate describes the requests that reported, and the count
-    // in the hint says how many that was. Averaging the silent ones in as zero
-    // would understate every vendor that reports intermittently.
+    // says how many that was. Averaging the silent ones in as zero would
+    // understate every vendor that reports intermittently.
     const s = collect([
       log({ promptTokens: 100, cachedPromptTokens: 100 }),
       log({ promptTokens: 100 }),
     ]);
-    expect(cacheHitRate(s)).toBe(1);
+    expect(cacheHitRate(s)?.rate).toBe(1);
     expect(s.cacheReportedRequests).toBe(1);
   });
 
@@ -137,16 +158,13 @@ describe("the rate", () => {
 
   it("never exceeds one, even if a vendor reports more than it sent", () => {
     // Defensive: a bad figure should not produce a 140% bar.
-    expect(cacheHitRate(collect([log({ promptTokens: 100, cachedPromptTokens: 140 })]))).toBe(1);
+    expect(cacheHitRate(collect([log({ promptTokens: 100, cachedPromptTokens: 140 })]))?.rate).toBe(1);
   });
 });
 
 describe("the page", () => {
   const page = () =>
-    require("node:fs").readFileSync(
-      `${process.cwd()}/src/app/(user)/dashboard/usage/page.tsx`,
-      "utf-8",
-    ) as string;
+    readFileSync(`${process.cwd()}/src/app/(user)/dashboard/usage/page.tsx`, "utf-8");
 
   it("puts the rate in the same card as the trend", () => {
     const src = page();
@@ -157,6 +175,21 @@ describe("the page", () => {
   it("and has a word for unknown, so it never renders a bare 0%", () => {
     const src = page();
     expect(src).toContain("usage.stat.cacheUnreported");
-    expect(src).toMatch(/rate === null \? t\("usage\.stat\.cacheUnreported"\)/);
+    // Across line breaks: the branch is formatted as a multi-line ternary, and a
+    // single-line pattern for it would go stale on a reformat rather than on a
+    // behaviour change.
+    expect(src).toMatch(/hit === null\s*\n?\s*\?\s*t\("usage\.stat\.cacheUnreported"\)/);
+  });
+
+  it("and prints the figures the rate was computed from, never the period totals", () => {
+    // The bug this pins: the percentage above and the numbers below were two
+    // different denominators, and both were individually correct.
+    const src = page();
+    expect(src).toContain("cached: formatNumber(hit.cachedTokens)");
+    expect(src).toContain("prompt: formatNumber(hit.reportedPromptTokens)");
+    expect(src).toContain("reported: formatNumber(hit.reportedRequests)");
+    // The one that made it look like 0.7% under a 100% heading.
+    expect(src).not.toContain("prompt: formatNumber(report.summary.promptTokens)");
+    expect(src).not.toContain("cached: formatNumber(report.summary.cachedPromptTokens)");
   });
 });

@@ -282,15 +282,15 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
               column has actually told us.
             */}
           {(() => {
-            const rate = cacheHitRate(report.summary);
+            const hit = cacheHitRate(report.summary);
             return (
               <div className="mb-4 flex items-start gap-3">
                 <span
                   className={cn(
                     "flex h-9 w-9 shrink-0 items-center justify-center rounded-md",
-                    rate === null
+                    hit === null
                       ? "bg-muted text-muted-foreground"
-                      : rate > 0
+                      : hit.rate > 0
                         ? "bg-success/10 text-success"
                         : "bg-muted text-muted-foreground",
                   )}
@@ -302,15 +302,21 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
                     {t("usage.stat.cacheHit")}
                   </div>
                   <div className="mt-0.5 truncate text-lg font-semibold tracking-tight text-foreground sm:text-xl">
-                    {rate === null ? t("usage.stat.cacheUnreported") : `${(rate * 100).toFixed(1)}%`}
+                    {hit === null
+                      ? t("usage.stat.cacheUnreported")
+                      : `${(hit.rate * 100).toFixed(1)}%`}
                   </div>
                   <div className="mt-0.5 text-xs text-muted-foreground">
-                    {rate === null
+                    {hit === null
                       ? t("usage.stat.cacheUnreportedHint")
                       : t("usage.stat.cacheHitHint", {
-                          cached: formatNumber(report.summary.cachedPromptTokens),
-                          prompt: formatNumber(report.summary.promptTokens),
-                          reported: formatNumber(report.summary.cacheReportedRequests),
+                          cached: formatNumber(hit.cachedTokens),
+                          // The denominator the rate was computed from, taken
+                          // from the same object. Printing the whole period's
+                          // prompt tokens here put two different fractions on
+                          // screen at once.
+                          prompt: formatNumber(hit.reportedPromptTokens),
+                          reported: formatNumber(hit.reportedRequests),
                         })}
                   </div>
                 </div>

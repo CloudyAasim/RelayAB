@@ -59,6 +59,12 @@ interface LiteralCall {
  * Read the property names of an object literal, ignoring nested objects and
  * function calls (their contents are irrelevant to placeholder substitution).
  * Returns `null` when a spread is present, because then the set is unknown.
+ *
+ * Comments are skipped. They are not code, and one English word was enough to
+ * break this: an apostrophe inside `// … the whole period's prompt tokens …`
+ * opened a string, and every key after it was swallowed — so a `t()` call whose
+ * placeholders were all supplied got reported as missing two of them. A guard
+ * that fails on a comment has to be fixed rather than worked around.
  */
 function readTopLevelKeys(literal: string): Set<string> | null {
   const names = new Set<string>();
@@ -67,6 +73,8 @@ function readTopLevelKeys(literal: string): Set<string> | null {
   let quote: string | null = null;
   let escaped = false;
   let spread = false;
+  let lineComment = false;
+  let blockComment = false;
 
   const flush = () => {
     const name = token.trim();
@@ -81,6 +89,30 @@ function readTopLevelKeys(literal: string): Set<string> | null {
 
   for (let i = 0; i < literal.length; i++) {
     const c = literal[i];
+    const next = literal[i + 1];
+    // Comments first: nothing inside one is code, and an apostrophe in an
+    // English word must not be able to open a string.
+    if (lineComment) {
+      if (c === "\n") lineComment = false;
+      continue;
+    }
+    if (blockComment) {
+      if (c === "*" && next === "/") {
+        blockComment = false;
+        i += 1;
+      }
+      continue;
+    }
+    if (c === "/" && next === "/") {
+      lineComment = true;
+      i += 1;
+      continue;
+    }
+    if (c === "/" && next === "*") {
+      blockComment = true;
+      i += 1;
+      continue;
+    }
     if (quote) {
       if (escaped) escaped = false;
       else if (c === "\\") escaped = true;
