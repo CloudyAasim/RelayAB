@@ -611,6 +611,15 @@ export function applyMapping(node: MediaMapping, scope: unknown): unknown {
  * in by mapping `request` to a single `$file` node and declaring a media type
  * that is not one of the three structural ones.
  */
+/** Does this mapped body carry at least one real multipart file part? */
+function containsFileNode(body: unknown): boolean {
+  if (Array.isArray(body)) return body.some(containsFileNode);
+  if (!body || typeof body !== "object") return false;
+  const record = body as Record<string, unknown>;
+  if (record.__file === true) return true;
+  return Object.values(record).some(containsFileNode);
+}
+
 function resolveRawBody(
   body: unknown,
   contentType: string,
@@ -901,6 +910,46 @@ export async function executeMedia(args: ExecuteMediaArgs): Promise<MediaExecute
   }
 
   const upstreamBody = applyMapping(spec.request, input) ?? {};
+
+  /**
+   * A multipart spec that produced no file part.
+   *
+   * The request is about to tell a vendor "here is a file" while carrying no
+   * file, and the vendor's answer is a bare 400 several seconds later — which is
+   * exactly the shape this check exists to end. `asr-1.0` spent a day on it:
+   * the engine could have named the cause in milliseconds, and instead the only
+   * evidence anyone had was the upstream's `missing required form field: file`,
+   * which reads as though the upload was empty rather than as though the spec
+   * never asked for one.
+   *
+   * The two ways a spec gets here: it maps the upload with `$dataUrl`, which
+   * produces a *text field* rather than a multipart file part, so a server
+   * calling `FormFile` sees no file; or it names no field for the upload at all.
+   * Both are spec problems, and both are answerable before the round trip.
+   */
+  if (spec.transport.contentType === "multipart/form-data") {
+    const scope = input as Record<string, unknown>;
+    const hasUpload =
+      typeof scope.image === "string" ||
+      typeof scope.audio === "string" ||
+      typeof scope.file === "string";
+    if (hasUpload && !containsFileNode(upstreamBody)) {
+      return {
+        ok: false,
+        error: {
+          status: 502,
+          code: "spec_produces_no_file",
+          message:
+            "这份 spec 声明了 multipart/form-data，但它的 request 映射没有产出任何文件字段，" +
+            "所以上游会收到一个不带文件的请求（并回一句 missing required form field）。" +
+            "把映射里那个文件字段写成 { \"$file\": { \"path\": \"$.image\", " +
+            "\"filename\": \"$.filename\" } } —— $file 产出真正的 multipart 文件 part，" +
+            "$dataUrl 只产出一个文本字段，服务器按文件取的时候同样等于没有。",
+        },
+      };
+    }
+  }
+
   let target: { url: URL; headers: Headers };
   try {
     target = resolveRequestTarget(spec, provider, input);
