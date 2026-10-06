@@ -103,8 +103,58 @@ const ARTIFACT_PATH = /\/api\/assistant\/artifacts\/[0-9A-Za-z]{26}(?:\?[^\s]*)?
  */
 const RELATIVE_PATH = /(?<![\w/])\/[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._~%-]+)*(?:\?[^\s]*)?/g;
 
+/** A fenced block, then an inline span. Fenced first: it contains the inline form. */
+const CODE_BLOCKS = [/```[\s\S]*?(?:```|$)/g, /`[^`\n]+`/g];
+
+/**
+ * What a shielded piece of code is replaced with while the link matchers run.
+ *
+ * Two private-use characters with an index between them, **padded with spaces**.
+ * The padding is not cosmetic: `BARE_URL` matches `[^\s<>()]+`, which a bare
+ * private-use character satisfies, so an unpadded sentinel sitting next to a URL
+ * would be swallowed into the href. A space stops it, and the restore removes
+ * exactly the one space on each side.
+ */
+const shieldFor = (index: number): string => ` \uE000${index}\uE001 `;
+const SHIELD_BACK = / \uE000(\d+)\uE001 /g;
+
+/**
+ * One piece of our own: replace every code span with a placeholder, so the link
+ * matchers cannot see inside it.
+ *
+ * A URL in backticks is not a link — it is an *example* of a URL, and the whole
+ * point of the backticks is that it is not to be followed. Running the matchers
+ * over it anyway pulled the address out of the sentence and left an orphaned
+ * backtick on each side; `markdownToHtml` then read what was left as an empty
+ * code span, so a perfectly ordinary sentence rendered as its punctuation with
+ * nothing between it.
+ *
+ * It also produced `href="https://…`，通过"` — an address assembled out of
+ * model output, carrying the backtick and the Chinese comma it should have
+ * stopped at.
+ */
+function shieldCode(text: string): { masked: string; code: string[] } {
+  const code: string[] = [];
+  let masked = text;
+  for (const re of CODE_BLOCKS) {
+    masked = masked.replace(re, (match) => {
+      code.push(match);
+      return shieldFor(code.length - 1);
+    });
+  }
+  return { masked, code };
+}
+
+function restoreCode(segments: Segment[], code: string[]): Segment[] {
+  if (code.length === 0) return segments;
+  return segments.map((s) =>
+    s.kind === "text" ? { ...s, value: s.value.replace(SHIELD_BACK, (_m, i) => code[Number(i)] ?? "") } : s,
+  );
+}
+
 export function splitLinks(text: string): Segment[] {
   const segments: Segment[] = [];
+  const { masked, code } = shieldCode(text);
   const push = (segment: Segment): void => {
     const last = segments[segments.length - 1];
     if (last && last.kind === "text" && segment.kind === "text") {
@@ -117,7 +167,7 @@ export function splitLinks(text: string): Segment[] {
   // Markdown image syntax is a redundant reference to something already shown,
   // so it becomes a plain link rather than a second picture - and never literal
   // brackets, which is what it looked like before.
-  let rest = text.replace(MARKDOWN_IMAGE, (_match, alt: string, url: string) => {
+  let rest = masked.replace(MARKDOWN_IMAGE, (_match, alt: string, url: string) => {
     if (isSafeUrl(url)) push({ kind: "link", value: url, label: alt.trim() || url });
     return "";
   });
@@ -138,7 +188,11 @@ export function splitLinks(text: string): Segment[] {
   });
 
   push({ kind: "text", value: rest });
-  return segments.map((s) => (s.kind === "text" ? { ...s, value: s.value.replace(/[ \t]{2,}/g, " ") } : s));
+  // Restore before collapsing runs of spaces: the shields carry one space on each
+  // side to stop `BARE_URL` eating them, and collapsing first would merge them
+  // into the neighbouring text so the restore could no longer find them.
+  const restored = restoreCode(segments, code);
+  return restored.map((s) => (s.kind === "text" ? { ...s, value: s.value.replace(/[ \t]{2,}/g, " ") } : s));
 }
 
 /**

@@ -73,6 +73,17 @@ describe("the prompt explains the two thinking flags as axes, not answers", () =
       );
     }
   });
+
+  it("says to answer both halves together, not one at a time", () => {
+    // "Does this model think?" is one question with two answers. Reporting the
+    // levels alone tells the reader half of it — and the half that suggests the
+    // other half is available.
+    for (const [name, prompt] of Object.entries(PROMPTS)) {
+      expect(prompt, `${name} prompt does not require the pair to be answered together`).toMatch(
+        /永远把这两件事放在一起|放在一起讲/,
+      );
+    }
+  });
 });
 
 describe("the prompt names no model as though it were a rule", () => {
