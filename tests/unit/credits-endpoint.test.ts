@@ -145,3 +145,15 @@ describe("GET /v1/credits", () => {
     expect(first.body).toEqual(second.body);
   });
 });
+
+describe("the assistant points at the endpoint that exists", () => {
+  it("names it, rather than telling the user there is no such call", async () => {
+    // This bit twice in one session: the prompt said the record button was gone
+    // after it was, and then said there was no balance endpoint one commit
+    // before /v1/credits was added. Both read as confident and were both wrong,
+    // and neither was caught by any test that looked at behaviour rather than
+    // text. Cheap to pin: the claim is a path, and the path is checkable.
+    const { USER_SYSTEM_PROMPT } = await import("@/lib/assistant/prompts");
+    expect(USER_SYSTEM_PROMPT).toContain("/v1/credits");
+  });
+});
