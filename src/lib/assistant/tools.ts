@@ -37,6 +37,8 @@ import {
   withdrawAssistantAction,
 } from "../db/assistant";
 import { auditModelConfigs, describeFindings } from "../providers/config-audit";
+import { providerDrift } from "../media/drift";
+import type { MediaSpec } from "../media/spec";
 import { getPublicUrl } from "../config";
 import { knownModelOrDefault } from "../providers/known-models";
 import { decryptSecret } from "../crypto/secrets";
@@ -2386,25 +2388,52 @@ function specForTheModel(spec: unknown): unknown {
   return spec;
 }
 
+/**
+ * Every media provider, its models, and its specs verbatim.
+ *
+ * Compact, not pretty: this payload is the biggest one any tool returns and it has
+ * to survive the turn loop's truncation whole, because half a spec is worse than a
+ * summary — it is a spec that looks complete and calls nothing.
+ *
+ * Alongside the specs, a spec that has fallen behind the template it came from is
+ * reported, with the paths. A spec is stored as JSON in the provider row while the
+ * template lives in this build, so the two drift apart silently, and the cost of
+ * that is not abstract: a change to `MINIMAX_STT_SPEC` was deployed, did not reach
+ * production, and the only symptom was a call failing identically while the
+ * repository was correct. Reporting it here is what stops that costing anybody a
+ * round trip through "paste me the configuration".
+ */
 async function listMediaProvidersTool(): Promise<ToolResult> {
   const media = await listMediaProviders();
-  // Compact, not pretty: this payload is the biggest one any tool returns and
-  // it has to survive the turn loop's truncation whole, because half a spec is
-  // worse than a summary — it is a spec that looks complete and calls nothing.
   return okCompact(
-    media.map((m) => ({
-      id: m.id,
-      name: m.name,
-      baseUrl: m.baseUrl,
-      enabled: m.enabled,
-      priority: m.priority,
-      models: Object.entries(m.models ?? {}).map(([id, cfg]) => ({
-        id,
-        upstreamId: (cfg as { upstreamId?: string })?.upstreamId ?? id,
-        enabled: (cfg as { enabled?: boolean })?.enabled ?? true,
-      })),
-      specs: (m.specs ?? []).map(specForTheModel),
-    })),
+    media.map((m) => {
+      const drift = providerDrift(m.specs as MediaSpec[] | undefined);
+      const behind = drift.filter((d) => d.drift.kind === "differs");
+      return {
+        id: m.id,
+        name: m.name,
+        baseUrl: m.baseUrl,
+        enabled: m.enabled,
+        priority: m.priority,
+        models: Object.entries(m.models ?? {}).map(([id, cfg]) => ({
+          id,
+          upstreamId: (cfg as { upstreamId?: string })?.upstreamId ?? id,
+          enabled: (cfg as { enabled?: boolean })?.enabled ?? true,
+        })),
+        specs: (m.specs ?? []).map(specForTheModel),
+        ...(behind.length
+          ? {
+              templateDrift: behind.map(({ spec, drift: d }) => ({
+                capability: spec.capability,
+                displayName: spec.displayName,
+                templateId: (d as { templateId: string }).templateId,
+                paths: (d as { paths: string[] }).paths,
+                how: "后台「媒体服务商」里点「套用模板」保存，即可把这份拷贝换成当前模板。",
+              })),
+            }
+          : {}),
+      };
+    }),
   );
 }async function proposeProviderUpdate(
   args: Record<string, unknown>,
