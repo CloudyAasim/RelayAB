@@ -139,7 +139,23 @@ export interface CacheHitRate {
   reportedRequests: number;
 }
 
-export function cacheHitRate(summary: UsageSummary): CacheHitRate | null {
+/**
+ * The three fields the rate is made of, and nothing else.
+ *
+ * Two different types carry them — `UsageSummary` for the range report, built
+ * from the request rows, and `UsageAggregate` for the all-time totals, read from
+ * the running counters — and the all-time view is exactly the one that would
+ * otherwise be unable to answer. Naming the subset rather than one of them means
+ * neither has to be adapted into the other by hand, which is how the two views
+ * came to disagree.
+ */
+export interface CacheRateInput {
+  cachedPromptTokens: number;
+  cacheReportedPromptTokens: number;
+  cacheReportedRequests: number;
+}
+
+export function cacheHitRate(summary: CacheRateInput): CacheHitRate | null {
   if (summary.cacheReportedRequests === 0) return null;
   if (summary.cacheReportedPromptTokens <= 0) return null;
   return {

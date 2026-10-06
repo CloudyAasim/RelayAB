@@ -137,17 +137,30 @@ export async function recordUsage(input: RecordUsageInput): Promise<UsageLog> {
 
     // Only successful calls count toward totals, matching aggregate().
     if (log.status === "success") {
+      // Cache columns move with the request rather than being folded in
+      // afterwards: the rate needs the denominator over *reporting* requests,
+      // and a running total cannot be recovered once the silent requests have
+      // been averaged into it. `?` for the three cache figures and
+      // `excluded.x` for the upsert keeps both halves of the ON CONFLICT on the
+      // new columns — a column that is inserted but not incremented would read
+      // as a real number and be permanently zero.
       run(
         `INSERT INTO usage_totals
-           (api_key_id, prompt_tokens, completion_tokens, total_tokens, credits_used, images, requests)
-         VALUES (?,?,?,?,?,?,1)
+           (api_key_id, prompt_tokens, completion_tokens, total_tokens, credits_used, images, requests,
+            cached_prompt_tokens, cache_reported_prompt_tokens, cache_reported_requests)
+         VALUES (?,?,?,?,?,?,1,?,?,?)
          ON CONFLICT(api_key_id) DO UPDATE SET
            prompt_tokens     = prompt_tokens + excluded.prompt_tokens,
            completion_tokens = completion_tokens + excluded.completion_tokens,
            total_tokens      = total_tokens + excluded.total_tokens,
            credits_used      = credits_used + excluded.credits_used,
            images            = images + excluded.images,
-           requests          = requests + 1`,
+           requests          = requests + 1,
+           cached_prompt_tokens = cached_prompt_tokens + excluded.cached_prompt_tokens,
+           cache_reported_prompt_tokens =
+             cache_reported_prompt_tokens + excluded.cache_reported_prompt_tokens,
+           cache_reported_requests =
+             cache_reported_requests + excluded.cache_reported_requests`,
         [
           log.apiKeyId,
           log.promptTokens,
@@ -155,6 +168,9 @@ export async function recordUsage(input: RecordUsageInput): Promise<UsageLog> {
           log.totalTokens,
           log.creditsUsed,
           log.images ?? 0,
+          log.cachedPromptTokens ?? 0,
+          log.cachedPromptTokens === undefined ? 0 : log.promptTokens,
+          log.cachedPromptTokens === undefined ? 0 : 1,
         ],
       );
     }
@@ -327,6 +343,10 @@ export async function aggregateByUser(
       creditsUsed: 0,
       images: 0,
       requestCount: 0,
+      cachedPromptTokens: 0,
+      cacheReportedPromptTokens: 0,
+      cacheReportedRequests: 0,
+
     };
   }
 
@@ -341,8 +361,12 @@ export async function aggregateByUser(
         creditsUsed: acc.creditsUsed + x.creditsUsed,
         images: acc.images + x.images,
         requestCount: acc.requestCount + x.requestCount,
+        cachedPromptTokens: acc.cachedPromptTokens + x.cachedPromptTokens,
+        cacheReportedPromptTokens: acc.cacheReportedPromptTokens + x.cacheReportedPromptTokens,
+        cacheReportedRequests: acc.cacheReportedRequests + x.cacheReportedRequests,
+
       }),
-      { promptTokens: 0, completionTokens: 0, totalTokens: 0, creditsUsed: 0, images: 0, requestCount: 0 },
+      { promptTokens: 0, completionTokens: 0, totalTokens: 0, creditsUsed: 0, images: 0, requestCount: 0, cachedPromptTokens: 0, cacheReportedPromptTokens: 0, cacheReportedRequests: 0 },
     );
   }
 
@@ -359,6 +383,10 @@ export async function aggregateByUser(
     creditsUsed: 0,
     images: 0,
     requestCount: 0,
+    cachedPromptTokens: 0,
+    cacheReportedPromptTokens: 0,
+    cacheReportedRequests: 0,
+
   };
   for (let i = 0; i < apiKeyIds.length; i += CHUNK) {
     const slice = apiKeyIds.slice(i, i + CHUNK);
@@ -370,7 +398,11 @@ export async function aggregateByUser(
          COALESCE(SUM(total_tokens), 0)      AS totalTokens,
          COALESCE(SUM(credits_used), 0)      AS creditsUsed,
          COALESCE(SUM(images), 0)           AS images,
-         COUNT(*)                          AS requestCount
+         COUNT(*)                          AS requestCount,
+         COALESCE(SUM(cached_prompt_tokens), 0)         AS cachedPromptTokens,
+         COALESCE(SUM(CASE WHEN cached_prompt_tokens IS NOT NULL
+                           THEN prompt_tokens ELSE 0 END), 0) AS cacheReportedPromptTokens,
+         COUNT(cached_prompt_tokens)                    AS cacheReportedRequests
        FROM usage_logs
        WHERE status = 'success'
          AND created_at >= ? AND created_at < ?
@@ -402,6 +434,17 @@ export interface UsageAggregate {
   /** Media items produced; 0 for chat-only traffic. */
   images: number;
   requestCount: number;
+  /**
+   * The cache figures the all-time view reports.
+   *
+   * Present because the all-time totals come from this table rather than from
+   * the request rows, and without them that view could not produce a rate at
+   * all — leaving 「未上报」 as its only answer, which claims something about the
+   * vendor that the same deployment contradicts in every other view.
+   */
+  cachedPromptTokens: number;
+  cacheReportedPromptTokens: number;
+  cacheReportedRequests: number;
 }
 
 const EPOCH = "1970-01-01T00:00:00.000Z";
@@ -414,6 +457,9 @@ interface RawAggregate {
   creditsUsed: unknown;
   images: unknown;
   requestCount: unknown;
+  cachedPromptTokens: unknown;
+  cacheReportedPromptTokens: unknown;
+  cacheReportedRequests: unknown;
 }
 
 function num(value: unknown): number {
@@ -445,7 +491,11 @@ function aggregateByKeyRange(
        COALESCE(SUM(total_tokens), 0)      AS totalTokens,
        COALESCE(SUM(credits_used), 0)      AS creditsUsed,
        COALESCE(SUM(images), 0)           AS images,
-       COUNT(*)                          AS requestCount
+       COUNT(*)                          AS requestCount,
+       COALESCE(SUM(cached_prompt_tokens), 0)         AS cachedPromptTokens,
+       COALESCE(SUM(CASE WHEN cached_prompt_tokens IS NOT NULL
+                         THEN prompt_tokens ELSE 0 END), 0) AS cacheReportedPromptTokens,
+       COUNT(cached_prompt_tokens)                    AS cacheReportedRequests
      FROM usage_logs
      WHERE api_key_id = ? AND status = 'success'
        AND created_at >= ? AND created_at < ?`,
@@ -460,6 +510,10 @@ function aggregateByKeyRange(
       creditsUsed: 0,
       images: 0,
       requestCount: 0,
+      cachedPromptTokens: 0,
+      cacheReportedPromptTokens: 0,
+      cacheReportedRequests: 0,
+
     };
   }
   return {
@@ -469,6 +523,9 @@ function aggregateByKeyRange(
     creditsUsed: num(row.creditsUsed),
     images: num(row.images),
     requestCount: num(row.requestCount),
+    cachedPromptTokens: num(row.cachedPromptTokens),
+    cacheReportedPromptTokens: num(row.cacheReportedPromptTokens),
+    cacheReportedRequests: num(row.cacheReportedRequests),
   };
 }
 
@@ -518,6 +575,13 @@ function parseKeyTotals(row: Record<string, unknown>): UsageAggregate {
     creditsUsed: num(row.credits_used),
     images: num(row.images),
     requestCount: num(row.requests),
+    // `?? 0` rather than `num(...)`: a database written before these columns
+    // exist returns null, and null here means "this deployment has not
+    // accumulated a cache figure since the column appeared", which is the
+    // unknown the rate reports — not a zero.
+    cachedPromptTokens: num(row.cached_prompt_tokens),
+    cacheReportedPromptTokens: num(row.cache_reported_prompt_tokens),
+    cacheReportedRequests: num(row.cache_reported_requests),
   };
 }
 

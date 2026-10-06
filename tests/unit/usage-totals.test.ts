@@ -49,6 +49,28 @@ describe("usage running totals", () => {
       creditsUsed: 8,
       images: 0,
       requestCount: 2,
+      // Neither of these two rows carried a cache figure, so the counter has
+      // nothing to report — which the all-time view must say rather than
+      // rounding down to a 0% rate.
+      cachedPromptTokens: 0,
+      cacheReportedPromptTokens: 0,
+      cacheReportedRequests: 0,
+    });
+  });
+
+  it("counts cache separately from the prompt, so the rate has a denominator", async () => {
+    // Two requests: one reported a fully cached prompt, one said nothing. The
+    // counter must carry the reported request's *whole* prompt as the
+    // denominator — averaging the silent one in is what makes a reported 100%
+    // come out as 50%.
+    await recordUsage(usage({ promptTokens: 100, cachedPromptTokens: 100 }));
+    await recordUsage(usage({ promptTokens: 900 }));
+
+    expect(await aggregateByKey("k1")).toMatchObject({
+      promptTokens: 1000,
+      cachedPromptTokens: 100,
+      cacheReportedPromptTokens: 100,
+      cacheReportedRequests: 1,
     });
   });
 

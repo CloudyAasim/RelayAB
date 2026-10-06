@@ -456,6 +456,15 @@ const ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; type: string
   // vendor reported no cache" stays distinguishable from "0 cached".
   { table: "usage_logs", column: "cached_prompt_tokens", type: "INTEGER" },
   { table: "usage_logs", column: "cache_write_tokens", type: "INTEGER" },
+  // The same three facts on `usage_totals`, which is where the all-time figures
+  // come from. Without them that view could not produce a cache hit rate at all,
+  // and the only honest-looking thing it had to say was 「未上报」 — which claims
+  // the vendor never reported a cache, rather than saying this view cannot see
+  // one. Two views of the same deployment disagreeing about the same vendor is
+  // worse than either number being wrong.
+  { table: "usage_totals", column: "cached_prompt_tokens", type: "INTEGER" },
+  { table: "usage_totals", column: "cache_reported_prompt_tokens", type: "INTEGER" },
+  { table: "usage_totals", column: "cache_reported_requests", type: "INTEGER" },
   // The assistant's model parameters. All four nullable and all four default
   // to null, so upgrading cannot change the requests an existing assistant
   // makes — the failure mode of a defaulted sampling parameter is a model

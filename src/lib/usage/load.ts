@@ -153,15 +153,9 @@ export async function sumAllTime(keyIds: readonly string[]): Promise<UsageSummar
       totalTokens: acc.totalTokens + totals.totalTokens,
       creditsUsed: acc.creditsUsed + totals.creditsUsed,
       images: acc.images + totals.images,
-      // Carried as zero *on purpose*, which `cacheHitRate` reads as unknown
-      // rather than as "never a cache hit". The per-key counters carry no cache
-      // column — only the request rows do — so the honest answer here is that
-      // nobody knows, and a lifetime 0% would be a claim about behaviour that
-      // this source cannot support. The range-scoped report is built from the
-      // rows and does have it.
-      cachedPromptTokens: 0,
-      cacheReportedPromptTokens: 0,
-      cacheReportedRequests: 0,
+      cachedPromptTokens: acc.cachedPromptTokens + totals.cachedPromptTokens,
+      cacheReportedPromptTokens: acc.cacheReportedPromptTokens + totals.cacheReportedPromptTokens,
+      cacheReportedRequests: acc.cacheReportedRequests + totals.cacheReportedRequests,
     }),
     { ...EMPTY_USAGE_SUMMARY },
   );

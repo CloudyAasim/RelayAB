@@ -33,6 +33,10 @@ function log(over: Partial<UsageLog>): UsageLog {
     apiKeyId: "k",
     providerId: "p",
     model: "m",
+    // Required by `UsageLogSchema` on the path that actually writes. The tests
+    // above never touch it because they go through `addSummary` directly, which
+    // is exactly the kind of gap that only shows up once a test stops stubbing.
+    upstreamModel: "m",
     status: "success",
     promptTokens: 0,
     completionTokens: 0,
@@ -159,6 +163,45 @@ describe("the rate", () => {
   it("never exceeds one, even if a vendor reports more than it sent", () => {
     // Defensive: a bad figure should not produce a 140% bar.
     expect(cacheHitRate(collect([log({ promptTokens: 100, cachedPromptTokens: 140 })]))?.rate).toBe(1);
+  });
+});
+
+describe("the two views of the same deployment agree", () => {
+  it("because the running counters carry the cache figures too", async () => {
+    // The all-time totals come from `usage_totals`, not from the request rows.
+    // With no cache column there, that view could only ever say 「未上报」 — and
+    // 「未上报」 claims the vendor never reported a cache, which the same
+    // deployment contradicts in every range view. Two views of one deployment
+    // disagreeing about a vendor is worse than either number being wrong.
+    const { aggregateByKey } = await import("@/lib/db/usage");
+    const { recordUsage } = await import("@/lib/db/usage");
+    const { __resetDbForTest } = await import("@/lib/db/sqlite");
+
+    __resetDbForTest();
+    await recordUsage(log({ apiKeyId: "k1", promptTokens: 100, cachedPromptTokens: 100 }));
+    await recordUsage(log({ apiKeyId: "k1", promptTokens: 900 }));
+
+    const totals = await aggregateByKey("k1");
+    // The denominator is the reporting request's whole prompt, not the period's.
+    expect(totals.cachedPromptTokens).toBe(100);
+    expect(totals.cacheReportedPromptTokens).toBe(100);
+    expect(totals.cacheReportedRequests).toBe(1);
+    expect(totals.promptTokens).toBe(1000);
+
+    // And the all-time view reaches the same answer the range view does.
+    const hit = cacheHitRate(totals);
+    expect(hit?.rate).toBe(1);
+  });
+
+  it("and the table the counters live in has those columns", async () => {
+    const { __resetDbForTest, getAll } = await import("@/lib/db/sqlite");
+    __resetDbForTest();
+    const cols = getAll<{ name: string }>("PRAGMA table_info(usage_totals)", []).map((c) => c.name);
+    // `CREATE TABLE IF NOT EXISTS` cannot widen a deployed table, so the columns
+    // exist in two places on purpose: the schema, and the ADD COLUMN list.
+    for (const c of ["cached_prompt_tokens", "cache_reported_prompt_tokens", "cache_reported_requests"]) {
+      expect(cols, `usage_totals is missing ${c}`).toContain(c);
+    }
   });
 });
 
