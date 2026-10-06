@@ -327,7 +327,18 @@ export const MINIMAX_STT_SPEC: MediaSpec = {
   request: {
     model: "$.model",
     file: {
-      $file: { path: "$.image", filename: "$.filename", contentType: "audio/mpeg" },
+      /**
+       * No `contentType` on purpose.
+       *
+       * `$file` falls back to the media type the uploaded bytes actually
+       * declare, which is the only correct answer for a capability that accepts
+       * wav / aiff / flac / m4a / mp3 / aac / opus / ogg. Hardcoding `audio/mpeg`
+       * labelled every m4a and wav upload as an mp3, which a vendor reading the
+       * part's own type is entitled to refuse — and it failed as a bare HTTP 400
+       * with nothing to say about it. The image path has carried the same note
+       * about a hardcoded `image/png` mislabelling every JPEG/GIF/WEBP upload.
+       */
+      $file: { path: "$.image", filename: "$.filename" },
     },
     response_format: { $const: "json" },
   },

@@ -88,7 +88,7 @@ const CAP_LABEL: Record<string, string> = {
  * an upstream 400 phrased as `missing required parameter`. Pre-filling a voice
  * that is known to work turns that into the default path instead of a trap.
  */
-const DEFAULT_TTS_VOICE = "English_Trustworth_Man";
+const DEFAULT_TTS_VOICE = "female-shaonv";
 
 /**
  * Video defaults the form must supply.

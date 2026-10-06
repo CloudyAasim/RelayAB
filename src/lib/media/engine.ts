@@ -724,15 +724,41 @@ function collectItems(payload: unknown): MediaItem[] {
   return items;
 }
 
-function errorFromMapped(payload: unknown, fallback: MediaEngineError): MediaEngineError {
+function errorFromMapped(
+  payload: unknown,
+  fallback: MediaEngineError,
+  rawBody?: string,
+): MediaEngineError {
   const record = asRecord(payload);
   const message = record && typeof record.errorMessage === "string" ? record.errorMessage : "";
-  const code = record && record.errorCode !== undefined ? String(record.errorCode) : "";
   return {
     status: fallback.status,
     code: fallback.code,
-    message: message || fallback.message,
+    message: message || withUpstreamBody(fallback.message, rawBody),
   };
+}
+
+/**
+ * Carry a short excerpt of the upstream's own body when the spec's mapping found
+ * no message to use.
+ *
+ * The async branch below does this already, and says why: "upstream did not
+ * return a task id" on its own is a dead end, and the body is what turns it into
+ * something the caller can act on. This branch threw the body away instead, which
+ * made a whole class of failure undiagnosable — a vendor rejecting a request at
+ * the HTTP layer answers with a 400 and no `base_resp`, so the spec maps nothing,
+ * and the reader is left with "upstream returned HTTP 400" and no way to learn
+ * why. That is not a rare shape: it is what a gateway says when it refuses to
+ * parse the request at all.
+ *
+ * Trimmed and collapsed to one line, because a vendor error page can be an HTML
+ * document and this string is shown to a person.
+ */
+function withUpstreamBody(message: string, rawBody?: string): string {
+  const body = (rawBody ?? "").trim();
+  if (!body) return message;
+  const flat = body.replace(/\s+/g, " ").slice(0, 300);
+  return `${message} — ${flat}${body.length > 300 ? "…" : ""}`;
 }
 
 /**
@@ -963,11 +989,17 @@ export async function executeMedia(args: ExecuteMediaArgs): Promise<MediaExecute
     const mapped = spec.response ? applyMapping(spec.response, rawPayload) : undefined;
     return {
       ok: false,
-      error: errorFromMapped(mapped, {
-        status: 502,
-        code: "upstream_error",
-        message: `upstream returned HTTP ${response.status}`,
-      }),
+      error: errorFromMapped(
+        mapped,
+        {
+          status: 502,
+          code: "upstream_error",
+          message: `upstream returned HTTP ${response.status}`,
+        },
+        // Carried so a failure the spec cannot explain is still a diagnosable
+        // one. See `withUpstreamBody`.
+        rawText,
+      ),
     };
   }
 
