@@ -30,6 +30,19 @@ import { generateId } from "../crypto/hashing";
  */
 export const MAX_LOGS_PER_KEY = 1000;
 
+/**
+ * The UTC hour an instant falls in, as `YYYY-MM-DDTHH`.
+ *
+ * UTC because that is the only bucket that does not change meaning when a reader
+ * in another display zone looks at the same traffic, and because this app's two
+ * zones — UTC+0 and UTC+8 — are both whole hours, so a reader's local hour is
+ * always exactly one of these. A half-hour zone would split them, and this
+ * function would be the place that had to change.
+ */
+export function utcHourOf(iso: string): string {
+  return iso.slice(0, 13);
+}
+
 // ---------------------------------------------------------------------------
 // Inputs
 // ---------------------------------------------------------------------------
@@ -173,6 +186,46 @@ export async function recordUsage(input: RecordUsageInput): Promise<UsageLog> {
           log.cachedPromptTokens === undefined ? 0 : 1,
         ],
       );
+
+      // The same figures into the hour they happened in. This is what makes a
+      // range report independent of how many rows are retained, so it is written
+      // with the same care as the counters above — the `ON CONFLICT` half
+      // included, since a bucket column that is inserted but not accumulated
+      // reads as a real zero forever.
+      run(
+        `INSERT INTO usage_buckets
+           (api_key_id, provider_id, model, bucket, user_id,
+            prompt_tokens, completion_tokens, total_tokens, credits_used, images, requests,
+            cached_prompt_tokens, cache_reported_prompt_tokens, cache_reported_requests)
+         VALUES (?,?,?,?,?,?,?,?,?,?,1,?,?,?)
+         ON CONFLICT(api_key_id, provider_id, model, bucket) DO UPDATE SET
+           prompt_tokens     = prompt_tokens + excluded.prompt_tokens,
+           completion_tokens = completion_tokens + excluded.completion_tokens,
+           total_tokens      = total_tokens + excluded.total_tokens,
+           credits_used      = credits_used + excluded.credits_used,
+           images            = images + excluded.images,
+           requests          = requests + 1,
+           cached_prompt_tokens = cached_prompt_tokens + excluded.cached_prompt_tokens,
+           cache_reported_prompt_tokens =
+             cache_reported_prompt_tokens + excluded.cache_reported_prompt_tokens,
+           cache_reported_requests =
+             cache_reported_requests + excluded.cache_reported_requests`,
+        [
+          log.apiKeyId,
+          log.providerId,
+          log.model,
+          utcHourOf(log.createdAt),
+          log.userId,
+          log.promptTokens,
+          log.completionTokens,
+          log.totalTokens,
+          log.creditsUsed,
+          log.images ?? 0,
+          log.cachedPromptTokens ?? 0,
+          log.cachedPromptTokens === undefined ? 0 : log.promptTokens,
+          log.cachedPromptTokens === undefined ? 0 : 1,
+        ],
+      );
     }
 
     // Trim oldest rows beyond the cap. The subquery keeps the newest N by
@@ -228,6 +281,167 @@ export async function listUsageWithin(
       ORDER BY created_at DESC, id DESC LIMIT ?`,
     [apiKeyId, opts.fromIso, max],
     rowToUsageLog,
+  );
+}
+
+/**
+ * One pre-aggregated hour of one key's traffic.
+ *
+ * Carries the group dimensions as data rather than as a type-level union,
+ * because every reader — summary, series, and each of the four breakdowns —
+ * needs all of them and no reader needs only one.
+ */
+export interface UsageBucketRow {
+  apiKeyId: string;
+  userId: string;
+  providerId: string;
+  model: string;
+  /** UTC hour, `YYYY-MM-DDTHH`. */
+  bucket: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  creditsUsed: number;
+  images: number;
+  requests: number;
+  cachedPromptTokens: number;
+  cacheReportedPromptTokens: number;
+  cacheReportedRequests: number;
+}
+
+function rowToUsageBucket(row: Record<string, unknown>): UsageBucketRow {
+  return {
+    apiKeyId: String(row.api_key_id),
+    userId: String(row.user_id),
+    providerId: String(row.provider_id),
+    model: String(row.model),
+    bucket: String(row.bucket),
+    promptTokens: num(row.prompt_tokens),
+    completionTokens: num(row.completion_tokens),
+    totalTokens: num(row.total_tokens),
+    creditsUsed: num(row.credits_used),
+    images: num(row.images),
+    requests: num(row.requests),
+    cachedPromptTokens: num(row.cached_prompt_tokens),
+    cacheReportedPromptTokens: num(row.cache_reported_prompt_tokens),
+    cacheReportedRequests: num(row.cache_reported_requests),
+  };
+}
+
+/**
+ * Hourly buckets for these keys inside a window.
+ *
+ * With no `fromIso` this is every retained bucket — the "all time" range, which
+ * no longer has to read the capped log rows at all.
+ */
+/**
+ * How long hourly buckets are kept.
+ *
+ * A day of buckets for one key/model/provider is one row of about two hundred
+ * bytes, so a year of them costs a few megabytes per key — which is what makes
+ * keeping them out of the row cap worth doing at all. 400 days rather than 365 so
+ * that "a year ago" is inside the window whatever day you look.
+ */
+export const BUCKET_RETENTION_DAYS = 400;
+
+let bucketsPrepared = false;
+
+/**
+ * Backfill from the retained rows, then drop what has aged out. Once per process.
+ *
+ * The backfill is idempotent because it replaces the window it covers rather
+ * than adding to it, so a restart cannot double-count. What it recovers is only
+ * the rows still retained: the point is that a deployment upgraded today keeps
+ * the history it has instead of starting every chart from nothing, not that
+ * anything older is recovered.
+ *
+ * Both halves live here rather than in `getDb` because this module imports the
+ * database and not the other way round.
+ */
+export function prepareUsageBuckets(now = new Date()): void {
+  if (bucketsPrepared) return;
+  // Claim it first: `rebuildUsageBuckets` runs two statements, and a report
+  // running twice at once on a cold process would otherwise interleave them.
+  bucketsPrepared = true;
+  try {
+    rebuildUsageBuckets();
+    const cutoff = utcHourOf(new Date(now.getTime() - BUCKET_RETENTION_DAYS * 86_400_000).toISOString());
+    run("DELETE FROM usage_buckets WHERE bucket < ?", [cutoff]);
+  } catch (err) {
+    bucketsPrepared = false;
+    throw err;
+  }
+}
+
+/** Test-only: forget that preparation ran, so the next call does it again. */
+export function __resetBucketPreparationForTest(): void {
+  bucketsPrepared = false;
+}
+
+export async function listUsageBuckets(
+  apiKeyIds: readonly string[],
+  opts: { fromIso?: string; toIso?: string } = {},
+): Promise<UsageBucketRow[]> {
+  if (apiKeyIds.length === 0) return [];
+  prepareUsageBuckets();
+
+  const CHUNK = 500;
+  const rows: UsageBucketRow[] = [];
+  for (let i = 0; i < apiKeyIds.length; i += CHUNK) {
+    const slice = apiKeyIds.slice(i, i + CHUNK);
+    const marks = slice.map(() => "?").join(",");
+    // The bucket is a UTC hour, so the window narrows to the hours it can touch:
+    // the hour containing `fromIso` up to the hour containing `toIso`.
+    const where: string[] = [`api_key_id IN (${marks})`];
+    const params: unknown[] = [...slice];
+    if (opts.fromIso) {
+      where.push("bucket >= ?");
+      params.push(utcHourOf(opts.fromIso));
+    }
+    if (opts.toIso) {
+      where.push("bucket < ?");
+      params.push(utcHourOf(opts.toIso));
+    }
+    rows.push(
+      ...getAll(
+        `SELECT * FROM usage_buckets WHERE ${where.join(" AND ")} ORDER BY bucket ASC`,
+        params,
+        rowToUsageBucket,
+      ),
+    );
+  }
+  return rows;
+}
+
+/**
+ * Rebuild the buckets from the retained log rows.
+ *
+ * Idempotent, so it is safe to run on every open: it replaces the window rather
+ * than adding to it. What it can recover is only the rows still retained — the
+ * point is that a deployment upgraded today keeps the history it has instead of
+ * starting the charts from nothing, not that anything older is recovered.
+ */
+export function rebuildUsageBuckets(): void {
+  run(
+    `DELETE FROM usage_buckets WHERE bucket >= (
+       SELECT MIN(substr(created_at, 1, 13)) FROM usage_logs
+     )`,
+  );
+  run(
+    `INSERT INTO usage_buckets
+       (api_key_id, provider_id, model, bucket, user_id,
+        prompt_tokens, completion_tokens, total_tokens, credits_used, images, requests,
+        cached_prompt_tokens, cache_reported_prompt_tokens, cache_reported_requests)
+     SELECT
+       api_key_id, provider_id, model, substr(created_at, 1, 13), user_id,
+       SUM(prompt_tokens), SUM(completion_tokens), SUM(total_tokens),
+       SUM(credits_used), SUM(COALESCE(images, 0)), COUNT(*),
+       SUM(COALESCE(cached_prompt_tokens, 0)),
+       SUM(CASE WHEN cached_prompt_tokens IS NOT NULL THEN prompt_tokens ELSE 0 END),
+       COUNT(cached_prompt_tokens)
+     FROM usage_logs
+     WHERE status = 'success'
+     GROUP BY api_key_id, provider_id, model, substr(created_at, 1, 13), user_id`,
   );
 }
 

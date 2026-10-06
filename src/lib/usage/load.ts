@@ -1,14 +1,16 @@
 /**
  * src/lib/usage/load.ts
  *
- * Server-side orchestration for the usage screens/APIs: fetch the retained
- * per-key logs, then hand them to the pure aggregator in ./report.
+ * Server-side orchestration for the usage screens/APIs: read the hourly
+ * pre-aggregation, and hand what it cannot answer to the pure aggregator in
+ * ./report.
  *
  * Two performance properties matter here:
  *
- *  1. Bounded reads. For a ranged report we only walk as far back as the
- *     window's lower bound (`listUsageWithin`), so "today"/"7 days" no longer
- *     hydrate all 1000 retained rows per key on every render.
+ *  1. Bounded reads. Range figures are summed from `usage_buckets`, so a window
+ *     costs the same whether the key made ten requests in it or ten million.
+ *     The row scan that `listUsageWithin` performs is the fallback, not the
+ *     normal path, and is bounded by the window's lower bound when it runs.
  *  2. A short data cache. `loadUsageReportCached` memoises the report for
  *     `REPORT_REVALIDATE_SECONDS`, which makes switching back and forth between
  *     ranges (and refresh) cheap. Usage is append-only and the UI already warns
@@ -17,14 +19,22 @@
  *
  * "All time" totals come from the running per-key counters (accurate even when
  * a key has more than `MAX_LOGS_PER_KEY` retained rows). Range and breakdown
- * figures scan the retained logs, so a very busy key can undercount inside a
- * window; `truncatedKeys` tells the UI when that may be the case.
+ * figures come from `usage_buckets`, the hourly pre-aggregation written as
+ * traffic happens, so they are bounded by time rather than by how many rows
+ * happen to be retained.
+ *
+ * A window that predates the buckets — or one in a deployment where the
+ * backfill never ran — falls back to scanning the rows, which is the old
+ * behaviour, truncated and flagged. That fallback is why `truncatedKeys` is
+ * still computed and still shown: it is true of the fallback, and false of the
+ * path that is normally taken.
  */
 import { unstable_cache } from "next/cache";
 import { mapWithConcurrency } from "@/lib/db/concurrency";
 import {
   MAX_LOGS_PER_KEY,
   aggregateByKeyMany,
+  listUsageBuckets,
   listUsageByKey,
   listUsageWithin,
 } from "@/lib/db/usage";
@@ -39,6 +49,11 @@ import {
   type UsageSeriesPoint,
   type UsageSummary,
 } from "./report";
+import {
+  groupBuckets,
+  seriesFromBuckets,
+  summarizeBuckets,
+} from "./buckets";
 
 export interface UsageReport {
   range: UsageRange;
@@ -50,7 +65,6 @@ export interface UsageReport {
   byUser: UsageGroupRow[];
   /** Keys whose retained log window was full, so range figures may undercount. */
   truncatedKeys: number;
-  logCount: number;
 }
 
 export interface LoadUsageReportInput {
@@ -72,6 +86,46 @@ export async function loadUsageReport(
   input: LoadUsageReportInput,
 ): Promise<UsageReport> {
   const { keyIds, tzOffsetMinutes, range } = input;
+
+  /**
+   * The pre-aggregated path first. Everything it cannot answer — a window with
+   * no buckets in it — falls through to the rows, which is the old behaviour
+   * and the reason the truncation warning still exists at all.
+   */
+  const bucketRows = (
+    await listUsageBuckets(keyIds, {
+      ...(range.fromIso ? { fromIso: range.fromIso } : {}),
+      ...(range.toIso ? { toIso: range.toIso } : {}),
+    })
+  ).filter((row) => (input.model ? row.model === input.model : true));
+
+  if (bucketRows.length > 0) {
+    // "All time" totals are lifetime, from the running counters; the series and
+    // the breakdowns below cover the bucket retention window. The two have
+    // always been able to disagree — they were previously bounded by how many
+    // rows survived, now by how many hours were kept — and a bounded chart
+    // under a lifetime number is the same claim as ever, not a new one.
+    const summary =
+      range.key === "all" && !input.model
+        ? await sumAllTime(keyIds)
+        : summarizeBuckets(bucketRows);
+    return {
+      range,
+      summary,
+      series: fillSeries(
+        seriesFromBuckets(bucketRows, range.grain, tzOffsetMinutes),
+        range,
+        tzOffsetMinutes,
+      ),
+      byKey: groupBuckets(bucketRows, "apiKeyId"),
+      byModel: groupBuckets(bucketRows, "model"),
+      byProvider: groupBuckets(bucketRows, "providerId"),
+      byUser: input.includeUsers ? groupBuckets(bucketRows, "userId") : [],
+      // Nothing was cut: these figures were summed as the traffic arrived.
+      truncatedKeys: 0,
+    };
+  }
+
   const perKey = await mapWithConcurrency(keyIds, SCAN_CONCURRENCY, (keyId) =>
     range.fromIso
       ? listUsageWithin(keyId, { fromIso: range.fromIso, max: MAX_LOGS_PER_KEY })
@@ -101,7 +155,6 @@ export async function loadUsageReport(
     byProvider: group(logs, "providerId", range.fromIso, range.toIso),
     byUser: input.includeUsers ? group(logs, "userId", range.fromIso, range.toIso) : [],
     truncatedKeys,
-    logCount: logs.length,
   };
 }
 

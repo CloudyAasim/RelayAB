@@ -158,6 +158,43 @@ CREATE INDEX IF NOT EXISTS idx_usage_logs_key     ON usage_logs(api_key_id, crea
 CREATE INDEX IF NOT EXISTS idx_usage_logs_user    ON usage_logs(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_usage_logs_created ON usage_logs(created_at);
 
+-- Hourly pre-aggregation, which is what range figures are read from now.
+--
+-- usage_logs is capped at MAX_LOGS_PER_KEY rows per key, so a range report
+-- scanning it undercounts exactly when a key is busy — and "busy" and "you are
+-- looking at last month" are the same condition. Every figure here is instead
+-- accumulated as traffic happens, so a range costs the same whether the key made
+-- ten requests in it or ten million.
+--
+-- The bucket is a UTC hour, which is the only timezone-independent choice and
+-- the one this app can store exactly: its two display zones are UTC+0 and
+-- UTC+8, both whole hours, so a local hour is always exactly one of these.
+-- (No backticks in this comment: the schema lives in a template literal, and a
+-- backtick here would close it. Cost one confusing parse error.)
+-- Keyed by everything a breakdown can group by. user_id is carried in the row
+-- rather than the key because it is functionally dependent on api_key_id — a key
+-- has exactly one owner — so putting it in the key would only widen the index
+-- without letting any grouping that does not exist today.
+CREATE TABLE IF NOT EXISTS usage_buckets (
+  api_key_id        TEXT NOT NULL,
+  provider_id       TEXT NOT NULL,
+  model             TEXT NOT NULL,
+  bucket            TEXT NOT NULL,
+  user_id           TEXT NOT NULL,
+  prompt_tokens     INTEGER NOT NULL DEFAULT 0,
+  completion_tokens INTEGER NOT NULL DEFAULT 0,
+  total_tokens      INTEGER NOT NULL DEFAULT 0,
+  credits_used      INTEGER NOT NULL DEFAULT 0,
+  images            INTEGER NOT NULL DEFAULT 0,
+  requests          INTEGER NOT NULL DEFAULT 0,
+  cached_prompt_tokens         INTEGER NOT NULL DEFAULT 0,
+  cache_reported_prompt_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_reported_requests      INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (api_key_id, provider_id, model, bucket)
+);
+-- The one direction a range query goes.
+CREATE INDEX IF NOT EXISTS idx_usage_buckets_bucket ON usage_buckets(bucket);
+
 -- Running per-key totals. Kept as a separate table rather than recomputed with
 -- a SUM over usage_logs on every request: the proxy path reads it on every
 -- single call, and the Redis version relied on HINCRBY for the same reason.

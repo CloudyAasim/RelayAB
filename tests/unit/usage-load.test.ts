@@ -73,7 +73,15 @@ describe("loadUsageReport", () => {
 
     expect(report.summary.requests).toBe(2);
     expect(report.summary.creditsUsed).toBe(10);
-    expect(report.byKey).toEqual([]); // no retained logs to break down
+    // The breakdown used to be empty here, and the assertion said so: with the
+    // logs gone and the report reading them, there was nothing left to group.
+    // The buckets are accumulated separately and survive the same delete, so the
+    // breakdown now answers too — which is the whole reason this table exists.
+    expect(report.byKey).toEqual([
+      expect.objectContaining({ id: "k1", requests: 2, creditsUsed: 10 }),
+    ]);
+    // And nothing is being cut: these figures were summed as traffic arrived.
+    expect(report.truncatedKeys).toBe(0);
   });
 
   it("restricts the report to one model when asked", async () => {
