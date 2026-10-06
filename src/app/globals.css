@@ -145,10 +145,27 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Pretty scrollbar */
+/*
+ * Scrollbars.
+ *
+ * Six pixels, not ten. Ten was wide enough to read as a control on a phone —
+ * and the sidebar is the one that scrolls on a phone, so it is the one you see
+ * it on.
+ *
+ * The `::-webkit-scrollbar` rules below reach Chromium and WebKit only. Firefox
+ * never saw any of them and kept the UA default, which is *wider* than what we
+ * were styling everywhere else — so the same sidebar was 10px in one browser and
+ * about 15px in the other. `scrollbar-width` and `scrollbar-color` are the
+ * properties that reach it, and they are set here for that reason rather than for
+ * the sake of matching the colours.
+ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--muted-foreground) 30%, transparent) transparent;
+}
 *::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 6px;
+  height: 6px;
 }
 *::-webkit-scrollbar-track {
   background: transparent;
