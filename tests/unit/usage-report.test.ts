@@ -48,6 +48,11 @@ describe("summarize", () => {
       totalTokens: 17,
       creditsUsed: 9,
       images: 0,
+      // None of these three carried a cache figure, so the honest state is "no
+      // reporting" rather than "zero cached".
+      cachedPromptTokens: 0,
+      cacheReportedPromptTokens: 0,
+      cacheReportedRequests: 0,
     });
   });
 
@@ -209,6 +214,9 @@ describe("fillSeries", () => {
           totalTokens: 4,
           creditsUsed: 2,
           images: 1,
+          cachedPromptTokens: 1,
+          cacheReportedPromptTokens: 3,
+          cacheReportedRequests: 1,
         },
       ],
       range,

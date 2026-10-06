@@ -423,6 +423,10 @@ const zhCN: Dict = {
   "usage.stat.balance": "剩余额度",
   "usage.stat.balanceHint": "总额度 {limit}",
   "usage.stat.used": "累计消耗",
+  "usage.stat.cacheHit": "缓存命中率",
+  "usage.stat.cacheUnreported": "未上报",
+  "usage.stat.cacheHitHint": "{cached} / {prompt} 输入 token 命中缓存（{reported} 次请求上报了缓存）",
+  "usage.stat.cacheUnreportedHint": "这段时间里没有任何请求上报缓存，无法计算命中率",
   "usage.stat.activeKeys": "启用密钥",
   "usage.chart.title": "消耗趋势",
   "usage.empty": "所选范围内还没有用量。",
@@ -1522,6 +1526,12 @@ const en: Dict = {
   "usage.stat.balance": "Remaining",
   "usage.stat.balanceHint": "of {limit} total",
   "usage.stat.used": "Lifetime spend",
+  "usage.stat.cacheHit": "Cache hit rate",
+  "usage.stat.cacheUnreported": "Not reported",
+  "usage.stat.cacheHitHint":
+    "{cached} of {prompt} input tokens served from cache ({reported} requests reported a cache)",
+  "usage.stat.cacheUnreportedHint":
+    "No request in this period reported a cache, so there is no hit rate to give",
   "usage.stat.activeKeys": "Active keys",
   "usage.chart.title": "Usage over time",
   "usage.empty": "No usage in this window yet.",

@@ -31,6 +31,32 @@ export interface UsageSummary {
   creditsUsed: number;
   /** Media items produced (images, videos, …); 0 for chat-only traffic. */
   images: number;
+  /**
+   * Prompt tokens the upstream served out of its own cache, summed over the
+   * requests that reported one. A subset of `promptTokens`, which is the shape
+   * billing already assumes when it charges the remainder at the input price.
+   */
+  cachedPromptTokens: number;
+  /**
+   * Prompt tokens belonging **only** to the requests that reported a cache.
+   *
+   * The denominator has to be these and not `promptTokens`. A request that
+   * reported nothing contributes a real number of prompt tokens and nothing
+   * else, so counting it in the denominator while excluding it from the
+   * numerator reports a lower rate than the vendor actually served — and
+   * quietly, because both numbers are right on their own.
+   */
+  cacheReportedPromptTokens: number;
+  /**
+   * How many requests actually carried a cache figure.
+   *
+   * The one that makes a hit rate honest. A row is written without cache tokens
+   * when the vendor does not report a cache at all, and "0 cached" and "this
+   * vendor has no cache" are different facts — so a period in which nothing
+   * reported has an **unknown** hit rate, not a zero one. Counting the rows that
+   * spoke is what tells those apart.
+   */
+  cacheReportedRequests: number;
 }
 
 export interface UsageSeriesPoint {
@@ -42,6 +68,12 @@ export interface UsageSeriesPoint {
   totalTokens: number;
   creditsUsed: number;
   images: number;
+  /** Same subset-of-prompt meaning as on {@link UsageSummary}. */
+  cachedPromptTokens: number;
+  /** Prompt tokens of the rows that reported — the rate's denominator. */
+  cacheReportedPromptTokens: number;
+  /** How many of this bucket's requests carried a cache figure. */
+  cacheReportedRequests: number;
 }
 
 export interface UsageGroupRow extends UsageSummary {
@@ -55,6 +87,9 @@ export const EMPTY_USAGE_SUMMARY: UsageSummary = {
   totalTokens: 0,
   creditsUsed: 0,
   images: 0,
+  cachedPromptTokens: 0,
+  cacheReportedPromptTokens: 0,
+  cacheReportedRequests: 0,
 };
 
 export function addSummary(target: UsageSummary, log: UsageLog): void {
@@ -65,6 +100,32 @@ export function addSummary(target: UsageSummary, log: UsageLog): void {
   target.totalTokens += log.totalTokens;
   target.creditsUsed += log.creditsUsed;
   target.images += log.images ?? 0;
+  if (log.cachedPromptTokens !== undefined) {
+    target.cachedPromptTokens += log.cachedPromptTokens;
+    target.cacheReportedPromptTokens += log.promptTokens;
+    target.cacheReportedRequests += 1;
+  }
+}
+
+/**
+ * The cache hit rate over the requests that reported a cache, or null when none
+ * did.
+ *
+ * Null is the answer for a vendor that does not report a cache, and it has to be
+ * null: a rendered `0%` would say "this prompt was never served from cache",
+ * which is a claim about behaviour, when what is actually known is that nobody
+ * has looked.
+ *
+ * The denominator is `cacheReportedPromptTokens` — the prompt tokens of the rows
+ * that spoke — and not `promptTokens`. A silent row carries a real count of
+ * prompt tokens and nothing else, so using it here while excluding it from the
+ * numerator reports a rate below what the vendor actually served. Both numbers
+ * are individually correct, which is why that reads as a plausible figure.
+ */
+export function cacheHitRate(summary: UsageSummary): number | null {
+  if (summary.cacheReportedRequests === 0) return null;
+  if (summary.cacheReportedPromptTokens <= 0) return null;
+  return Math.min(1, summary.cachedPromptTokens / summary.cacheReportedPromptTokens);
 }
 
 export function sumSummaries(summaries: readonly UsageSummary[]): UsageSummary {
@@ -76,6 +137,9 @@ export function sumSummaries(summaries: readonly UsageSummary[]): UsageSummary {
     acc.totalTokens += s.totalTokens;
     acc.creditsUsed += s.creditsUsed;
     acc.images += s.images;
+    acc.cachedPromptTokens += s.cachedPromptTokens;
+    acc.cacheReportedPromptTokens += s.cacheReportedPromptTokens;
+    acc.cacheReportedRequests += s.cacheReportedRequests;
   }
   return acc;
 }
@@ -145,6 +209,9 @@ export function series(
         totalTokens: 0,
         creditsUsed: 0,
         images: 0,
+        cachedPromptTokens: 0,
+        cacheReportedPromptTokens: 0,
+        cacheReportedRequests: 0,
       };
     cur.requests += 1;
     cur.promptTokens += log.promptTokens;
@@ -152,6 +219,11 @@ export function series(
     cur.totalTokens += log.totalTokens;
     cur.creditsUsed += log.creditsUsed;
     cur.images += log.images ?? 0;
+    if (log.cachedPromptTokens !== undefined) {
+      cur.cachedPromptTokens += log.cachedPromptTokens;
+      cur.cacheReportedPromptTokens += log.promptTokens;
+      cur.cacheReportedRequests += 1;
+    }
     buckets.set(bucket, cur);
   }
   return [...buckets.values()].sort((a, b) => a.bucket.localeCompare(b.bucket));
@@ -355,6 +427,9 @@ export function fillSeries(
         totalTokens: 0,
         creditsUsed: 0,
         images: 0,
+        cachedPromptTokens: 0,
+        cacheReportedPromptTokens: 0,
+        cacheReportedRequests: 0,
       },
     );
   }

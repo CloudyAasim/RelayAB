@@ -21,13 +21,14 @@ import {
   parseUsageMetric,
   resolveRange,
   sortByMetric,
+  cacheHitRate,
   type UsageGroupRow,
 } from "@/lib/usage/report";
 import { timezoneLabelKey, timezoneOffsetMinutes } from "@/lib/timezone";
 import { loadUsageReportCached, type UsageReport } from "@/lib/usage/load";
 import { MAX_LOGS_PER_KEY } from "@/lib/db/usage";
-import { formatCredits, formatNumber } from "@/lib/utils";
-import { Coins, KeyRound, Wallet } from "lucide-react";
+import { formatCredits, formatNumber, cn } from "@/lib/utils";
+import { Coins, KeyRound, Wallet, Database } from "lucide-react";
 
 const BASE_PATH = "/dashboard/usage";
 
@@ -267,6 +268,55 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
 
         <Card className="mt-4 sm:mt-6">
           <CardHeader title={t("usage.chart.title")} description={rangeLabel} />
+          {/*
+              The cache hit rate, next to the trend it explains.
+
+              A trend of "input tokens" on its own says nothing about how much of
+              it was free: the same bar is 100% billed or 40% billed depending on
+              cache, and the reader has no way to tell which they are looking at.
+
+              `cacheHitRate` returns null when nothing in the period reported a
+              cache, and null is shown as 「未上报」 rather than as 0%. Those are
+              different facts — "no prompt was ever cached" is a claim about a
+              vendor, and "this vendor does not report a cache" is what an empty
+              column has actually told us.
+            */}
+          {(() => {
+            const rate = cacheHitRate(report.summary);
+            return (
+              <div className="mb-4 flex items-start gap-3">
+                <span
+                  className={cn(
+                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-md",
+                    rate === null
+                      ? "bg-muted text-muted-foreground"
+                      : rate > 0
+                        ? "bg-success/10 text-success"
+                        : "bg-muted text-muted-foreground",
+                  )}
+                >
+                  <Database className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <div className="text-xs uppercase tracking-wider text-muted-foreground">
+                    {t("usage.stat.cacheHit")}
+                  </div>
+                  <div className="mt-0.5 truncate text-lg font-semibold tracking-tight text-foreground sm:text-xl">
+                    {rate === null ? t("usage.stat.cacheUnreported") : `${(rate * 100).toFixed(1)}%`}
+                  </div>
+                  <div className="mt-0.5 text-xs text-muted-foreground">
+                    {rate === null
+                      ? t("usage.stat.cacheUnreportedHint")
+                      : t("usage.stat.cacheHitHint", {
+                          cached: formatNumber(report.summary.cachedPromptTokens),
+                          prompt: formatNumber(report.summary.promptTokens),
+                          reported: formatNumber(report.summary.cacheReportedRequests),
+                        })}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
           <UsageBarChart
             points={report.series}
             grain={range.grain}
