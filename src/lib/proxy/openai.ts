@@ -572,6 +572,13 @@ export interface ProxyResult {
   body?: ReadableStream<Uint8Array>;
   /** Content-Type to use together with `body`. */
   contentType?: string;
+  /**
+   * Present whenever `ok` is false. It is optional rather than required because
+   * `ok` is a plain boolean, so the type cannot tie the two together — a
+   * discriminated union would, but it makes every test that pokes at a result
+   * narrow first, which cost more than the guarantee is worth here. Readers
+   * narrow it themselves; `respond.ts` is the one that has to.
+   */
   error?: { code: string; message: string };
 }
 

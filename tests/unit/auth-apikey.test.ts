@@ -359,8 +359,13 @@ describe("reasonToHttp", () => {
     expect(reasonToHttp("key_force_disabled").status).toBe(403);
     expect(reasonToHttp("key_force_disabled").code).toBe("key_force_disabled");
     expect(reasonToHttp("key_expired").status).toBe(403);
-    expect(reasonToHttp("quota_exceeded_credits").status).toBe(403);
-    expect(reasonToHttp("quota_exceeded_tokens").status).toBe(403);
+    // 429, not 403: a spent pool is a limit, not a permission. 403 reads as
+    // "you are not allowed to", and a client given one never thinks to top up —
+    // while a client that backs off and retries a 429 would retry a pool that is
+    // not coming back for ever. The `type` it carries (`insufficient_quota`
+    // rather than `rate_limit_error`) is what tells the two apart.
+    expect(reasonToHttp("quota_exceeded_credits").status).toBe(429);
+    expect(reasonToHttp("quota_exceeded_tokens").status).toBe(429);
     expect(reasonToHttp("model_not_allowed").status).toBe(403);
     expect(reasonToHttp("unknown").status).toBe(500);
   });

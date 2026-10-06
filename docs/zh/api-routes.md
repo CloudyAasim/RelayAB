@@ -1,7 +1,18 @@
 # API 路由详细规范
 
 > 路径相对于部署根域名（如 `https://relay.example.com`）。
-> 所有 JSON 响应均遵循 `{ ok: true, data: ... }` 或 `{ ok: false, error: { code, message } }` 格式。
+>
+> **两套信封，按面划分，不要混用：**
+> - **OpenAI 兼容面**（`/v1/*`）用 OpenAI 自己的形状：失败是
+>   `{ "error": { "message", "type", "code" } }`，成功是 OpenAI 的对象
+>   （`{"object":"list","data":[...]}` 等）。带 `type` 是为了让按 OpenAI 约定
+>   写客户端的代码能按 `error.type` 分支——只给 `code` 的话它读到的是
+>   `undefined`。
+> - **Session 面**（`/api/*`）用本项目自己的形状：
+>   `{ ok: true, data: ... }` 或 `{ ok: false, error: { code, message } }`。
+>
+> `code` 在两面里都保持原样，没有被重命名——已经在按 `code` 判断的客户端
+> 不会因为这次改动而失效，`type` 是新增信息。
 
 ---
 
@@ -50,20 +61,45 @@ Content-Type: application/json
 （否则会把 Chat 请求体发到 Responses 端点）。`upstreamFormat = "anthropic"` 的
 Provider 会被本端点排除。
 
+**错误响应体**（`/v1/*` 全部适用，含下面所有公开代理端点）：
+```json
+{ "error": { "message": "积分 balance exhausted for this account",
+             "type": "insufficient_quota",
+             "code": "quota_exceeded_credits" } }
+```
+`type` 由 HTTP 状态码推导，不是逐个 code 登记的——这样它不可能和状态码走偏。
+唯一的例外是配额耗尽：它是 429，但类型是 `insufficient_quota` 而不是
+`rate_limit_error`。客户端若对 429 做退避重试，面对一个不会自己恢复的额度池
+就会永远重试下去，所以这两件事必须区分开。
+
 **错误码**：
-| HTTP | code | 含义 |
-|---|---|---|
-| 401 | `unauthorized` | 缺少/无效 Bearer |
-| 403 | `key_disabled` | Key 已禁用 |
-| 403 | `key_force_disabled` | 该 Key 已被管理员强制停用，用户无法自行重新启用 |
-| 403 | `key_expired` | Key 已过期 |
-| 403 | `quota_exceeded_credits` | 积分不足 |
-| 403 | `quota_exceeded_tokens` | 账号的 token 配额已用尽（`quotaType: "tokens"`） |
-| 403 | `model_not_allowed` | 该 Key 不允许此模型 |
-| 400 | `model_not_mapped` | 没有任何 Provider 支持此客户端模型 |
-| 400 | `missing_model` | 请求体缺少 `model` 字段 |
-| 502 | `upstream_error` | 上游调用失败 |
-| 500 | `internal_error` | 系统错误 |
+| HTTP | type | code | 含义 |
+|---|---|---|---|
+| 401 | `authentication_error` | `unauthorized` | 缺少/无效 Bearer |
+| 403 | `permission_error` | `key_disabled` | Key 已禁用 |
+| 403 | `permission_error` | `key_force_disabled` | 该 Key 已被管理员强制停用，用户无法自行重新启用 |
+| 403 | `permission_error` | `key_expired` | Key 已过期 |
+| 403 | `permission_error` | `model_not_allowed` | 该 Key 不允许此模型 |
+| 400 | `invalid_request_error` | `model_not_mapped` | 没有任何 Provider 支持此客户端模型 |
+| 400 | `invalid_request_error` | `missing_model` | 请求体缺少 `model` 字段 |
+| **429** | **`insufficient_quota`** | `quota_exceeded_credits` | 积分不足 |
+| **429** | **`insufficient_quota`** | `quota_exceeded_tokens` | 账号的 token 配额已用尽（`quotaType: "tokens"`） |
+| 502 | `server_error` | `upstream_error` | 上游调用失败 |
+| 500 | `server_error` | `internal_error` | 系统错误 |
+
+> 配额耗尽用的是 **429 而不是 403**：403 读作「你无权这样做」，那是一个不同的问题、
+> 不同的补救方式——客户端拿到 403 永远不会想到去充值。
+
+**余额响应头**：`/v1/*` 的每个响应都带调用方账号的额度状态，所以客户端不需要为了
+显示余额而额外调一个接口，也就不会读到一份可能已经过期的数字。
+```
+x-ratelimit-limit: 500000          # 额度池上限（0 = 尚未分配，不是「余额为 0」）
+x-ratelimit-remaining: 487655      # 剩余，下限为 0（超支读作 0，不出现负数）
+x-ratelimit-unit: credits          # 单位；quotaType 为 tokens 时这里就是 tokens
+```
+只有一个池，所以只有一对数字。OpenAI 把单位写进头名（`-requests` / `-tokens`），
+那是因为它同时限制请求数和 token 数；这里照抄会是为一个不存在的问题付费，客户端
+仍然得先知道该看哪个头，所以直接用 `x-ratelimit-unit` 说明。
 
 ---
 
@@ -510,6 +546,9 @@ Content-Type: application/json
 
 ### 3.2 错误处理
 所有未捕获异常 → 500 `{ ok: false, error: { code: "internal_error" } }`。
+
+> 这一条只适用于 **Session 面**。`/v1/*` 上的未捕获异常同样是 500，但响应体是
+> `{ "error": { "message", "type": "server_error", "code": "internal_error" } }`。
 
 ---
 

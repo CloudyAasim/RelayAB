@@ -9,8 +9,8 @@
  * conversion for Chat/Anthropic-only providers now lives in
  * `proxyOpenAIResponse`, so both paths behave identically.
  */
-import { NextResponse } from "next/server";
 import { authenticateBearer, reasonToHttp, resolveAuthHeader } from "@/lib/auth/apikey";
+import { proxyError } from "@/lib/proxy/errors";
 import { proxyOpenAIResponse } from "@/lib/proxy/openai";
 import { proxyResultToResponse } from "@/lib/proxy/respond";
 import type { ApiKey } from "@/lib/db/types";
@@ -25,10 +25,7 @@ export async function POST(req: Request): Promise<Response> {
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json(
-      { ok: false, error: { code: "bad_json", message: "Invalid JSON body" } },
-      { status: 400 },
-    );
+    return proxyError(400, "bad_json", "Invalid JSON body");
   }
 
   const responseReq = body as Parameters<typeof proxyOpenAIResponse>[0]["req"];
@@ -44,17 +41,15 @@ export async function POST(req: Request): Promise<Response> {
 
   if (!auth.ok || !auth.key) {
     const http = reasonToHttp(auth.reason);
-    return NextResponse.json(
-      { ok: false, error: { code: http.code, message: http.message } },
-      { status: http.status },
-    );
+    return proxyError(http.status, http.code, http.message);
   }
 
   const owner = auth.user ?? (await lookupUserById(auth.key.userId));
   if (!owner) {
-    return NextResponse.json(
-      { ok: false, error: { code: "user_not_found", message: "The account owning this key no longer exists" } },
-      { status: 403 },
+    return proxyError(
+      403,
+      "user_not_found",
+      "The account owning this key no longer exists",
     );
   }
 
@@ -67,10 +62,7 @@ export async function POST(req: Request): Promise<Response> {
     });
   } catch (err) {
     console.error("[v1/chat/completions/responses] proxyOpenAIResponse threw:", err);
-    return NextResponse.json(
-      { ok: false, error: { code: "proxy_error", message: String(err) } },
-      { status: 500 },
-    );
+    return proxyError(500, "proxy_error", String(err));
   }
 
   // Streaming clients must receive an SSE body. Providers reached through the
@@ -79,5 +71,5 @@ export async function POST(req: Request): Promise<Response> {
   const requestedStream =
     typeof body === "object" && body !== null && "stream" in body &&
     Boolean((body as Record<string, unknown>).stream);
-  return proxyResultToResponse(result, { streamRequest: requestedStream });
+  return proxyResultToResponse(result, { streamRequest: requestedStream, quota: owner });
 }

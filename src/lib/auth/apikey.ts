@@ -331,13 +331,17 @@ export function reasonToHttp(reason: string): { status: number; code: string; me
       return { status: 403, code: "key_expired", message: "This API key has expired" };
     case "quota_exceeded_credits":
       return {
-        status: 403,
+        // 429, not 403. The pool is empty rather than the request being forbidden,
+        // and 429 is what an OpenAI client recognises as a limit it can back off
+        // from — see `openAiErrorType`, which maps this to `insufficient_quota` so
+        // a client that *does* back off still knows not to retry.
+        status: 429,
         code: "quota_exceeded_credits",
         message: "积分 balance exhausted for this account",
       };
     case "quota_exceeded_tokens":
       return {
-        status: 403,
+        status: 429,
         code: "quota_exceeded_tokens",
         message: "Token quota exhausted for this account",
       };

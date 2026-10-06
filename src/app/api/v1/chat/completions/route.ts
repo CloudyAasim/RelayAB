@@ -8,8 +8,8 @@
  *
  * Flow: parse Bearer → look up key → validate → forward → record usage.
  */
-import { NextResponse } from "next/server";
 import { authenticateBearer, reasonToHttp, resolveAuthHeader } from "@/lib/auth/apikey";
+import { proxyError } from "@/lib/proxy/errors";
 import { proxyChatCompletion } from "@/lib/proxy/openai";
 import { proxyResultToResponse } from "@/lib/proxy/respond";
 import { validateChatBody } from "@/lib/proxy/validate";
@@ -26,10 +26,7 @@ export async function POST(req: Request): Promise<Response> {
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json(
-      { ok: false, error: { code: "bad_json", message: "Invalid JSON body" } },
-      { status: 400 },
-    );
+    return proxyError(400, "bad_json", "Invalid JSON body");
   }
 
   // 2. Authenticate.
@@ -44,22 +41,17 @@ export async function POST(req: Request): Promise<Response> {
 
   if (!auth.ok || !auth.key) {
     const http = reasonToHttp(auth.reason);
-    return NextResponse.json(
-      { ok: false, error: { code: http.code, message: http.message } },
-      { status: http.status },
-    );
+    return proxyError(http.status, http.code, http.message);
   }
 
   // The owner record carries the quota pool and the model whitelist, so the
   // proxy cannot validate or charge without it.
   const owner = auth.user ?? (await lookupUserById(auth.key.userId));
   if (!owner) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: { code: "user_not_found", message: "The account owning this key no longer exists" },
-      },
-      { status: 403 },
+    return proxyError(
+      403,
+      "user_not_found",
+      "The account owning this key no longer exists",
     );
   }
 
@@ -70,8 +62,7 @@ export async function POST(req: Request): Promise<Response> {
   // JSON was well formed.
   const shapeError = validateChatBody(body);
   if (shapeError) {
-    const { status, ...error } = shapeError;
-    return NextResponse.json({ ok: false, error }, { status });
+    return proxyError(shapeError.status, shapeError.code, shapeError.message);
   }
 
   // 4. Forward.
@@ -87,10 +78,7 @@ export async function POST(req: Request): Promise<Response> {
   });
 
   if (!result.ok) {
-    return NextResponse.json(
-      { ok: false, error: result.error },
-      { status: result.status },
-    );
+    return proxyError(result.status, result.error!.code, result.error!.message);
   }
-  return proxyResultToResponse(result, { streamRequest: requestedStream });
+  return proxyResultToResponse(result, { streamRequest: requestedStream, quota: owner });
 }

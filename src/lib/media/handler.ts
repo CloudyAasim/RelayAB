@@ -12,6 +12,7 @@ import { computeMediaCredits, settleMediaUsage } from "./billing";
 import { buildMediaScope, executeMedia, type MediaItem, type MediaResult } from "./engine";
 import type { MediaCapability, MediaProvider, MediaSpec } from "./spec";
 import type { ApiKey, User } from "@/lib/db/types";
+import { proxyError } from "@/lib/proxy/errors";
 
 /** Normalized request, independent of which endpoint it arrived on. */
 export interface MediaRequestInput {
@@ -325,12 +326,17 @@ export async function fileToDataUrl(file: File): Promise<string> {
   return `data:${type};base64,${btoa(binary)}`;
 }
 
-/** Render a failure as the relay's standard `{ok:false,error:{…}}` JSON. */
+/**
+ * Render a failure as the OpenAI-facing error envelope.
+ *
+ * Only the `/v1/*` media routes use this. The assistant's own media tester
+ * (`/api/assistant/test-media`) defines its own local copy of the same helper,
+ * because that endpoint is on the session surface and answers in
+ * `{ok:false,error:{…}}` — the two surfaces have different envelopes, and the
+ * split is deliberate rather than an oversight.
+ */
 export function mediaErrorResponse(error: MediaRequestFailure): Response {
-  return Response.json(
-    { ok: false, error: { code: error.code, message: error.message } },
-    { status: error.status },
-  );
+  return proxyError(error.status, error.code, error.message);
 }
 
 /**

@@ -64,9 +64,10 @@ describe("GET /v1/models", () => {
     await seed();
     const res = await GET(request());
     expect(res.status).toBe(401);
-    const body = (await res.json()) as { ok: boolean; error: { code: string } };
-    expect(body.ok).toBe(false);
+    // OpenAI's envelope, not the old `{ok:false,error:{code,message}}` one.
+    const body = (await res.json()) as { error: { code: string; type: string } };
     expect(body.error.code).toBeTruthy();
+    expect(body.error.type).toBe("authentication_error");
   });
 
   it("rejects an unknown key", async () => {

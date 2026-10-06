@@ -1,7 +1,18 @@
 # API Route Reference
 
 > Paths are relative to the deployment root domain (e.g. `https://relay.example.com`).
-> All JSON responses follow the `{ ok: true, data: ... }` or `{ ok: false, error: { code, message } }` format.
+>
+> **Two envelopes, split by surface. Do not mix them up.**
+> - The **OpenAI-compatible surface** (`/v1/*`) uses OpenAI's own shapes: a failure is
+>   `{ "error": { "message", "type", "code" } }`, and a success is an OpenAI object
+>   (`{"object":"list","data":[…]}`, etc.). The `type` field is what lets a client
+>   written against the OpenAI contract branch on `error.type`; given only `code` it
+>   reads `undefined` and cannot tell one failure from another.
+> - The **session surface** (`/api/*`) keeps this project's own shapes:
+>   `{ ok: true, data: ... }` and `{ ok: false, error: { code, message } }`.
+>
+> `code` is unchanged on both surfaces — nothing was renamed, so a client already
+> branching on it keeps working. `type` is additional information.
 
 ---
 
@@ -51,21 +62,52 @@ to a fixed upstream path, `<provider.baseUrl>/chat/completions`. A provider's
 Responses endpoint). Providers with `upstreamFormat = "anthropic"` are excluded
 from this endpoint.
 
+**Error body** (applies to every `/v1/*` endpoint, including all the public proxy
+ones below):
+```json
+{ "error": { "message": "积分 balance exhausted for this account",
+             "type": "insufficient_quota",
+             "code": "quota_exceeded_credits" } }
+```
+`type` is derived from the HTTP status rather than registered per code, so it cannot
+drift away from the status. There is one exception, and it is why this is not pure
+arithmetic: an exhausted pool is a 429, but it is not rate limiting and must not read
+as such. A client that backs off and retries a 429 will retry forever against a pool
+that is not coming back, so that case is `insufficient_quota`.
+
 **Error codes**:
 
-| HTTP | code | Meaning |
-| --- | --- | --- |
-| 401 | `unauthorized` | Missing or invalid Bearer token |
-| 403 | `key_disabled` | The key is disabled |
-| 403 | `key_force_disabled` | The key was disabled by an admin; the user cannot re-enable it |
-| 403 | `key_expired` | The key has expired |
-| 403 | `quota_exceeded_credits` | The account's credit pool is exhausted |
-| 403 | `quota_exceeded_tokens` | The account's token quota is exhausted (`quotaType: "tokens"`) |
-| 403 | `model_not_allowed` | This key is not allowed to use this model |
-| 400 | `model_not_mapped` | No provider supports this client model |
-| 400 | `missing_model` | The request body has no `model` field |
-| 502 | `upstream_error` | The upstream call failed |
-| 500 | `internal_error` | System error |
+| HTTP | type | code | Meaning |
+| --- | --- | --- | --- |
+| 401 | `authentication_error` | `unauthorized` | Missing or invalid Bearer token |
+| 403 | `permission_error` | `key_disabled` | The key is disabled |
+| 403 | `permission_error` | `key_force_disabled` | The key was disabled by an admin; the user cannot re-enable it |
+| 403 | `permission_error` | `key_expired` | The key has expired |
+| 403 | `permission_error` | `model_not_allowed` | This key is not allowed to use this model |
+| 400 | `invalid_request_error` | `model_not_mapped` | No provider supports this client model |
+| 400 | `invalid_request_error` | `missing_model` | The request body has no `model` field |
+| **429** | **`insufficient_quota`** | `quota_exceeded_credits` | The account's credit pool is exhausted |
+| **429** | **`insufficient_quota`** | `quota_exceeded_tokens` | The account's token quota is exhausted (`quotaType: "tokens"`) |
+| 502 | `server_error` | `upstream_error` | The upstream call failed |
+| 500 | `server_error` | `internal_error` | System error |
+
+> An exhausted pool is a **429, not a 403**. A 403 reads as "you are not allowed to",
+> which is a different problem with a different remedy — a client handed one will never
+> think to top up.
+
+**Balance headers**: every `/v1/*` response carries the calling account's quota state,
+so a client never needs a separate call just to display a balance, and therefore never
+reads a figure that a concurrent request has already invalidated.
+```
+x-ratelimit-limit: 500000          # the pool's size (0 = never granted, not "balance 0")
+x-ratelimit-remaining: 487655      # remaining, floored at 0 — an overspent pool reads 0, never negative
+x-ratelimit-unit: credits          # the unit; reads "tokens" when quotaType is tokens
+```
+There is one pool, so there is one pair of numbers. OpenAI spells the unit into the
+header name (`-requests` / `-tokens`) because it enforces two independent limits at
+once; copying that here would pay for a problem this deployment does not have, and a
+client would still have to know which header to look at, so `x-ratelimit-unit` says it
+plainly instead.
 
 ---
 
@@ -533,6 +575,10 @@ Public and static assets return early.
 
 ### 3.2 Error Handling
 Any uncaught exception → 500 `{ ok: false, error: { code: "internal_error" } }`.
+
+> This applies to the **session surface** only. An uncaught exception on `/v1/*` is
+> also a 500, but the body is
+> `{ "error": { "message", "type": "server_error", "code": "internal_error" } }`.
 
 ---
 

@@ -24,13 +24,24 @@
  */
 import { NextResponse } from "next/server";
 import type { ProxyResult } from "./openai";
+import { proxyError, quotaHeaders } from "./errors";
+import type { User } from "@/lib/db/types";
 
-export function proxyResultToResponse(result: ProxyResult, opts: { streamRequest?: boolean } = {}): Response {
+export function proxyResultToResponse(
+  result: ProxyResult,
+  opts: { streamRequest?: boolean; quota?: User } = {},
+): Response {
   if (!result.ok) {
-    return NextResponse.json(
-      { ok: false, error: result.error },
-      { status: result.status },
-    );
+    // `ok: false` always carries an error — see the note on `ProxyResult` — but
+    // the flag is a plain boolean, so the compiler cannot see it. This is the one
+    // place that reads `error`, which is why it narrows here rather than every
+    // caller asserting it.
+    const error = result.error ?? { code: "internal_error", message: "Unknown proxy failure" };
+    // The owner is the quota pool, so the balance is worth reporting even on the
+    // failures — a client that hit `insufficient_quota` wants to know by how much.
+    return proxyError(result.status, error.code, error.message, {
+      ...(opts.quota ? quotaHeaders(opts.quota) : {}),
+    });
   }
 
   if (result.body) {
@@ -40,16 +51,38 @@ export function proxyResultToResponse(result: ProxyResult, opts: { streamRequest
         "Content-Type": result.contentType ?? "text/event-stream; charset=utf-8",
         "Cache-Control": "no-cache, no-transform",
         "X-Accel-Buffering": "no",
+        ...(opts.quota ? quotaHeaders(opts.quota) : {}),
       },
     });
   }
 
   if (opts.streamRequest) {
     const synth = synthesizeStreamFromBuffered(result.data, result.contentType);
-    if (synth) return synth;
+    if (synth) return withQuota(synth, opts.quota);
   }
 
-  return NextResponse.json(result.data, { status: result.status });
+  return NextResponse.json(result.data, {
+    status: result.status,
+    ...(opts.quota ? { headers: quotaHeaders(opts.quota) } : {}),
+  });
+}
+
+/**
+ * Attach the quota headers to a response built elsewhere.
+ *
+ * A `Response`'s headers are immutable, so this rebuilds the one it is given. It
+ * exists for the media routes, which assemble their own responses because a
+ * result may be JSON, binary or a stream — those have no shared constructor to
+ * fold the headers into, and one call here is shorter than a third response
+ * shape.
+ */
+export function withQuota(res: Response, quota?: User): Response {
+  if (!quota) return res;
+  return new Response(res.body, {
+    status: res.status,
+    statusText: res.statusText,
+    headers: { ...Object.fromEntries(res.headers), ...quotaHeaders(quota) },
+  });
 }
 
 /**

@@ -11,6 +11,7 @@
 import { NextResponse } from "next/server";
 import { authenticateBearer, reasonToHttp, resolveAuthHeader } from "@/lib/auth/apikey";
 import { getUserById as lookupUserById } from "@/lib/db/users";
+import { proxyError, quotaHeaders } from "@/lib/proxy/errors";
 import { executeMediaRequest, imageItemsResponse, requirePrompt, resultItems, type MediaRequestInput } from "@/lib/media/handler";
 import type { ApiKey } from "@/lib/db/types";
 
@@ -24,10 +25,7 @@ export async function POST(req: Request): Promise<Response> {
     const parsed: unknown = await req.json();
     body = (parsed ?? {}) as Record<string, unknown>;
   } catch {
-    return NextResponse.json(
-      { ok: false, error: { code: "bad_json", message: "Invalid JSON body" } },
-      { status: 400 },
-    );
+    return proxyError(400, "bad_json", "Invalid JSON body");
   }
 
   const requestedModel = typeof body.model === "string" ? body.model : "";
@@ -37,23 +35,15 @@ export async function POST(req: Request): Promise<Response> {
   });
   if (!auth.ok || !auth.key) {
     const http = reasonToHttp(auth.reason);
-    return NextResponse.json(
-      { ok: false, error: { code: http.code, message: http.message } },
-      { status: http.status },
-    );
+    return proxyError(http.status, http.code, http.message);
   }
 
   const owner = auth.user ?? (await lookupUserById(auth.key.userId));
   if (!owner) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: {
-          code: "user_not_found",
-          message: "The account owning this key no longer exists",
-        },
-      },
-      { status: 403 },
+    return proxyError(
+      403,
+      "user_not_found",
+      "The account owning this key no longer exists",
     );
   }
 
@@ -78,10 +68,7 @@ export async function POST(req: Request): Promise<Response> {
 
   const invalid = requirePrompt(input.prompt);
   if (invalid) {
-    return NextResponse.json(
-      { ok: false, error: { code: invalid.code, message: invalid.message } },
-      { status: invalid.status },
-    );
+    return proxyError(invalid.status, invalid.code, invalid.message);
   }
 
   const outcome = await executeMediaRequest({
@@ -93,11 +80,8 @@ export async function POST(req: Request): Promise<Response> {
   });
 
   if (!outcome.ok) {
-    return NextResponse.json(
-      { ok: false, error: { code: outcome.error.code, message: outcome.error.message } },
-      { status: outcome.error.status },
-    );
+    return proxyError(outcome.error.status, outcome.error.code, outcome.error.message);
   }
   const items = await resultItems(outcome.value.result);
-  return NextResponse.json(imageItemsResponse(items));
+  return NextResponse.json(imageItemsResponse(items), { headers: quotaHeaders(owner) });
 }

@@ -14,6 +14,7 @@ import {
   mediaErrorResponse,
   type MediaRequestInput,
 } from "@/lib/media/handler";
+import { proxyError, quotaHeaders } from "@/lib/proxy/errors";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -26,13 +27,7 @@ export async function POST(req: Request): Promise<Response> {
   try {
     form = await req.formData();
   } catch {
-    return Response.json(
-      {
-        ok: false,
-        error: { code: "invalid_request", message: "expected multipart/form-data" },
-      },
-      { status: 400 },
-    );
+    return proxyError(400, "invalid_request", "expected multipart/form-data");
   }
 
   const model = typeof form.get("model") === "string" ? String(form.get("model")) : "";
@@ -85,8 +80,11 @@ export async function POST(req: Request): Promise<Response> {
   if (!outcome.ok) return mediaErrorResponse(outcome.error);
 
   const { result } = outcome.value;
-  return Response.json({
-    text: result.text ?? "",
-    ...(result.taskId ? { id: result.taskId } : {}),
-  });
+  return Response.json(
+    {
+      text: result.text ?? "",
+      ...(result.taskId ? { id: result.taskId } : {}),
+    },
+    { headers: quotaHeaders(auth.user) },
+  );
 }

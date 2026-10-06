@@ -15,6 +15,7 @@ import {
   requirePrompt,
   type MediaRequestInput,
 } from "@/lib/media/handler";
+import { proxyError, quotaHeaders } from "@/lib/proxy/errors";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -25,10 +26,7 @@ export async function POST(req: Request): Promise<Response> {
     const parsed: unknown = await req.json();
     body = (parsed ?? {}) as Record<string, unknown>;
   } catch {
-    return Response.json(
-      { ok: false, error: { code: "bad_json", message: "Invalid JSON body" } },
-      { status: 400 },
-    );
+    return proxyError(400, "bad_json", "Invalid JSON body");
   }
 
   const model = typeof body.model === "string" ? body.model : "";
@@ -64,5 +62,7 @@ export async function POST(req: Request): Promise<Response> {
       message: "upstream returned no video",
     });
   }
-  return Response.json(mediaItemsResponse(result.items, result.taskId));
+  return Response.json(mediaItemsResponse(result.items, result.taskId), {
+    headers: quotaHeaders(auth.user),
+  });
 }
