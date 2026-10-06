@@ -150,6 +150,15 @@ export function checkKeyStatus(args: {
   user?: User;
   requestedModel?: string;
   now?: number;
+  /**
+   * For a call that cannot spend anything — reading the balance, listing the
+   * models. An empty pool is a reason to refuse a *purchase*, not a reason to
+   * refuse the question "how much is left"; a client asking that is exactly the
+   * client that most needs an answer, and gating it here made the balance
+   * endpoint unreachable in the one state it exists to report. The other checks
+   * still apply: a disabled or expired key cannot read anything either.
+   */
+  skipQuotaCheck?: boolean;
 }): KeyValidationResult {
   const { key, user, requestedModel, now = Date.now() } = args;
 
@@ -168,7 +177,7 @@ export function checkKeyStatus(args: {
     return { ok: false, reason: "key_expired", key };
   }
 
-  if (user) {
+  if (user && !args.skipQuotaCheck) {
     if (user.quotaUsed >= user.quotaLimit) {
       return {
         ok: false,
@@ -207,6 +216,8 @@ export function checkKeyStatus(args: {
 export async function authenticateBearer(args: {
   authHeader: string | null | undefined;
   requestedModel?: string;
+  /** See {@link checkKeyStatus}. For reads that cannot spend. */
+  skipQuotaCheck?: boolean;
 }): Promise<KeyValidationResult> {
   const token = parseBearer(args.authHeader);
   if (!token) {
@@ -230,6 +241,7 @@ export async function authenticateBearer(args: {
     key,
     user: user ?? undefined,
     requestedModel: args.requestedModel,
+    ...(args.skipQuotaCheck ? { skipQuotaCheck: true } : {}),
   });
   return { ...result, user: user ?? undefined };
 }

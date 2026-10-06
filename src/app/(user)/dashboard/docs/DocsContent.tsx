@@ -158,6 +158,25 @@ export function DocsContent({
           <h3 className="pt-2 text-sm font-semibold">{t("docs.openai.quota.title")}</h3>
           <p>{t("docs.openai.quota.body")}</p>
           <CodeBlock
+            label={t("docs.openai.quota.shapeLabel")}
+            value={`{ "object": "credit_balance",
+  "is_available": true,
+  "unit": "credits",
+  "scale": 1000,
+  "limit": 500000,
+  "used": 12345,
+  "remaining": 487655 }`}
+          />
+          <p className="text-xs text-muted-foreground">{t("docs.openai.quota.availHint")}</p>
+          <CodeBlock
+            label={t("docs.openai.quota.exampleLabel")}
+            value={`curl ${openaiBase}/credits \\
+  -H "Authorization: Bearer $RELAYAB_KEY"`}
+          />
+          <p className="text-xs text-muted-foreground">
+            {t("docs.openai.quota.headersHint")}
+          </p>
+          <CodeBlock
             label={t("docs.openai.quota.headersLabel")}
             value={`x-ratelimit-limit: 500000      # 额度池上限；0 表示尚未分配，不是「余额为 0」
 x-ratelimit-remaining: 487655  # 剩余，下限为 0，不会出现负数

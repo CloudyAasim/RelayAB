@@ -435,3 +435,75 @@ describe("authenticateBearer (end-to-end with the in-memory SQLite database)", (
   });
 
 });
+
+/**
+ * `skipQuotaCheck` exists for one caller: `GET /v1/credits`, which cannot spend
+ * anything and so must be answerable when the pool is empty. The risk is the
+ * obvious one — a flag that lets an empty pool through is exactly what must never
+ * happen on the spending paths, so both halves are pinned here: the flag opens the
+ * read, and nothing else does.
+ */
+describe("skipQuotaCheck opens the read and nothing else", () => {
+  // Its own reset: the end-to-end case seeds a user, and without this it would
+  // collide with the identically-named one in the describe above.
+  beforeEach(() => {
+    __resetDbForTest();
+  });
+
+  const spent = () => makeUser({ quotaLimit: 100, quotaUsed: 100 });
+
+  it("a caller that cannot spend may read an empty pool", () => {
+    const r = checkKeyStatus({ key: makeKey(), user: spent(), skipQuotaCheck: true, now: NOW });
+    expect(r.ok).toBe(true);
+  });
+
+  it("the same caller spending is still refused", () => {
+    // No flag. This is the default, and the flag has to be passed deliberately.
+    const r = checkKeyStatus({ key: makeKey(), user: spent(), now: NOW });
+    expect(r.reason).toBe("quota_exceeded_credits");
+  });
+
+  it("it does not become a way around a disabled or expired key", () => {
+    // Only the pool check is skipped. A credential the operator has withdrawn
+    // reads nothing, whatever the caller says it is doing.
+    expect(
+      checkKeyStatus({ key: makeKey({ enabled: false }), user: spent(), skipQuotaCheck: true, now: NOW })
+        .reason,
+    ).toBe("key_disabled");
+    expect(
+      checkKeyStatus({
+        key: makeKey({ expiresAt: "2020-01-01T00:00:00Z" }),
+        user: spent(),
+        skipQuotaCheck: true,
+        now: NOW,
+      }).reason,
+    ).toBe("key_expired");
+  });
+
+  it("and it does not become a way around the model whitelist", () => {
+    const r = checkKeyStatus({
+      key: makeKey({ allowedModels: ["model-a"] }),
+      user: spent(),
+      requestedModel: "model-b",
+      skipQuotaCheck: true,
+      now: NOW,
+    });
+    expect(r.reason).toBe("model_not_allowed");
+  });
+
+  it("end to end, the read authenticates where spending would not", async () => {
+    const plain = generateApiKey();
+    const key = makeKey({ keyHash: sha256Hex(plain) });
+    await seedKey(key, spent());
+
+    const spending = await authenticateBearer({ authHeader: `Bearer ${plain}` });
+    expect(spending.reason).toBe("quota_exceeded_credits");
+
+    const reading = await authenticateBearer({
+      authHeader: `Bearer ${plain}`,
+      skipQuotaCheck: true,
+    });
+    expect(reading.ok).toBe(true);
+    expect(reading.user?.quotaLimit).toBe(100);
+  });
+});

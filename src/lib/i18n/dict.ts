@@ -381,10 +381,16 @@ const zhCN: Dict = {
     "「额度用完」是 429，但 type 是 insufficient_quota 而不是 rate_limit_error。客户端看到 429 惯例是退避重试，而用完的额度池不会自己恢复——不把这两件事分开，客户端就会一直重试下去。",
   "docs.openai.quota.title": "余额",
   "docs.openai.quota.body":
-    "每个 /v1 响应都带着调用方账号的额度状态，不用为了显示余额再多发一次请求。",
+    "GET /v1/credits 返回调用方账号的余额，可以在发起调用之前先问一次。",
+  "docs.openai.quota.shapeLabel": "响应体",
+  "docs.openai.quota.availHint":
+    "is_available 是可以直接拿去用的结论：还有没有可花的。remaining 下限为 0，超支不会变成负数；limit 为 0 表示尚未分配，而不是「余额为 0」。unit 和 scale 一起给出，换算比例不必由客户端硬编码。任何一把有效的密钥都能查——额度池属于账号而不是密钥。",
+  "docs.openai.quota.exampleLabel": "curl 示例",
+  "docs.openai.quota.headersHint":
+    "已经在调用途中的客户端也可以顺手读到：每个 /v1 响应都带着这三个头。",
   "docs.openai.quota.headersLabel": "响应头",
   "docs.openai.quota.hint":
-    "数字是在响应那一刻读的，所以不会过期——也就不存在「刚查到的余额已经被另一个请求花掉」这种窗口。",
+    "响应头里的数字是在响应那一刻读的，所以不会过期——不必为显示余额再多发一次请求。它和上面的端点回答的是两个问题：这个头说「刚才那次调用之后还剩多少」，端点说「我还有多少」。",
   "docs.anthropic.title": "Anthropic Messages",
   "docs.anthropic.desc": "兼容 /anthropic/v1/messages。",
   "docs.anthropic.line1": "Anthropic SDK 默认走 https://api.anthropic.com，需要手动把 baseURL 改成下面的值。",
@@ -1499,10 +1505,16 @@ const en: Dict = {
     "An exhausted pool is a 429, but its type is `insufficient_quota` rather than `rate_limit_error`. A client that backs off and retries a 429 is following the convention, and a spent pool is not coming back on its own — so the two have to be told apart, or the client retries for ever.",
   "docs.openai.quota.title": "Balance",
   "docs.openai.quota.body":
-    "Every /v1 response carries the calling account's quota state, so showing a balance costs no extra request.",
+    "GET /v1/credits returns the calling account's balance, so you can ask once before making a call.",
+  "docs.openai.quota.shapeLabel": "Response body",
+  "docs.openai.quota.availHint":
+    "`is_available` is the answer you can act on directly: whether there is anything left to spend. `remaining` is floored at 0, so overspending never reads as a debt; `limit` of 0 means nothing was ever granted, not a balance of zero. `unit` and `scale` come together, so no client has to hardcode the conversion. Any valid key may ask — the pool belongs to the account, not to the key.",
+  "docs.openai.quota.exampleLabel": "curl example",
+  "docs.openai.quota.headersHint":
+    "A client already mid-call can read the same figures for free: every /v1 response carries them.",
   "docs.openai.quota.headersLabel": "Response headers",
   "docs.openai.quota.hint":
-    "The figures are read as the response is produced, so they cannot go stale — and there is no window where a balance you just read has already been spent by another request.",
+    "The header figures are read as the response is produced, so they cannot go stale — there is no need to spend a request just to draw a balance. The two answer different questions: the header says how much is left after the call you just made; the endpoint says how much you have.",
   "docs.anthropic.title": "Anthropic Messages",
   "docs.anthropic.desc": "Compatible with /anthropic/v1/messages.",
   "docs.anthropic.line1": "The Anthropic SDK defaults to https://api.anthropic.com. Override baseURL to the value below.",

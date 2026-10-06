@@ -95,19 +95,75 @@ that is not coming back, so that case is `insufficient_quota`.
 > which is a different problem with a different remedy — a client handed one will never
 > think to top up.
 
-**Balance headers**: every `/v1/*` response carries the calling account's quota state,
-so a client never needs a separate call just to display a balance, and therefore never
-reads a figure that a concurrent request has already invalidated.
+**Balance headers**: every `/v1/*` response carries the calling account's quota state.
 ```
 x-ratelimit-limit: 500000          # the pool's size (0 = never granted, not "balance 0")
 x-ratelimit-remaining: 487655      # remaining, floored at 0 — an overspent pool reads 0, never negative
 x-ratelimit-unit: credits          # the unit; reads "tokens" when quotaType is tokens
 ```
+They answer "how much is left **after the call you just made**", read at response time
+so they cannot go stale. To ask "how much do I have" **before** making a call, use
+`GET /v1/credits` below — the header only exists once you have made a request.
+
 There is one pool, so there is one pair of numbers. OpenAI spells the unit into the
 header name (`-requests` / `-tokens`) because it enforces two independent limits at
 once; copying that here would pay for a problem this deployment does not have, and a
 client would still have to know which header to look at, so `x-ratelimit-unit` says it
 plainly instead.
+
+---
+
+### 1.1.1 `GET /v1/credits`
+
+**Purpose**: read the calling account's quota pool.
+
+**Auth**: `Authorization: Bearer sk-relay-…` — the same key as every other `/v1/*`
+endpoint. **Any valid key may ask.** The pool belongs to the account, not to the key, so
+there is no "which kind of key may read the balance" question to answer (MiniMax has to
+distinguish a Subscription Key from a pay-as-you-go key; it costs us nothing).
+
+**Response**:
+```json
+{
+  "object": "credit_balance",
+  "is_available": true,
+  "unit": "credits",
+  "scale": 1000,
+  "limit": 500000,
+  "used": 12345,
+  "remaining": 487655
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `is_available` | **Whether there is anything left to spend** — directly actionable |
+| `unit` | `credits` or `tokens`; an account can be metered in tokens, and a bare figure does not say which |
+| `scale` | Stored units per `unit`, so a client formats correctly without hardcoding it |
+| `limit` | The pool's size; `0` means **never granted**, not a balance of zero |
+| `used` | Consumed so far |
+| `remaining` | Remaining, floored at 0 — an overspent pool reads 0, never negative |
+
+**Design notes**:
+
+- **`is_available` is the reason this endpoint exists.** Without it a client has to
+  threshold `remaining` itself and reason about a unit it has to know — handing back an
+  answer the server already has. DeepSeek's `GET /user/balance` returns the same field
+  for the same reason.
+- **An exhausted pool is not a reason to refuse.** This endpoint skips the quota check
+  (`skipQuotaCheck`): asking the balance spends nothing, so an empty pool must not lock
+  the caller out — otherwise the endpoint is unreachable in the one state it exists to
+  report. The other checks still apply: a disabled or expired key reads nothing either.
+- **No `reset_time`.** MiniMax's quota endpoint carries reset times because its quota is
+  a 5-hour rolling window plus a weekly one. This deployment's pool is a single
+  allocation with no window, so there is no reset time to report; a field that is always
+  null would be ceremony.
+- **Not an array.** DeepSeek returns `balance_infos` as an array because it holds CNY and
+  USD. There is one pool here, and the two `quotaType` values are two ways of metering
+  that same pool, not two balances.
+- **The figures are a snapshot.** A concurrent request can spend from the same pool
+  between two reads. That is inherent to asking about a shared account, not something
+  this endpoint could arrange away.
 
 ---
 

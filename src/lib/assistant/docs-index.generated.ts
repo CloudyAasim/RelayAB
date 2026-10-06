@@ -39,7 +39,7 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     surface: "user",
     id: "openai",
     summary: "OpenAI 兼容用法：chat/completions、鉴权、示例",
-    keys: ["docs.openai.title","docs.openai.desc","docs.openai.line1","docs.openai.sharesBase","docs.openai.baseUrl","docs.openai.header","docs.openai.example","docs.openai.modelListHint","docs.openai.errors.title","docs.openai.errors.body","docs.openai.errors.shapeLabel","docs.openai.errors.typeHint","docs.openai.errors.quotaTip","docs.openai.quota.title","docs.openai.quota.body","docs.openai.quota.headersLabel","docs.openai.quota.hint"],
+    keys: ["docs.openai.title","docs.openai.desc","docs.openai.line1","docs.openai.sharesBase","docs.openai.baseUrl","docs.openai.header","docs.openai.example","docs.openai.modelListHint","docs.openai.errors.title","docs.openai.errors.body","docs.openai.errors.shapeLabel","docs.openai.errors.typeHint","docs.openai.errors.quotaTip","docs.openai.quota.title","docs.openai.quota.body","docs.openai.quota.shapeLabel","docs.openai.quota.availHint","docs.openai.quota.exampleLabel","docs.openai.quota.headersHint","docs.openai.quota.headersLabel","docs.openai.quota.hint"],
   },
   {
     surface: "user",
