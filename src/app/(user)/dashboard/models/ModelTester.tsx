@@ -20,11 +20,16 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { ModelCombobox } from "../assistant/ModelCombobox";
 import { CredentialChoice, type Mode } from "@/lib/assistant/CredentialPanel";
 
 interface Labels {
   title: string;
   desc: string;
+  /** The field's own label. The value is the model id. */
+  model: string;
+  /** The option that reveals a free-text field. */
+  modelCustom: string;
   keyLabel: string;
   keyHint: string;
   keyPlaceholder: string;
@@ -271,39 +276,15 @@ const [governedBy, setGovernedBy] = useState<string | null>(null);
             ignored. */}
 
         <div className="space-y-1.5">
-          <label htmlFor="model-tester-model" className="block text-sm font-medium text-foreground">
-            model
-          </label>
-          {/*
-              Typable, with the catalogue as suggestions.
-
-              This was a closed `<select>` until now, and it was closed for a
-              reason that has since stopped being true. The list it draws from is
-              `chatModels`, which the page filters through the account's
-              `allowedModels` — so a model the gateway serves but this account is
-              not permitted was **invisible**, and the only way to learn that was
-              to already know it existed. Hiding a model is not enforcement; the
-              gateway answers that question properly, with a 403 that says
-              `model_not_allowed`.
-
-              An `<input list>` was tried once and reverted because it *replaced*
-              the picker, which made it worse to use. A datalist keeps the list
-              one keystroke away and adds the ability to type, so the two do not
-              compete.
-            */}
-          <input
+          <ModelCombobox
             id="model-tester-model"
-            list="model-tester-model-options"
+            label={labels.model}
+            customLabel={labels.modelCustom}
+            placeholder="model-name"
             value={model}
-            onChange={(e) => setModel(e.target.value)}
-            placeholder={chatModels[0] ?? "model-id"}
-            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            options={chatModels}
+            onChange={setModel}
           />
-          <datalist id="model-tester-model-options">
-            {chatModels.map((m) => (
-              <option key={m} value={m} />
-            ))}
-          </datalist>
         </div>
 
         <div className="space-y-1.5">

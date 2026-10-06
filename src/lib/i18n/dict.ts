@@ -846,6 +846,8 @@ const zhCN: Dict = {
   "dashboard.models.title": "模型测试",
   "dashboard.models.gateway.title": "测试本网关提供的模型",
   "dashboard.models.gateway.desc": "用你自己的 API 密钥发起一次真实请求，走的是和客户端完全相同的路径。",
+  "dashboard.models.gateway.model": "模型",
+  "dashboard.models.gateway.modelCustom": "自定义…",
   "dashboard.models.gateway.keyLabel": "你的 API 密钥",
   "dashboard.models.gateway.keyHint": "只存在浏览器里，每次请求现发，不保存。",
   "dashboard.models.gateway.keyPlaceholder": "sk-relay-...",
@@ -1947,6 +1949,8 @@ const en: Dict = {
   "dashboard.models.gateway.title": "Test a model this gateway serves",
   "dashboard.models.gateway.desc":
     "Sends a real request with your own API key, over exactly the path a client would use.",
+  "dashboard.models.gateway.model": "Model",
+  "dashboard.models.gateway.modelCustom": "Custom…",
   "dashboard.models.gateway.keyLabel": "Your API key",
   "dashboard.models.gateway.keyHint":
     "Lives only in the browser and is sent per request. Never stored.",

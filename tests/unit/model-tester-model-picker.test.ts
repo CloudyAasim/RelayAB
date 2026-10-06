@@ -35,6 +35,22 @@ const MEDIA = read("src", "app", "(user)", "dashboard", "models", "MediaTester.t
 const PROBE = read("src", "app", "(user)", "dashboard", "models", "CustomModelProbe.tsx");
 const PAGE = read("src", "app", "(user)", "dashboard", "models", "page.tsx");
 const WORKSPACE = read("src", "app", "(user)", "dashboard", "models", "ModelsWorkspace.tsx");
+const PANEL = read(
+  "src",
+  "app",
+  "(user)",
+  "dashboard",
+  "assistant",
+  "AssistantSettingsPanel.tsx",
+);
+const COMBOBOX = read(
+  "src",
+  "app",
+  "(user)",
+  "dashboard",
+  "assistant",
+  "ModelCombobox.tsx",
+);
 
 const TESTERS = [
   ["ModelTester", CHAT],
@@ -54,32 +70,63 @@ describe("a picker whose endpoint depends on the chosen entry is closed", () => 
   });
 });
 
-describe("a picker that sends one fixed endpoint is typable", () => {
-  it("ModelTester sends to one origin regardless of the id", () => {
-    // What makes this the other case, in the code that decides it. `base` is
-    // the origin and the path is fixed; nothing is looked up per model, so
-    // there was never a catalogue entry to be missing.
+describe("a picker that sends one fixed endpoint can still be typed", () => {
+  it("ModelTester uses the same combobox the assistant settings use", () => {
+    // Not a shape invented here. `ModelCombobox` is the house answer, and its
+    // own comment records the three shapes that were tried and why each failed —
+    // including the native `<datalist>` popup, which the browser draws and the
+    // theme cannot reach. Approximating that component is how the picker came to
+    // look foreign beside the key field above it.
+    expect(CHAT).toMatch(/import \{ ModelCombobox \} from "\.\.\/assistant\/ModelCombobox"/);
+    expect(CHAT).toMatch(/<ModelCombobox/);
+    expect(CHAT).toMatch(/id="model-tester-model"/);
+    expect(CHAT).toMatch(/options=\{chatModels\}/);
+  });
+
+  it("sends to one origin regardless of the id", () => {
+    // What makes this the other case from MediaTester, in the code that decides
+    // it. `base` is the origin and the path is fixed; nothing is looked up per
+    // model, so there was never a catalogue entry to be missing.
     expect(CHAT).toMatch(/window\.location\.origin/);
     expect(CHAT).toMatch(/\/v1\/chat\/completions/);
     expect(CHAT).not.toMatch(/chatModels\.(find|indexOf|includes)/);
   });
 
-  it("so a model outside the catalogue can be asked for", () => {
-    // A closed list here meant a model the gateway serves but this account is
-    // not permitted was *hidden* rather than refused, and a hidden model is not
-    // a denied one. The gateway answers that with a 403 naming
-    // `model_not_allowed`, which is a better answer than a shorter list.
-    expect(CHAT).toMatch(/<input[\s\S]{0,200}id="model-tester-model"/);
-    expect(CHAT).not.toMatch(/<select\s+id="model-tester-model"/);
-    // The catalogue stays one keystroke away, so typing is an addition rather
-    // than a replacement — which is what the first attempt got wrong.
-    expect(CHAT).toMatch(/<datalist id="model-tester-model-options">/);
-    expect(CHAT).toMatch(/chatModels\.map\(/);
+  it("does not reintroduce a native suggestion list", () => {
+    // The shape that was reverted, and the one that caused the visual mismatch.
+    // The combobox reveals its text field from an option instead, so the popup
+    // stays a themed `<select>`.
+    expect(CHAT).not.toMatch(/<datalist/);
+    expect(CHAT).not.toMatch(/\blist="[^"]*options"/);
+    expect(CHAT).not.toMatch(/<input\s+id="model-tester-model"/);
   });
 
   it("and a refusal reads as a sentence, since that is the likely answer", () => {
     expect(CHAT).toMatch(/function readableError\(/);
     expect(CHAT).toMatch(/setError\(readableError\(res\.status, text\)\)/);
+  });
+});
+
+describe("the combobox is the same control the assistant settings use", () => {
+  it("both surfaces render the one component", () => {
+    // Two shapes for the same field is how they drifted apart in the first
+    // place; the shared component is what stops it happening again.
+    expect(PANEL).toMatch(/import \{ ModelCombobox \} from "\.\/ModelCombobox"/);
+    expect(PANEL).toMatch(/<ModelCombobox/);
+  });
+
+  it("and it is a real select with a way in", () => {
+    // The two halves that matter: the dropdown the theme can reach, and the
+    // escape hatch for a model this deployment has never heard of.
+    expect(COMBOBOX).toMatch(/<select/);
+    expect(COMBOBOX).toMatch(/const CUSTOM = "__custom__"/);
+    expect(COMBOBOX).toMatch(/setCustom\(true\)/);
+  });
+
+  it("and a value that is not on the list starts in custom mode", () => {
+    // Otherwise a hand-typed id that is already set shows as "nothing selected"
+    // the moment the page renders, which is the opposite of what it is for.
+    expect(COMBOBOX).toMatch(/useState\(\(\) => !value \|\| !known\.includes\(value\)\)/);
   });
 });
 

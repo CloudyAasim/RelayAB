@@ -49,6 +49,8 @@ export default async function ModelsPage() {
           gatewayLabels={{
             title: t("dashboard.models.gateway.title"),
             desc: t("dashboard.models.gateway.desc"),
+            model: t("dashboard.models.gateway.model"),
+            modelCustom: t("dashboard.models.gateway.modelCustom"),
             keyLabel: t("dashboard.models.gateway.keyLabel"),
             keyHint: t("dashboard.models.gateway.keyHint"),
             keyPlaceholder: t("dashboard.models.gateway.keyPlaceholder"),
