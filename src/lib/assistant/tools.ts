@@ -1361,10 +1361,16 @@ async function resolveReferenceAudio(
 
   const clips = (ctx.attachments ?? []).filter((a) => a.kind === "audio");
   if (clips.length === 0) {
+    // This message is written to the user through the model, so naming a
+    // control that is not on screen is worse than naming none: the composer
+    // used to have a record button next to the paperclip, it was removed, and
+    // for a while this still sent people looking for it. Whatever it names has
+    // to be something AssistantChat.tsx actually renders. The paperclip is a
+    // file input accepting audio/*, and it is the only way in now.
     return {
       ok: false,
       reason:
-        "这一条消息里没有附上音频。如果用户是用文件选的（而不是麦克风），请让他用输入框旁边的语音按钮再发一次。",
+        "这一条消息里没有附上音频。请让他用输入框旁边的回形针（添加图片、音频或视频）挑一个音频文件，连同这条消息一起发过来。",
     };
   }
   // Newest wins, same as the picture case: the user may have sent a correction.
