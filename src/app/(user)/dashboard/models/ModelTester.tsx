@@ -47,6 +47,26 @@ interface Props {
   labels: Labels;
 }
 
+/**
+ * A gateway refusal, in a sentence.
+ *
+ * Every error the gateway emits is the same JSON envelope, and every one of them
+ * carries a `message` written for a person. Showing the envelope instead means
+ * the reader has to know the field names to learn what happened — and the case
+ * that matters most here is `model_not_allowed`, which is exactly what someone
+ * testing a model they cannot reach needs to read.
+ */
+function readableError(status: number, body: string): string {
+  try {
+    const parsed = JSON.parse(body) as { error?: { message?: string }; message?: string };
+    const message = parsed?.error?.message ?? parsed?.message;
+    if (message) return `${status} ${message}`;
+  } catch {
+    /* not JSON — fall through to the raw text */
+  }
+  return `${status} ${body.slice(0, 400)}`;
+}
+
 export function ModelTester({ chatModels, labels }: Props) {
   const [relayKey, setRelayKey] = useState("");
   const [credentialMode, setCredentialMode] = useState<Mode>("account");
@@ -190,8 +210,11 @@ const [governedBy, setGovernedBy] = useState<string | null>(null);
       });
 
       if (!res.ok || !res.body) {
+        // A typed model makes `403 model_not_allowed` a reachable outcome, and
+        // the raw envelope says it as `{"code":"model_not_allowed",…}` — which
+        // is the answer, just not phrased for whoever is reading it.
         const text = await res.text().catch(() => "");
-        setError(`${res.status} ${text.slice(0, 400)}`);
+        setError(readableError(res.status, text));
         return;
       }
 
@@ -251,23 +274,36 @@ const [governedBy, setGovernedBy] = useState<string | null>(null);
           <label htmlFor="model-tester-model" className="block text-sm font-medium text-foreground">
             model
           </label>
-          {/* A closed list, back again. An `<input list>` was tried so a model
-              the catalogue does not know could be typed by hand; it made the
-              tester worse to use and was reverted. A typed id has no entry in
-              `chatModels`, so the tester has no idea what to ask for. */}
-          <select
+          {/*
+              Typable, with the catalogue as suggestions.
+
+              This was a closed `<select>` until now, and it was closed for a
+              reason that has since stopped being true. The list it draws from is
+              `chatModels`, which the page filters through the account's
+              `allowedModels` — so a model the gateway serves but this account is
+              not permitted was **invisible**, and the only way to learn that was
+              to already know it existed. Hiding a model is not enforcement; the
+              gateway answers that question properly, with a 403 that says
+              `model_not_allowed`.
+
+              An `<input list>` was tried once and reverted because it *replaced*
+              the picker, which made it worse to use. A datalist keeps the list
+              one keystroke away and adds the ability to type, so the two do not
+              compete.
+            */}
+          <input
             id="model-tester-model"
+            list="model-tester-model-options"
             value={model}
             onChange={(e) => setModel(e.target.value)}
+            placeholder={chatModels[0] ?? "model-id"}
             className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-          >
-            {chatModels.length === 0 && <option value="">—</option>}
+          />
+          <datalist id="model-tester-model-options">
             {chatModels.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
+              <option key={m} value={m} />
             ))}
-          </select>
+          </datalist>
         </div>
 
         <div className="space-y-1.5">

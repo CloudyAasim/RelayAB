@@ -41,23 +41,45 @@ const TESTERS = [
   ["MediaTester", MEDIA],
 ] as const;
 
-describe("a model is chosen from the list", () => {
-  it.each(TESTERS)("%s is a closed select, not a typeable combobox", (_name, src) => {
-    // An `<input list>` was tried so an unknown model id could be typed. It was
-    // worse: the tester works off the entry it finds in the list — its
-    // capability, its endpoint — and a typed id has no entry, so the tester had
-    // nothing to send it to. Reverted to the closed list.
-    //
-    // The cost is honest and worth stating: a model the catalogue does not
-    // list cannot be tested from here. The probe below can list one, and it
-    // does land in these lists.
-    expect(src).toMatch(/<select\s+id="(model-tester-model|media-model)"/);
-    expect(src).not.toMatch(/<datalist/);
-    expect(src).not.toMatch(/\blist="[^"]*options"/);
+describe("a picker whose endpoint depends on the chosen entry is closed", () => {
+  it("MediaTester looks the id up for its capability, so it stays a select", () => {
+    // The reason, in the code that creates it: four capabilities, four
+    // endpoints. A typed id has no capability and so nowhere to go. The old
+    // guard said this about both pickers, and for one of them it was true.
+    expect(MEDIA).toMatch(/models\.find\(\(m\) => m\.id === model\)/);
+    expect(MEDIA).toMatch(/const capability = current\?\.capability \?\? "";/);
+    expect(MEDIA).toMatch(/<select\s+id="media-model"/);
+    expect(MEDIA).not.toMatch(/<datalist/);
+    expect(MEDIA).toMatch(/<option key=/);
+  });
+});
+
+describe("a picker that sends one fixed endpoint is typable", () => {
+  it("ModelTester sends to one origin regardless of the id", () => {
+    // What makes this the other case, in the code that decides it. `base` is
+    // the origin and the path is fixed; nothing is looked up per model, so
+    // there was never a catalogue entry to be missing.
+    expect(CHAT).toMatch(/window\.location\.origin/);
+    expect(CHAT).toMatch(/\/v1\/chat\/completions/);
+    expect(CHAT).not.toMatch(/chatModels\.(find|indexOf|includes)/);
   });
 
-  it.each(TESTERS)("%s still offers every model it knows as an option", (_name, src) => {
-    expect(src).toMatch(/<option key=/);
+  it("so a model outside the catalogue can be asked for", () => {
+    // A closed list here meant a model the gateway serves but this account is
+    // not permitted was *hidden* rather than refused, and a hidden model is not
+    // a denied one. The gateway answers that with a 403 naming
+    // `model_not_allowed`, which is a better answer than a shorter list.
+    expect(CHAT).toMatch(/<input[\s\S]{0,200}id="model-tester-model"/);
+    expect(CHAT).not.toMatch(/<select\s+id="model-tester-model"/);
+    // The catalogue stays one keystroke away, so typing is an addition rather
+    // than a replacement — which is what the first attempt got wrong.
+    expect(CHAT).toMatch(/<datalist id="model-tester-model-options">/);
+    expect(CHAT).toMatch(/chatModels\.map\(/);
+  });
+
+  it("and a refusal reads as a sentence, since that is the likely answer", () => {
+    expect(CHAT).toMatch(/function readableError\(/);
+    expect(CHAT).toMatch(/setError\(readableError\(res\.status, text\)\)/);
   });
 });
 
