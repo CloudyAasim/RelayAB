@@ -225,9 +225,11 @@ const USER_TOOLS: AssistantToolDef[] = [
       name: "list_gateway_models",
       description:
         "列出这个 RelayAB 网关当前对外提供的所有模型（聊天与媒体），**并带上每个聊天模型的" +
-        "上下文窗口、最大输出和它接受的思考等级**。回答「有哪些模型」「上下文多大」" +
-        "「能选哪几档思考」这类问题时先调它，不要凭记忆报模型名，也不要因为看不到" +
-        "管理员配置就说查不到——数字就在这个返回值里。",
+        "上下文窗口、最大输出，以及思考能力**——思考那部分在 reasoning 字段里，" +
+        "levels（可选档位）、effortSupported（能不能调深度）、switchSupported（能不能关掉）" +
+        "**三者必须一起读、一起说**，缺一不可。回答「有哪些模型」「上下文多大」" +
+        "「支持思考吗 / 能选哪几档 / 能不能关掉」这类问题时先调它，" +
+        "不要凭记忆报模型名，也不要因为看不到管理员配置就说查不到——数字就在这个返回值里。",
       parameters: { type: "object", properties: {}, additionalProperties: false },
     },
   },
@@ -1042,7 +1044,23 @@ async function listGatewayModels(ctx: ToolContext): Promise<ToolResult> {
       id: m.id,
       contextLength: m.contextLength,
       maxOutputTokens: m.maxOutputTokens,
-      reasoningLevels: m.reasoningLevels,
+      /**
+       * The three thinking facts, as one value and never separated.
+       *
+       * `reasoningLevels` alone cannot be read: `[]` means the vendor published no
+       * levels, which is true of a model that also cannot be switched off — and a
+       * reader given only that answers "no levels" and stops, which is the same
+       * three-way collapse the model page used to have. Carrying all three here
+       * means the answer is one object rather than two facts the caller has to
+       * remember to join.
+       */
+      reasoning: {
+        levels: m.reasoningLevels,
+        /** null = nobody has declared it. Not the same as "no". */
+        effortSupported: m.reasoningEffortSupported,
+        /** null = nobody has declared it. Not the same as "no". */
+        switchSupported: m.thinkingSwitchSupported,
+      },
     }))
     .sort((a, b) => a.id.localeCompare(b.id));
 

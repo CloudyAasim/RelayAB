@@ -78,9 +78,17 @@ describe("the prompt explains the two thinking flags as axes, not answers", () =
     // "Does this model think?" is one question with two answers. Reporting the
     // levels alone tells the reader half of it — and the half that suggests the
     // other half is available.
+    //
+    // The wording is asserted by shape rather than by phrase: "放在一起讲" was
+    // clear to a reader and did not survive contact with a model that had a
+    // table in front of it, so what is pinned here is the requirement — a named
+    // answer shape, in one sentence — not the sentence that once carried it.
     for (const [name, prompt] of Object.entries(PROMPTS)) {
-      expect(prompt, `${name} prompt does not require the pair to be answered together`).toMatch(
-        /永远把这两件事放在一起|放在一起讲/,
+      expect(prompt, `${name} prompt does not fix the shape of the answer`).toMatch(
+        /在同一条回答、同一个表格里|永远把思考这件事一次说完/,
+      );
+      expect(prompt, `${name} prompt does not say thinking is one thing`).toMatch(
+        /一条.{0,4}能力，不是三项独立设置/,
       );
     }
   });
