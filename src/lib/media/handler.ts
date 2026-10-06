@@ -358,30 +358,24 @@ export async function authorizeMediaRequest(
     authHeader: resolveAuthHeader(req),
     requestedModel,
   });
+  // The rejections below are built here rather than returned as data for the
+  // route to shape, so they have to be built in the right envelope here — a
+  // route that converted them would be one more place to forget, and the failure
+  // is invisible until a real client sends a real request. Auth is the first gate
+  // every media call passes through, so this is the error a client meets first.
   if (!auth.ok || !auth.key) {
     const http = reasonToHttp(auth.reason);
-    return {
-      ok: false,
-      response: Response.json(
-        { ok: false, error: { code: http.code, message: http.message } },
-        { status: http.status },
-      ),
-    };
+    return { ok: false, response: proxyError(http.status, http.code, http.message) };
   }
 
   const owner = auth.user ?? (await getUserById(auth.key.userId));
   if (!owner) {
     return {
       ok: false,
-      response: Response.json(
-        {
-          ok: false,
-          error: {
-            code: "user_not_found",
-            message: "The account owning this key no longer exists",
-          },
-        },
-        { status: 403 },
+      response: proxyError(
+        403,
+        "user_not_found",
+        "The account owning this key no longer exists",
       ),
     };
   }

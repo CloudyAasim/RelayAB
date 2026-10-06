@@ -27,15 +27,15 @@ import type { User } from "@/lib/db/types";
 const OPENAI_ROUTES: Record<string, () => Promise<Response>> = {
   "v1/chat/completions": async () => {
     const mod = await import("@/app/api/v1/chat/completions/route");
-    return mod.POST(json("{"));
+    return mod.POST(json('{"model":"gpt-4o-mini","messages":[]}'));
   },
   "v1/responses": async () => {
     const mod = await import("@/app/api/v1/responses/route");
-    return mod.POST(json("{"));
+    return mod.POST(json('{"model":"gpt-4o-mini","input":"hi"}'));
   },
   "v1/chat/completions/responses": async () => {
     const mod = await import("@/app/v1/chat/completions/responses/route");
-    return mod.POST(json("{"));
+    return mod.POST(json('{"model":"gpt-4o-mini","input":"hi"}'));
   },
   "v1/models": async () => {
     const mod = await import("@/app/api/v1/models/route");
@@ -43,27 +43,27 @@ const OPENAI_ROUTES: Record<string, () => Promise<Response>> = {
   },
   "v1/images/generations": async () => {
     const mod = await import("@/app/api/v1/images/generations/route");
-    return mod.POST(json("{"));
+    return mod.POST(json('{"model":"image-01","prompt":"a cat"}'));
   },
   "v1/images/edits": async () => {
     const mod = await import("@/app/api/v1/images/edits/route");
-    return mod.POST(json("{}"));
+    return mod.POST(multipart("image", "a.png", "image/png"));
   },
   "v1/audio/speech": async () => {
     const mod = await import("@/app/api/v1/audio/speech/route");
-    return mod.POST(json("{"));
+    return mod.POST(json('{"model":"tts-1","input":"hello"}'));
   },
   "v1/audio/transcriptions": async () => {
     const mod = await import("@/app/api/v1/audio/transcriptions/route");
-    return mod.POST(json("{}"));
+    return mod.POST(multipart("file", "a.mp3", "audio/mpeg"));
   },
   "v1/audio/music": async () => {
     const mod = await import("@/app/api/v1/audio/music/route");
-    return mod.POST(json("{"));
+    return mod.POST(json('{"model":"music-1","prompt":"a jingle"}'));
   },
   "v1/videos/generations": async () => {
     const mod = await import("@/app/api/v1/videos/generations/route");
-    return mod.POST(json("{"));
+    return mod.POST(json('{"model":"video-01","prompt":"a clip"}'));
   },
 };
 
@@ -73,6 +73,12 @@ function json(body: string): Request {
     headers: { "content-type": "application/json" },
     body,
   });
+}
+
+function multipart(field: string, name: string, type: string): Request {
+  const form = new FormData();
+  form.set(field, new File([new Uint8Array([0, 1, 2, 3])], name, { type }));
+  return new Request("https://relay.test/v1/x", { method: "POST", body: form });
 }
 
 const user = (over: Partial<User> = {}): User =>
