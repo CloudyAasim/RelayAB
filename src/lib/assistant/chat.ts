@@ -605,7 +605,15 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
    */
   const remaining = () => MAX_TURN_MS - (Date.now() - startedAt);
 
-  for (let round = 0; round < MAX_ROUNDS; round++) {
+  // One ceiling, and it is the wall clock. There used to be three — a round
+  // count, a limit on identical calls in a row, and this — and the two
+  // counters were the ones firing: a real job re-reads the same configuration
+  // after every write and re-reads the same page after every edit, so both
+  // guards kept reporting a model that was doing exactly the right thing as
+  // stuck. Both are gone. What a model does with thirty minutes is a different
+  // question from whether it is allowed the thirty minutes, and only the second
+  // one is a limit.
+  for (let round = 0; ; round++) {
     rounds = round + 1;
     let turn: UpstreamTurn;
     try {
@@ -729,22 +737,18 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
       messages.push({ role: "tool", content: resultText, tool_call_id: call.id });
     }
 
-    // Progress, checked after the round's work is done so the model has seen
-    // the results — a model that repeats itself usually does so once *after*
-    // being handed an answer it did not like, and stopping earlier would cut
-    // off exactly the case where reading the result would have fixed it.
-    const stuck = repeatedCall(signatures);
-    if (stuck) {
-      stopReason = `助手连续 ${MAX_IDENTICAL_CALLS} 次调用了同一个工具（${toolNameOf(stuck)}）却没有新的进展，已停止。换一种问法或先看它的返回内容，通常能解开。`;
-    } else if (Date.now() - startedAt > MAX_TURN_MS) {
+    // The one remaining ceiling. Checked here rather than around the call so a
+    // model gets to see the result of the round it just finished.
+    if (Date.now() - startedAt > MAX_TURN_MS) {
       stopReason = `这一轮已经跑了 ${Math.round(MAX_TURN_MS / 60000)} 分钟，已停止。可以把问题拆小一点再试。`;
+      break;
     }
   }
 
-  // Out of rounds. Rare, and it says so plainly rather than blaming a budget
-  // the reader never set.
   if (!stopReason) {
-    stopReason = `这一轮用完了 ${MAX_ROUNDS} 次模型往返，已停止。可以把问题拆小一点再试。`;
+    // Only reachable if the loop broke for a reason the time check did not set,
+    // which today cannot happen. Said so rather than inventing a cause.
+    stopReason = "这一轮结束了。";
   }
   emit({ type: "error", text: stopReason });
   emit({ type: "done", data: { rounds, usage, pendingActions, truncated: true } });

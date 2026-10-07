@@ -94,20 +94,19 @@ describe("assistant: what a stuck model looks like", () => {
     expect(repeatedCall(["x()", "x()"], 3)).toBeNull();
   });
 
-  it("says which tool was stuck, so the reader can act on it", () => {
-    expect(CHAT).toContain("toolNameOf(stuck)");
-    // The message names the loop rather than blaming a budget.
-    expect(CHAT).toMatch(/连续 \$\{MAX_IDENTICAL_CALLS\} 次调用了同一个工具/);
-  });
-
-  it("checks progress after the round's results are in", () => {
-    // A model that repeats itself usually does so once *after* seeing an answer
-    // it did not like. Stopping before the result would cut off the exact case
-    // where reading it would have fixed things.
-    const push = CHAT.indexOf("signatures.push(");
-    const check = CHAT.indexOf("repeatedCall(signatures)");
-    expect(push).toBeGreaterThan(-1);
-    expect(check).toBeGreaterThan(push);
+  it("the turn is bounded by the clock and nothing else", () => {
+    // There used to be three ceilings and two of them counted. Both counters
+    // reported a model that was doing exactly the right thing as stuck: a
+    // configuration job re-reads the same provider after every write, a
+    // documentation job re-reads the same page after every edit, and both were
+    // told they had made no progress. `repeatedCall` survives as a helper — it is
+    // a reasonable thing to test — but the loop must not consult it, and there
+    // must be no round ceiling to hit at all.
+    expect(CHAT).not.toMatch(/repeatedCall\(signatures\)/);
+    expect(CHAT).not.toMatch(/< MAX_ROUNDS/);
+    expect(CHAT).not.toContain("用完了");
+    // The one that is left.
+    expect(CHAT).toMatch(/Date\.now\(\) - startedAt > MAX_TURN_MS/);
   });
 });
 
@@ -143,12 +142,13 @@ describe("a call inherits the turn's ceiling instead of a smaller one", () => {
 });
 
 describe("the guards behind it do not stop work", () => {
-  it("none of them is small enough to be what ends a real turn", () => {
-    // Each is a backstop behind the time ceiling. If one of these is low enough
-    // to fire on a job someone actually needs doing, the time ceiling is
-    // decorative and the reader is being told thirty minutes they cannot have.
+  it("the two that counted are gone; the two that trim are still generous", () => {
+    // `MAX_ROUNDS` and `MAX_IDENTICAL_CALLS` counted, and both fired on real
+    // work. They are kept as exported constants only so the loop cannot be given
+    // a ceiling back by accident; the loop does not read either.
     expect(MAX_ROUNDS).toBeGreaterThanOrEqual(200);
     expect(MAX_IDENTICAL_CALLS).toBeGreaterThanOrEqual(20);
+    // What remains only bounds a single payload, never the turn.
     expect(MAX_TOOL_RESULT_CHARS).toBeGreaterThanOrEqual(200_000);
     expect(MAX_HISTORY_MESSAGES).toBeGreaterThanOrEqual(100);
   });
