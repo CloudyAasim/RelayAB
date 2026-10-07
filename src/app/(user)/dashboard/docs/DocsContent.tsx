@@ -14,6 +14,7 @@ import {
   Check,
   Sparkles,
   Image as ImageIcon,
+  Coins,
 } from "lucide-react";
 
 interface Props {
@@ -154,11 +155,33 @@ export function DocsContent({
           <p className="text-xs text-amber-600 dark:text-amber-400">
             {t("docs.openai.errors.quotaTip")}
           </p>
+          <p className="text-xs text-muted-foreground">{t("docs.openai.errors.balanceHint")}</p>
+        </div>
+      </Card>
+    );
+  }
 
-          <h3 className="pt-2 text-sm font-semibold">{t("docs.openai.quota.title")}</h3>
-          <p>{t("docs.openai.quota.body")}</p>
+  if (section === "credits") {
+    return (
+      <Card>
+        <CardHeader
+          title={
+            <span className="flex items-center gap-2">
+              <Coins className="h-4 w-4 text-muted-foreground" />
+              {t("docs.credits.title")}
+            </span>
+          }
+          description={t("docs.credits.desc")}
+        />
+        <div className="space-y-3 text-xs text-foreground/90 sm:space-y-4 sm:text-sm">
+          <p>{t("docs.credits.body")}</p>
           <CodeBlock
-            label={t("docs.openai.quota.shapeLabel")}
+            label={t("docs.credits.exampleLabel")}
+            value={`curl ${openaiBase}/credits \\
+  -H "Authorization: Bearer $RELAYAB_KEY"`}
+          />
+          <CodeBlock
+            label={t("docs.credits.shapeLabel")}
             value={`{ "object": "credit_balance",
   "is_available": true,
   "unit": "credits",
@@ -167,22 +190,18 @@ export function DocsContent({
   "used": 12345,
   "remaining": 487655 }`}
           />
-          <p className="text-xs text-muted-foreground">{t("docs.openai.quota.availHint")}</p>
+          <p className="text-xs text-muted-foreground">{t("docs.credits.availHint")}</p>
+          <p className="text-xs text-muted-foreground">{t("docs.credits.snapshotHint")}</p>
+
+          <h3 className="pt-2 text-sm font-semibold">{t("docs.credits.headersTitle")}</h3>
+          <p className="text-xs text-muted-foreground">{t("docs.credits.headersHint")}</p>
           <CodeBlock
-            label={t("docs.openai.quota.exampleLabel")}
-            value={`curl ${openaiBase}/credits \\
-  -H "Authorization: Bearer $RELAYAB_KEY"`}
-          />
-          <p className="text-xs text-muted-foreground">
-            {t("docs.openai.quota.headersHint")}
-          </p>
-          <CodeBlock
-            label={t("docs.openai.quota.headersLabel")}
+            label={t("docs.credits.headersLabel")}
             value={`x-ratelimit-limit: 500000      # 额度池上限；0 表示尚未分配，不是「余额为 0」
 x-ratelimit-remaining: 487655  # 剩余，下限为 0，不会出现负数
 x-ratelimit-unit: credits      # 单位；账号按 token 计量时这里就是 tokens`}
           />
-          <p className="text-xs text-muted-foreground">{t("docs.openai.quota.hint")}</p>
+          <p className="text-xs text-muted-foreground">{t("docs.credits.headersVsEndpoint")}</p>
         </div>
       </Card>
     );

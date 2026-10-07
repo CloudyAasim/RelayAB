@@ -240,6 +240,7 @@ const zhCN: Dict = {
   "docs.nav.anthropic": "Anthropic 兼容",
   "docs.nav.responses": "Responses API",
   "docs.nav.models": "模型与密钥",
+  "docs.nav.credits": "余额",
   "docs.nav.sdks": "代码示例",
   "docs.nav.media": "图片 / 视频 / 语音",
   "docs.nav.catalog": "模型目录",
@@ -358,6 +359,7 @@ const zhCN: Dict = {
   "docs.chapter.answers.anthropic": "这一章回答：怎么用 Anthropic 的方式发一次对话。",
   "docs.chapter.answers.responses": "这一章回答：怎么调 /v1/responses 这个端点。",
   "docs.chapter.answers.models": "这一章回答：有哪些模型，以及怎么挑。",
+  "docs.chapter.answers.credits": "这一章回答：我还剩多少额度，程序怎么查。",
   "docs.chapter.answers.sdks": "这一章回答：现成的库怎么装、怎么用。",
   "docs.chapter.answers.media": "这一章回答：图片、视频、语音、音乐怎么生成。",
   "docs.responses.line1": "Responses API 是 OpenAI 最新的一体化 API，使用与 Chat Completions 相同的 Base URL。",
@@ -379,18 +381,23 @@ const zhCN: Dict = {
     "message 是写给人看的说明；type 是 OpenAI 的分类，由 HTTP 状态码推导：400 → invalid_request_error，401 → authentication_error，403 → permission_error，404 → not_found_error，429 → rate_limit_error，5xx → server_error。code 是本服务自己的具体原因，和 type 分开看。",
   "docs.openai.errors.quotaTip":
     "「额度用完」是 429，但 type 是 insufficient_quota 而不是 rate_limit_error。客户端看到 429 惯例是退避重试，而用完的额度池不会自己恢复——不把这两件事分开，客户端就会一直重试下去。",
-  "docs.openai.quota.title": "余额",
-  "docs.openai.quota.body":
-    "GET /v1/credits 返回调用方账号的余额，可以在发起调用之前先问一次。",
-  "docs.openai.quota.shapeLabel": "响应体",
-  "docs.openai.quota.availHint":
-    "is_available 是可以直接拿去用的结论：还有没有可花的。remaining 下限为 0，超支不会变成负数；limit 为 0 表示尚未分配，而不是「余额为 0」。unit 和 scale 一起给出，换算比例不必由客户端硬编码。任何一把有效的密钥都能查——额度池属于账号而不是密钥。",
-  "docs.openai.quota.exampleLabel": "curl 示例",
-  "docs.openai.quota.headersHint":
-    "已经在调用途中的客户端也可以顺手读到：每个 /v1 响应都带着这三个头。",
-  "docs.openai.quota.headersLabel": "响应头",
-  "docs.openai.quota.hint":
-    "响应头里的数字是在响应那一刻读的，所以不会过期——不必为显示余额再多发一次请求。它和上面的端点回答的是两个问题：这个头说「刚才那次调用之后还剩多少」，端点说「我还有多少」。",
+  "docs.openai.errors.balanceHint": "想知道还剩多少额度，见「余额」那一章。",
+  "docs.credits.title": "余额",
+  "docs.credits.desc": "查询账号的额度池，以及程序怎么读它。",
+  "docs.credits.body":
+    "额度池属于账号而不属于密钥：同一个账号下任何一把密钥读到的都是同一个数字。同一把有效密钥就能查这个接口，不需要另外申请什么。",
+  "docs.credits.exampleLabel": "curl 示例",
+  "docs.credits.shapeLabel": "响应体",
+  "docs.credits.availHint":
+    "is_available 是可以直接拿去用的结论：还有没有可花的。remaining 下限为 0，超支不会变成负数；limit 为 0 表示尚未分配，而不是「余额为 0」。unit 和 scale 一起给出，换算比例不必由客户端硬编码。",
+  "docs.credits.snapshotHint":
+    "这是一次瞬时快照。并发请求可能在两次读取之间花掉同一个池——问一个共享账户就是这样，不是这个接口能安排掉的。",
+  "docs.credits.headersTitle": "顺带也能从每个响应读到",
+  "docs.credits.headersHint":
+    "已经在调用途中的程序可以顺手读到，不必为了显示余额再多发一次请求。",
+  "docs.credits.headersLabel": "响应头",
+  "docs.credits.headersVsEndpoint":
+    "两者回答的不是同一个问题：响应头说「刚才那次调用之后还剩多少」，这个接口说「我还有多少」。额度不足不会拒绝这个接口——问余额不花钱——所以即使池已经空了，它也照常回答 is_available: false。",
   "docs.anthropic.title": "Anthropic Messages",
   "docs.anthropic.desc": "兼容 /anthropic/v1/messages。",
   "docs.anthropic.line1": "Anthropic SDK 默认走 https://api.anthropic.com，需要手动把 baseURL 改成下面的值。",
@@ -1361,6 +1368,7 @@ const en: Dict = {
   "docs.nav.anthropic": "Anthropic compatible",
   "docs.nav.responses": "Responses API",
   "docs.nav.models": "Models & keys",
+  "docs.nav.credits": "Balance",
   "docs.nav.sdks": "Code samples",
   "docs.nav.media": "Images / video / audio",
   "docs.nav.catalog": "Model catalogue",
@@ -1482,6 +1490,7 @@ const en: Dict = {
   "docs.chapter.answers.anthropic": "This chapter answers: how to send a conversation the Anthropic way.",
   "docs.chapter.answers.responses": "This chapter answers: how to call the /v1/responses endpoint.",
   "docs.chapter.answers.models": "This chapter answers: which models there are, and how to pick one.",
+  "docs.chapter.answers.credits": "This chapter answers: how much is left, and how a program asks.",
   "docs.chapter.answers.sdks": "This chapter answers: how to install and use the ready-made libraries.",
   "docs.chapter.answers.media": "This chapter answers: how to generate images, video, speech and music.",
   "docs.responses.line1": "The Responses API is OpenAI's newest unified API. Use the same base URL as Chat Completions.",
@@ -1503,18 +1512,24 @@ const en: Dict = {
     "`message` is written for a person. `type` is OpenAI's category, derived from the HTTP status: 400 → invalid_request_error, 401 → authentication_error, 403 → permission_error, 404 → not_found_error, 429 → rate_limit_error, 5xx → server_error. `code` is this service's own specific cause, and is read separately from `type`.",
   "docs.openai.errors.quotaTip":
     "An exhausted pool is a 429, but its type is `insufficient_quota` rather than `rate_limit_error`. A client that backs off and retries a 429 is following the convention, and a spent pool is not coming back on its own — so the two have to be told apart, or the client retries for ever.",
-  "docs.openai.quota.title": "Balance",
-  "docs.openai.quota.body":
-    "GET /v1/credits returns the calling account's balance, so you can ask once before making a call.",
-  "docs.openai.quota.shapeLabel": "Response body",
-  "docs.openai.quota.availHint":
-    "`is_available` is the answer you can act on directly: whether there is anything left to spend. `remaining` is floored at 0, so overspending never reads as a debt; `limit` of 0 means nothing was ever granted, not a balance of zero. `unit` and `scale` come together, so no client has to hardcode the conversion. Any valid key may ask — the pool belongs to the account, not to the key.",
-  "docs.openai.quota.exampleLabel": "curl example",
-  "docs.openai.quota.headersHint":
-    "A client already mid-call can read the same figures for free: every /v1 response carries them.",
-  "docs.openai.quota.headersLabel": "Response headers",
-  "docs.openai.quota.hint":
-    "The header figures are read as the response is produced, so they cannot go stale — there is no need to spend a request just to draw a balance. The two answer different questions: the header says how much is left after the call you just made; the endpoint says how much you have.",
+  "docs.openai.errors.balanceHint":
+    "To find out how much is left, see the Balance chapter.",
+  "docs.credits.title": "Balance",
+  "docs.credits.desc": "Read the account's quota pool, and how a program gets at it.",
+  "docs.credits.body":
+    "The pool belongs to the account, not to the key: every key under one account reads the same number. Any valid key can call this — there is nothing separate to apply for.",
+  "docs.credits.exampleLabel": "curl example",
+  "docs.credits.shapeLabel": "Response body",
+  "docs.credits.availHint":
+    "`is_available` is the answer you can act on directly: whether there is anything left to spend. `remaining` is floored at 0, so overspending never reads as a debt; `limit` of 0 means nothing was ever granted, not a balance of zero. `unit` and `scale` come together, so no client has to hardcode the conversion.",
+  "docs.credits.snapshotHint":
+    "This is a snapshot. A concurrent request can spend from the same pool between two reads — that is what asking about a shared account means, and not something this endpoint could arrange away.",
+  "docs.credits.headersTitle": "Also readable from every response",
+  "docs.credits.headersHint":
+    "A program already mid-call can read these for free, without spending a request just to draw a balance.",
+  "docs.credits.headersLabel": "Response headers",
+  "docs.credits.headersVsEndpoint":
+    "They answer different questions: the header says how much is left after the call you just made; this endpoint says how much you have. An exhausted pool does not refuse this call — asking the balance spends nothing — so even with the pool empty it answers `is_available: false` rather than turning you away.",
   "docs.anthropic.title": "Anthropic Messages",
   "docs.anthropic.desc": "Compatible with /anthropic/v1/messages.",
   "docs.anthropic.line1": "The Anthropic SDK defaults to https://api.anthropic.com. Override baseURL to the value below.",

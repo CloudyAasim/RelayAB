@@ -39,7 +39,7 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     surface: "user",
     id: "openai",
     summary: "OpenAI 兼容用法：chat/completions、鉴权、示例",
-    keys: ["docs.openai.title","docs.openai.desc","docs.openai.line1","docs.openai.sharesBase","docs.openai.baseUrl","docs.openai.header","docs.openai.example","docs.openai.modelListHint","docs.openai.errors.title","docs.openai.errors.body","docs.openai.errors.shapeLabel","docs.openai.errors.typeHint","docs.openai.errors.quotaTip","docs.openai.quota.title","docs.openai.quota.body","docs.openai.quota.shapeLabel","docs.openai.quota.availHint","docs.openai.quota.exampleLabel","docs.openai.quota.headersHint","docs.openai.quota.headersLabel","docs.openai.quota.hint"],
+    keys: ["docs.openai.title","docs.openai.desc","docs.openai.line1","docs.openai.sharesBase","docs.openai.baseUrl","docs.openai.header","docs.openai.example","docs.openai.modelListHint","docs.openai.errors.title","docs.openai.errors.body","docs.openai.errors.shapeLabel","docs.openai.errors.typeHint","docs.openai.errors.quotaTip","docs.openai.errors.balanceHint"],
   },
   {
     surface: "user",
@@ -58,6 +58,12 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     id: "models",
     summary: "有哪些模型可用：模型名、上下文长度、计价",
     keys: ["docs.models.title","docs.models.desc","docs.models.line1","docs.models.line2","docs.models.line3","docs.cli.example","docs.models.paramsTitle","docs.models.params"],
+  },
+  {
+    surface: "user",
+    id: "credits",
+    summary: "额度余额：GET /v1/credits 怎么查、is_available、响应头里的额度",
+    keys: ["docs.credits.title","docs.credits.desc","docs.credits.body","docs.credits.exampleLabel","docs.credits.shapeLabel","docs.credits.availHint","docs.credits.snapshotHint","docs.credits.headersTitle","docs.credits.headersHint","docs.credits.headersLabel","docs.credits.headersVsEndpoint"],
   },
   {
     surface: "user",

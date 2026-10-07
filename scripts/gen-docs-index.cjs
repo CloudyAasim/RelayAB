@@ -123,6 +123,7 @@ const TITLES = {
   "user:anthropic": "Anthropic 兼容用法：/anthropic/v1/messages",
   "user:responses": "Responses 接口：什么时候用，和 chat/completions 的区别",
   "user:models": "有哪些模型可用：模型名、上下文长度、计价",
+  "user:credits": "额度余额：GET /v1/credits 怎么查、is_available、响应头里的额度",
   "user:sdks": "官方 SDK 接法：Python / Node / CLI",
   "user:media": "媒体能力总览与模型目录：图片、视频、语音、音乐",
   "user:catalog": "本部署的模型目录：实时读取服务商表，分对话与媒体两张表",

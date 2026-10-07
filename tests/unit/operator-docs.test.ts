@@ -373,6 +373,7 @@ describe("the outline", () => {
       "anthropic",
       "responses",
       "models",
+      "credits",
       "sdks",
       "media",
       "catalog",

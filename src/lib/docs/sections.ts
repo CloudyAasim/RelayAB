@@ -42,6 +42,12 @@ const USER_SECTION_IDS = [
   "anthropic",
   "responses",
   "models",
+  // The balance, as a chapter of its own. It used to sit at the bottom of the
+  // OpenAI chapter, which put "how much do I have" underneath "how to send a
+  // conversation" — two different questions, asked at different moments, by
+  // different people. The first is read once while wiring something up; the
+  // second is asked again every time something runs out.
+  "credits",
   "sdks",
   "media",
   // The live catalogue: what this deployment serves, read from the provider
@@ -130,6 +136,7 @@ const USER_LABEL_KEYS = [
   "docs.nav.anthropic",
   "docs.nav.responses",
   "docs.nav.models",
+  "docs.nav.credits",
   "docs.nav.sdks",
   "docs.nav.media",
   "docs.nav.catalog",
@@ -168,6 +175,7 @@ const CHAPTER_ANSWER_KEYS: Readonly<Record<string, string>> = {
   anthropic: "docs.chapter.answers.anthropic",
   responses: "docs.chapter.answers.responses",
   models: "docs.chapter.answers.models",
+  credits: "docs.chapter.answers.credits",
   sdks: "docs.chapter.answers.sdks",
   media: "docs.chapter.answers.media",
 };
