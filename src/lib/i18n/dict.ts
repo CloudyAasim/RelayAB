@@ -392,6 +392,16 @@ const zhCN: Dict = {
     "is_available 是可以直接拿去用的结论：还有没有可花的。remaining 下限为 0，超支不会变成负数；limit 为 0 表示尚未分配，而不是「余额为 0」。unit 和 scale 一起给出，换算比例不必由客户端硬编码。",
   "docs.credits.snapshotHint":
     "这是一次瞬时快照。并发请求可能在两次读取之间花掉同一个池——问一个共享账户就是这样，不是这个接口能安排掉的。",
+  "docs.credits.ccswitchTitle": "CCSwitch 这类工具的提取器",
+  "docs.credits.ccswitchNote":
+    "CCSwitch 用一段模板描述「去哪查余额、怎么从响应里取值」。换成我们的接口有三处和 DeepSeek 的模板不同，照抄会读不到数字。",
+  "docs.credits.ccswitchShapeLabel": "模板",
+  "docs.credits.ccswitchIsValid":
+    "isValid 表示「读到余额了吗」，不是「还有钱吗」。额度用完也是一次有效读取，只是 remaining 为 0——报成 invalid 会让人去查密钥，而问题在充值。DeepSeek 模板里的 is_available || true 恒为真，永远报有效，那不是判断，是句多余的话。",
+  "docs.credits.ccswitchScale":
+    "响应里的 remaining 是 0.001 积分的整数单位。上面这版除以 scale，返回人能直接读的数；如果你的工具拿它做比较或累加、要的是原始整数，把那次除法去掉即可——但两种必须和 unit 对得上。",
+  "docs.credits.ccswitchBaseUrl":
+    "baseUrl 不要带 /v1。本部署的约定是基址=主机根、路径自带版本；如果工具的 baseUrl 本身已经是 …/v1，模板里的路径要改成 /credits（不再带 /v1 前缀），否则会拼出 /v1/v1/credits。",
   "docs.credits.headersTitle": "顺带也能从每个响应读到",
   "docs.credits.headersHint":
     "已经在调用途中的程序可以顺手读到，不必为了显示余额再多发一次请求。",
@@ -1524,6 +1534,16 @@ const en: Dict = {
     "`is_available` is the answer you can act on directly: whether there is anything left to spend. `remaining` is floored at 0, so overspending never reads as a debt; `limit` of 0 means nothing was ever granted, not a balance of zero. `unit` and `scale` come together, so no client has to hardcode the conversion.",
   "docs.credits.snapshotHint":
     "This is a snapshot. A concurrent request can spend from the same pool between two reads — that is what asking about a shared account means, and not something this endpoint could arrange away.",
+  "docs.credits.ccswitchTitle": "Extractors for tools like CCSwitch",
+  "docs.credits.ccswitchNote":
+    "CCSwitch describes \"where to ask and how to read the answer\" as a small template. Three things differ from the DeepSeek one, and copying it verbatim reads nothing.",
+  "docs.credits.ccswitchShapeLabel": "Template",
+  "docs.credits.ccswitchIsValid":
+    "`isValid` means \"was a balance read\", not \"is there money left\". An exhausted pool is still a valid read whose `remaining` is 0 — reporting it as invalid sends people to check their key when the fix is a top-up. The DeepSeek template's `is_available || true` is always true, so it never reports anything; it is not a check.",
+  "docs.credits.ccswitchScale":
+    "`remaining` in the response is an integer count of 0.001-credit units. The template above divides by `scale` and returns a figure a person can read; if your tool compares or accumulates it and wants the raw integer, drop the division — but whichever you pick has to agree with `unit`.",
+  "docs.credits.ccswitchBaseUrl":
+    "Do not put `/v1` in `baseUrl`. The convention is base = host root, version carried by the path; if the tool's `baseUrl` is already `…/v1`, drop the `/v1` from the template's path so it reads `/credits`, or it becomes `/v1/v1/credits`.",
   "docs.credits.headersTitle": "Also readable from every response",
   "docs.credits.headersHint":
     "A program already mid-call can read these for free, without spending a request just to draw a balance.",

@@ -193,6 +193,31 @@ export function DocsContent({
           <p className="text-xs text-muted-foreground">{t("docs.credits.availHint")}</p>
           <p className="text-xs text-muted-foreground">{t("docs.credits.snapshotHint")}</p>
 
+          <h3 className="pt-2 text-sm font-semibold">{t("docs.credits.ccswitchTitle")}</h3>
+          <p className="text-xs text-muted-foreground">{t("docs.credits.ccswitchNote")}</p>
+          <CodeBlock
+            label={t("docs.credits.ccswitchShapeLabel")}
+            value={`({
+  request: {
+    url: "{{baseUrl}}/v1/credits",
+    method: "GET",
+    headers: { "Authorization": "Bearer {{apiKey}}" }
+  },
+  extractor: function(response) {
+    var scale = typeof response.scale === "number" ? response.scale : 1000;
+    var has = typeof response.remaining === "number";
+    return {
+      isValid: has,
+      remaining: has ? response.remaining / scale : null,
+      unit: response.unit || "credits"
+    };
+  }
+})`}
+          />
+          <p className="text-xs text-muted-foreground">{t("docs.credits.ccswitchIsValid")}</p>
+          <p className="text-xs text-muted-foreground">{t("docs.credits.ccswitchScale")}</p>
+          <p className="text-xs text-muted-foreground">{t("docs.credits.ccswitchBaseUrl")}</p>
+
           <h3 className="pt-2 text-sm font-semibold">{t("docs.credits.headersTitle")}</h3>
           <p className="text-xs text-muted-foreground">{t("docs.credits.headersHint")}</p>
           <CodeBlock

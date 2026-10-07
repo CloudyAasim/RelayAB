@@ -165,6 +165,43 @@ distinguish a Subscription Key from a pay-as-you-go key; it costs us nothing).
   between two reads. That is inherent to asking about a shared account, not something
   this endpoint could arrange away.
 
+#### Extractor template for tools like CCSwitch
+
+CCSwitch describes "where to ask and how to read the answer" as a small template.
+Three things differ from the DeepSeek one, and copying it verbatim reads nothing:
+
+```js
+({
+  request: {
+    url: "{{baseUrl}}/v1/credits",
+    method: "GET",
+    headers: { "Authorization": "Bearer {{apiKey}}" }
+  },
+  extractor: function(response) {
+    var scale = typeof response.scale === "number" ? response.scale : 1000;
+    var has = typeof response.remaining === "number";
+    return {
+      isValid: has,
+      remaining: has ? response.remaining / scale : null,
+      unit: response.unit || "credits"
+    };
+  }
+})
+```
+
+- **`isValid` means "was a balance read", not "is there money left".** An exhausted
+  pool is still a valid read whose `remaining` is 0; reporting it as invalid sends
+  people to check their key when the fix is a top-up. The DeepSeek template's
+  `is_available || true` is always true, so it never reports anything — it is not a
+  check.
+- **`remaining` is an integer count of 0.001-credit units.** The template above
+  divides by `scale` and returns a figure a person can read; if the tool compares or
+  accumulates it and wants the raw integer, drop the division — but whichever you pick
+  has to agree with `unit`.
+- **Do not put `/v1` in `baseUrl`.** The convention is base = host root, version
+  carried by the path; if the tool's `baseUrl` is already `…/v1`, change this to
+  `{{baseUrl}}/credits`, or it becomes `/v1/v1/credits`.
+
 ---
 
 ### 1.2 `POST /v1/responses`

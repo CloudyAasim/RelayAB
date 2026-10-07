@@ -153,6 +153,39 @@ x-ratelimit-unit: credits          # 单位；quotaType 为 tokens 时这里就�
 - **数值是瞬时快照。** 并发请求可以在两次读之间花掉同一个池——这是「问一个共享
   账户」固有的，不是这个端点能安排掉的。
 
+#### 供 CCSwitch 这类工具使用的提取器模板
+
+CCSwitch 用一段模板描述「去哪查余额、怎么从响应里取值」。换成这个接口有三处和
+DeepSeek 的模板不同，照抄会读不到数字：
+
+```js
+({
+  request: {
+    url: "{{baseUrl}}/v1/credits",
+    method: "GET",
+    headers: { "Authorization": "Bearer {{apiKey}}" }
+  },
+  extractor: function(response) {
+    var scale = typeof response.scale === "number" ? response.scale : 1000;
+    var has = typeof response.remaining === "number";
+    return {
+      isValid: has,
+      remaining: has ? response.remaining / scale : null,
+      unit: response.unit || "credits"
+    };
+  }
+})
+```
+
+- **`isValid` 是「读到余额了吗」，不是「还有钱吗」。** 额度用完也是一次有效读取，
+  只是 `remaining` 为 0；报成 invalid 会让人去查密钥，而问题在充值。DeepSeek 模板
+  里的 `is_available || true` 恒为真，永远报有效——那不是判断，是句多余的话。
+- **`remaining` 是 0.001 积分的整数单位。** 上面的模板除以 `scale` 返回人能读的
+  数；工具若拿它做比较或累加、要原始整数，去掉那次除法即可，但两种必须和 `unit`
+  对得上。
+- **`baseUrl` 不要带 `/v1`。** 约定是基址=主机根、路径自带版本；若工具的 `baseUrl`
+  本身已经是 `…/v1`，这里要改成 `{{baseUrl}}/credits`，否则拼成 `/v1/v1/credits`。
+
 ---
 
 ### 1.2 `POST /v1/responses`

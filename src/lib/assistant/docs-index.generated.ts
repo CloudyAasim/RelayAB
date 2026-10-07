@@ -63,7 +63,7 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     surface: "user",
     id: "credits",
     summary: "额度余额：GET /v1/credits 怎么查、is_available、响应头里的额度",
-    keys: ["docs.credits.title","docs.credits.desc","docs.credits.body","docs.credits.exampleLabel","docs.credits.shapeLabel","docs.credits.availHint","docs.credits.snapshotHint","docs.credits.headersTitle","docs.credits.headersHint","docs.credits.headersLabel","docs.credits.headersVsEndpoint"],
+    keys: ["docs.credits.title","docs.credits.desc","docs.credits.body","docs.credits.exampleLabel","docs.credits.shapeLabel","docs.credits.availHint","docs.credits.snapshotHint","docs.credits.ccswitchTitle","docs.credits.ccswitchNote","docs.credits.ccswitchShapeLabel","docs.credits.ccswitchIsValid","docs.credits.ccswitchScale","docs.credits.ccswitchBaseUrl","docs.credits.headersTitle","docs.credits.headersHint","docs.credits.headersLabel","docs.credits.headersVsEndpoint"],
   },
   {
     surface: "user",
