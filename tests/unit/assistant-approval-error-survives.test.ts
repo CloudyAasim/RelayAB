@@ -38,6 +38,7 @@ const ROUTE = readFileSync(
   join(ROOT, "src", "app", "api", "assistant", "actions", "[id]", "route.ts"),
   "utf-8",
 );
+const TOOLS = readFileSync(join(ROOT, "src", "lib", "assistant", "tools.ts"), "utf-8");
 
 describe("a failed approval stays on screen", () => {
   it("the banner is built before the empty-state return, not after it", () => {
@@ -81,5 +82,25 @@ describe("the panel only ever reads pending actions", () => {
     // is about the message appearing at the moment it is needed; a failed action
     // leaving the queue is correct, and nothing here contradicts that.
     expect(PANEL).toContain("/api/assistant/actions?status=pending");
+  });
+});
+
+describe("the assistant can read the reason too", () => {
+  // The half of this that is worse than a flash. The assistant proposed a media
+  // update, the approval failed, and `list_my_proposals` returned `status:
+  // "failed"` and nothing else — so it produced three ranked guesses at the
+  // cause and asked the user to paste a message the interface had already
+  // discarded. The reason was in the row both times.
+  it("the projection carries `result` rather than the status alone", () => {
+    expect(TOOLS).toContain("result: a.result ?? null,");
+  });
+
+  it("and the tool description says to read it", () => {
+    const start = TOOLS.indexOf('name: "list_my_proposals"');
+    expect(start).toBeGreaterThan(-1);
+    const body = TOOLS.slice(start, TOOLS.indexOf("parameters:", start));
+    expect(body).toMatch(/result/);
+    // "照它改，不要靠推断猜" — the alternative that was actually taken.
+    expect(body).toMatch(/猜/);
   });
 });

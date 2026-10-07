@@ -553,7 +553,9 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
         "列出你（当前用户）提交过的配置变更提案，以及每一条现在是待确认、已生效还是被拒绝。\n" +
         "**你在界面上点过确认之后，用这个来核实**，不要靠猜：propose_* 只是把变更放进待确认队列，" +
         "你自己看不到队列状态，所以之前几次只能说「不知道有没有生效」。\n" +
-        "确认后再用 list_providers 读回配置，两个一对比就知道改动到底落下没有。",
+        "确认后再用 list_providers 读回配置，两个一对比就知道改动到底落下没有。\n" +
+        "**status 是 failed 时先读 result**：那是服务端执行时写下的原因（媒体服务商会是校验器列出的完整问题清单）。" +
+        "有 result 就照它改，不要靠推断猜是哪一步错了。",
       parameters: {
         type: "object",
         properties: {
@@ -1880,6 +1882,16 @@ async function listMyProposals(args: Record<string, unknown>, ctx: ToolContext):
       targetId: a.targetId,
       summary: a.summary,
       status: a.status,
+      // What the server wrote when it resolved the action: for a failure, the
+      // validator's own wording, which for a media provider is the complete list
+      // of what it objected to.
+      //
+      // This was dropped from the projection, which left `status: "failed"` as
+      // the only thing anyone could learn — including the assistant. It then had
+      // three ranked guesses at the cause and asked the user to paste a message
+      // the interface had already thrown away. The reason was in this row the
+      // whole time.
+      result: a.result ?? null,
       createdAt: a.createdAt,
       // Named `resolvedAt` on the row because it covers rejection as well as
       // application. Reported as itself rather than renamed to `appliedAt`,
