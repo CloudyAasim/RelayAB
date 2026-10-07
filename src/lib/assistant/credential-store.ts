@@ -19,8 +19,7 @@
  * ever read when a panel is on screen, and a stale answer here means the UI
  * claims a capability is unavailable when it is not.
  */
-import { useCallback, useEffect, useSyncExternalStore } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useSyncExternalStore } from "react";
 
 export interface CredentialState {
   created: boolean;
@@ -132,12 +131,8 @@ export async function mutateCredential(action: CredentialAction): Promise<boolea
 export function useCredentialStore(): Snapshot & {
   refresh: () => void;
   mutate: (action: CredentialAction) => Promise<boolean>;
-  /** Re-render the server components around the panels. */
-  refreshServer: () => void;
 } {
-  const router = useRouter();
   const value = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-  const refreshServer = useCallback(() => router.refresh(), [router]);
 
   // An effect, not render: kicking off a fetch while rendering is a side
   // effect in the render phase, which React is right to complain about and
@@ -150,6 +145,5 @@ export function useCredentialStore(): Snapshot & {
     ...value,
     refresh: refresh,
     mutate: mutateCredential,
-    refreshServer,
   };
 }

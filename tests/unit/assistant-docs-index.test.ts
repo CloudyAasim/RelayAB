@@ -89,6 +89,42 @@ describe("the index is usable", () => {
     expect(topics).toContain("user:openai");
     expect(topics).toContain("admin:providers");
   });
+
+  it("a page that renders its own prose still has that prose", () => {
+    // `media` renders a card of its own (the endpoint list, the voice list) and
+    // then `<ModelCatalog>` inside it. The generator used to *replace* that
+    // section's keys with the catalogue's, so every sentence the chapter
+    // actually renders became unreachable — and `read_docs` handed the model the
+    // catalogue's interface strings instead, which is what it read as the
+    // documentation: "共 {n} 个模型", "按模型名、供应商、能力或说明搜索". Fifty-two
+    // keys, not one of them the page's own.
+    const media = WEB_DOC_SECTIONS.find((s) => s.surface === "user" && s.id === "media");
+    const own = (media?.keys ?? []).filter((k) => k.startsWith("docs.media."));
+    expect(own.length, "user:media lost every key of its own").toBeGreaterThan(0);
+    // And the component it embeds is still covered, or the fix went the other
+    // way and the catalogue strings are gone instead.
+    expect((media?.keys ?? []).some((k) => k.startsWith("docs.catalog."))).toBe(true);
+  });
+
+  it("no page lists a key the dictionary does not have", () => {
+    // The extractors are regexes over source and can land on a plain literal
+    // next to a `t()` call — the catalogue has `"…"` and `"\n"` in it. Those
+    // are not missing translations, and they reached the model as literal
+    // `[missing: …]` lines inside what it was told was the documentation.
+    const dict = readFileSync(join(process.cwd(), "src", "lib", "i18n", "dict.ts"), "utf-8");
+    const known = new Set(
+      [...dict.matchAll(/"([a-z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9_]+)+)":/g)].map((m) => m[1]),
+    );
+    const unknown: string[] = [];
+    for (const s of WEB_DOC_SECTIONS) {
+      for (const k of s.keys) {
+        if (!known.has(k)) unknown.push(`${s.surface}:${s.id} → ${JSON.stringify(k)}`);
+      }
+    }
+    expect(unknown, `index lists keys the dictionary does not have:\n  ${unknown.join("\n  ")}`).toEqual(
+      [],
+    );
+  });
 });
 
 describe("the parameters guide, which is written at runtime", () => {

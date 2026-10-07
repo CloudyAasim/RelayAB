@@ -104,18 +104,28 @@ export function optionAppearance(state: {
  */
 export function AccountCredentialPanel({ onChanged }: { onChanged?: () => void }) {
   const t = useT();
-  const { data: state, loaded, busy, error, mutate, refreshServer } = useCredentialStore();
+  const { data: state, loaded, busy, error, mutate } = useCredentialStore();
 
   const act = useCallback(
     async (action: CredentialAction) => {
       const ok = await mutate(action);
       if (!ok) return;
-      // The admin's key list is a server component, so nothing it renders moves
-      // until the page is re-fetched.
-      refreshServer();
+      /**
+       * No `router.refresh()` here, and that used to be the bug.
+       *
+       * The refresh was there because the *admin's key list* is a server
+       * component, so a credential appearing or disappearing there would not move
+       * until the page was re-fetched. But this panel lives on the settings
+       * screen, which renders no key list — the reasoning was carried over from
+       * where the panel used to sit. Every change already reaches every mounted
+       * panel through the store, so the refresh bought nothing and cost a full
+       * re-render of the page: toggling the switch appeared to reload the
+       * screen, which reads as the site bouncing rather than as a setting
+       * changing.
+       */
       onChanged?.();
     },
-    [mutate, refreshServer, onChanged],
+    [mutate, onChanged],
   );
 
   // The state in words, so it never has to be inferred from a checkbox - and so

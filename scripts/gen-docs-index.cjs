@@ -56,12 +56,17 @@ const adminSections = extractSections("src/app/(admin)/admin/docs/AdminDocsConte
 // ---------------------------------------------------------------------------
 
 /**
- * The two chapters that are not a branch of i18n prose in `DocsContent`.
+ * The chapter that renders another component's strings as well as its own.
  *
- * `media` renders `<ModelCatalog>`, so its text lives in another component
- * entirely. `catalog` renders the same component on its own, as a chapter of
- * its own. Both are added explicitly rather than left empty, because an empty
- * section reads as "this page says nothing" and the model would say so.
+ * `media` renders `<ModelCatalog>` *inside* a card of its own prose — the
+ * endpoint list, and since the voice catalogue landed, the voice list. Those
+ * keys were already extracted from `DocsContent` and then **thrown away** here,
+ * because this used to `set` rather than merge. The assistant's `read_docs` on
+ * `user:media` therefore returned the catalogue's own UI strings — "共 {n} 个
+ * 模型", "按模型名、供应商、能力或说明搜索" — as though they were the
+ * documentation, and every key the chapter actually renders was unreachable.
+ * `catalog` is a different case: it renders that component *alone*, so its own
+ * key list is legitimately empty and the catalogue keys are all of it.
  */
 const catalogSrc = [
   "src/components/docs/ModelCatalog.tsx",
@@ -70,7 +75,7 @@ const catalogSrc = [
   .map((f) => fs.readFileSync(path.join(ROOT, f), "utf8"))
   .join("\n");
 const catalogKeys = [...new Set([...catalogSrc.matchAll(/t\("([^"]+)"/g)].map((m) => m[1]))];
-userSections.set("media", catalogKeys);
+userSections.set("media", [...new Set([...(userSections.get("media") ?? []), ...catalogKeys])]);
 userSections.set("catalog", catalogKeys);
 
 // The admin `ops` page renders two reference components that read repository
@@ -114,6 +119,49 @@ const sections = [
     keys: adminSections.get(id) ?? [],
   })),
 ];
+
+/**
+ * A key that is not in the dictionary is either a typo or not a key at all.
+ *
+ * Both extractors are regexes over source and can land on a plain string literal
+ * sitting next to a `t()` call; the catalogue component has `"…"` and `"\n"` in
+ * it, and both reached the assistant as literal `[missing: …]` lines inside what
+ * it was told was the documentation. Those two are dropped, because the source
+ * is fine and only the regex over-reached.
+ *
+ * A key *shaped* token that the dictionary does not have is a different thing
+ * entirely: `t("docs.media.voice")` when the entry is `docs.media.voices` is a
+ * typo that would render as an empty line in the page a person reads and as a
+ * `[missing: …]` in the text the model reads. That one stops the build.
+ */
+const dictSrc = fs.readFileSync(path.join(ROOT, "src/lib/i18n/dict.ts"), "utf8");
+const knownKeys = new Set(
+  [...dictSrc.matchAll(/"([a-z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9_]+)+)":/g)].map((m) => m[1]),
+);
+const KEY_SHAPED = /^[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9_]+)+$/;
+const typo = [];
+const dropped = [];
+for (const s of sections) {
+  s.keys = s.keys.filter((k) => {
+    if (knownKeys.has(k)) return true;
+    if (KEY_SHAPED.test(k)) typo.push(`${s.surface}:${s.id} → ${JSON.stringify(k)}`);
+    else dropped.push(`${s.surface}:${s.id} → ${JSON.stringify(k)}`);
+    return false;
+  });
+}
+if (typo.length > 0) {
+  console.error(
+    `docs index: ${typo.length} key-shaped token(s) do not exist in the dictionary:\n  ` +
+      typo.join("\n  "),
+  );
+  process.exit(1);
+}
+if (dropped.length > 0) {
+  console.log(
+    `docs index: dropped ${dropped.length} non-key literal(s) the extractor picked up:\n  ` +
+      dropped.join("\n  "),
+  );
+}
 
 /** The one-line description a reader sees in the index. */
 const TITLES = {

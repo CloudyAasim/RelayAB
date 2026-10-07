@@ -265,10 +265,19 @@ describe("credential UI: one state for every panel", () => {
     expect(PANEL).not.toMatch(/fetch\("\/api\/assistant\/credentials"/);
   });
 
-  it("a change also re-renders the server components around it", () => {
-    // The admin's key list is a server component; nothing it renders moves
-    // until the page is re-fetched.
-    expect(PANEL).toContain("refreshServer()");
+  it("a change does not re-render the server components around it", () => {
+    // This used to be the opposite, and the reason it was added does not hold
+    // where the panel lives now. The refresh existed because the *admin's* key
+    // list is a server component, so a credential appearing or disappearing in
+    // that list would not move until the page was re-fetched — but the panel
+    // sits on the settings screen, which renders no key list, and the panel used
+    // to live next to one. What it bought there was nothing; what it cost was a
+    // full re-render, so toggling the switch looked like the page bouncing.
+    //
+    // Every panel still agrees, because they share the store rather than each
+    // fetching a copy. That is the part that was load-bearing.
+    expect(PANEL).not.toMatch(/refreshServer\(/);
+    expect(STORE).not.toMatch(/router\.refresh\(/);
   });
 
   it("the store deduplicates the first load", () => {
