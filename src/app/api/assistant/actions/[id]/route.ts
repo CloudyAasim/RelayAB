@@ -30,7 +30,7 @@
  */
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
-import { z } from "zod";
+import { z, ZodError } from "zod";
 import {
   ModelConfigMergePatchSchema,
   ModelConfigPatchSchema,
@@ -82,6 +82,29 @@ export const ProviderArgsSchema = z
   .object({
     baseUrl: z.string().nullable().optional(),
     anthropicBaseUrl: z.string().nullable().optional(),
+    /**
+     * Fixed headers sent upstream, and which upstream protocol the OpenAI face
+     * speaks.
+     *
+     * Both were missing here while `propose_provider_update` offered both, wrote
+     * both into the proposal, and the approval diff rendered `upstreamFormat` as
+     * a line the administrator was being asked to confirm. Because this object is
+     * `.strict()`, the parse below rejected the whole proposal at apply time —
+     * so the sequence was: the assistant proposed it, the screen showed the diff,
+     * the administrator approved it, and then the change failed and took every
+     * other field in the same proposal with it.
+     *
+     * The lesson is the one that keeps repeating: a schema stricter than the tool
+     * that writes it puts the failure *after* the approval, which is the one place
+     * an administrator's click cannot be refunded. `assistant-provider-field-parity`
+     * now checks this list against the tool's declared parameters, so a field
+     * cannot be offered without somewhere to land.
+     *
+     * Mirrors `src/app/api/admin/providers/route.ts`, which is where an operator
+     * edits these same two fields by hand.
+     */
+    headers: z.record(z.string(), z.string()).optional(),
+    upstreamFormat: z.enum(["responses", "chat", "anthropic"]).optional(),
     openaiEnabled: z.boolean().optional(),
     anthropicEnabled: z.boolean().optional(),
     enabled: z.boolean().optional(),
@@ -183,7 +206,7 @@ const MediaArgsSchema = z
   .strict();
 
 /** A create's payload, which is a whole provider rather than a patch of one. */
-const ProviderCreateSchema = z
+export const ProviderCreateSchema = z
   .object({
     name: z.string().min(1).max(120),
     kind: z.enum(["openai", "anthropic"]).default("openai"),
@@ -467,12 +490,7 @@ export async function POST(
     // with a configuration, and that list was being dropped on the floor: the
     // admin saw the class name, the model saw the class name, and the second
     // could only guess again. It is the part of the error anyone can act on.
-    const message =
-      err instanceof MediaProviderValidationError
-        ? `配置不合法：${err.issues.join("；")}`
-        : err instanceof Error
-          ? err.message
-          : String(err);
+    const message = describeApplyFailure(err);
     await setAssistantActionStatus(me.id, id, "failed", message);
     const status = err instanceof MediaProviderValidationError ? 400 : 422;
     return NextResponse.json(
@@ -480,6 +498,43 @@ export async function POST(
       { status },
     );
   }
+}
+
+/**
+ * What the administrator and the model are told when an apply throws.
+ *
+ * A `ZodError`'s `message` is a JSON array of issues, and that array was reaching
+ * the approval screen verbatim — `[{"code":"unrecognized_keys","keys":["upstreamFormat"],
+ * "path":[],"message":"Unrecognized key(s) in object: 'upstreamFormat'"}]`. It is
+ * technically the reason and practically unreadable: it names a field without
+ * saying whose fault it is, and the one thing whoever has to act on needs is
+ * "this proposal contains a field the server will not accept", spelled out.
+ *
+ * So the same `issues` are rendered as a sentence, keeping the path, the field
+ * and the reason. The raw shape was never useful to a reader and was the whole
+ * of what the assistant got when it needed to correct itself.
+ */
+function describeApplyFailure(err: unknown): string {
+  if (err instanceof MediaProviderValidationError) return `配置不合法：${err.issues.join("；")}`;
+  if (err instanceof ZodError) {
+    return (
+      `变更内容有 ${err.issues.length} 处通不过校验` +
+      `（这是提案本身的问题，不是配置写错了）：` +
+      err.issues
+        .map((i) => `${describePath(i.path)}${i.message}`)
+        .join("；")
+    );
+  }
+  return err instanceof Error ? err.message : String(err);
+}
+
+/** `["modelConfigs", 0, "contextLength"]` → `modelConfigs[0].contextLength`。 */
+function describePath(path: ReadonlyArray<PropertyKey>): string {
+  if (path.length === 0) return "顶层";
+  return path.reduce<string>(
+    (acc, part) => (typeof part === "number" ? `${acc}[${part}]` : `${acc}.${String(part)}`),
+    "",
+  );
 }
 
 export async function GET(
