@@ -275,6 +275,20 @@ const RESERVED_TOKENS = 4_000;
  * 60,000 fits a full vendor reference page for a single tool call. The
  * per-turn ceiling below is what bounds a turn that reads many of them; raising
  * this is about not corrupting one result, not about removing a limit.
+ *
+ * It was 200,000 while this paragraph said 60,000 — the third time today that a
+ * number's stated reason had stopped matching the number. Putting it back to
+ * 60,000 is *not* the fix, though, and the guard is right to refuse: the media
+ * provider listing does not fit in 60,000 characters, and a truncation lands
+ * wherever it lands. Cutting a spec in half produces a proposal that looks
+ * complete and is not — already tried once, and the approval caught it.
+ *
+ * The real problem is upstream of this constant: one tool call is allowed to
+ * be 200,000 characters — about 50,000 tokens — while the history the summariser
+ * watches is 200 *messages*, roughly 40,000 characters of ordinary conversation.
+ * The two units never meet, so a turn can put half a context window into two
+ * messages and the summariser is never going to notice. That is a defect in when
+ * compaction triggers, not in how much one result may hold.
  */
 export const MAX_TOOL_RESULT_CHARS = 200_000;
 
