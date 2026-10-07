@@ -842,6 +842,7 @@ export function AssistantChat({
       {/* ---- top bar: a new chat on the left, what is answering on the right ---- */}
       <div className="mx-auto flex w-full max-w-4xl shrink-0 items-center gap-2 border-b pb-2">
         <Button
+          type="button"
           variant="ghost"
           size="sm"
           onClick={newThread}
@@ -854,7 +855,12 @@ export function AssistantChat({
           <span className="hidden sm:inline">{t("assistant.newThread")}</span>
         </Button>
 
-        <Button variant="ghost" size="sm" onClick={() => setHistoryOpen(true)}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => setHistoryOpen(true)}
+        >
           {t("assistant.history")}
           {threads.length > 0 && (
             <span className="ml-1 text-xs text-muted-foreground">{threads.length}</span>
@@ -864,7 +870,12 @@ export function AssistantChat({
         <div className="flex-1" />
 
         {pendingPanel && (
-          <Button variant="ghost" size="sm" onClick={() => setPendingOpen(true)}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setPendingOpen(true)}
+          >
             {t("actions.titleShort")}
             {pendingCount > 0 && (
               <Badge tone="warning" className="ml-1.5">
@@ -882,6 +893,7 @@ export function AssistantChat({
         </span>
 
         <Button
+          type="button"
           variant="ghost"
           size="icon"
           onClick={() => setSettingsOpen(true)}
