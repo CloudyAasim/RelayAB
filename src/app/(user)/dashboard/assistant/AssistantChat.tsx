@@ -190,7 +190,6 @@ export function AssistantChat({
   pendingPanel,
 }: Props) {
   const t = useT();
-  const router = useRouter();
 
   /**
    * Whether replies are rendered or shown raw. Kept in state as well as
@@ -765,7 +764,19 @@ export function AssistantChat({
           // number, and this one only ever refreshed its own. Without the second
           // line the count says 3 while the panel under it says 0.
           announcePendingChanged();
-          router.refresh();
+          /**
+           * No `router.refresh()` here — the bus above is what replaced it, and
+           * the note in `pending-bus.ts` says why it never worked: it re-renders
+           * the server components and leaves client state where it was. It was
+           * left in anyway, so the only thing it did was re-render the server
+           * tree at the end of every turn that proposed something.
+           *
+           * That is the whole trigger for the settings bug, and it is why the
+           * drawer only misbehaved *after* a conversation: this line is the only
+           * thing that ran between one turn and the next click, and a Radix modal
+           * mounted over a tree that had just been re-rendered does not behave like
+           * one mounted over an untouched page.
+           */
         }
       };
 
