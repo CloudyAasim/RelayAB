@@ -597,8 +597,19 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "list_media_providers",
-      description: "列出所有媒体服务商及其模型与 spec（图片/视频/语音）。",
-      parameters: { type: "object", properties: {}, additionalProperties: false },
+      description:
+        "列出所有媒体服务商及其模型与 spec 摘要（图片/视频/语音）。默认不给 spec 正文，" +
+        "要改某一份 spec 时加 full=true 单独取。",
+      parameters: {
+        type: "object",
+        properties: {
+          full: {
+            type: "boolean",
+            description: "true 时返回每份 spec 的完整 JSON（体积很大，只在真的要改 spec 时用）。",
+          },
+        },
+        additionalProperties: false,
+      },
     },
   },
   {
@@ -978,7 +989,7 @@ export async function executeTool(
       return probeProviderHost(args);
     case "list_media_providers":
       if (!isAdmin) return fail("这是管理员功能。");
-      return listMediaProvidersTool();
+      return listMediaProvidersTool(args.full === true);
     case "list_voices":
       // Not admin-only: the voice list is a read about what this account can
       // speak with, exactly like `/v1/audio/voices`, and gating it would make
@@ -2534,7 +2545,7 @@ async function listVoicesTool(): Promise<ToolResult> {
   });
 }
 
-async function listMediaProvidersTool(): Promise<ToolResult> {
+async function listMediaProvidersTool(full = false): Promise<ToolResult> {
   const media = await listMediaProviders();
   return okCompact(
     media.map((m) => {
@@ -2551,7 +2562,32 @@ async function listMediaProvidersTool(): Promise<ToolResult> {
           upstreamId: (cfg as { upstreamId?: string })?.upstreamId ?? id,
           enabled: (cfg as { enabled?: boolean })?.enabled ?? true,
         })),
-        specs: (m.specs ?? []).map(specForTheModel),
+        // The specs are a summary unless `full` was asked for. This used to be
+        // the whole payload, and the reasoning was sound on its own terms — half
+        // a spec is worse than none, because it looks complete and calls nothing.
+        // But "complete" was measured in one payload rather than in a
+        // conversation: one call returned tens of thousands of tokens, while the
+        // history that gets summarised is counted in *messages*. A turn could put
+        // half a context window into two messages and the summariser, which only
+        // wakes on the message count, was never going to notice. It didn't: the
+        // turn was cut mid-stream.
+        //
+        // The summary keeps `transport` **whole**. A summary that hoists `method`
+        // and `path` out of it teaches the model a shape that is not the shape,
+        // and a proposal built on it fails validation for reasons the model
+        // cannot see.
+        specs: (m.specs ?? []).map((s) =>
+          full
+            ? specForTheModel(s)
+            : {
+                capability: (s as MediaSpec).capability,
+                displayName: (s as MediaSpec).displayName,
+                models: (s as MediaSpec).models,
+                transport: (s as MediaSpec).transport,
+              },
+        ),
+        // The drift report is the reason to call this at all, so it stays in the
+        // summary. Trimming the specs must not trim the finding.
         ...(behind.length
           ? {
               templateDrift: behind.map(({ spec, drift: d }) => ({
@@ -2563,10 +2599,12 @@ async function listMediaProvidersTool(): Promise<ToolResult> {
               })),
             }
           : {}),
+        ...(full ? {} : { note: "spec 正文未包含；要改某份 spec 时用 full=true 单独取一次。" }),
       };
     }),
   );
-}async function proposeProviderUpdate(
+}
+async function proposeProviderUpdate(
   args: Record<string, unknown>,
   ctx: ToolContext,
 ): Promise<ToolResult> {

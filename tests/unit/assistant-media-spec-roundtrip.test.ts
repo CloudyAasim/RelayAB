@@ -243,13 +243,24 @@ describe("what actually reaches the approval", () => {
 describe("the read tool stops teaching the wrong shape", () => {
   const TOOLS = readFileSync(join(process.cwd(), "src", "lib", "assistant", "tools.ts"), "utf-8");
 
-  it("hands over the stored spec rather than a summary of it", () => {
+  it("never hands over a shape that is not the shape", () => {
     // The summary hoisted `method` and `path` out of `transport` and dropped
     // everything that makes a spec work. A model shown only that will propose
-    // only that, and it will not validate.
+    // only that, and it will not validate. A summary may be *smaller*; what it
+    // must not be is *different* — so `transport` comes through whole.
     const fn = TOOLS.slice(TOOLS.indexOf("async function listMediaProvidersTool"));
-    expect(fn.slice(0, 1200)).toContain("specs: (m.specs ?? []).map(specForTheModel)");
-    expect(fn.slice(0, 1200)).not.toMatch(/method: s\.transport\?\.method/);
+    expect(fn.slice(0, 2000)).not.toMatch(/method: s\.transport\?\.method/);
+    expect(fn.slice(0, 2000)).toContain("transport: (s as MediaSpec).transport");
+  });
+
+  it("and still hands over the whole spec when it is asked twice", () => {
+    // The default is smaller, not different: a model that is about to edit a spec
+    // gets exactly the payload that was always here, byte for byte. Without this
+    // the summary would be the only way to read a spec, and "which shape does a
+    // spec have" would have two answers.
+    const fn = TOOLS.slice(TOOLS.indexOf("async function listMediaProvidersTool"));
+    expect(fn.slice(0, 2000)).toContain("specForTheModel(s)");
+    expect(TOOLS).toMatch(/full: \{[\s\S]{0,40}"boolean"/);
   });
 
   it("tells the model to copy a spec rather than compose one", () => {
