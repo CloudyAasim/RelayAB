@@ -39,6 +39,16 @@ import type { MessageAttachment } from "@/lib/assistant/schema";
 export const dynamic = "force-dynamic";
 
 /**
+ * How often a silent turn says something anyway.
+ *
+ * Sized against the *smallest* read timeout this app has to survive rather than
+ * the largest: nginx defaults to 60s and this deployment is documented to raise
+ * it to 600s. A value comfortably under both means the number does not have to
+ * be re-tuned whenever the proxy is reconfigured.
+ */
+const KEEPALIVE_MS = 25_000;
+
+/**
  * One assistant turn, run through this deployment's own proxy.
  *
  * The account credential cannot be sent over HTTP — its row keeps only a sha256
@@ -390,6 +400,32 @@ export async function POST(req: Request): Promise<Response> {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
       };
 
+      /**
+       * A keep-alive, because something between here and the browser has its own
+       * read timeout and the turn is allowed to outlast it.
+       *
+       * `MAX_TURN_MS` is 30 minutes, and the proxy in front of this app is
+       * configured with a read timeout of its own — a fraction of that. nginx's
+       * `proxy_read_timeout` measures the gap *between* reads, so a turn that is
+       * streaming is never at risk, but a slow model call or a long tool call
+       * can go minutes without emitting a byte, and that gap is what gets the
+       * connection cut. The turn then stops with nothing on screen explaining
+       * why, and nothing in this process having decided to stop it.
+       *
+       * An SSE comment line is the cheapest way to hold the socket: the client
+       * parser drops anything that is not a `data:` frame, so this is invisible
+       * to the UI and costs a few bytes on the wire. 25s is well under nginx's
+       * 60s default as well as the 600s this deployment sets, so it does not
+       * depend on which one is in effect.
+       */
+      const keepAlive = setInterval(() => {
+        try {
+          controller.enqueue(encoder.encode(": keep-alive\n\n"));
+        } catch {
+          // The stream closed underneath us; `finally` clears the interval.
+        }
+      }, KEEPALIVE_MS);
+
       try {
         // Stored here rather than in the route body so a write failure is a
         // result the model can be told about, next to everything else that can
@@ -443,6 +479,7 @@ export async function POST(req: Request): Promise<Response> {
       } catch (err) {
         send({ type: "error", text: err instanceof Error ? err.message : String(err) });
       } finally {
+        clearInterval(keepAlive);
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
       }

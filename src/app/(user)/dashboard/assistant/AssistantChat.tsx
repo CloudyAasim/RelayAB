@@ -697,6 +697,15 @@ export function AssistantChat({
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      /**
+       * Whether the turn said it finished.
+       *
+       * The stream can end without it — a proxy in front of the app has its own
+       * read timeout, and a client that is disconnected mid-turn sees the body
+       * simply stop. Without this the conversation just stops, which is
+       * indistinguishable from the model deciding it was done.
+       */
+      let sawDone = false;
 
       /** One `data:` frame, or nothing. */
       const handle = (raw: string) => {
@@ -730,8 +739,9 @@ export function AssistantChat({
           // Show it the moment the tool finishes, rather than waiting for the
           // turn to end and the thread to reload.
           setLiveArtifacts((prev) => [...prev, ...evt.artifacts!]);
-        } else if (evt.type === "done" && evt.data?.pendingActions?.length) {
-          void loadPendingCount();
+        } else if (evt.type === "done") {
+          sawDone = true;
+          if (evt.data?.pendingActions?.length) void loadPendingCount();
           // The badge and the list are two components holding two copies of one
           // number, and this one only ever refreshed its own. Without the second
           // line the count says 3 while the panel under it says 0.
@@ -757,6 +767,15 @@ export function AssistantChat({
       // tail of the answer with nothing on screen to say so — the reader is
       // closed by then, so it is never coming in another chunk.
       handle(buffer.trim());
+
+      // The body ended and the turn never said it was finished. Something
+      // between the app and the browser closed the connection — most often a
+      // proxy read timeout during a long model or tool call. Saying so is the
+      // whole difference between "the assistant gave up" and "the connection
+      // dropped mid-answer", and the reader can act on the second one.
+      if (!sawDone) {
+        setError(t("assistant.streamInterrupted"));
+      }
     } catch (err) {
       if (!(err instanceof DOMException && err.name === "AbortError")) {
         setError(err instanceof Error ? err.message : String(err));

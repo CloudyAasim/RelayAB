@@ -982,6 +982,8 @@ const zhCN: Dict = {
   "assistant.thinkingBlock": "思考过程",
   "assistant.expand": "展开",
   "assistant.collapse": "收起",
+  "assistant.streamInterrupted":
+    "连接中断了，这一轮没有跑完。上面这些是已经收到的部分——可以就着它继续问，或者重发一次。",
   "assistant.pretty.switch": "输出美化",
   "assistant.pretty.hint": "把回答按 Markdown 排版，思考过程默认折叠起来，生成的图片/语音附带类型与下载。关掉就是模型原样的纯文本。",
   "assistant.artifact.download": "下载",
@@ -2143,6 +2145,8 @@ const en: Dict = {
   "assistant.thinkingBlock": "Reasoning",
   "assistant.expand": "Expand",
   "assistant.collapse": "Collapse",
+  "assistant.streamInterrupted":
+    "The connection dropped before this turn finished. What is above is the part that arrived — you can carry on from it, or send the request again.",
   "assistant.pretty.switch": "Pretty output",
   "assistant.pretty.hint":
     "Lay answers out as Markdown, fold the reasoning away by default, and label generated images and audio with their type and a download button. Turn it off for the model's raw text exactly as written.",
