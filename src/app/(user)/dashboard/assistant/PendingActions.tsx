@@ -121,23 +121,45 @@ export function PendingActions({ isAdmin }: { isAdmin: boolean }) {
     }
   }
 
+  /**
+   * The failure banner.
+   *
+   * It used to be rendered *inside* the list, below the empty-state return. That
+   * made it disappear in precisely the case it exists for: the server marks a
+   * failed apply `failed` before it answers, so the reload that follows removes
+   * the card from the pending queue, the queue empties, and the component took
+   * the early return — unmounting the message that explained why the apply had
+   * just failed. What the administrator saw was a sentence that appeared for one
+   * round trip and was gone before it could be read.
+   *
+   * It is above that return now, so it survives the queue becoming empty. It is
+   * the server's own wording — for a media provider that is the list of every
+   * field it objected to — and there is nowhere else for an administrator to
+   * read it: the queue is pending-only, so the row the server wrote the reason
+   * into is not in this list at all.
+   */
+  const errorBanner = error ? (
+    <pre className="overflow-x-auto rounded-md bg-destructive/10 p-3 text-xs text-destructive">
+      {error}
+    </pre>
+  ) : null;
+
   if (actions.length === 0) {
     // Inside the drawer this used to render nothing at all, which reads as a
     // broken panel rather than an empty queue.
     return (
-      <p className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
-        {t("actions.empty")}
-      </p>
+      <div className="space-y-3">
+        {errorBanner}
+        <p className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
+          {t("actions.empty")}
+        </p>
+      </div>
     );
   }
 
   return (
     <div className="space-y-3">
-      {error && (
-        <pre className="overflow-x-auto rounded-md bg-destructive/10 p-3 text-xs text-destructive">
-          {error}
-        </pre>
-      )}
+      {errorBanner}
       {actions.map((a) => (
         <div key={a.id} className="space-y-2 rounded-md border border-border p-3">
           <div className="flex flex-wrap items-center gap-2">
