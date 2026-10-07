@@ -54,7 +54,13 @@ describe("a silent turn keeps the connection alive", () => {
     // Set on the event itself, not on `pendingActions` — a finished turn with
     // nothing pending still finished.
     expect(src).toMatch(/evt\.type === "done"\) \{\s*sawDone = true;/);
-    expect(src).toMatch(/if \(!sawDone\) \{\s*setError\(/);
+    // ...but a turn that reported its own error also ends without finishing,
+    // and this used to overwrite that error with the generic one. "Upstream
+    // returned 504" and "the connection dropped" are not the same claim, and
+    // only the first one is true when the turn failed. The generic message is
+    // for turns that ended without saying anything at all.
+    expect(src).toMatch(/evt\.type === "error" && evt\.text\) \{\s*sawError = true;/);
+    expect(src).toMatch(/if \(!sawDone && !sawError\) \{\s*setError\(/);
   });
 
   it("and the interruption message exists in both languages", async () => {

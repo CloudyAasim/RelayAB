@@ -334,18 +334,35 @@ export function AssistantChat({
    * So on returning to the foreground, if a turn is in flight, take the
    * transcript from the server rather than from the wire. The server's version
    * is the truth; this page's is a guess that a sleep interrupted.
+   *
+   * `wasHiddenRef` is what keeps this from firing constantly. Recovering means
+   * aborting a turn that may be perfectly healthy, so it may only happen after
+   * the page has genuinely been in the background — a real hidden state that
+   * something could have frozen in. A bare `focus` event is not that: it fires
+   * every time the user clicks back into this window, and the stream behind it
+   * is usually still running. Browsers throttle timers in a hidden tab, not
+   * connections, so a visible tab that merely lost focus has lost nothing and
+   * has no reason to be thrown away.
    */
+  const wasHiddenRef = useRef(false);
   useEffect(() => {
+    const onHidden = () => {
+      if (document.visibilityState === "hidden") wasHiddenRef.current = true;
+    };
     const onVisible = () => {
+      if (!wasHiddenRef.current) return;
       if (document.visibilityState !== "visible") return;
+      wasHiddenRef.current = false;
       if (!busy || !threadId) return;
       abortRef.current?.abort();
       setBusy(false);
       void loadThread(threadId);
     };
+    document.addEventListener("visibilitychange", onHidden);
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onVisible);
     return () => {
+      document.removeEventListener("visibilitychange", onHidden);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onVisible);
     };
@@ -724,6 +741,17 @@ export function AssistantChat({
        * indistinguishable from the model deciding it was done.
        */
       let sawDone = false;
+      /**
+       * Whether the turn already said *why* it stopped, in its own words.
+       *
+       * The stream ends the same way whether the connection dropped or the
+       * turn failed, so the bottom of this loop cannot tell those apart — and
+       * the interruption message it falls back to was overwriting the real
+       * error every time, replacing "upstream returned 504" with "the
+       * connection dropped". The one message that names a cause was being
+       * erased by the one that admits there isn't one.
+       */
+      let sawError = false;
 
       /** One `data:` frame, or nothing. */
       const handle = (raw: string) => {
@@ -752,6 +780,7 @@ export function AssistantChat({
             prev.map((m) => (m.id === "streaming" ? { ...m, reasoning: (m.reasoning ?? "") + chunk } : m)),
           );
         } else if (evt.type === "error" && evt.text) {
+          sawError = true;
           setError(evt.text);
         } else if (evt.type === "artifact" && evt.artifacts?.length) {
           // Show it the moment the tool finishes, rather than waiting for the
@@ -803,7 +832,11 @@ export function AssistantChat({
       // proxy read timeout during a long model or tool call. Saying so is the
       // whole difference between "the assistant gave up" and "the connection
       // dropped mid-answer", and the reader can act on the second one.
-      if (!sawDone) {
+      //
+      // Only when the turn did *not* report an error of its own first: a turn
+      // that ended by failing also ends without a terminator, and the reason it
+      // gave is worth more than a guess about the wire.
+      if (!sawDone && !sawError) {
         setError(t("assistant.streamInterrupted"));
       }
     } catch (err) {
