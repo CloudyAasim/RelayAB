@@ -91,25 +91,65 @@ describe("the index is usable", () => {
   });
 
   it("a page that renders its own prose still has that prose", () => {
-    // `media` renders a card of its own (the endpoint list, the voice list) and
-    // then `<ModelCatalog>` inside it. The generator used to *replace* that
-    // section's keys with the catalogue's, so every sentence the chapter
-    // actually renders became unreachable — and `read_docs` handed the model the
-    // catalogue's interface strings instead, which is what it read as the
-    // documentation: "共 {n} 个模型", "按模型名、供应商、能力或说明搜索". Fifty-two
-    // keys, not one of them the page's own.
+    // `media` renders a card of its own and then `<ModelCatalog>` inside it. The
+    // generator used to *replace* that section's keys with the catalogue's, so
+    // every sentence the chapter actually renders became unreachable and
+    // `read_docs` handed the model the catalogue's interface strings instead.
     const media = WEB_DOC_SECTIONS.find((s) => s.surface === "user" && s.id === "media");
     const own = (media?.keys ?? []).filter((k) => k.startsWith("docs.media."));
     expect(own.length, "user:media lost every key of its own").toBeGreaterThan(0);
     // And the component it embeds is still covered, or the fix went the other
     // way and the catalogue strings are gone instead.
-    expect((media?.keys ?? []).some((k) => k.startsWith("docs.catalog."))).toBe(true);
+    expect((media?.chrome ?? []).some((k) => k.startsWith("docs.catalog."))).toBe(true);
+  });
+
+  it("and the catalogue's furniture is covered without being read as prose", () => {
+    // The chapter above kept its sentences by *merging* the catalogue's keys,
+    // which put 50 lines of column headers and copy buttons into the middle of a
+    // chapter about image generation — "共 {n} 个模型", "按模型名、供应商、能力或
+    // 说明搜索", "复制失败", "没有这一章". So covered and readable are two
+    // different claims, and the model is only told the second one.
+    for (const s of WEB_DOC_SECTIONS) {
+      const both = (s.keys ?? []).filter((k) => (s.chrome ?? []).includes(k));
+      expect(both, `${s.surface}:${s.id} lists the same key as prose and as chrome`).toEqual([]);
+    }
+
+    // Named rather than derived: a two-character chrome string like "媒体模型"
+    // is a substring of real prose, so "no chrome text appears anywhere" would
+    // fail for the wrong reason. These are the lines that actually reached the
+    // model.
+    const read = reader().read("user:media", "zh-CN", "user");
+    expect(read.ok).toBe(true);
+    if (!read.ok) return;
+    for (const noise of [
+      "共 {n} 个模型",
+      "按模型名、供应商、能力或说明搜索",
+      "复制失败",
+      "已复制",
+      "没有这一章",
+      "文档里找不到这个章节",
+    ]) {
+      expect(read.text.includes(noise), `"${noise}" reached the prose`).toBe(false);
+    }
+    // And the page says where the live table actually is.
+    expect(read.text).toContain("list_gateway_models");
+  });
+
+  it("a page whose content is a file says where the file is", () => {
+    // `admin:media` renders the adapter protocol from a repository file. The
+    // page announces it — "下面就是协议本身" — and `read_docs` returned the
+    // announcement and then stopped, so the model concluded it could not read
+    // the protocol and asked the user to paste it.
+    const read = reader().read("admin:media", "zh-CN", "admin");
+    expect(read.ok).toBe(true);
+    if (!read.ok) return;
+    expect(read.text).toContain("get_media_spec_reference");
   });
 
   it("no page lists a key the dictionary does not have", () => {
     // The extractors are regexes over source and can land on a plain literal
-    // next to a `t()` call — the catalogue has `"…"` and `"\n"` in it. Those
-    // are not missing translations, and they reached the model as literal
+    // next to a `t()` call — the catalogue has `"…"` and `"\n"` in it. Those are
+    // not missing translations, and they reached the model as literal
     // `[missing: …]` lines inside what it was told was the documentation.
     const dict = readFileSync(join(process.cwd(), "src", "lib", "i18n", "dict.ts"), "utf-8");
     const known = new Set(
@@ -117,7 +157,9 @@ describe("the index is usable", () => {
     );
     const unknown: string[] = [];
     for (const s of WEB_DOC_SECTIONS) {
-      for (const k of s.keys) {
+      // Chrome too: it is covered by this index, so a typo in it is the same
+      // broken string on the rendered page that a typo in prose is.
+      for (const k of [...s.keys, ...(s.chrome ?? [])]) {
         if (!known.has(k)) unknown.push(`${s.surface}:${s.id} → ${JSON.stringify(k)}`);
       }
     }

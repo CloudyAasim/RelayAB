@@ -39,7 +39,9 @@ import {
 } from "../db/assistant";
 import { auditModelConfigs, describeFindings } from "../providers/config-audit";
 import { providerDrift } from "../media/drift";
+import { MEDIA_TEMPLATES } from "../media/seeds";
 import type { MediaSpec } from "../media/spec";
+import { readProtocolDoc } from "../docs/protocol-doc";
 import { getPublicUrl } from "../config";
 import { knownModelOrDefault } from "../providers/known-models";
 import { decryptSecret } from "../crypto/secrets";
@@ -615,6 +617,44 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
   {
     type: "function",
     function: {
+      name: "get_media_spec_reference",
+      description:
+        "读媒体适配协议的原文，或者当前内置的 spec 模板。\n" +
+        "写 spec 之前先读它 —— spec 的字段名和映射语法以这份原文为准，不要凭印象写。\n" +
+        "what=\"protocol\"：协议全文（很长，用 offset/limit 分段读，读到 nextOffset 就接着读下一段）。\n" +
+        "what=\"templates\"：本部署内置的模板，一字不差的可套用副本。list_media_providers 报 templateDrift 时用它取回完整模板值。\n" +
+        "注意：模板不等于正确。已存的 spec 可能带着模板里没有的、故意的本地修正（ASR 的文件路径就是这样），" +
+        "整份套用会把那些修正冲掉 —— 只按 templateDrift 列出的路径逐条改。",
+      parameters: {
+        type: "object",
+        properties: {
+          what: {
+            type: "string",
+            enum: ["protocol", "templates"],
+            description: "protocol = 协议原文；templates = 内置模板",
+          },
+          capability: {
+            type: "string",
+            description:
+              "只取这个能力的模板，例如 audio.tts、image.generate、audio.stt。留空返回全部。",
+          },
+          offset: {
+            type: "integer",
+            description: "what=\"protocol\" 时的起始字符位置，从 0 开始。",
+          },
+          limit: {
+            type: "integer",
+            description: "what=\"protocol\" 时这一次返回多少字符。",
+          },
+        },
+        required: ["what"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "propose_provider_update",
       description:
         "提出一次聊天服务商配置变更。这不会立刻生效 —— 它生成一份 before/after 对比，等管理员在界面上确认后才执行。" +
@@ -831,7 +871,11 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
             description:
               "推荐用法：按下标修改已有 spec 的字段。只写要改的字段，其余原样保留。" +
               "下标从 list_media_providers 返回的 specs 数组顺序数起（从 0 开始）。" +
-              "这样你不需要重发整个 spec，也就不会把它写坏。",
+              "这样你不需要重发整个 spec，也就不会把它写坏。\n" +
+              "除下面列出的几个字段外，spec 上的**任何**顶层字段都可以作为键写进来 —— " +
+              "transport、request、response、voices、errors、limits、metadata 等都算，" +
+              "值就是完整的 JSON 对象。合并是逐条浅合并：你在某个键上写的值会整个替换那个键，" +
+              "所以要改嵌套结构里的一处，就得把那个键的完整新值写出来（模板用 get_media_spec_reference 取）。",
             items: {
               type: "object",
               properties: {
@@ -990,6 +1034,9 @@ export async function executeTool(
     case "list_media_providers":
       if (!isAdmin) return fail("这是管理员功能。");
       return listMediaProvidersTool(args.full === true);
+    case "get_media_spec_reference":
+      if (!isAdmin) return fail("这是管理员功能。");
+      return mediaSpecReferenceTool(args);
     case "list_voices":
       // Not admin-only: the voice list is a read about what this account can
       // speak with, exactly like `/v1/audio/voices`, and gating it would make
@@ -2595,7 +2642,27 @@ async function listMediaProvidersTool(full = false): Promise<ToolResult> {
                 displayName: spec.displayName,
                 templateId: (d as { templateId: string }).templateId,
                 paths: (d as { paths: string[] }).paths,
-                how: "后台「媒体服务商」里点「套用模板」保存，即可把这份拷贝换成当前模板。",
+                /**
+                 * How to act on it.
+                 *
+                 * This used to say "click 套用模板 in the admin UI", which is
+                 * how the ASR spec lost its file path twice in one day: the
+                 * template still reads the audio from `$.image`, the client puts
+                 * it in `file`, and re-applying the template walked straight back
+                 * into a bug that had already been found, fixed and verified.
+                 *
+                 * A stored spec is allowed to be *better* than the template it
+                 * came from, and "differs" does not say which side is right. So
+                 * the pointer is to the template — read it, decide per path, and
+                 * change only those paths. `paths` abbreviates values at 60
+                 * characters, which is enough to see what moved and not enough
+                 * to copy; the value comes from the tool named here.
+                 */
+                how:
+                  `用 get_media_spec_reference(what="templates", capability="${spec.capability}") 取回当前模板的完整值，` +
+                  "对照上面的 paths 逐条判断，然后用 propose_media_provider_update 的 specEdits 只改这些字段。" +
+                  "不要整份套用模板：已存的 spec 可能带着模板里没有的、故意的修正，整份套用会把它们一起冲掉。" +
+                  "paths 里的模板值超过 60 字符会被截断，以工具取回的完整值为准。",
               })),
             }
           : {}),
@@ -2604,6 +2671,91 @@ async function listMediaProvidersTool(full = false): Promise<ToolResult> {
     }),
   );
 }
+/**
+ * One window of the protocol.
+ *
+ * The document is ~76 KB of markdown. Sending all of it would cost a large
+ * fraction of a turn on a document the model only needs a section of, and the
+ * turn loop would truncate it somewhere nobody chose — which is the same failure
+ * `MAX_PAGE_CHARS` exists to prevent on the docs side. Paged instead, with the
+ * offset handed back so the next call is a lookup rather than a re-read.
+ */
+const PROTOCOL_CHUNK_CHARS = 12_000;
+const MAX_PROTOCOL_CHUNK_CHARS = 40_000;
+
+/**
+ * The two things the assistant could not read about a media spec.
+ *
+ * Both are references rather than configuration, which is why they lived in
+ * places a tool call could not reach:
+ *
+ *  - **The protocol.** `docs/模型适配协议/README.md` is a file, not i18n text, so
+ *    `read_docs` on `admin:media` returned the page's prose — which ends by
+ *    announcing that the protocol is below it — and none of the protocol. The
+ *    model's own conclusion was that it could not read the template body and
+ *    should ask the user to paste it.
+ *  - **The templates.** `MEDIA_TEMPLATES` is a module value. `list_media_providers`
+ *    reports drift against it, but the report's values are abbreviated to 60
+ *    characters, so the one field a model most needs — the whole of a missing
+ *    `voices` block — arrived as `模板={"remote":{"auth":{"type":"bearer"},"request":{"voice_typ…`.
+ *
+ * Neither is secret. The protocol is in the repository, and the templates are
+ * the operator's own starting points, already summarised by the tool that
+ * reports drift. Admin-only for the same reason `list_media_providers` is: it
+ * describes this deployment's media surface.
+ */
+async function mediaSpecReferenceTool(args: Record<string, unknown>): Promise<ToolResult> {
+  const what = args.what === "templates" ? "templates" : "protocol";
+  const capability = typeof args.capability === "string" ? args.capability.trim() : "";
+
+  if (what === "templates") {
+    const templates = Object.entries(MEDIA_TEMPLATES)
+      .map(([id, t]) => ({
+        id,
+        name: t.name,
+        baseUrl: t.baseUrl,
+        models: t.models,
+        specs: capability ? t.specs.filter((s) => s.capability === capability) : t.specs,
+      }))
+      .filter((t) => t.specs.length > 0);
+
+    if (templates.length === 0) {
+      return fail(
+        capability
+          ? `没有哪个模板含能力「${capability}」。可用能力：${[...new Set(Object.values(MEDIA_TEMPLATES).flatMap((t) => t.specs.map((s) => s.capability)))].join(", ")}`
+          : "本部署没有内置任何媒体模板。",
+      );
+    }
+
+    return ok({
+      templates,
+      note:
+        "这些模板是「起点」，不是「正确答案」。已存的 spec 可能带着模板里没有的、故意的本地修正，" +
+        "整份套用会把它们冲掉 —— 用 propose_media_provider_update 的 specEdits 按 templateDrift 列出的路径逐条改。",
+    });
+  }
+
+  const { text, error } = await readProtocolDoc();
+  if (!text) return fail(error ?? "读不到媒体适配协议原文。");
+
+  const total = text.length;
+  const offset = Math.max(0, typeof args.offset === "number" ? Math.trunc(args.offset) : 0);
+  const asked = typeof args.limit === "number" ? Math.trunc(args.limit) : PROTOCOL_CHUNK_CHARS;
+  const limit = Math.min(Math.max(asked, 1), MAX_PROTOCOL_CHUNK_CHARS);
+  const slice = text.slice(offset, offset + limit);
+  const end = offset + slice.length;
+
+  return ok({
+    total,
+    offset,
+    returned: slice.length,
+    // Absent rather than `null` on the last window: "there is no next one" and
+    // "the next one is at position zero" should not look alike.
+    ...(end < total ? { nextOffset: end } : {}),
+    text: slice,
+  });
+}
+
 async function proposeProviderUpdate(
   args: Record<string, unknown>,
   ctx: ToolContext,

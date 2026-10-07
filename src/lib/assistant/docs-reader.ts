@@ -4,11 +4,18 @@
  * Read the documentation this deployment actually shows.
  *
  * The built-in pages are React components whose prose is i18n text, grouped by
- * a `section === "…"` branch. Neither the components nor `docs/` is shipped
- * inside the runtime image, so the grouping is pre-extracted into
- * `docs-index.generated.ts` and the text is resolved from the dictionary at
- * call time. Which is also why the answer comes out in the reader's own
- * language: the same strings, resolved against their locale.
+ * a `section === "…"` branch. The components are not shipped inside the runtime
+ * image, so the grouping is pre-extracted into `docs-index.generated.ts` and
+ * the text is resolved from the dictionary at call time. Which is also why the
+ * answer comes out in the reader's own language: the same strings, resolved
+ * against their locale.
+ *
+ * What this cannot return is a page whose content is a *file* rather than
+ * prose — the media adapter protocol, which the admin page renders from
+ * `docs/模型适配协议/README.md`. That is why `admin:media` reads as a page that
+ * announces the protocol and then stops: the sentence is true on the page and a
+ * dead end in the text. The file itself reaches the model through
+ * `get_media_spec_reference`, and the `after` field is what tells it so.
  *
  * The operator's own pages are the exception: written at runtime from a form,
  * so they cannot be in a generated file. They arrive as `pages`, read once by
@@ -179,12 +186,22 @@ export function createDocReader(pages: readonly DocPage[] | undefined): DocReade
     // A key that resolves to itself is the fallback identity, and seeing it in
     // the output is how a broken dictionary entry becomes visible instead of
     // reading as a page that says nothing.
+    //
+    // `section.chrome` is deliberately not here. Those are the strings an
+    // embedded component renders — column headers, a search box, copy buttons —
+    // and joining them into the prose made a chapter about media generation
+    // read as "复制失败 / 筛选 / 共 {n} 个模型". They are still covered by the
+    // index and by the dictionary check; they are just not what the page says.
     const lines = section.keys.map((key) => {
       const value = translate(locale, key);
       return value === key ? `[missing: ${key}]` : value;
     });
 
     let text = lines.join("\n");
+    // Where the rest of the page lives, when the page renders something this
+    // reader cannot hand over. "The protocol is below this" is true on the
+    // rendered page and a dead end here, so the pointer travels with it.
+    if (section.after) text = text ? `${text}\n\n${section.after}` : section.after;
     let truncated = false;
     if (text.length > MAX_PAGE_CHARS) {
       text = `${text.slice(0, MAX_PAGE_CHARS)}\n…（这一页很长，已截断；需要后面的部分请按 topic 再问一次）`;

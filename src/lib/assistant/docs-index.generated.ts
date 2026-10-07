@@ -6,8 +6,8 @@
  * compares, so a doc page that gains a line fails the build rather than quietly
  * becoming unreadable to the assistant.
  *
- * This exists because the docs are React components, their prose is i18n text, and
- * neither the components nor `docs/` is shipped inside the runtime image.
+ * This exists because the docs are React components and their prose is i18n text,
+ * so the grouping has to be extracted rather than read.
  */
 
 export interface WebDocSection {
@@ -16,10 +16,20 @@ export interface WebDocSection {
   id: string;
   /** One line on what the page covers, for the index the model reads first. */
   summary: string;
-  /** The i18n keys this page renders, in the order it renders them. */
+  /** The i18n keys this page renders as prose, in the order it renders them. */
   keys: string[];
+  /**
+   * Keys this page renders through a component it embeds.
+   *
+   * Covered by the index and by the dictionary check, and never handed to
+   * the model as documentation: a column header and a copy button are the
+   * rendered page's own furniture, not what the page is saying.
+   */
+  chrome?: string[];
   /** Set for a page that is not i18n prose, so the model is told what it is. */
   note?: string;
+  /** Appended after the prose: where the rest of the page lives, if it does. */
+  after?: string;
 }
 
 export const WEB_DOC_SECTIONS: WebDocSection[] = [
@@ -28,6 +38,7 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     id: "start",
     summary: "快速开始：这是什么、需要什么环境变量、第一个请求怎么发",
     keys: ["docs.title","docs.intro","docs.basics.title","docs.basics.desc","docs.basics.line1","docs.basics.line2","docs.basics.line3","docs.basics.line4","docs.basics.warning"],
+    chrome: ["docs.unknown.title","docs.unknown.desc","docs.copy.failed","docs.copy.copied","common.copy"],
   },
   {
     surface: "user",
@@ -75,13 +86,17 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     surface: "user",
     id: "media",
     summary: "媒体能力总览与模型目录：图片、视频、语音、音乐",
-    keys: ["docs.media.title","docs.media.desc","docs.media.line1","docs.media.image","docs.media.edit","docs.media.video","docs.media.tts","docs.media.stt","docs.media.music","docs.media.voices","docs.media.voicesNote","docs.media.billing","docs.help.contactAdmin","docs.unknown.title","docs.unknown.desc","docs.copy.failed","docs.copy.copied","common.copy","docs.catalog.reasoningSwitchOnly","docs.catalog.reasoningAlwaysOn","docs.catalog.reasoningEffortOnly","docs.catalog.reasoningNone","docs.catalog.baseUrl","docs.catalog.chatModels","docs.catalog.mediaModels","docs.catalog.support","docs.catalog.search","docs.catalog.searchPlaceholder","docs.catalog.filter","docs.catalog.all","docs.catalog.chat","docs.catalog.media","docs.catalog.count","docs.catalog.groupChat","docs.catalog.groupMedia","docs.catalog.groupChatDesc","docs.catalog.groupMediaDesc","docs.catalog.model","docs.catalog.providerOf","docs.catalog.context","docs.catalog.maxOutput","docs.catalog.kind","docs.catalog.endpoint","docs.catalog.rateIn","docs.catalog.perMillion","docs.catalog.rateOut","docs.catalog.rateCachedRead","docs.catalog.rateCachedWrite","docs.catalog.pricePerItem","docs.catalog.perItem","docs.catalog.empty","docs.catalog.priority","docs.catalog.detail","docs.catalog.base","docs.catalog.format","docs.catalog.upstream","docs.catalog.reasoningLevels","docs.catalog.thinkingSwitch","docs.catalog.thinkingSwitchYes","docs.catalog.thinkingSwitchNo","docs.catalog.modes","docs.catalog.maxReference","docs.catalog.sizes","docs.catalog.detailEmpty","docs.catalog.providerGroup","docs.catalog.enabled","docs.catalog.disabled","docs.catalog.modelCount"],
+    keys: ["docs.media.title","docs.media.desc","docs.media.line1","docs.media.image","docs.media.edit","docs.media.video","docs.media.tts","docs.media.stt","docs.media.music","docs.media.voices","docs.media.voicesNote","docs.media.billing","docs.help.contactAdmin"],
+    chrome: ["docs.catalog.reasoningSwitchOnly","docs.catalog.reasoningAlwaysOn","docs.catalog.reasoningEffortOnly","docs.catalog.reasoningNone","docs.catalog.baseUrl","docs.catalog.chatModels","docs.catalog.mediaModels","docs.catalog.support","docs.catalog.search","docs.catalog.searchPlaceholder","docs.catalog.filter","docs.catalog.all","docs.catalog.chat","docs.catalog.media","docs.catalog.count","docs.catalog.groupChat","docs.catalog.groupMedia","docs.catalog.groupChatDesc","docs.catalog.groupMediaDesc","docs.catalog.model","docs.catalog.providerOf","docs.catalog.context","docs.catalog.maxOutput","docs.catalog.kind","docs.catalog.endpoint","docs.catalog.rateIn","docs.catalog.perMillion","docs.catalog.rateOut","docs.catalog.rateCachedRead","docs.catalog.rateCachedWrite","docs.catalog.pricePerItem","docs.catalog.perItem","docs.catalog.empty","docs.catalog.priority","docs.catalog.detail","docs.catalog.base","docs.catalog.format","docs.catalog.upstream","docs.catalog.reasoningLevels","docs.catalog.thinkingSwitch","docs.catalog.thinkingSwitchYes","docs.catalog.thinkingSwitchNo","docs.catalog.modes","docs.catalog.maxReference","docs.catalog.sizes","docs.catalog.detailEmpty","docs.catalog.providerGroup","docs.catalog.enabled","docs.catalog.disabled","docs.catalog.modelCount"],
+    after: "实时模型目录用 list_gateway_models 取，那才是当前这张表的真实内容；这一页里内嵌的目录组件是按页面渲染的界面，不是文档正文。",
   },
   {
     surface: "user",
     id: "catalog",
     summary: "本部署的模型目录：实时读取服务商表，分对话与媒体两张表",
-    keys: ["docs.catalog.reasoningSwitchOnly","docs.catalog.reasoningAlwaysOn","docs.catalog.reasoningEffortOnly","docs.catalog.reasoningNone","docs.catalog.baseUrl","docs.catalog.chatModels","docs.catalog.mediaModels","docs.catalog.support","docs.catalog.search","docs.catalog.searchPlaceholder","docs.catalog.filter","docs.catalog.all","docs.catalog.chat","docs.catalog.media","docs.catalog.count","docs.catalog.groupChat","docs.catalog.groupMedia","docs.catalog.groupChatDesc","docs.catalog.groupMediaDesc","docs.catalog.model","docs.catalog.providerOf","docs.catalog.context","docs.catalog.maxOutput","docs.catalog.kind","docs.catalog.endpoint","docs.catalog.rateIn","docs.catalog.perMillion","docs.catalog.rateOut","docs.catalog.rateCachedRead","docs.catalog.rateCachedWrite","docs.catalog.pricePerItem","docs.catalog.perItem","docs.catalog.empty","docs.catalog.priority","docs.catalog.detail","docs.catalog.base","docs.catalog.format","docs.catalog.upstream","docs.catalog.reasoningLevels","docs.catalog.thinkingSwitch","docs.catalog.thinkingSwitchYes","docs.catalog.thinkingSwitchNo","docs.catalog.modes","docs.catalog.maxReference","docs.catalog.sizes","docs.catalog.detailEmpty","docs.catalog.providerGroup","docs.catalog.enabled","docs.catalog.disabled","docs.catalog.modelCount"],
+    note: "这一页是实时模型目录组件，本身没有文字说明。要当前这张表（对话模型与媒体模型，含上下文长度、最大输出、思考档位、单价）用 list_gateway_models；媒体服务商的配置用 list_media_providers。",
+    keys: [],
+    chrome: ["docs.catalog.reasoningSwitchOnly","docs.catalog.reasoningAlwaysOn","docs.catalog.reasoningEffortOnly","docs.catalog.reasoningNone","docs.catalog.baseUrl","docs.catalog.chatModels","docs.catalog.mediaModels","docs.catalog.support","docs.catalog.search","docs.catalog.searchPlaceholder","docs.catalog.filter","docs.catalog.all","docs.catalog.chat","docs.catalog.media","docs.catalog.count","docs.catalog.groupChat","docs.catalog.groupMedia","docs.catalog.groupChatDesc","docs.catalog.groupMediaDesc","docs.catalog.model","docs.catalog.providerOf","docs.catalog.context","docs.catalog.maxOutput","docs.catalog.kind","docs.catalog.endpoint","docs.catalog.rateIn","docs.catalog.perMillion","docs.catalog.rateOut","docs.catalog.rateCachedRead","docs.catalog.rateCachedWrite","docs.catalog.pricePerItem","docs.catalog.perItem","docs.catalog.empty","docs.catalog.priority","docs.catalog.detail","docs.catalog.base","docs.catalog.format","docs.catalog.upstream","docs.catalog.reasoningLevels","docs.catalog.thinkingSwitch","docs.catalog.thinkingSwitchYes","docs.catalog.thinkingSwitchNo","docs.catalog.modes","docs.catalog.maxReference","docs.catalog.sizes","docs.catalog.detailEmpty","docs.catalog.providerGroup","docs.catalog.enabled","docs.catalog.disabled","docs.catalog.modelCount"],
   },
   {
     surface: "user",
@@ -95,6 +110,7 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     id: "overview",
     summary: "管理员文档总览",
     keys: ["admin.docs.subtitle","admin.docs.overview.hint"],
+    chrome: ["admin.docs.ops.title","admin.docs.ops.desc","docs.title"],
   },
   {
     surface: "admin",
@@ -131,6 +147,7 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     id: "media",
     summary: "媒体适配：spec 怎么写、request/response 映射",
     keys: ["admin.docs.media.title","admin.docs.media.desc","admin.docs.media.rule1","admin.docs.media.rule2","admin.docs.media.rule3","admin.docs.nav.media","admin.docs.protocol.title","admin.docs.protocol.desc"],
+    after: "这一页里的「适配协议全文」是一个仓库文件渲染出来的，read_docs 拿不到它 —— 协议正文用 get_media_spec_reference(what=\"protocol\") 读，分段读，读到 nextOffset 就接着读下一段。",
   },
   {
     surface: "admin",
@@ -154,13 +171,13 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     surface: "admin",
     id: "ops",
     summary: "运维参考件（非文字说明）",
-    note: "这一页不是文字说明，而是两份从仓库文件实时渲染的参考件：媒体适配协议（docs/模型适配协议/README.md）和 spec-check 脚本（scripts/spec-check.ts）。它们是给「写 spec 的 AI」用的原文，不是网关文档。需要其中某一份的内容，请用 fetch_page 或让用户从管理界面复制。",
+    note: "这一页不是文字说明，而是两份从仓库文件实时渲染的参考件：媒体适配协议（docs/模型适配协议/README.md）和 spec-check 脚本（scripts/spec-check.ts）。它们是给「写 spec 的 AI」用的原文，不是网关文档。媒体适配协议用 get_media_spec_reference(what=\"protocol\") 读；spec-check 脚本在仓库里，需要时请用户从管理界面复制。",
     keys: [],
   },
   {
     surface: "admin",
     id: "assistant",
     summary: "怎么用 AI 助手：它能体检和批量改配置、能核对厂商文档，以及它做不到什么（改动都要你确认、撤不回已生效的提案、看不到密钥）",
-    keys: ["admin.docs.assistant.title","admin.docs.assistant.desc","admin.docs.assistant.audit","admin.docs.assistant.bulk","admin.docs.assistant.docs","admin.docs.assistant.limits.title","admin.docs.assistant.limits.desc","admin.docs.assistant.limits.approval","admin.docs.assistant.limits.withdraw","admin.docs.assistant.limits.keys","admin.docs.assistant.limits.budget","admin.docs.assistant.ask.title","admin.docs.assistant.ask.desc","admin.docs.assistant.ask.oneShot","admin.docs.assistant.ask.verify","admin.docs.assistant.ask.source","admin.docs.ops.title","admin.docs.ops.desc","docs.title"],
+    keys: ["admin.docs.assistant.title","admin.docs.assistant.desc","admin.docs.assistant.audit","admin.docs.assistant.bulk","admin.docs.assistant.docs","admin.docs.assistant.limits.title","admin.docs.assistant.limits.desc","admin.docs.assistant.limits.approval","admin.docs.assistant.limits.withdraw","admin.docs.assistant.limits.keys","admin.docs.assistant.limits.budget","admin.docs.assistant.ask.title","admin.docs.assistant.ask.desc","admin.docs.assistant.ask.oneShot","admin.docs.assistant.ask.verify","admin.docs.assistant.ask.source"],
   },
 ];

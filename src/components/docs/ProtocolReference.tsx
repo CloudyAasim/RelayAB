@@ -7,27 +7,21 @@
  * plain text, because this is the block operators paste into an AI assistant
  * to get a spec written or corrected.
  *
- * `outputFileTracingIncludes` in next.config.ts keeps the file in the
- * deployment bundle; if it is ever missing the page degrades to a note plus
- * the still-working copy buttons.
+ * The file is on disk at runtime — `pnpm start` runs `next start` from the
+ * project root — and it is read through `readProtocolDoc`, which the
+ * assistant's `get_media_spec_reference` uses as well. There used to be no way
+ * for the assistant to read this: the protocol lives in a file rather than in
+ * the i18n dictionary, so `read_docs` returned the sentence that announces it
+ * and none of it.
  */
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 import { getT } from "@/lib/i18n/server";
 import { markdownToHtml, markdownToPlainText } from "@/lib/markdown";
+import { readProtocolDoc } from "@/lib/docs/protocol-doc";
 import { CopyButtons } from "./CopyButtons";
-
-const PROTOCOL_DOC = path.join(process.cwd(), "docs", "模型适配协议", "README.md");
 
 export async function ProtocolReference() {
   const { t } = await getT();
-
-  let source = "";
-  try {
-    source = await readFile(PROTOCOL_DOC, "utf8");
-  } catch {
-    source = "";
-  }
+  const { text: source } = await readProtocolDoc();
 
   const buttons = source
     ? [

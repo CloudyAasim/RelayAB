@@ -2,8 +2,11 @@
  * Generate the web-documentation index the assistant reads from.
  *
  * **The web docs only.** The repository's markdown was considered and dropped:
- * the assistant does not need it, and `docs/` does not exist inside the
- * runtime image anyway.
+ * `read_docs` is a reader of this deployment's documentation pages, not of the
+ * repository. `docs/模型适配协议/README.md` is the one file that did need to
+ * reach the model — the admin page renders it and the assistant could not read
+ * it — and it reaches the model through `get_media_spec_reference` rather than
+ * from here, because a file is not a documentation page.
  *
  * Why this file exists at all: the docs pages are React components, and their
  * prose is i18n text rather than anything a tool can read. The components are
@@ -26,47 +29,126 @@ const OUT = path.join(ROOT, "src", "lib", "assistant", "docs-index.generated.ts"
  *
  * The `fallbackSection` is for text that sits outside any branch — the page
  * title and intro, which every page shares.
+ *
+ * The second half of the return value is the keys that belong to *neither*, and
+ * getting that boundary right took two attempts. Every `section === "…"` branch
+ * lives in one component, and the same file also holds other components — a copy
+ * button, a not-found card. A scan that simply remembers the last branch it saw
+ * attributed all of them to that branch: for `DocsContent.tsx`, `media`. So the
+ * chapter about image and speech generation came to contain "复制失败", "已复制"
+ * and "文档里找不到这个章节", which is what `read_docs` handed the model.
+ *
+ * "After the last branch declaration" is not the boundary either — the last
+ * branch's own body sits after it. What is the boundary is where the branch's
+ * braces close, so the scan counts them: a key is the branch's prose while that
+ * branch is open and furniture once it is not. Braces inside strings and line
+ * comments are blanked first, since the file is full of `t("…")` and neither
+ * carries one, and a miscount would move keys between prose and chrome rather
+ * than fail loudly — the key counts this script prints are how that gets seen.
  */
 function extractSections(file, fallbackSection) {
   const src = fs.readFileSync(path.join(ROOT, file), "utf8");
   const groups = new Map();
-  let current = null;
+  let openBranch = null;
+  let seenBranch = false;
+  let depth = 0;
+  const unattributed = [];
 
   for (const line of src.split("\n")) {
-    const cmp = line.match(/section === "([a-z0-9-]+)"/);
-    const arm = line.match(/case "([a-z0-9-]+)"/);
-    if (cmp) current = cmp[1];
-    else if (arm) current = arm[1];
+    // Depth before this line, so a branch's own opening brace counts towards it.
+    const before = depth;
+    const raw = line.replace(/\/\/.*$/, "");
+    // Quoted runs blanked for the *counting* only: braces inside a JSX attribute
+    // or a string would open and close a scope that does not exist. Backticks are
+    // left alone because most of this file's `t()` calls sit inside a template
+    // literal, and `${…}` is balanced anyway.
+    const code = raw.replace(/(['"])(?:\\.|(?!\1)[^\\])*\1/g, (m) => " ".repeat(m.length));
 
-    for (const m of line.matchAll(/t\("([^"]+)"/g)) {
-      const group = current ?? fallbackSection;
+    // Detection and extraction read the original line: blanking is a braces
+    // problem, not a text problem.
+    const cmp = raw.match(/section === "([a-z0-9-]+)"/);
+    const arm = raw.match(/case "([a-z0-9-]+)"/);
+    if (cmp || arm) {
+      openBranch = { id: (cmp ?? arm)[1], base: before };
+      seenBranch = true;
+    } else if (openBranch && depth <= openBranch.base) {
+      openBranch = null;
+    }
+
+    for (const m of raw.matchAll(/t\("([^"]+)"/g)) {
+      // Inside a branch: its prose. Before the first branch: the page title and
+      // intro, which every page shares. After the last one closed: furniture.
+      const group = openBranch ? openBranch.id : seenBranch ? null : fallbackSection;
+      if (!group) {
+        if (!unattributed.includes(m[1])) unattributed.push(m[1]);
+        continue;
+      }
       if (!groups.has(group)) groups.set(group, []);
       const keys = groups.get(group);
       if (!keys.includes(m[1])) keys.push(m[1]);
     }
+
+    for (const ch of code) {
+      if (ch === "{") depth++;
+      else if (ch === "}") depth--;
+    }
   }
-  return groups;
+  return { groups, unattributed, fallbackSection };
 }
 
-const userSections = extractSections("src/app/(user)/dashboard/docs/DocsContent.tsx", "start");
-const adminSections = extractSections("src/app/(admin)/admin/docs/AdminDocsContent.tsx", "overview");
+const user = extractSections("src/app/(user)/dashboard/docs/DocsContent.tsx", "start");
+const admin = extractSections("src/app/(admin)/admin/docs/AdminDocsContent.tsx", "overview");
+const userSections = user.groups;
+const adminSections = admin.groups;
 
 // ---------------------------------------------------------------------------
-// The two pages that are not a branch of i18n prose
+// The pages that are not a plain branch of i18n prose
 // ---------------------------------------------------------------------------
+
+/**
+ * `"<surface>:<id>"` → the keys a page renders *through* something else.
+ *
+ * Counted by the dictionary guard below and by nothing else: they are covered
+ * by the index, and they are never handed to the model as documentation.
+ */
+const CHROME = {};
+
+/**
+ * `"<surface>:<id>"` → text appended after the page's prose.
+ *
+ * The other half of the problem `chrome` solves. A page whose content is a file
+ * or a component still has orientation prose, and the model needs to be told
+ * where the rest of it is — "the protocol is below this" is a sentence that is
+ * true on the rendered page and a dead end in the text a tool returns.
+ */
+const AFTER = {
+  "admin:media":
+    "这一页里的「适配协议全文」是一个仓库文件渲染出来的，read_docs 拿不到它 —— " +
+    "协议正文用 get_media_spec_reference(what=\"protocol\") 读，分段读，读到 nextOffset 就接着读下一段。",
+  "user:media":
+    "实时模型目录用 list_gateway_models 取，那才是当前这张表的真实内容；" +
+    "这一页里内嵌的目录组件是按页面渲染的界面，不是文档正文。",
+};
 
 /**
  * The chapter that renders another component's strings as well as its own.
  *
- * `media` renders `<ModelCatalog>` *inside* a card of its own prose — the
- * endpoint list, and since the voice catalogue landed, the voice list. Those
- * keys were already extracted from `DocsContent` and then **thrown away** here,
- * because this used to `set` rather than merge. The assistant's `read_docs` on
- * `user:media` therefore returned the catalogue's own UI strings — "共 {n} 个
- * 模型", "按模型名、供应商、能力或说明搜索" — as though they were the
- * documentation, and every key the chapter actually renders was unreachable.
- * `catalog` is a different case: it renders that component *alone*, so its own
- * key list is legitimately empty and the catalogue keys are all of it.
+ * `media` renders `<ModelCatalog>` *inside* a card of its own prose, so the
+ * catalogue's keys used to be written into this section's `keys` as well. It
+ * first used `set` and that threw the chapter's own keys away — every sentence
+ * it renders became unreachable while `read_docs` handed over the catalogue's
+ * interface strings instead ("共 {n} 个模型", "按模型名、供应商、能力或说明搜索").
+ * That was fixed by merging, which put the chapter back and left the other half
+ * of the problem in place: the catalogue's strings are a live table's
+ * *interface* — column headers, a search box, copy buttons — and reading them
+ * as the documentation is how a chapter about media generation comes to contain
+ * "复制失败" and "筛选".
+ *
+ * So they are separated. `chrome` says "this page renders these, and the index
+ * covers them"; `keys` says "these are the page's prose, and these are what the
+ * model is given". Both are real answers to different questions, and the
+ * chapter points at `catalog` and at `list_gateway_models` for the live table
+ * rather than pretending a column header is a sentence.
  */
 const catalogSrc = [
   "src/components/docs/ModelCatalog.tsx",
@@ -75,8 +157,23 @@ const catalogSrc = [
   .map((f) => fs.readFileSync(path.join(ROOT, f), "utf8"))
   .join("\n");
 const catalogKeys = [...new Set([...catalogSrc.matchAll(/t\("([^"]+)"/g)].map((m) => m[1]))];
-userSections.set("media", [...new Set([...(userSections.get("media") ?? []), ...catalogKeys])]);
-userSections.set("catalog", catalogKeys);
+CHROME["user:media"] = catalogKeys;
+// `catalog` renders that component *alone*, so its own key list is empty and
+// the catalogue's keys are all of it — as chrome, for the same reason. What
+// that page actually answers, the model gets from `list_gateway_models`, which
+// is the same table as live data rather than as a description of a table.
+CHROME["user:catalog"] = catalogKeys;
+
+// The keys that belong to no section: shared components in the same file. They
+// go on the fallback section as chrome, because chrome is covered by the index
+// and by the dictionary check but never rendered as prose — so a copy button
+// cannot turn up in the middle of a chapter.
+for (const [key, list] of [
+  [`user:${user.fallbackSection}`, user.unattributed],
+  [`admin:${admin.fallbackSection}`, admin.unattributed],
+]) {
+  if (list.length) CHROME[key] = [...new Set([...(CHROME[key] ?? []), ...list])];
+}
 
 // The admin `ops` page renders two reference components that read repository
 // files at request time — the adapter protocol and the spec-check script. They
@@ -86,8 +183,15 @@ const NOT_PROSE = {
   "admin:ops":
     "这一页不是文字说明，而是两份从仓库文件实时渲染的参考件：媒体适配协议" +
     "（docs/模型适配协议/README.md）和 spec-check 脚本（scripts/spec-check.ts）。" +
-    "它们是给「写 spec 的 AI」用的原文，不是网关文档。需要其中某一份的内容，"+
-    "请用 fetch_page 或让用户从管理界面复制。",
+    "它们是给「写 spec 的 AI」用的原文，不是网关文档。媒体适配协议用 " +
+    "get_media_spec_reference(what=\"protocol\") 读；spec-check 脚本在仓库里，需要时请用户从管理界面复制。",
+  // The live catalogue, rendered alone. Its table is data, and the tool that
+  // returns data is `list_gateway_models` — a description of a table is worse
+  // than the table when both are available.
+  "user:catalog":
+    "这一页是实时模型目录组件，本身没有文字说明。要当前这张表（对话模型与媒体模型，" +
+    "含上下文长度、最大输出、思考档位、单价）用 list_gateway_models；" +
+    "媒体服务商的配置用 list_media_providers。",
   // The parameters guide. Written at runtime from the admin form, so it has
   // no keys here at all — this index covers the built-in pages, and
   // `createDocReader` adds the guide and its pages from the settings row.
@@ -142,6 +246,14 @@ const KEY_SHAPED = /^[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9_]+)+$/;
 const typo = [];
 const dropped = [];
 for (const s of sections) {
+  // Chrome goes through the same dictionary check: it is covered by the index,
+  // so a typo in it is just as much a broken string on the rendered page.
+  s.chrome = (CHROME[`${s.surface}:${s.id}`] ?? []).filter((k) => {
+    if (knownKeys.has(k)) return true;
+    if (KEY_SHAPED.test(k)) typo.push(`${s.surface}:${s.id} → ${JSON.stringify(k)}`);
+    else dropped.push(`${s.surface}:${s.id} → ${JSON.stringify(k)}`);
+    return false;
+  });
   s.keys = s.keys.filter((k) => {
     if (knownKeys.has(k)) return true;
     if (KEY_SHAPED.test(k)) typo.push(`${s.surface}:${s.id} → ${JSON.stringify(k)}`);
@@ -201,8 +313,8 @@ lines.push(" * components. `tests/unit/assistant-docs-index.test.ts` re-runs tha
 lines.push(" * compares, so a doc page that gains a line fails the build rather than quietly");
 lines.push(" * becoming unreadable to the assistant.");
 lines.push(" *");
-lines.push(" * This exists because the docs are React components, their prose is i18n text, and");
-lines.push(" * neither the components nor `docs/` is shipped inside the runtime image.");
+lines.push(" * This exists because the docs are React components and their prose is i18n text,");
+lines.push(" * so the grouping has to be extracted rather than read.");
 lines.push(" */");
 lines.push("");
 lines.push("export interface WebDocSection {");
@@ -211,10 +323,20 @@ lines.push('  surface: "user" | "admin";');
 lines.push("  id: string;");
 lines.push("  /** One line on what the page covers, for the index the model reads first. */");
 lines.push("  summary: string;");
-lines.push("  /** The i18n keys this page renders, in the order it renders them. */");
+lines.push("  /** The i18n keys this page renders as prose, in the order it renders them. */");
 lines.push("  keys: string[];");
+lines.push("  /**");
+lines.push("   * Keys this page renders through a component it embeds.");
+lines.push("   *");
+lines.push("   * Covered by the index and by the dictionary check, and never handed to");
+lines.push("   * the model as documentation: a column header and a copy button are the");
+lines.push("   * rendered page's own furniture, not what the page is saying.");
+lines.push("   */");
+lines.push("  chrome?: string[];");
 lines.push("  /** Set for a page that is not i18n prose, so the model is told what it is. */");
 lines.push("  note?: string;");
+lines.push("  /** Appended after the prose: where the rest of the page lives, if it does. */");
+lines.push("  after?: string;");
 lines.push("}");
 lines.push("");
 lines.push("export const WEB_DOC_SECTIONS: WebDocSection[] = [");
@@ -227,6 +349,8 @@ for (const s of sections) {
   lines.push(`    summary: ${q(TITLES[key] ?? "")},`);
   if (note) lines.push(`    note: ${q(note)},`);
   lines.push(`    keys: ${q(s.keys)},`);
+  if (s.chrome.length) lines.push(`    chrome: ${q(s.chrome)},`);
+  if (AFTER[key]) lines.push(`    after: ${q(AFTER[key])},`);
   lines.push("  },");
 }
 lines.push("];");
@@ -238,7 +362,8 @@ console.log(`wrote ${OUT} (${fs.statSync(OUT).size} bytes)\n`);
 for (const s of sections) {
   const key = `${s.surface}:${s.id}`;
   const flag = NOT_PROSE[key] ? " (note)" : s.keys.length === 0 ? " (EMPTY)" : "";
-  console.log(`  ${key.padEnd(18)} ${String(s.keys.length).padStart(3)} keys${flag}`);
+  const chrome = s.chrome.length ? ` + ${s.chrome.length} chrome` : "";
+  console.log(`  ${key.padEnd(18)} ${String(s.keys.length).padStart(3)} keys${chrome}${flag}`);
 }
 const empty = sections.filter((s) => s.keys.length === 0 && !NOT_PROSE[`${s.surface}:${s.id}`]);
 if (empty.length) console.log(`\nWARNING empty sections: ${empty.map((s) => s.id).join(", ")}`);

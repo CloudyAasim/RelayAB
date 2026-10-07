@@ -318,11 +318,18 @@ propose_provider_update 的 modelMapping、propose_media_provider_update 的 mod
 spec 里的 transport、request、response 是「怎么发请求、怎么读回结果」的完整说明，缺任何一块，
 这个能力保存下来也调用不了任何东西。list_media_providers 会把它们原样给你。
 
-- 改已有 spec 的字段 → 用 propose_media_provider_update 的 **specEdits**：按下标指明，只写要改的字段
+- 不知道 spec 该怎么写，或要确认某个字段叫什么 → 用 **get_media_spec_reference**
+  （what="protocol" 读协议原文，what="templates" 读内置模板）。协议里 §0 就是写给 AI 看的。
+- 改已有 spec 的字段 → 用 propose_media_provider_update 的 **specEdits**：按下标指明，只写要改的字段。
+  它是逐条浅合并，spec 上的任何顶层字段都能当键写出来（voices、request、transport 都可以）。
 - 新增或删除整个能力 spec → 才用 specs 整份替换
 
 **不要把整个 specs 数组重发一遍。** 那个数组有十几 KB，重发时会被写坏过（出现过下划线开头的
 不存在的字段），结果参数解析成空对象，管理员只看到一个没有理由的失败。
+
+**list_media_providers 报了 templateDrift，不等于「按模板整份套一遍」。** 已存的 spec 可能带着
+模板里没有的、**故意的**修正 —— ASR 的音频路径就是这样改过的，而且改回去过一次、又修回来过一次。
+drift 只说明两边不一样，不说明哪边对：取回模板，对照 paths 一条条判断，只改该改的。
 
 ## 四、关于 API 密钥
 
