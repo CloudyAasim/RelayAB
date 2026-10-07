@@ -565,6 +565,63 @@ Content-Type: application/json
 | `POST /v1/audio/music` | JSON `{model,prompt[,n]}` | 音乐生成 |
 | `POST /v1/audio/speech` | JSON `{model,input,voice?,speed?}` | TTS，**原样返回音频字节**（≤25MB 输入限制在 transcriptions） |
 | `POST /v1/audio/transcriptions` | multipart `file,model[,language,prompt]` | STT，返回 `{text,id?}` |
+| `GET /v1/audio/voices` | 无 | 列出本部署可用的音色（见 §2.6.1） |
+
+#### `GET /v1/audio/voices`
+
+**这是 RelayAB 自己加的接口，不是 OpenAI 的接口。** OpenAI 根本没有音色列表接口——它的音色是
+`voice` 参数里的一个类型联合，没有东西可拉。这里借用的只是它的**信封**
+`{object:"list",data:[…]}`，好让已经在解析列表响应的客户端不必再写一套解析器；形状本身与
+OpenAI 无关。
+
+响应：
+
+```json
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "English_Trustworth_Man",
+      "name": "Trustworthy Man",
+      "description": "Calm,Male",
+      "models": null,
+      "source": "vendor",
+      "narrowedBy": null,
+      "provider": "mp_2f1a…:speech-2.8-hd"
+    }
+  ],
+  "unavailable": [{ "provider": "MiniMax Speech", "reason": "upstream_unreachable: fetch failed" }]
+}
+```
+
+`data[]` 每项：
+
+| 字段 | 含义 |
+| --- | --- |
+| `id` | 传给 `voice` 的值 |
+| `name` / `description` | 厂商给的名字与描述；没给就是 `null`（不会编造） |
+| `models` | 这个音色可用的**客户端模型名**列表。`null` = **没有被收窄**，即该 spec 服务的每个模型都能用——这与「不知道」不同 |
+| `source` | `vendor`（厂商接口返回）或 `declared`（运营者在 spec 里写死的） |
+| `narrowedBy` | `models` 是谁给的：`vendor` / `declared` / `null`（没人给） |
+| `provider` | 该条来自哪个 spec：`供应商 id:客户端模型名`（没有则回落到 displayName）。同一供应商有多份 spec 时不会悄悄合并 |
+
+两种来源都是**一等来源**，不是主备：MiniMax 有 `POST /v1/get_voice`（返回 `system_voice` /
+`voice_cloning` / `voice_generation` 三个分桶，是账号真实音色库，克隆音色首次使用后才出现），
+OpenAI 则**没有**任何列表接口，只能在 spec 里声明。同一 id 两边都有时以厂商为准，
+`models` 也以厂商的收窄为准。
+
+`unavailable[]` 是**读不到**的供应商（名称 + 原因）。它存在的理由：读不到如果不报，客户端看到
+的 `data: []` 会理解成「这个账号没有音色」，并缓存下来。失败不会被缓存，下次调用会重试，
+所以厂商恢复后立刻能读到。
+
+其余规则：
+
+- **不扣费。** 它不产生任何产物，因此不结算；响应里的 `x-ratelimit-*` 与其他 `/v1/*` 一致。
+  唯一的出网请求是各厂商自己的音色列表（读操作），且**每个供应商缓存 5 分钟**（进程内），
+  过期按服务器时钟判断。
+- **不校验额度余额。** 与 `/v1/credits` 同理：读不花钱，空池不能成为拒绝的理由——而
+  「我现在能用什么音色」恰恰是在余额快用完时才会被问的问题。
+- 鉴权与其他媒体端点一致（Bearer `sk-relay-…`）。
 
 管理端点（仅管理员）：
 

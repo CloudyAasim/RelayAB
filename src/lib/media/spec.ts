@@ -163,6 +163,59 @@ export interface MediaLimits {
   timeoutMs?: number;
 }
 
+/** One voice, as a provider states it. */
+export interface MediaVoiceEntry {
+  /** The value to send as `voice`. Required — a voice you cannot name is not one. */
+  id: string;
+  /** Human-readable label. Shown when the vendor supplies one; never invented. */
+  name?: string;
+  description?: string;
+  /**
+   * The client models this voice works with.
+   *
+   * Absent means "not narrowed" — it applies to every model this spec serves.
+   * That is different from "unknown", which is why the catalogue reports
+   * `narrowed_by` alongside it: a vendor that says nothing about models and an
+   * operator who has not looked are not the same claim.
+   */
+  models?: string[];
+}
+
+/**
+ * How to read a vendor's voice list, if it has an endpoint for one.
+ *
+ * The response mapping is a `MediaMapping` producing
+ * `{ voices: [ …MediaVoiceEntry | string ] }`. Entries may be the full object
+ * or a bare id string, because vendors differ on how much they return and a
+ * spec should not have to invent fields to satisfy the shape.
+ */
+export interface MediaVoiceRemote {
+  transport: MediaTransport;
+  auth?: MediaAuth;
+  request?: MediaMapping;
+  response: MediaMapping;
+  limits?: MediaLimits;
+}
+
+/**
+ * The voices this deployment can offer, from whatever the vendor makes
+ * available.
+ *
+ * A vendor either has a voice endpoint, has a fixed set baked into its request
+ * schema, or both — and none of those is the fallback for the others. OpenAI
+ * has no voice endpoint at all: its thirteen voices live in the `voice`
+ * parameter's type. For such a vendor a declaration *is* the correct source,
+ * and calling it a fallback would be describing a first-class answer as a
+ * consolation prize.
+ *
+ * Both sources may be present; entries are merged by id and keep the strongest
+ * provenance available (see `narrowedBy` in the catalogue).
+ */
+export interface MediaVoiceCatalogue {
+  remote?: MediaVoiceRemote;
+  declared?: MediaVoiceEntry[];
+}
+
 export interface MediaSpec {
   specVersion: 1;
   capability: MediaCapability;
@@ -201,6 +254,14 @@ export interface MediaSpec {
    * `upstream_contract_mismatch` instead of silently succeeding and charging 0.
    */
   allowEmpty?: boolean;
+  /**
+   * The voices this spec's models can be spoken with.
+   *
+   * Not under `metadata`: that is free-form passthrough, and a mistyped voice id
+   * is a value the gateway would forward to a vendor on a live call. This is a
+   * validated field for the same reason `request` and `response` are.
+   */
+  voices?: MediaVoiceCatalogue;
   /** Free-form hints surfaced through `/v1/models` under `relay`. */
   metadata?: Record<string, unknown>;
 }
@@ -296,6 +357,7 @@ const SPEC_KEYS = new Set([
   "limits",
   "allowEmpty",
   "metadata",
+  "voices",
 ]);
 
 /** Keys the engine interprets; a mapping object may only use these. */
@@ -871,6 +933,8 @@ export function parseMediaSpec(raw: unknown): SpecParse {
     errors.push("metadata: expected an object");
   }
 
+  const voices = parseVoices(root, errors, warnings);
+
   if (errors.length > 0) return { ok: false, errors, warnings };
 
   const transportRecord = transport as Record<string, unknown>;
@@ -907,9 +971,103 @@ export function parseMediaSpec(raw: unknown): SpecParse {
       ...(root.async !== undefined ? { async: root.async as MediaAsync } : {}),
       ...(root.limits !== undefined ? { limits: root.limits as MediaLimits } : {}),
       ...(root.allowEmpty === true ? { allowEmpty: true } : {}),
+      ...(voices ? { voices } : {}),
       ...(asRecord(root.metadata) ? { metadata: root.metadata as Record<string, unknown> } : {}),
     },
   };
+}
+
+/**
+ * Read and check the voice catalogue.
+ *
+ * Returns undefined for an absent one, and pushes onto the caller's `errors` /
+ * `warnings` for a broken one — a mistyped id here becomes a value forwarded to
+ * a vendor on a live call, so it is validated the same way `transport` and
+ * `response` are rather than being passed through.
+ */
+function parseVoices(
+  root: Record<string, unknown>,
+  errors: string[],
+  warnings: string[],
+): MediaVoiceCatalogue | undefined {
+  if (root.voices === undefined) return undefined;
+  const catalogue = asRecord(root.voices);
+  if (!catalogue) {
+    errors.push("voices: expected an object with `remote` and/or `declared`");
+    return undefined;
+  }
+
+  const out: MediaVoiceCatalogue = {};
+
+  if (catalogue.remote !== undefined) {
+    const remote = asRecord(catalogue.remote);
+    if (!remote) {
+      errors.push("voices.remote: expected an object");
+    } else {
+      const transport = asRecord(remote.transport);
+      if (!transport || typeof transport.method !== "string" || typeof transport.path !== "string") {
+        errors.push("voices.remote.transport: needs `method` and `path`");
+      }
+      if (!asRecord(remote.response)) {
+        errors.push("voices.remote.response: expected a mapping");
+      }
+      if (remote.auth !== undefined && !asRecord(remote.auth)) {
+        errors.push("voices.remote.auth: expected an object");
+      }
+      if (transport && asRecord(remote.response)) {
+        out.remote = {
+          transport: transport as unknown as MediaTransport,
+          ...(asRecord(remote.auth) ? { auth: remote.auth as MediaAuth } : {}),
+          ...(remote.request !== undefined ? { request: remote.request as MediaMapping } : {}),
+          response: remote.response as MediaMapping,
+          ...(asRecord(remote.limits) ? { limits: remote.limits as MediaLimits } : {}),
+        };
+      }
+    }
+  }
+
+  if (catalogue.declared !== undefined) {
+    if (!Array.isArray(catalogue.declared)) {
+      errors.push("voices.declared: expected an array");
+    } else {
+      const seen = new Set<string>();
+      const entries: MediaVoiceEntry[] = [];
+      catalogue.declared.forEach((raw, i) => {
+        const entry = asRecord(raw);
+        const id = entry && typeof entry.id === "string" ? entry.id.trim() : "";
+        if (!id) {
+          errors.push(`voices.declared[${i}]: needs a non-empty string \`id\``);
+          return;
+        }
+        if (seen.has(id)) {
+          warnings.push(`voices.declared: "${id}" is listed more than once`);
+          return;
+        }
+        seen.add(id);
+        const models = entry!.models;
+        if (models !== undefined && !Array.isArray(models)) {
+          errors.push(`voices.declared[${i}].models: expected an array of client model names`);
+          return;
+        }
+        entries.push({
+          id,
+          ...(typeof entry!.name === "string" ? { name: entry!.name } : {}),
+          ...(typeof entry!.description === "string" ? { description: entry!.description } : {}),
+          ...(Array.isArray(models)
+            ? { models: models.filter((m): m is string => typeof m === "string") }
+            : {}),
+        });
+      });
+      out.declared = entries;
+    }
+  }
+
+  if (out.remote === undefined && (out.declared?.length ?? 0) === 0) {
+    warnings.push(
+      "voices: declared but neither a usable `remote` nor any `declared` entry — this spec contributes no voices",
+    );
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /**

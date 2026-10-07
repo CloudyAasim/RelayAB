@@ -22,6 +22,7 @@ import type {
   MediaErrorRule,
   MediaMapping,
   MediaProvider,
+  MediaVoiceRemote,
   MediaSpec,
   MediaTaskState,
 } from "./spec";
@@ -1137,6 +1138,157 @@ export async function executeMedia(args: ExecuteMediaArgs): Promise<MediaExecute
   }
 
   return finish(spec, mappedSubmit, { now, startedAt, taskId: undefined });
+}
+
+// ---------------------------------------------------------------------------
+// Voice discovery
+// ---------------------------------------------------------------------------
+
+export interface MediaDiscoverArgs {
+  /** The spec the catalogue hangs off. Supplies baseUrl, capability and the default auth. */
+  spec: MediaSpec;
+  /** That spec's `voices.remote`. */
+  remote: MediaVoiceRemote;
+  provider: MediaProvider;
+  /** Mapping scope. `{{model}}` in the path and query/header values read from here. */
+  scope?: Record<string, unknown>;
+  signal?: AbortSignal;
+  fetchImpl?: typeof fetch;
+}
+
+export type MediaDiscoverResult =
+  | { ok: true; payload: unknown; durationMs: number }
+  | { ok: false; error: MediaEngineError };
+
+/**
+ * Run a voice listing and hand back the **mapped** response.
+ *
+ * Deliberately not `executeMedia`. That function's contract is "produce
+ * artefacts": it reduces whatever the response mapping yields to `MediaItem[]`,
+ * which is `{kind, value}` and nothing else, with `value` normalised as though
+ * it were a URL. A voice is an id, a display name, a description and sometimes
+ * the set of models it works with — three of those four do not survive the
+ * reduction. A voice catalogue cannot travel through it.
+ *
+ * Everything *above* the response mapping is identical, and is reused rather
+ * than re-implemented: origin enforcement and `{{model}}` interpolation, header
+ * and query construction, secret attachment, the two error vocabularies (the
+ * in-body vendor code first, then the HTTP status), and the `$fetch` budget.
+ * Only the tail differs — return the mapped structure instead of collecting
+ * items out of it.
+ */
+export async function discoverMedia(args: MediaDiscoverArgs): Promise<MediaDiscoverResult> {
+  const { spec, remote, provider, scope = {} } = args;
+  const fetchImpl = args.fetchImpl ?? fetch;
+  const startedAt = Date.now();
+
+  // A catalogue may be `declared` only — OpenAI has no voice endpoint at all, and
+  // its voices live in the `voice` parameter's type. Failing cleanly here lets
+  // the collector report that one provider as having no remote source, instead
+  // of a TypeError taking the whole endpoint down because one spec was shaped
+  // that way.
+  if (!remote || typeof remote !== "object" || !remote.transport) {
+    return {
+      ok: false,
+      error: {
+        status: 501,
+        code: "voice_discovery_not_supported",
+        message: "this provider declares no remote voice listing",
+      },
+    };
+  }
+
+  // A discovery call is a media call in every respect but its output, so it
+  // borrows the owning spec wholesale and overrides only what differs. Inheriting
+  // `baseUrl` and `auth` this way is what keeps a voice listing from becoming a
+  // second, subtly different way to talk to a vendor.
+  const effective: MediaSpec = {
+    ...spec,
+    transport: remote.transport,
+    auth: remote.auth ?? spec.auth,
+    response: remote.response,
+    ...(remote.limits ? { limits: remote.limits } : {}),
+    // A listing has no items to be empty about, and `finish` would reject it.
+    allowEmpty: true,
+  };
+
+  let target: { url: URL; headers: Headers };
+  try {
+    target = resolveRequestTarget(effective, provider, scope);
+  } catch (err) {
+    return {
+      ok: false,
+      error: {
+        status: 500,
+        code: "bad_spec",
+        message: err instanceof Error ? err.message : "invalid voice transport",
+      },
+    };
+  }
+
+  const contentType = remote.transport.contentType ?? "application/json";
+  const upstreamBody = remote.request ? applyMapping(remote.request, scope) : {};
+  const rawBody = resolveRawBody(upstreamBody, contentType);
+  if (rawBody) target.headers.set("Content-Type", rawBody.contentType);
+
+  let response: Response;
+  try {
+    response = await fetchImpl(target.url.toString(), {
+      method: remote.transport.method,
+      headers: target.headers,
+      ...(remote.transport.method === "GET"
+        ? {}
+        : {
+            body: rawBody
+              ? (rawBody.bytes as unknown as BodyInit)
+              : encodeBody(upstreamBody, contentType),
+          }),
+      signal: args.signal,
+    });
+  } catch (err) {
+    return {
+      ok: false,
+      error: {
+        status: 502,
+        code: "upstream_unreachable",
+        message: err instanceof Error ? err.message : "voice listing request failed",
+      },
+    };
+  }
+
+  const rawText = await response.text();
+  const rawPayload = decodeJson(rawText);
+
+  // Same order as executeMedia: the in-body vendor code is the more specific
+  // signal, and checking the status first would let a generic rule swallow it.
+  const vendorRuleError = matchesRule(effective, rawPayload);
+  if (vendorRuleError) return { ok: false, error: vendorRuleError };
+  const statusError = httpStatusError(effective, response.status, rawPayload);
+  if (statusError) return { ok: false, error: statusError };
+
+  if (!response.ok) {
+    const mapped = applyMapping(remote.response, rawPayload);
+    return {
+      ok: false,
+      error: errorFromMapped(
+        mapped,
+        {
+          status: 502,
+          code: "upstream_error",
+          message: `upstream returned HTTP ${response.status}`,
+        },
+        rawText,
+      ),
+    };
+  }
+
+  const fetcher = makeFetcher(effective, provider, fetchImpl, args.signal);
+  const payload = await resolveFetches(
+    applyMapping(remote.response, rawPayload),
+    fetcher,
+    { left: MAX_FETCH_MARKERS },
+  );
+  return { ok: true, payload, durationMs: Date.now() - startedAt };
 }
 
 /** Shared tail: count items, refuse silent emptiness, build the result. */

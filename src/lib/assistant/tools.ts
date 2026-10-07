@@ -27,6 +27,7 @@ import {
   resolveMediaProviderForModel,
 } from "../db/media-providers";
 import { getProviderById, listProviders } from "../db/providers";
+import { collectVoiceCatalogue } from "../media/voices";
 import { listUsers, getUserById } from "../db/users";
 import { listApiKeysByUser, listApiKeyIdsForUsage } from "../db/keys";
 import { aggregateByKeyMany, listRecentUsage } from "../db/usage";
@@ -346,6 +347,16 @@ const USER_TOOLS: AssistantToolDef[] = [
         required: ["model", "prompt"],
         additionalProperties: false,
       },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_voices",
+      description:
+        "列出本部署能用的全部音色（按服务商分组，含显示名、描述和适用模型）。" +
+        "查「有哪些音色」「这个音色支持哪些模型」「换音色」时先调它，不要凭记忆报音色 id。",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
     },
   },
   {
@@ -968,6 +979,11 @@ export async function executeTool(
     case "list_media_providers":
       if (!isAdmin) return fail("这是管理员功能。");
       return listMediaProvidersTool();
+    case "list_voices":
+      // Not admin-only: the voice list is a read about what this account can
+      // speak with, exactly like `/v1/audio/voices`, and gating it would make
+      // the assistant unable to answer the question the user asked it.
+      return listVoicesTool();
     case "propose_provider_update":
       if (!isAdmin) return fail("这是管理员功能。");
       return proposeProviderUpdate(args, ctx);
@@ -2485,6 +2501,39 @@ function specForTheModel(spec: unknown): unknown {
  * repository was correct. Reporting it here is what stops that costing anybody a
  * round trip through "paste me the configuration".
  */
+/**
+ * Every voice this deployment can be spoken with.
+ *
+ * The same read as `GET /v1/audio/voices`, so the assistant and a client's
+ * curl cannot disagree about what exists.
+ *
+ * Two things are reported rather than smoothed over, because both are the shape
+ * of a wrong answer rather than a missing one:
+ *
+ *  - `models: null` means **not narrowed** — the voice applies to every model
+ *    that provider serves — which is not the same claim as "unknown", and
+ *    `narrowedBy` says who said what.
+ *  - `unavailable` names the providers whose listing could not be read. A short
+ *    list next to a silent failure would be read as "that is all there is", and
+ *    the model would tell the user the account has no cloned voices when it
+ *    simply could not ask.
+ */
+async function listVoicesTool(): Promise<ToolResult> {
+  const { voices, unavailable } = await collectVoiceCatalogue();
+  return ok({
+    voices: voices.map((v) => ({
+      id: v.id,
+      name: v.name,
+      description: v.description,
+      models: v.models,
+      narrowedBy: v.narrowedBy,
+      source: v.source,
+      provider: v.provider,
+    })),
+    unavailable,
+  });
+}
+
 async function listMediaProvidersTool(): Promise<ToolResult> {
   const media = await listMediaProviders();
   return okCompact(

@@ -304,6 +304,61 @@ export const MINIMAX_TTS_SPEC: MediaSpec = {
   ],
   limits: { timeoutMs: 120_000 },
   metadata: { modes: ["text-to-speech"] },
+  /**
+   * The account's real voice library: `POST /v1/get_voice`, bearer auth, body
+   * `{"voice_type":"all"}` (that is the documented way to ask for every
+   * category), answering
+   * `{system_voice:[…], voice_cloning:[…], voice_generation:[…], base_resp:{…}}`
+   * where an entry carries `voice_id`, `voice_name` (system voices only — a
+   * cloned or generated voice has no display name), `description` as an **array**
+   * of strings, and `created_time`.
+   *
+   * **Not a static list, and that is the whole reason this is a `remote`.** The
+   * voice_cloning bucket is the account's own clones: it is empty on a fresh
+   * account and gains an entry the first time somebody clones a voice, which
+   * nobody can write down in advance. A declared list would have been confidently
+   * wrong within a day of the first clone, and there is no way to notice it
+   * except by asking the vendor.
+   *
+   * `description` is an array upstream and text here, so `$toString` flattens
+   * it: the usual one-element array reads as the sentence it holds, and several
+   * elements read as the comma-joined form `String()` produces (`a,b`). The
+   * alternative — passing the array through — makes every client handle both
+   * shapes. The three buckets are kept separate because flattening them is the
+   * collector's job, not the spec's: this document should describe the vendor,
+   * not the response envelope.
+   */
+  voices: {
+    remote: {
+      transport: {
+        method: "POST",
+        path: "/v1/get_voice",
+        contentType: "application/json",
+      },
+      auth: { type: "bearer" },
+      request: { voice_type: { $const: "all" } },
+      response: {
+        voices: {
+          system_voice: {
+            $from: "$.system_voice",
+            $to: {
+              id: "$.voice_id",
+              name: "$.voice_name",
+              description: { $toString: "$.description" },
+            },
+          },
+          voice_cloning: {
+            $from: "$.voice_cloning",
+            $to: { id: "$.voice_id", description: { $toString: "$.description" } },
+          },
+          voice_generation: {
+            $from: "$.voice_generation",
+            $to: { id: "$.voice_id", description: { $toString: "$.description" } },
+          },
+        },
+      },
+    },
+  },
 };
 
 /**
@@ -379,6 +434,40 @@ export const OPENAI_TTS_SPEC: MediaSpec = {
   },
   limits: { timeoutMs: 120_000 },
   metadata: { modes: ["text-to-speech"], input_field: "input" },
+  /**
+   * **OpenAI has no voice endpoint at all.** There is nothing to call and
+   * nothing to poll: its voices are a fixed set that exists in the `voice`
+   * parameter's type, published in the docs. So `remote` is absent on purpose
+   * and the declaration is not a fallback for a listing that failed — it is the
+   * only source there is, and an operator who tried to point `remote` somewhere
+   * would be inventing an endpoint to keep calling.
+   *
+   * The thirteen ids below are OpenAI's own; the narrowing is what makes this
+   * worth declaring rather than listing as prose. `tts-1` and `tts-1-hd` reject
+   * the four newer ids outright, so a client that reads them off this list and
+   * picks `verse` for a `tts-1` call gets a 400 from the vendor. Recording
+   * which models each voice works with is the difference between a list and a
+   * list you can use.
+   */
+  voices: {
+    declared: [
+      // The nine every TTS model accepts.
+      { id: "alloy", name: "Alloy", models: ["tts-1", "tts-1-hd", "gpt-4o-mini-tts"] },
+      { id: "ash", name: "Ash", models: ["tts-1", "tts-1-hd", "gpt-4o-mini-tts"] },
+      { id: "coral", name: "Coral", models: ["tts-1", "tts-1-hd", "gpt-4o-mini-tts"] },
+      { id: "echo", name: "Echo", models: ["tts-1", "tts-1-hd", "gpt-4o-mini-tts"] },
+      { id: "fable", name: "Fable", models: ["tts-1", "tts-1-hd", "gpt-4o-mini-tts"] },
+      { id: "nova", name: "Nova", models: ["tts-1", "tts-1-hd", "gpt-4o-mini-tts"] },
+      { id: "onyx", name: "Onyx", models: ["tts-1", "tts-1-hd", "gpt-4o-mini-tts"] },
+      { id: "sage", name: "Sage", models: ["tts-1", "tts-1-hd", "gpt-4o-mini-tts"] },
+      { id: "shimmer", name: "Shimmer", models: ["tts-1", "tts-1-hd", "gpt-4o-mini-tts"] },
+      // The four the newer models added, which the older two do not serve.
+      { id: "marin", name: "Marin", models: ["gpt-4o-mini-tts"] },
+      { id: "cedar", name: "Cedar", models: ["gpt-4o-mini-tts"] },
+      { id: "verse", name: "Verse", models: ["gpt-4o-mini-tts"] },
+      { id: "ballad", name: "Ballad", models: ["gpt-4o-mini-tts"] },
+    ],
+  },
 };
 
 /**

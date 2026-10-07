@@ -157,3 +157,19 @@ describe("the assistant points at the endpoint that exists", () => {
     expect(USER_SYSTEM_PROMPT).toContain("/v1/credits");
   });
 });
+
+describe("the assistant's voice answer is the same read as the route's", () => {
+  it("is a registered tool, and the prompt says to use it rather than recall ids", async () => {
+    // A prompt that names a tool nobody registered is the third instance of
+    // this exact bug, so it is worth pinning at the point where it would bite:
+    // the tool definition, the dispatch, and the prompt all have to agree.
+    const { toolDefinitions } = await import("@/lib/assistant/tools");
+    const { USER_SYSTEM_PROMPT } = await import("@/lib/assistant/prompts");
+    const names = toolDefinitions(false).map((t) => t.function.name);
+    expect(names).toContain("list_voices");
+    expect(USER_SYSTEM_PROMPT).toContain("list_voices");
+    // And the two ways a shortened list becomes a confident wrong answer.
+    expect(USER_SYSTEM_PROMPT).toContain("narrowedBy");
+    expect(USER_SYSTEM_PROMPT).toContain("unavailable");
+  });
+});

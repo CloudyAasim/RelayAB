@@ -439,6 +439,14 @@ console.log(resp.choices[0].message.content);`}
   -H "Content-Type: application/json" \\
   -d '{"model": "music-01", "prompt": "lo-fi beat"}'`}
           />
+          <CodeBlock
+            label={t("docs.media.voices")}
+            value={`curl ${openaiBase}/audio/voices \\
+  -H "Authorization: Bearer $RELAYAB_KEY"`}
+          />
+          <p className="rounded-md border border-border bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">
+            {t("docs.media.voicesNote")}
+          </p>
           <p className="rounded-md border border-border bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">
             {t("docs.media.billing")}
           </p>

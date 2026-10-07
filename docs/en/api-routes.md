@@ -596,6 +596,67 @@ OpenAI-shaped media endpoints, driven by a **declarative adapter protocol** (see
 | `POST /v1/audio/music` | JSON `{model,prompt[,n]}` | Music generation |
 | `POST /v1/audio/speech` | JSON `{model,input,voice?,speed?}` | TTS, **returns the audio bytes verbatim** (the ≤25MB input limit applies to transcriptions) |
 | `POST /v1/audio/transcriptions` | multipart `file,model[,language,prompt]` | STT, returns `{text,id?}` |
+| `GET /v1/audio/voices` | none | Lists the voices this deployment can speak with (see §2.6.1) |
+
+#### `GET /v1/audio/voices`
+
+**This is a RelayAB addition, not an OpenAI endpoint.** OpenAI has no voice-listing call at all:
+its voices are a type union inside the `voice` parameter, so there is nothing to fetch. What is
+borrowed is only the **envelope**, `{object: "list", data: [...]}`, so a client already parsing
+list responses does not need a second parser. Nothing about the shape is a compatibility claim.
+
+Response:
+
+```json
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "English_Trustworth_Man",
+      "name": "Trustworthy Man",
+      "description": "Calm,Male",
+      "models": null,
+      "source": "vendor",
+      "narrowedBy": null,
+      "provider": "mp_2f1a…:speech-2.8-hd"
+    }
+  ],
+  "unavailable": [{ "provider": "MiniMax Speech", "reason": "upstream_unreachable: fetch failed" }]
+}
+```
+
+Each entry in `data[]`:
+
+| Field | Meaning |
+| --- | --- |
+| `id` | The value to send as `voice` |
+| `name` / `description` | The vendor's label and description, or `null` — never invented |
+| `models` | Client **model names** this voice works with. `null` = **not narrowed**, so it applies to every model the spec serves — which is different from "unknown" |
+| `source` | `vendor` (returned by the vendor's listing) or `declared` (written by the operator in the spec) |
+| `narrowedBy` | Who supplied `models`: `vendor`, `declared`, or `null` (nobody) |
+| `provider` | Which spec the entry came from: `provider id:client model names`, falling back to the display name. Two specs of one provider never merge silently |
+
+Both sources are **first-class**, not primary-and-fallback: MiniMax has `POST /v1/get_voice`
+(three buckets — `system_voice` / `voice_cloning` / `voice_generation` — and the answer is the
+account's real library, so a cloned voice only appears after its first use), while OpenAI has no
+listing endpoint at all and can only be declared. When both name the same id the vendor wins,
+including its `models` narrowing.
+
+`unavailable[]` lists the providers that could **not** be read, with the reason. It exists because
+a failure reported as nothing would read as `data: []`, which a client takes to mean "this account
+has no voices" and caches. A failure is never cached, so the next call retries and a recovered
+vendor is picked up immediately.
+
+The rest of the rules:
+
+- **It is not charged.** Nothing is produced, so nothing settles; the `x-ratelimit-*` headers are
+  the same as on every other `/v1/*` response. The only outbound calls are the vendors' own voice
+  listings (reads), and **each provider's result is cached for 5 minutes** in process, with expiry
+  measured against the server clock.
+- **The pool is not checked.** Same reasoning as `/v1/credits`: a read cannot spend, so an empty
+  pool is not a reason to refuse — and "what can I speak with" is asked precisely when the balance
+  is nearly gone.
+- Authentication is the same as for the other media endpoints (Bearer `sk-relay-…`).
 
 Admin endpoints (admin only):
 

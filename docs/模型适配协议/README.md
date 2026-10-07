@@ -244,6 +244,45 @@
 - **不内置对象存储**、**不执行任何代码**（没有 eval、没有插件）
 - **不校验枚举值的合法性**——`$enum` 里写了厂商不认的值，只有真实调用才会暴露（这就是判官存在的理由）
 
+#### 0.3.12 音色目录 `voices`
+
+协议里第一个「列举」而不是「产出」的能力。产出走 `executeMedia`，它把响应映射的结果收成
+`MediaItem[]`（`{kind, value}`，`value` 按 url 归一）——音色有 id、显示名、描述、有时还有
+适用模型，其中三个字段过不了那一步。所以音色走 `discoverMedia`：上半段（origin 校验、
+`{{model}}`、header/query、密钥、两套错误词汇、`$fetch` 预算）与 `executeMedia` 完全相同，
+只有尾部不同——**返回映射后的结构，不收集 items**。
+
+```jsonc
+"voices": {
+  // 来源一：厂商自己有查询接口
+  "remote": {
+    "transport": { "method": "POST", "path": "/v1/get_voice" },
+    "request":  { "voice_type": "all" },
+    "response": { "voices": [ /* 下面两种形状都行 */ ] }
+  },
+  // 来源二：部署侧声明
+  "declared": [
+    { "id": "alloy", "name": "Alloy", "models": ["tts-1", "gpt-4o-mini-tts"] }
+  ]
+}
+```
+
+`response.voices` 可以是**扁平数组**（每项是 `MediaVoiceEntry` 或一个纯 id 字符串），
+也可以是**分桶对象**（`{"system": [...], "cloning": [...]}`）——MiniMax 的 `/v1/get_voice`
+把系统音色、快速复刻、文生音色分三个数组返回，收集体会摊平一层。
+
+**两个来源是一等的，不是主备。** OpenAI 根本没有音色查询端点：它的 13 个音色写在
+`voice` 参数的类型联合里。对这种厂商，`declared` **就是**唯一正确来源，把它叫兜底
+等于把头等答案说成安慰奖。两者可以同时存在，按 `(provider, spec, id)` 合并，厂商条目
+优先。
+
+**`models` 缺失的语义**：不是「未知」，是**没有被收窄**，适用于该 spec 的所有模型。所以
+`GET /v1/audio/voices` 的每个条目都带 `narrowedBy`（`vendor` / `declared` / `null`）——
+「厂商没说」和「运营没看」不是同一句话。
+
+**为什么这个字段要校验而不能塞进 `metadata`**：`metadata` 是自由透传，而音色 id 是会被
+真的转发给厂商的调用值。拼错一个 id 要到真实请求上才暴露，那正是这份协议存在的理由。
+
 ### 0.4 协议速查（完整契约）
 
 #### 0.4.1 spec 顶层字段
@@ -264,6 +303,7 @@
 | `async` | object | 异步时✅ | 见 0.3.6 |
 | `limits` | object | — | 见下 |
 | `allowEmpty` | boolean | — | 允许「2xx 但没有产物」（如内容拦截）；否则报 `upstream_contract_mismatch`。**这种情况 `successCount` 为 0，不计费** |
+| `voices` | object | — | 音色目录。见 0.3.12 |
 | `metadata` | object | — | **原样**透出到 `/v1/models` 的 `relay` 字段 |
 
 **任何不在此表里的顶层字段都会在保存时报错**（`xxx: unknown spec field`）——

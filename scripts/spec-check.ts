@@ -1226,7 +1226,7 @@ function staticChecks(spec: MediaSpec, raw: Record<string, unknown>, index: numb
     }
   }
   const unknownTop = Object.keys(raw).filter(
-    (key) => !["specVersion", "capability", "displayName", "models", "baseUrl", "transport", "auth", "request", "response", "responseMode", "errors", "async", "limits", "allowEmpty", "metadata"].includes(key),
+    (key) => !["specVersion", "capability", "displayName", "models", "baseUrl", "transport", "auth", "request", "response", "responseMode", "errors", "async", "limits", "allowEmpty", "voices", "metadata"].includes(key),
   );
   for (const key of unknownTop) {
     out.push(line("fail", `${prefix} 未知顶层字段 "${key}"`, "保存时会报错"));
