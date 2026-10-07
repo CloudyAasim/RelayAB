@@ -232,6 +232,25 @@ export function AssistantChat({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pendingOpen, setPendingOpen] = useState(false);
 
+  /**
+   * Open a drawer after the current gesture has finished.
+   *
+   * A Radix sheet mounts its full-screen overlay the moment `open` flips, and the
+   * click that asked for it is still propagating while that happens. The overlay —
+   * and the buttons underneath it — are then in the document under a pointer that
+   * has not moved, and the same gesture lands on one of them. Opening the settings
+   * drawer did exactly that: the sheet came up and closed again, and the
+   * conversation underneath was reset by the "new chat" button the click had
+   * reached instead.
+   *
+   * Deferring by a tick means the gesture has already finished by the time
+   * anything is mounted, so there is nothing left to retarget. Every drawer goes
+   * through here because the exposure is identical for all three.
+   */
+  const openDrawer = (setter: (open: boolean) => void) => () => {
+    setTimeout(() => setter(true), 0);
+  };
+
   // History management. A conversation belongs to the person reading it, so
   // the drawer offers the two things every chat product offers: give it a name
   // you can find later, and get rid of one you never want to see again.
@@ -859,7 +878,7 @@ export function AssistantChat({
           type="button"
           variant="ghost"
           size="sm"
-          onClick={() => setHistoryOpen(true)}
+          onClick={openDrawer(setHistoryOpen)}
         >
           {t("assistant.history")}
           {threads.length > 0 && (
@@ -874,7 +893,7 @@ export function AssistantChat({
             type="button"
             variant="ghost"
             size="sm"
-            onClick={() => setPendingOpen(true)}
+            onClick={openDrawer(setPendingOpen)}
           >
             {t("actions.titleShort")}
             {pendingCount > 0 && (
@@ -896,7 +915,7 @@ export function AssistantChat({
           type="button"
           variant="ghost"
           size="icon"
-          onClick={() => setSettingsOpen(true)}
+          onClick={openDrawer(setSettingsOpen)}
           title={t("assistant.settings.title")}
         >
           <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -1016,7 +1035,7 @@ export function AssistantChat({
               <button
                 type="button"
                 className="underline underline-offset-2"
-                onClick={() => setSettingsOpen(true)}
+                onClick={openDrawer(setSettingsOpen)}
               >
                 {t("assistant.openSettings")}
               </button>
