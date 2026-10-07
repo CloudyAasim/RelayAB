@@ -142,10 +142,22 @@ Dokku 自带 nginx 有两个默认值**会直接打断这个应用的功能**，
 | `client-max-body-size` | **1m** | `/v1/images/edits` 收 base64 图片直接 413。应用侧允许 2MB，nginx 先拒 |
 
 ```bash
-dokku nginx:set relay-ab proxy-read-timeout 600s
+dokku nginx:set relay-ab proxy-read-timeout 2100s
 dokku nginx:set relay-ab client-max-body-size 10m
 dokku proxy:build-config relay-ab
 ```
+
+**`proxy-read-timeout` 为什么是 2100s 而不是 600s。** 它量的是**两次读取之间**的间隔，
+不是请求总时长，所以流式输出时每来一个字节就重置计时、永远不会被切；真正危险
+的是**间隙**——一次慢模型调用或一次长工具调用可以几分钟不吐任何字节。AI 助手
+允许一轮跑到 `MAX_TURN_MS`（30 分钟），600s 的配置等于把那道线卡在 10 分钟，
+**而应用里那 30 分钟的天花板根本够不着**：任务不是被助手放弃的，是连接从外面
+被切掉的，界面上还什么都没说。
+
+2100s 略高于 30 分钟，让两边一致。真正的保险是助手流里的 SSE 保活帧（每 25 秒
+一个注释行，见 `src/app/api/assistant/chat/route.ts`）——它让间隙永远不会长到触发
+这个超时，所以调小调大代理配置都不会再影响助手；但仍然应当把两边对齐，否则
+将来改代理时保活间隔又要跟着调。
 
 **第三个问题：`proxy_buffering` 没有 `nginx:set` 选项**，nginx 默认是 `on`，
 会让 SSE 流式输出变成「卡住然后一次性全吐」。等第一次真机部署后实测一下
