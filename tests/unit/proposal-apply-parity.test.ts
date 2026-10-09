@@ -53,10 +53,16 @@ function carried(): string[] {
 
 describe("what the assistant offers and what the apply path carries", () => {
   it("are the same set of fields", () => {
-    // The envelope answers *which* model and *why*, and is consumed by the tool
-    // before a per-model config is built — so it is not part of the config and
-    // its absence from that schema is correct rather than a dropped field.
-    const ENVELOPE = new Set(["providerId", "summary"]);
+    // The envelope answers *which* model, *why*, and *what has been confirmed
+    // about it*, and is consumed by the tool before a per-model config is built —
+    // so none of it is part of the config, and its absence from that schema is
+    // correct rather than a dropped field.
+    //
+    // `confirmFindings` is here for the same reason as the other two and not by
+    // exemption: it decides whether a proposal is created at all, and the
+    // acknowledgement it carries is recorded on the proposal's summary rather
+    // than in the patch, because a decision is not a configuration field.
+    const ENVELOPE = new Set(["providerId", "summary", "confirmFindings"]);
     const o = offered().filter((f) => !ENVELOPE.has(f));
     const c = carried();
     expect(o.length, "no fields found in the proposal tool").toBeGreaterThan(3);
@@ -98,7 +104,7 @@ describe("what the assistant offers and what the apply path carries", () => {
   it("and every field the tool offers survives a real parse of the payload", () => {
     // The same comparison, done with values rather than names: each offered
     // field is handed to the apply schema and must come out the far side.
-    const ENVELOPE = new Set(["providerId", "summary"]);
+    const ENVELOPE = new Set(["providerId", "summary", "confirmFindings"]);
     const properties = (
       toolDefinitions(true).find(
         (t) => t.function.name === "propose_model_config_update",

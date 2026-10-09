@@ -37,7 +37,14 @@ import {
   listAssistantActions,
   withdrawAssistantAction,
 } from "../db/assistant";
-import { auditModelConfigs, describeFindings } from "../providers/config-audit";
+import {
+  auditModelConfigs,
+  describeFindings,
+  findingKey,
+  partitionFindings,
+  renderFindingsRefusal,
+  type Finding,
+} from "../providers/config-audit";
 import { providerDrift } from "../media/drift";
 import { MEDIA_TEMPLATES } from "../media/seeds";
 import type { MediaSpec } from "../media/spec";
@@ -463,7 +470,11 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
         "**要一次改多个模型就用这个，不要循环调 propose_model_config_update**——" +
         "那会生成 N 条提案、要点 N 次确认，而且中途失败会留下半配置的状态。\n" +
         "只改一个模型时两个都行，这个更省事。\n\n" +
-        "models 里只写要改的字段；没写的字段保持原样，不会被清零。",
+        "models 里只写要改的字段；没写的字段保持原样，不会被清零。\n\n" +
+        "**被拦下来的时候**：如果提示里说某个字段「看起来是错的」，先判断是值真的错了、还是这条检查" +
+        "误伤了一个已经就对的配置。值错了就改值；确实如此（比如厂商的这两个模型真的免费）就在 " +
+        "confirmFindings 里写上「code:模型名」，例如 all_zero:agnes-2.5-flash。**不要原样重发一遍**，" +
+        "同样的内容会得到同样的拒绝。",
       parameters: {
         type: "object",
         properties: {
@@ -517,6 +528,15 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
               },
               additionalProperties: false,
             },
+          },
+          confirmFindings: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "你确认过、因而不再拦下来的检查项，格式「code:模型名」，例如 " +
+              "\"all_zero:agnes-2.5-flash\"。**只在厂商文档或官方定价页确写它免费时才用。**\n" +
+              "只有真正会被这次改动碰到的字段才会被拦；模型本来就是 0 价、而你只是在改上下文长度，" +
+              "那样根本不会被拦，也不需要在这里声明。",
           },
         },
         required: ["providerId", "models"],
@@ -745,7 +765,10 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
         "改的是网关真实生效的东西：上下文长度、最大输出、思考等级、积分价格、是否启用、显示名、上游模型名。\n" +
         "思考等级是**本部署声明**的，不是自动检测出来的：查厂商官方文档确认这个模型接受哪几档，再照原样写进 reasoningLevels；厂商文档里没有就留空数组。\n" +
         "文档里显示的上下文和价格读的就是这些值，所以改这里等于同时改文档。\n" +
-        "媒体模型（图片/视频/语音）由 spec 驱动，这里改不了，请用 propose_media_provider_update。",
+        "媒体模型（图片/视频/语音）由 spec 驱动，这里改不了，请用 propose_media_provider_update。\n\n" +
+        "**被拦下来的时候**：先判断是值真的错了、还是这条检查误伤了一个已经就对的配置。值错了就改值；" +
+        "确实如此（比如厂商的定价页确写它免费）就在 confirmFindings 里写上「code:模型名」。" +
+        "**不要原样重发一遍**，同样的内容会得到同样的拒绝。",
       parameters: {
         type: "object",
         properties: {
@@ -792,6 +815,15 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
             description: "每 100 万「写入」上游提示缓存的输入 token 的积分。不填 = 按 inputCost 算。",
           },
           enabled: { type: "boolean", description: "false = 网关不再路由到这个模型，客户端会 404" },
+          confirmFindings: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "你确认过、因而不再拦下来的检查项，格式「code:模型名」，例如 " +
+              "\"all_zero:agnes-2.5-flash\"。**只在厂商文档或官方定价页确写它免费时才用。**\n" +
+              "只有真正会被这次改动碰到的字段才会被拦；模型本来就是 0 价、而你只是在改上下文长度，" +
+              "那样根本不会被拦，也不需要在这里声明。",
+          },
         },
         required: ["providerId", "clientId", "summary"],
         additionalProperties: false,
@@ -2180,6 +2212,7 @@ async function auditProviderConfig(
             `声明了「不支持思考等级」，但 reasoningLevels 里又有 ${levels.length} 档` +
             `（${levels.join("/")}）。两个字段互相矛盾：档位下拉会显示一个选了没反应的控件。`,
           blocking: false,
+          fields: ["reasoningEffortSupported", "reasoningLevels"],
         });
       }
       // Half-declared, and the two halves fail independently. Without this the
@@ -2195,6 +2228,7 @@ async function auditProviderConfig(
             "这两个是会各自失败的独立字段：只声明一个，模型说明页只能显示「思考开关尚未声明」，" +
             "不会替你断言这个模型能不能关掉思考。要补的话照厂商文档填 true 或 false。",
           blocking: false,
+          fields: ["reasoningEffortSupported", "thinkingSwitchSupported"],
         });
       }
       if (cfg.contextLength === undefined || cfg.maxOutputTokens === undefined) {
@@ -2203,6 +2237,7 @@ async function auditProviderConfig(
           clientId,
           message: "缺少上下文长度或最大输出，模型目录里会显示为未知。",
           blocking: false,
+          fields: ["contextLength", "maxOutputTokens"],
         });
       }
     }
@@ -2224,6 +2259,22 @@ async function auditProviderConfig(
         : `发现 ${total} 个问题，分列在下面。用 propose_model_configs_update 一次改完。`,
     providers: report,
   });
+}
+
+/**
+ * The summary an administrator will actually read, with the acknowledgements on it.
+ *
+ * `confirmFindings` changes nothing about the configuration, so there is no
+ * field for it to become. What it does record is a decision, and the decision
+ * belongs next to the thing it is about rather than only in the assistant's
+ * side of the conversation.
+ */
+function acknowledgedSummary(summary: string, acknowledged: Finding[]): string {
+  if (acknowledged.length === 0) return summary;
+  return (
+    `${summary}\n已用 confirmFindings 确认无误：` +
+    acknowledged.map((f) => `${f.code}:${f.clientId}`).join("、")
+  );
 }
 
 async function proposeModelConfigsUpdate(
@@ -2278,27 +2329,37 @@ async function proposeModelConfigsUpdate(
    * rate, with nothing anywhere reporting a problem. The check is deliberately
    * before the proposal: a question asked now is cheap, and the same question
    * asked of the administrator after they approve is not.
+   *
+   * Two things it is *not*. It does not block on a problem this proposal did not
+   * create — a model that is already free stays free whatever else you write,
+   * and refusing the write leaves the state exactly as it was while making the
+   * model un-editable. And it does not ask a question it gives no way to answer:
+   * this used to end with "确认无误就再说一次", which returns the identical
+   * refusal. The way out is `confirmFindings`.
    */
-  const findings = auditModelConfigs(
-    preview as Record<string, Record<string, unknown>>,
-  );
-  const blocking = findings.filter((f) => f.blocking);
+  const patches = Object.fromEntries(targets.map((t) => [t.clientId, t.patch]));
+  const findings = auditModelConfigs(preview as Record<string, Record<string, unknown>>, { patches });
+  const { blocking, acknowledged } = partitionFindings(findings, args.confirmFindings);
   if (blocking.length > 0) {
-    return fail(
-      `这份配置有几个地方看起来是错的，我先没有提交。请先确认或改掉：\n` +
-        describeFindings(blocking).join("\n") +
-        (findings.length > blocking.length
-          ? `\n（另有 ${findings.length - blocking.length} 条提醒，确认后会附在提案里。）`
-          : "") +
-        `\n确认无误就再说一次，我按你说的值提交。`,
-    );
+    return fail(renderFindingsRefusal(blocking, findings));
   }
+
+  /**
+   * The acknowledgement travels with the proposal.
+   *
+   * It is not part of the patch — nothing about a model config changes because
+   * someone looked at it — so the only place it can go is the proposal's own
+   * text, which is what the administrator reads before approving. A free model
+   * with nothing on screen saying anyone confirmed it is indistinguishable from
+   * one that got free by accident.
+   */
+  const finalSummary = acknowledgedSummary(summary, acknowledged);
 
   const action = await createAssistantAction({
     userId: ctx.user.id,
     kind: "provider.update",
     targetId: provider.id,
-    summary,
+    summary: finalSummary,
     args: { modelConfigTargets: targets },
     diff: renderProviderDiff(provider, { modelConfigs: preview }, summary),
   });
@@ -2311,7 +2372,16 @@ async function proposeModelConfigsUpdate(
     // Not failures, and saying so matters: a price that is merely unusual is
     // not the same as one that is wrong, and the difference is the operator's
     // call rather than this system's.
-    warnings: findings.map((f) => `${f.clientId}：${f.message}`),
+    warnings: [
+      ...findings.map((f) => `${f.clientId}：${f.message}`),
+      // The ones the operator declared correct travel with the proposal. It is
+      // the record of *who* decided a zero price was right — without it the
+      // approval screen shows a free model and no indication that anyone ever
+      // looked at it.
+      ...acknowledged.map(
+        (f) => `${f.clientId}：${f.message}（你已用 confirmFindings 确认这是有意的）`,
+      ),
+    ],
     note: "一次提案，管理员点一次确认；还没生效。",
   });
 }
@@ -2357,6 +2427,24 @@ async function proposeModelConfigUpdate(
    */
   const preview = { ...(provider.modelConfigs ?? {}) };
   preview[clientId.data] = { ...existing, ...patch };
+
+  /**
+   * The same gate the batch tool runs.
+   *
+   * It used to run here at all, which is the other half of why the batch gate
+   * could not be reasoned about: splitting one model off the batch call was a
+   * documented way to skip the check, so a fix to the batch tool that did not
+   * also land here would have taught the model to route around it.
+   */
+  const findings = auditModelConfigs(
+    preview as Record<string, Record<string, unknown>>,
+    { patches: { [clientId.data]: patch } },
+  );
+  const { blocking, acknowledged } = partitionFindings(findings, args.confirmFindings);
+  if (blocking.length > 0) {
+    return fail(renderFindingsRefusal(blocking, findings));
+  }
+
   const summary =
     typeof args.summary === "string" && args.summary.trim() ? args.summary.trim() : "未说明的变更";
 
@@ -2364,7 +2452,7 @@ async function proposeModelConfigUpdate(
     userId: ctx.user.id,
     kind: "provider.update",
     targetId: provider.id,
-    summary,
+    summary: acknowledgedSummary(summary, acknowledged),
     args: { modelConfigTarget: { clientId: clientId.data, patch } },
     diff: renderProviderDiff(provider, { modelConfigs: preview }, summary),
   });
@@ -2391,6 +2479,15 @@ async function proposeModelConfigUpdate(
       enabled: existing.enabled,
     },
     after: { ...existing, ...patch },
+    // Same shape as the batch tool's, including the confirmed ones: an
+    // approval that shows a free model with no record of anyone having checked
+    // is indistinguishable from one where nobody looked.
+    warnings: [
+      ...findings.map((f) => `${clientId.data}：${f.message}`),
+      ...acknowledged.map(
+        (f) => `${clientId.data}：${f.message}（你已用 confirmFindings 确认这是有意的）`,
+      ),
+    ],
   });
 }
 
