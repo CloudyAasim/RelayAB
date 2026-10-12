@@ -13,16 +13,22 @@
 import { describe, expect, it } from "vitest";
 import { toolDefinitions } from "@/lib/assistant/tools";
 import { buildModelConfigPatch } from "@/lib/assistant/tools";
-import { ProviderArgsSchema } from "@/app/api/assistant/actions/[id]/route";
+import { ProviderArgsSchema } from "@/lib/assistant/proposal-validation";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const ROOT = process.cwd();
 const TOOLS = readFileSync(join(ROOT, "src", "lib", "assistant", "tools.ts"), "utf8");
-const APPLY = readFileSync(
-  join(ROOT, "src", "app", "api", "assistant", "actions", "[id]", "route.ts"),
-  "utf8",
-);
+// The apply path's rules, from both files they live in — see the note in
+// `assistant-protocol-sync.test.ts`. The route delegates to `checkProposal`, and
+// a rule that lives only in the module is invisible to the propose tools.
+const APPLY =
+  readFileSync(
+    join(ROOT, "src", "app", "api", "assistant", "actions", "[id]", "route.ts"),
+    "utf8",
+  ) +
+  "\n" +
+  readFileSync(join(ROOT, "src", "lib", "assistant", "proposal-validation.ts"), "utf8");
 
 const def = toolDefinitions(true).find(
   (t) => t.function.name === "propose_model_configs_update",

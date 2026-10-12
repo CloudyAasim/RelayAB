@@ -45,6 +45,7 @@ import {
   renderFindingsRefusal,
   type Finding,
 } from "../providers/config-audit";
+import { checkProposal, type ProposalKind } from "./proposal-validation";
 import { providerDrift } from "../media/drift";
 import { MEDIA_TEMPLATES } from "../media/seeds";
 import type { MediaSpec } from "../media/spec";
@@ -2355,6 +2356,18 @@ async function proposeModelConfigsUpdate(
    */
   const finalSummary = acknowledgedSummary(summary, acknowledged);
 
+  /**
+   * The gate between writing a proposal and asking for approval.
+   *
+   * Every one of these payloads used to be checked only when the
+   * administrator pressed 同意 — and the diff they read does not
+   * validate, so an invalid payload looked exactly like a valid one
+   * right up to the click, and then took the whole proposal down. This
+   * is the same call the apply route makes, so the two cannot answer
+   * differently about what a proposal may contain.
+   */
+  const gate = checkProposal("provider.update" as ProposalKind, { modelConfigTargets: targets });
+  if (!gate.ok) return fail(gate.message!);
   const action = await createAssistantAction({
     userId: ctx.user.id,
     kind: "provider.update",
@@ -2373,6 +2386,11 @@ async function proposeModelConfigsUpdate(
     // not the same as one that is wrong, and the difference is the operator's
     // call rather than this system's.
     warnings: [
+      // Whatever the shared proposal check had to say about this payload, which
+      // is the same check the apply runs and the one the admin panel's own save
+      // runs. A tool that refuses on errors but drops the warnings is showing
+      // half of the gate.
+      ...gate.warnings,
       ...findings.map((f) => `${f.clientId}：${f.message}`),
       // The ones the operator declared correct travel with the proposal. It is
       // the record of *who* decided a zero price was right — without it the
@@ -2448,6 +2466,18 @@ async function proposeModelConfigUpdate(
   const summary =
     typeof args.summary === "string" && args.summary.trim() ? args.summary.trim() : "未说明的变更";
 
+  /**
+   * The gate between writing a proposal and asking for approval.
+   *
+   * Every one of these payloads used to be checked only when the
+   * administrator pressed 同意 — and the diff they read does not
+   * validate, so an invalid payload looked exactly like a valid one
+   * right up to the click, and then took the whole proposal down. This
+   * is the same call the apply route makes, so the two cannot answer
+   * differently about what a proposal may contain.
+   */
+  const gate = checkProposal("provider.update" as ProposalKind, { modelConfigTarget: { clientId: clientId.data, patch } });
+  if (!gate.ok) return fail(gate.message!);
   const action = await createAssistantAction({
     userId: ctx.user.id,
     kind: "provider.update",
@@ -2483,6 +2513,7 @@ async function proposeModelConfigUpdate(
     // approval that shows a free model with no record of anyone having checked
     // is indistinguishable from one where nobody looked.
     warnings: [
+      ...gate.warnings,
       ...findings.map((f) => `${clientId.data}：${f.message}`),
       ...acknowledged.map(
         (f) => `${clientId.data}：${f.message}（你已用 confirmFindings 确认这是有意的）`,
@@ -2592,6 +2623,18 @@ async function proposeDocPages(
     typeof args.summary === "string" && args.summary.trim() ? args.summary.trim() : "未说明的变更";
   const before = docPages ?? [];
 
+  /**
+   * The gate between writing a proposal and asking for approval.
+   *
+   * Every one of these payloads used to be checked only when the
+   * administrator pressed 同意 — and the diff they read does not
+   * validate, so an invalid payload looked exactly like a valid one
+   * right up to the click, and then took the whole proposal down. This
+   * is the same call the apply route makes, so the two cannot answer
+   * differently about what a proposal may contain.
+   */
+  const gate = checkProposal("doc_pages.update" as ProposalKind, { docPages: pages });
+  if (!gate.ok) return fail(gate.message!);
   const action = await createAssistantAction({
     userId: ctx.user.id,
     kind: "doc_pages.update",
@@ -2602,6 +2645,11 @@ async function proposeDocPages(
   });
 
   return ok({
+    // What the shared check had to say about this payload. The admin panel's
+    // own save returns the same list; refusing on errors and dropping the
+    // warnings would be half a gate.
+    ...(gate.warnings.length > 0 ? { warnings: gate.warnings } : {}),
+
     actionId: action.id,
     summary,
     removed: before.filter((b) => !pages.some((p) => p.id === b.id)).map((b) => b.id),
@@ -3040,6 +3088,18 @@ async function proposeProviderUpdate(
     typeof args.summary === "string" && args.summary.trim() ? args.summary.trim() : "未说明的变更";
   const diff = renderProviderDiff(provider, patch, summary);
 
+  /**
+   * The gate between writing a proposal and asking for approval.
+   *
+   * Every one of these payloads used to be checked only when the
+   * administrator pressed 同意 — and the diff they read does not
+   * validate, so an invalid payload looked exactly like a valid one
+   * right up to the click, and then took the whole proposal down. This
+   * is the same call the apply route makes, so the two cannot answer
+   * differently about what a proposal may contain.
+   */
+  const gate = checkProposal("provider.update" as ProposalKind, patch);
+  if (!gate.ok) return fail(gate.message!);
   const action = await createAssistantAction({
     userId: ctx.user.id,
     kind: "provider.update",
@@ -3050,6 +3110,11 @@ async function proposeProviderUpdate(
   });
 
   return ok({
+    // What the shared check had to say about this payload. The admin panel's
+    // own save returns the same list; refusing on errors and dropping the
+    // warnings would be half a gate.
+    ...(gate.warnings.length > 0 ? { warnings: gate.warnings } : {}),
+
     actionId: action.id,
     status: "pending",
     message: "变更已生成，等待管理员在界面上确认后才会生效。请把下面这份对比原样告诉用户。",
@@ -3131,6 +3196,18 @@ async function proposeMediaProviderUpdate(
     typeof args.summary === "string" && args.summary.trim() ? args.summary.trim() : "未说明的变更";
   const diff = renderMediaDiff(provider, patch, summary);
 
+  /**
+   * The gate between writing a proposal and asking for approval.
+   *
+   * Every one of these payloads used to be checked only when the
+   * administrator pressed 同意 — and the diff they read does not
+   * validate, so an invalid payload looked exactly like a valid one
+   * right up to the click, and then took the whole proposal down. This
+   * is the same call the apply route makes, so the two cannot answer
+   * differently about what a proposal may contain.
+   */
+  const gate = checkProposal("media_provider.update" as ProposalKind, patch);
+  if (!gate.ok) return fail(gate.message!);
   const action = await createAssistantAction({
     userId: ctx.user.id,
     kind: "media_provider.update",
@@ -3145,6 +3222,9 @@ async function proposeMediaProviderUpdate(
     status: "pending",
     message: "变更已生成，等待管理员确认后才会生效。",
     diff,
+    // Legal, but worth reading: the same list the admin panel's own save
+    // returns, and the one this proposal just passed.
+    ...(gate.warnings.length > 0 ? { warnings: gate.warnings } : {}),
   });
 }
 
@@ -3220,6 +3300,18 @@ async function proposeProviderCreate(
 
   const summary =
     typeof args.summary === "string" && args.summary.trim() ? args.summary.trim() : "未说明的变更";
+  /**
+   * The gate between writing a proposal and asking for approval.
+   *
+   * Every one of these payloads used to be checked only when the
+   * administrator pressed 同意 — and the diff they read does not
+   * validate, so an invalid payload looked exactly like a valid one
+   * right up to the click, and then took the whole proposal down. This
+   * is the same call the apply route makes, so the two cannot answer
+   * differently about what a proposal may contain.
+   */
+  const gate = checkProposal("provider.create" as ProposalKind, spec);
+  if (!gate.ok) return fail(gate.message!);
   const action = await createAssistantAction({
     userId: ctx.user.id,
     kind: "provider.create",
@@ -3229,6 +3321,11 @@ async function proposeProviderCreate(
   });
 
   return ok({
+    // What the shared check had to say about this payload. The admin panel's
+    // own save returns the same list; refusing on errors and dropping the
+    // warnings would be half a gate.
+    ...(gate.warnings.length > 0 ? { warnings: gate.warnings } : {}),
+
     actionId: action.id,
     status: "pending",
     message:
@@ -3272,6 +3369,18 @@ async function proposeMediaProviderCreate(
   const summary =
     typeof args.summary === "string" && args.summary.trim() ? args.summary.trim() : "未说明的变更";
   const diff = renderCreateDiff(spec, summary);
+  /**
+   * The gate between writing a proposal and asking for approval.
+   *
+   * Every one of these payloads used to be checked only when the
+   * administrator pressed 同意 — and the diff they read does not
+   * validate, so an invalid payload looked exactly like a valid one
+   * right up to the click, and then took the whole proposal down. This
+   * is the same call the apply route makes, so the two cannot answer
+   * differently about what a proposal may contain.
+   */
+  const gate = checkProposal("media_provider.create" as ProposalKind, spec);
+  if (!gate.ok) return fail(gate.message!);
   const action = await createAssistantAction({
     userId: ctx.user.id,
     kind: "media_provider.create",
@@ -3281,6 +3390,11 @@ async function proposeMediaProviderCreate(
   });
 
   return ok({
+    // What the shared check had to say about this payload. The admin panel's
+    // own save returns the same list; refusing on errors and dropping the
+    // warnings would be half a gate.
+    ...(gate.warnings.length > 0 ? { warnings: gate.warnings } : {}),
+
     actionId: action.id,
     status: "pending",
     message:

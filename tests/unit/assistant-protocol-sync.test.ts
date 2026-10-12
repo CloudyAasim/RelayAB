@@ -38,7 +38,20 @@ const read = (...p: string[]) => readFileSync(join(ROOT, ...p), "utf-8");
 const TOOLS = read("src", "lib", "assistant", "tools.ts");
 const NOTES = read("src", "lib", "assistant", "deployment-notes.ts");
 const DIFF = read("src", "lib", "assistant", "diff.ts");
-const APPLY = read("src", "app", "api", "assistant", "actions", "[id]", "route.ts");
+/**
+ * The apply path's rules, read from every file they now live in.
+ *
+ * They used to be written inside the route. They are not any more: the route
+ * calls `checkProposal`, and a rule that is only in the route is a rule the
+ * assistant's propose tools cannot see — which is how a `statusMap` came to be
+ * validated in the admin panel and in neither media tool. So the constant
+ * covers the module too, and every assertion below is still asking the same
+ * question: can a proposal written by the tool be applied?
+ */
+const APPLY =
+  read("src", "app", "api", "assistant", "actions", "[id]", "route.ts") +
+  "\n" +
+  read("src", "lib", "assistant", "proposal-validation.ts");
 const TEST_MODEL = read("src", "app", "api", "assistant", "test-model", "route.ts");
 const DB = read("src", "lib", "db", "providers.ts");
 

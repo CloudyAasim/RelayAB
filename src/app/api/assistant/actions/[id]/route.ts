@@ -30,11 +30,7 @@
  */
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
-import { z, ZodError } from "zod";
-import {
-  ModelConfigMergePatchSchema,
-  ModelConfigPatchSchema,
-} from "@/lib/db/types";
+import { z } from "zod";
 import { getCurrentUser, requireAdmin, AuthGuardError, type AuthedUser } from "@/lib/auth/session";
 import {
   claimAssistantAction,
@@ -44,7 +40,16 @@ import {
 import { createProvider, getProviderById, updateProvider } from "@/lib/db/providers";
 import { createMediaProvider, updateMediaProvider, MediaProviderValidationError } from "@/lib/db/media-providers";
 import { updateSettings } from "@/lib/db/settings";
-import { validatePage } from "@/lib/docs/custom";
+import {
+  checkProposal,
+  describeApplyFailure,
+  isProposalKind,
+  DocPagesArgsSchema,
+  MediaArgsSchema,
+  MediaProviderCreateSchema,
+  ProviderArgsSchema,
+  ProviderCreateSchema,
+} from "@/lib/assistant/proposal-validation";
 
 export const dynamic = "force-dynamic";
 
@@ -65,173 +70,6 @@ const DecisionSchema = z.object({
   apiKey: z.string().max(400).optional(),
 });
 
-
-/**
- * The provider editor's model-configuration shape, used directly rather than
- * mirrored.
- *
- * "Minus anything key-shaped" was true the moment it was written and stopped
- * being the difference the moment a field was added: the local copy lost
- * `reasoningLevels` and both cache prices while the tool still offered them, so
- * a proposal came back reported as applied with the field stripped. The provider
- * key is not part of this shape at all — it is a separate field of the approval
- * body — so using the shared schema drops nothing and cannot drift again.
- */
-
-export const ProviderArgsSchema = z
-  .object({
-    baseUrl: z.string().nullable().optional(),
-    anthropicBaseUrl: z.string().nullable().optional(),
-    /**
-     * Fixed headers sent upstream, and which upstream protocol the OpenAI face
-     * speaks.
-     *
-     * Both were missing here while `propose_provider_update` offered both, wrote
-     * both into the proposal, and the approval diff rendered `upstreamFormat` as
-     * a line the administrator was being asked to confirm. Because this object is
-     * `.strict()`, the parse below rejected the whole proposal at apply time —
-     * so the sequence was: the assistant proposed it, the screen showed the diff,
-     * the administrator approved it, and then the change failed and took every
-     * other field in the same proposal with it.
-     *
-     * The lesson is the one that keeps repeating: a schema stricter than the tool
-     * that writes it puts the failure *after* the approval, which is the one place
-     * an administrator's click cannot be refunded. `assistant-provider-field-parity`
-     * now checks this list against the tool's declared parameters, so a field
-     * cannot be offered without somewhere to land.
-     *
-     * Mirrors `src/app/api/admin/providers/route.ts`, which is where an operator
-     * edits these same two fields by hand.
-     */
-    headers: z.record(z.string(), z.string()).optional(),
-    upstreamFormat: z.enum(["responses", "chat", "anthropic"]).optional(),
-    openaiEnabled: z.boolean().optional(),
-    anthropicEnabled: z.boolean().optional(),
-    enabled: z.boolean().optional(),
-    priority: z.number().int().optional(),
-    modelMapping: z.record(z.string(), z.string()).optional(),
-    /**
-     * What this proposal is for, rather than what it looked like when it was
-     * written.
-     *
-     * A proposal used to carry the whole model table as it stood at creation
-     * time, and approving it replaced the table with that copy. Two proposals
-     * over one provider then overwrote each other in approval order, the last
-     * silently reverting the first — with every status reading `applied` and no
-     * error anywhere. Eight approved price changes, one of them in the
-     * database. Storing the model and the fields means the apply reads the
-     * provider as it stands and merges into it, so order stops mattering.
-     */
-    modelConfigTarget: z
-      .object({
-        clientId: z.string().min(1).max(200),
-        // The merge shape, not the row shape. The model is named beside the
-        // patch and only the changed fields travel with it, so requiring the two
-        // identifiers inside the patch rejected every proposal at approval time —
-        // after the administrator had clicked.
-        patch: ModelConfigMergePatchSchema,
-      })
-      .optional(),
-    /**
-     * The same merge, for many models at once.
-     *
-     * A provider with nine models would otherwise need nine proposals and nine
-     * approvals to describe one intention, and stopping halfway leaves half the
-     * catalogue repriced. Each entry is still merged into the provider as it
-     * stands at that moment, so a list of them composes with anything applied in
-     * between rather than reverting it.
-     */
-    modelConfigTargets: z
-      .array(
-        z.object({
-          clientId: z.string().min(1).max(200),
-          patch: ModelConfigMergePatchSchema,
-        }),
-      )
-      .min(1)
-      .max(200)
-      .optional(),
-    /**
-     * The whole table, for proposals written before the field above existed and
-     * for anyone who means to replace it.
-     *
-     * Read only when `modelConfigTarget` is absent: two shapes cannot both be
-     * honoured, and the one that loses is the one that would revert the other's
-     * work. Kept because a proposal is already sitting in the queue in this
-     * shape, and dropping it would spend an approval on nothing — the exact
-     * failure the comment above this schema was written about.
-     */
-    modelConfigs: z.record(z.string(), ModelConfigPatchSchema).optional(),
-    /**
-     * The provider's protocol documents, one per compatibility interface.
-     *
-     * **A list, merged by `protocol`** — the tool sends the entries it wants to
-     * change and the ones it omits are kept, so adding a rule for one interface
-     * does not mean resending the other two in full.
-     *
-     * This was `textSpec`, a single string, and it did not work: the schema
-     * accepted the key, `updateProvider` read `patch.textSpecs` (plural), so the
-     * proposal was approved, the diff showed it, and nothing was written. A
-     * proposal that is silently discarded is worse than a rejected one — it
-     * spends the administrator's approval on nothing.
-     */
-    textSpecs: z.array(z.string().max(200_000)).nullable().optional(),
-  })
-  .strict();
-
-/** The operator's documentation chapter, as one replacement list. */
-const DocPagesArgsSchema = z
-  .object({
-    docPages: z
-      .array(
-        z.object({
-          id: z.string().min(1).max(60).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
-          title: z.string().min(1).max(120),
-          body: z.string().max(60_000),
-          hidden: z.boolean().optional(),
-          order: z.number().int().min(0).max(10_000).optional(),
-        }),
-      )
-      .max(30),
-  })
-  .strict();
-
-const MediaArgsSchema = z
-  .object({
-    baseUrl: z.string().optional(),
-    enabled: z.boolean().optional(),
-    models: z.record(z.string(), z.unknown()).optional(),
-    specs: z.array(z.record(z.string(), z.unknown())).optional(),
-  })
-  .strict();
-
-/** A create's payload, which is a whole provider rather than a patch of one. */
-export const ProviderCreateSchema = z
-  .object({
-    name: z.string().min(1).max(120),
-    kind: z.enum(["openai", "anthropic"]).default("openai"),
-    baseUrl: z.string().max(500).nullable().optional(),
-    upstreamFormat: z.enum(["responses", "chat", "anthropic"]).optional(),
-    priority: z.number().int().optional(),
-    enabled: z.boolean().optional(),
-    openaiEnabled: z.boolean().optional(),
-    anthropicEnabled: z.boolean().optional(),
-    anthropicBaseUrl: z.string().max(500).nullable().optional(),
-    modelMapping: z.record(z.string(), z.string()).optional(),
-    modelConfigs: z.record(z.string(), ModelConfigPatchSchema).optional(),
-  })
-  .strict();
-
-const MediaProviderCreateSchema = z
-  .object({
-    name: z.string().min(1).max(120),
-    baseUrl: z.string().max(500).optional(),
-    enabled: z.boolean().optional(),
-    priority: z.number().int().optional(),
-    models: z.record(z.string(), z.unknown()),
-    specs: z.array(z.record(z.string(), z.unknown())).default([]),
-  })
-  .strict();
 
 const CREATE_KINDS = new Set(["provider.create", "media_provider.create"]);
 
@@ -346,11 +184,39 @@ export async function POST(
     );
   }
 
+  /**
+   * The same check the propose tool ran, run again.
+   *
+   * Twice is right here and it used to be never. The proposal and the approval
+   * can be a day apart, and the spec rules worth checking — a routable page slug,
+   * a `statusMap` catch-all — are worth checking again at the moment of the
+   * write. It is also what makes the two paths provably the same: both call
+   * `checkProposal`, so a rule added to it cannot land on one side only, which is
+   * exactly how a `statusMap` came to be validated in the admin panel and in
+   * neither of the assistant's two media tools.
+   */
+  if (!isProposalKind(claimed.kind)) {
+    await setAssistantActionStatus(me.id, id, "failed", `未知的变更类型：${claimed.kind}`);
+    return NextResponse.json(
+      { ok: false, error: { code: "bad_state", message: `未知的变更类型：${claimed.kind}` } },
+      { status: 400 },
+    );
+  }
+  const checked = checkProposal(claimed.kind, args);
+  if (!checked.ok) {
+    await setAssistantActionStatus(me.id, id, "failed", checked.message!);
+    return NextResponse.json(
+      { ok: false, error: { code: "bad_state", message: checked.message } },
+      { status: 422 },
+    );
+  }
+  const payload = checked.data as Record<string, unknown>;
+
   try {
     if (claimed.kind === "provider.update") {
       if (!claimed.targetId) throw new Error("变更缺少目标服务商 id");
       const { textSpecs, modelConfigTarget, modelConfigTargets, modelConfigs, ...rest } =
-        ProviderArgsSchema.parse(args);
+        payload as z.infer<typeof ProviderArgsSchema>;
 
       // One list, two shapes: a single model and many models carry the same
       // thing and are applied the same way. `undefined` in an entry means the
@@ -407,7 +273,7 @@ export async function POST(
     }
 
     if (claimed.kind === "provider.create") {
-      const spec = ProviderCreateSchema.parse(args);
+      const spec = payload as z.infer<typeof ProviderCreateSchema>;
       // The key comes from this request, not from the proposal: it is
       // encrypted on the way into the provider row and exists nowhere else.
       const created = await createProvider({ ...spec, apiKey: parsed.data.apiKey!.trim() });
@@ -422,7 +288,7 @@ export async function POST(
 
     if (claimed.kind === "media_provider.update") {
       if (!claimed.targetId) throw new Error("变更缺少目标媒体服务商 id");
-      const patch = MediaArgsSchema.parse(args);
+      const patch = payload as z.infer<typeof MediaArgsSchema>;
       const updated = await updateMediaProvider(claimed.targetId, {
         ...(patch.baseUrl !== undefined ? { baseUrl: patch.baseUrl } : {}),
         ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
@@ -440,32 +306,24 @@ export async function POST(
     }
 
     if (claimed.kind === "doc_pages.update") {
-      const parsedPages = DocPagesArgsSchema.parse(args);
-      // Re-validated on apply, not just on propose. The proposal and the
-      // approval can be a day apart, and the rule that makes an id safe
-      // (a routable slug a reader can bookmark) is worth checking twice.
-      for (const page of parsedPages.docPages) {
-        const result = validatePage(page);
-        if (result) throw new Error(`页面 ${page.id} 不合法：${result}`);
-      }
-      const seen = new Set<string>();
-      for (const page of parsedPages.docPages) {
-        if (seen.has(page.id)) throw new Error(`页面标识「${page.id}」重复了`);
-        seen.add(page.id);
-      }
-      await updateSettings({ docPages: parsedPages.docPages });
+      // The page rules — a routable slug a reader can bookmark, and no two
+      // pages sharing one — are checked by `checkProposal` above, on both sides
+      // of this click. They used to live only here, which meant the assistant
+      // could propose a set that failed the instant it was approved.
+      const parsedPages = (payload as z.infer<typeof DocPagesArgsSchema>).docPages;
+      await updateSettings({ docPages: parsedPages });
       await revalidateCatalog();
       await setAssistantActionStatus(
         me.id,
         claimed.id,
         "applied",
-        `已更新自定义文档，共 ${parsedPages.docPages.length} 页`,
+        `已更新自定义文档，共 ${parsedPages.length} 页`,
       );
-      return NextResponse.json({ ok: true, data: { status: "applied", pages: parsedPages.docPages.length } });
+      return NextResponse.json({ ok: true, data: { status: "applied", pages: parsedPages.length } });
     }
 
     if (claimed.kind === "media_provider.create") {
-      const spec = MediaProviderCreateSchema.parse(args);
+      const spec = payload as z.infer<typeof MediaProviderCreateSchema>;
       const created = await createMediaProvider({
         name: spec.name,
         baseUrl: spec.baseUrl ?? "",
@@ -498,43 +356,6 @@ export async function POST(
       { status },
     );
   }
-}
-
-/**
- * What the administrator and the model are told when an apply throws.
- *
- * A `ZodError`'s `message` is a JSON array of issues, and that array was reaching
- * the approval screen verbatim — `[{"code":"unrecognized_keys","keys":["upstreamFormat"],
- * "path":[],"message":"Unrecognized key(s) in object: 'upstreamFormat'"}]`. It is
- * technically the reason and practically unreadable: it names a field without
- * saying whose fault it is, and the one thing whoever has to act on needs is
- * "this proposal contains a field the server will not accept", spelled out.
- *
- * So the same `issues` are rendered as a sentence, keeping the path, the field
- * and the reason. The raw shape was never useful to a reader and was the whole
- * of what the assistant got when it needed to correct itself.
- */
-function describeApplyFailure(err: unknown): string {
-  if (err instanceof MediaProviderValidationError) return `配置不合法：${err.issues.join("；")}`;
-  if (err instanceof ZodError) {
-    return (
-      `变更内容有 ${err.issues.length} 处通不过校验` +
-      `（这是提案本身的问题，不是配置写错了）：` +
-      err.issues
-        .map((i) => `${describePath(i.path)}${i.message}`)
-        .join("；")
-    );
-  }
-  return err instanceof Error ? err.message : String(err);
-}
-
-/** `["modelConfigs", 0, "contextLength"]` → `modelConfigs[0].contextLength`。 */
-function describePath(path: ReadonlyArray<PropertyKey>): string {
-  if (path.length === 0) return "顶层";
-  return path.reduce<string>(
-    (acc, part) => (typeof part === "number" ? `${acc}[${part}]` : `${acc}.${String(part)}`),
-    "",
-  );
 }
 
 export async function GET(

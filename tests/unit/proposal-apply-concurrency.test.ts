@@ -21,13 +21,19 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ModelConfigMergePatchSchema, ModelConfigPatchSchema } from "@/lib/db/types";
 import { buildModelConfigPatch } from "@/lib/assistant/tools";
-import { ProviderArgsSchema } from "@/app/api/assistant/actions/[id]/route";
+import { ProviderArgsSchema } from "@/lib/assistant/proposal-validation";
 
 const ROOT = process.cwd();
 const read = (...p: string[]): string => readFileSync(join(ROOT, ...p), "utf8");
 
 const TOOLS = read("src", "lib", "assistant", "tools.ts");
-const APPLY = read("src", "app", "api", "assistant", "actions", "[id]", "route.ts");
+// The apply path's rules, from both files they live in — see the note in
+// `assistant-protocol-sync.test.ts`. The route delegates to `checkProposal`, and
+// a rule that lives only in the module is invisible to the propose tools.
+const APPLY =
+  read("src", "app", "api", "assistant", "actions", "[id]", "route.ts") +
+  "\n" +
+  read("src", "lib", "assistant", "proposal-validation.ts");
 
 type ModelConfigs = Record<string, Record<string, unknown>>;
 

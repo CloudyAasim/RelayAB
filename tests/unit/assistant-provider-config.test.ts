@@ -21,7 +21,13 @@ import { renderDocPagesDiff } from "@/lib/assistant/diff";
 const ROOT = process.cwd();
 const TOOLS = readFileSync(join(ROOT, "src", "lib", "assistant", "tools.ts"), "utf-8");
 const SCHEMA = readFileSync(join(ROOT, "src", "lib", "assistant", "schema.ts"), "utf-8");
-const APPLY = readFileSync(join(ROOT, "src", "app", "api", "assistant", "actions", "[id]", "route.ts"), "utf-8");
+// The apply path's rules, from both files they live in — see the note in
+// `assistant-protocol-sync.test.ts`. The route delegates to `checkProposal`, and
+// a rule that lives only in the module is invisible to the propose tools.
+const APPLY =
+  readFileSync(join(ROOT, "src", "app", "api", "assistant", "actions", "[id]", "route.ts"), "utf-8") +
+  "\n" +
+  readFileSync(join(ROOT, "src", "lib", "assistant", "proposal-validation.ts"), "utf-8");
 
 describe("the assistant can see and set the protocol", () => {
   it("list_providers reports all of them", () => {

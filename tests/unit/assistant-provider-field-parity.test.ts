@@ -35,12 +35,23 @@ import { toolDefinitions } from "@/lib/assistant/tools";
 import {
   ProviderArgsSchema,
   ProviderCreateSchema,
-} from "@/app/api/assistant/actions/[id]/route";
+} from "@/lib/assistant/proposal-validation";
 
-const ROUTE_SRC = readFileSync(
-  join(process.cwd(), "src", "app", "api", "assistant", "actions", "[id]", "route.ts"),
-  "utf-8",
-);
+/**
+ * The apply path's rules, from both files they live in.
+ *
+ * The route now calls `checkProposal` and the formatting that renders a refusal
+ * moved beside it, so a search of the route alone would find the call and none
+ * of the behaviour. The assertions below are about what an administrator and
+ * the assistant are told, and both of those live in the module now.
+ */
+const ROUTE_SRC =
+  readFileSync(
+    join(process.cwd(), "src", "app", "api", "assistant", "actions", "[id]", "route.ts"),
+    "utf-8",
+  ) +
+  "\n" +
+  readFileSync(join(process.cwd(), "src", "lib", "assistant", "proposal-validation.ts"), "utf-8");
 
 /** The parameter names the model is shown for a tool. */
 function declaredParams(toolName: string): string[] {

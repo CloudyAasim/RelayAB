@@ -69,10 +69,19 @@ const CONTENT = readFileSync(
 const READER = readFileSync(join(process.cwd(), "src", "lib", "assistant", "docs-reader.ts"), "utf-8");
 const DIFF = readFileSync(join(process.cwd(), "src", "lib", "assistant", "diff.ts"), "utf-8");
 const TOOLS = readFileSync(join(process.cwd(), "src", "lib", "assistant", "tools.ts"), "utf-8");
-const ACTION_ROUTE = readFileSync(
-  join(process.cwd(), "src", "app", "api", "assistant", "actions", "[id]", "route.ts"),
-  "utf-8",
-);
+// The apply path's rules, from both files they live in — see the note in
+// `assistant-protocol-sync.test.ts`. The route delegates to `checkProposal`, and
+// a rule that lives only in the module is invisible to the propose tools.
+const ACTION_ROUTE =
+  readFileSync(
+    join(process.cwd(), "src", "app", "api", "assistant", "actions", "[id]", "route.ts"),
+    "utf-8",
+  ) +
+  "\n" +
+  readFileSync(
+    join(process.cwd(), "src", "lib", "assistant", "proposal-validation.ts"),
+    "utf-8",
+  );
 const API = readFileSync(join(process.cwd(), "src", "app", "api", "admin", "settings", "route.ts"), "utf-8");
 
 /** The outline only ever needs to know labels, not real translations. */

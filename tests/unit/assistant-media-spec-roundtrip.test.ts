@@ -279,10 +279,22 @@ describe("the read tool stops teaching the wrong shape", () => {
 });
 
 describe("the refusal reaches the person who pressed approve", () => {
-  const ROUTE = readFileSync(
-    join(process.cwd(), "src", "app", "api", "assistant", "actions", "[id]", "route.ts"),
+  // The apply path's rules, from both files they live in. The route now calls
+  // `checkProposal` and the formatting that turns a validation error into a
+  // sentence moved beside it, so a search of the route alone finds the call and
+  // none of the behaviour. These two tests are about what a reader is shown,
+  // and that code is in the module now.
+  const FORMATTER = readFileSync(
+    join(process.cwd(), "src", "lib", "assistant", "proposal-validation.ts"),
     "utf-8",
   );
+  const ROUTE =
+    readFileSync(
+      join(process.cwd(), "src", "app", "api", "assistant", "actions", "[id]", "route.ts"),
+      "utf-8",
+    ) +
+    "\n" +
+    FORMATTER;
 
   it("uses the issues, which are the only actionable part of the error", () => {
     expect(ROUTE).toMatch(/err instanceof MediaProviderValidationError[\s\S]{0,160}err\.issues\.join/);
@@ -293,11 +305,17 @@ describe("the refusal reaches the person who pressed approve", () => {
     // guard. A validation error has to be answered from `issues` — the class
     // name is what the admin saw, and it is what the model saw, and it is the
     // reason the second attempt was another guess.
-    const at = ROUTE.lastIndexOf("} catch (err) {");
-    const catchBlock = ROUTE.slice(at, ROUTE.indexOf("export async function GET", at));
-    const validation = catchBlock.indexOf("instanceof MediaProviderValidationError");
-    const join = catchBlock.indexOf("err.issues.join");
-    const bare = catchBlock.indexOf("err.message");
+    //
+    // The formatter itself moved to `proposal-validation.ts` when the propose
+    // tools started sharing it, so the block being read is that one rather than
+    // the route's catch. What is being asked has not changed: does the branch
+    // that handles a validation error read `issues`, and does the generic
+    // `err.message` fallback come after it?
+    const at = FORMATTER.indexOf("function describeApplyFailure");
+    const formatter = FORMATTER.slice(at, FORMATTER.indexOf("\n}", at));
+    const validation = formatter.indexOf("instanceof MediaProviderValidationError");
+    const join = formatter.indexOf("err.issues.join");
+    const bare = formatter.indexOf("err.message");
     expect(validation, "no validation branch").toBeGreaterThan(-1);
     expect(join, "the issues are not used").toBeGreaterThan(validation);
     // The generic fallback is fine and necessary for every other error; what
