@@ -26,6 +26,7 @@
  */
 
 import { createRequire } from "node:module";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -553,6 +554,49 @@ export function __resetDbForTest(): void {
 // ---------------------------------------------------------------------------
 
 /**
+ * Which async context owns the open transaction, if any.
+ *
+ * It used to be a module counter, which is wrong in a way that only shows up
+ * under load: `fn` awaits, so while one request is inside its transaction
+ * another request runs, sees a depth of 1, and concludes it is a nested call.
+ * It is not. It got no `BEGIN` of its own, its writes went into someone else's
+ * transaction, and it returned success — which the first request's `ROLLBACK`
+ * then discarded, leaving a caller holding a success for work that was never
+ * committed.
+ *
+ * `AsyncLocalStorage` carries ownership along the continuation, so a nested
+ * call is one made by the *same* request and nobody else's.
+ */
+const txStore = new AsyncLocalStorage<{ owned: true }>();
+
+/**
+ * Serialises transactions, because the connection cannot run two at once.
+ *
+ * SQLite allows one writer, and this is a single shared connection rather than
+ * a pool, so a second `BEGIN IMMEDIATE` does not queue — it fails outright
+ * with "cannot start a transaction within a transaction". That is not a new
+ * problem introduced by fixing the depth counter; it is what the counter was
+ * hiding. One at a time is the correct behaviour for this database, so the
+ * queue below turns a hard failure into a wait.
+ *
+ * Held only for the length of `fn`, so the transactions that matter — the ones
+ * that read, merge and write — stay short. Anything long-running belongs
+ * outside.
+ */
+let txLock: Promise<unknown> = Promise.resolve();
+
+async function acquireTxLock(): Promise<() => void> {
+  let release!: () => void;
+  const mine = new Promise<void>((r) => {
+    release = r;
+  });
+  const previous = txLock;
+  txLock = txLock.then(() => mine);
+  await previous;
+  return release;
+}
+
+/**
  * Run `fn` inside an IMMEDIATE transaction.
  *
  * IMMEDIATE (not DEFERRED) so the write lock is taken up front: a deferred
@@ -563,27 +607,33 @@ export function __resetDbForTest(): void {
  * Nested calls join the outer transaction rather than failing, so a helper can
  * be reused from inside a larger atomic block.
  */
-let txDepth = 0;
 export async function withTransaction<T>(fn: () => T | Promise<T>): Promise<T> {
-  const conn = getDb();
-  if (txDepth > 0) return await fn();
+  // Ours: the caller is inside the transaction we own.
+  if (txStore.getStore()) return await fn();
 
-  conn.exec("BEGIN IMMEDIATE");
-  txDepth++;
+  // Someone else's: wait rather than join. Joining would put this work in a
+  // transaction that another request controls, and it may yet roll back.
+  const release = await acquireTxLock();
   try {
-    const result = await fn();
-    conn.exec("COMMIT");
-    return result;
-  } catch (err) {
-    try {
-      conn.exec("ROLLBACK");
-    } catch {
-      // Rollback failing means the transaction was already aborted; the
-      // original error is the one worth surfacing.
-    }
-    throw err;
+    const conn = getDb();
+    conn.exec("BEGIN IMMEDIATE");
+    return await txStore.run({ owned: true }, async () => {
+      try {
+        const result = await fn();
+        conn.exec("COMMIT");
+        return result;
+      } catch (err) {
+        try {
+          conn.exec("ROLLBACK");
+        } catch {
+          // Rollback failing means the transaction was already aborted; the
+          // original error is the one worth surfacing.
+        }
+        throw err;
+      }
+    });
   } finally {
-    txDepth--;
+    release();
   }
 }
 

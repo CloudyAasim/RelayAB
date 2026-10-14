@@ -176,12 +176,49 @@ describe("the stored shape is the intent, not a snapshot", () => {
   });
 
   it("the apply re-reads the provider before merging", () => {
-    expect(APPLY).toMatch(/const current = await getProviderById\(claimed\.targetId\)/);
+    // `claimed.targetId!` rather than `claimed.targetId`: the read moved inside
+    // the transaction callback, where TypeScript cannot carry the narrowing
+    // from the null check above it.
+    expect(APPLY).toMatch(/const current = await getProviderById\(claimed\.targetId!?\)/);
     // A loop, not one assignment: the apply now handles a list of merges, and
     // the line that showed it merging a single model would have been the wrong
     // thing to keep if it had merely been widened.
     expect(APPLY).toMatch(/for \(const \{ clientId, patch \} of targets\)/);
     expect(APPLY).toMatch(/live\[clientId\] = \{ \.\.\.\(live\[clientId\] \?\? \{\}\), \.\.\.patch \};/);
+  });
+
+  it("and the re-read and the write are one decision", () => {
+    // Re-reading fixed the *sequential* case — eight approvals in a row, each
+    // undoing the one before it — and left the overlapping case exactly as
+    // broken, because the read sat outside the write's transaction. Two
+    // approvals in flight both read the same state, the second write discarded
+    // the first's change, and both rows were marked `applied`.
+    //
+    // So the read, the merge and the write have to share one transaction, and
+    // that is a question about *where* the calls are rather than whether they
+    // are both present — which is why the assertions above could not see it.
+    const tx = APPLY.indexOf("await withTransaction(async () => {");
+    expect(tx, "the read and the write are not in one transaction").toBeGreaterThan(-1);
+
+    const read = APPLY.indexOf("await getProviderById(claimed.targetId");
+    const write = APPLY.indexOf("return updateProvider(claimed.targetId");
+    expect(read, "the provider is re-read outside the transaction").toBeGreaterThan(tx);
+    expect(write, "the provider is written outside the transaction").toBeGreaterThan(read);
+  });
+
+  it("and the free-model audit runs here too, scoped to what this proposal wrote", () => {
+    // Every tool that writes modelConfigs checks before it writes. This is the
+    // backstop for a proposal that predates that, and for a tool that was
+    // bypassed entirely — and it has to carry `patches`, or every approval
+    // touching one model of a provider that contains a free one would fail on
+    // a price it never mentioned.
+    const tx = APPLY.indexOf("await withTransaction(async () => {");
+    const audit = APPLY.indexOf("auditModelConfigs(live");
+    expect(audit, "the apply path does not audit prices").toBeGreaterThan(tx);
+    expect(APPLY, "the audit is not scoped to this proposal's own writes").toMatch(
+      /patches: Object\.fromEntries\(targets\.map\(\(t\) => \[t\.clientId, t\.patch\]\)\)/,
+    );
+    expect(APPLY, "a blocking finding does not stop the apply").toMatch(/blocking\.length > 0/);
   });
 
   it("a proposal written in the old shape still applies", () => {

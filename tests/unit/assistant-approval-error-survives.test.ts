@@ -72,7 +72,24 @@ describe("a failed approval stays on screen", () => {
 
   it("the reason is stored where a failed apply put it", () => {
     // So the message on screen and the row in the database say the same thing.
-    expect(ROUTE).toContain('setAssistantActionStatus(me.id, id, "failed", message)');
+    // The trailing `"applied"` is the state the row is required to be in:
+    // `claimAssistantAction` writes `applied` before the change is attempted,
+    // so a failure still has to be recorded against a row that is no longer
+    // pending. Named here rather than matched loosely, because the point of the
+    // assertion is that a reason is stored *at all*.
+    expect(ROUTE).toMatch(/setAssistantActionStatus\(me\.id, id, "failed", message, "applied"\)/);
+  });
+
+  it("and it is written to a row that is still the one being applied", () => {
+    // The reject path must not be able to land on a row an approve already
+    // took: the configuration would be changed and the queue would say it was
+    // refused. `from` defaults to `pending`, and the approve path has moved
+    // the row off `pending` by the time it writes.
+    const reject = ROUTE.slice(ROUTE.indexOf('parsed.data.decision === "reject"'));
+    expect(reject.slice(0, 400)).toContain('setAssistantActionStatus(me.id, id, "rejected"');
+    expect(reject.slice(0, 400), "the reject passes a from-state, so it can hit a claimed row").not.toMatch(
+      /"rejected",\s*[^)]*,\s*"applied"/,
+    );
   });
 });
 

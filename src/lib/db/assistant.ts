@@ -475,16 +475,40 @@ export async function withdrawAssistantAction(
   );
 }
 
+/**
+ * Write a terminal status onto a proposal, from a state it has to still be in.
+ *
+ * The condition is the point — the same reason
+ * {@link withdrawAssistantAction} carries its own. This setter had none, so the
+ * reject path could land on a row an approve had already resolved: one proposal
+ * open in two tabs, 同意 in the first and 拒绝 in the second, and the
+ * configuration was changed and marked `applied` before the second request's
+ * unconditional UPDATE overwrote it with `rejected`. The queue then said the
+ * change was refused while the database held it — the exact state
+ * {@link withdrawAssistantAction} was written to prevent, reached through the
+ * generic setter written to be safe everywhere.
+ *
+ * `from` defaults to `pending`, which is what a decision on an unclaimed row
+ * needs. The paths that run *after* {@link claimAssistantAction} have already
+ * moved the row to `applied` — the claim writes that status before the change
+ * is attempted, so a failure still leaves a row that is not pending — and those
+ * pass `"applied"` to say so. Without that, every post-apply write would match
+ * no row and silently drop the message the administrator reads.
+ *
+ * Returns false when the row was not in `from` — the honest answer to "did this
+ * land", rather than reporting a status it did not write.
+ */
 export async function setAssistantActionStatus(
   userId: string,
   actionId: string,
   status: AssistantActionStatus,
   result: string,
+  from: AssistantActionStatus = "pending",
 ): Promise<boolean> {
   return (
     run(
-      "UPDATE assistant_actions SET status = ?, result = ?, resolved_at = ? WHERE id = ? AND user_id = ?",
-      [status, result, new Date().toISOString(), actionId, userId],
+      "UPDATE assistant_actions SET status = ?, result = ?, resolved_at = ? WHERE id = ? AND user_id = ? AND status = ?",
+      [status, result, new Date().toISOString(), actionId, userId, from],
     ) > 0
   );
 }

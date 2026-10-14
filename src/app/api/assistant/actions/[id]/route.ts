@@ -38,6 +38,8 @@ import {
   setAssistantActionStatus,
 } from "@/lib/db/assistant";
 import { createProvider, getProviderById, updateProvider } from "@/lib/db/providers";
+import { withTransaction } from "@/lib/db/sqlite";
+import { auditModelConfigs, renderFindingsRefusal } from "@/lib/providers/config-audit";
 import { createMediaProvider, updateMediaProvider, MediaProviderValidationError } from "@/lib/db/media-providers";
 import { updateSettings } from "@/lib/db/settings";
 import {
@@ -177,7 +179,7 @@ export async function POST(
   try {
     args = JSON.parse(claimed.args);
   } catch {
-    await setAssistantActionStatus(me.id, id, "failed", "变更内容不是合法 JSON");
+    await setAssistantActionStatus(me.id, id, "failed", "变更内容不是合法 JSON", "applied");
     return NextResponse.json(
       { ok: false, error: { code: "bad_state", message: "变更内容损坏，无法执行" } },
       { status: 500 },
@@ -196,7 +198,7 @@ export async function POST(
    * neither of the assistant's two media tools.
    */
   if (!isProposalKind(claimed.kind)) {
-    await setAssistantActionStatus(me.id, id, "failed", `未知的变更类型：${claimed.kind}`);
+    await setAssistantActionStatus(me.id, id, "failed", `未知的变更类型：${claimed.kind}`, "applied");
     return NextResponse.json(
       { ok: false, error: { code: "bad_state", message: `未知的变更类型：${claimed.kind}` } },
       { status: 400 },
@@ -204,7 +206,7 @@ export async function POST(
   }
   const checked = checkProposal(claimed.kind, args);
   if (!checked.ok) {
-    await setAssistantActionStatus(me.id, id, "failed", checked.message!);
+    await setAssistantActionStatus(me.id, id, "failed", checked.message!, "applied");
     return NextResponse.json(
       { ok: false, error: { code: "bad_state", message: checked.message } },
       { status: 422 },
@@ -224,36 +226,59 @@ export async function POST(
       // asked about intact.
       const targets = modelConfigTargets ?? (modelConfigTarget ? [modelConfigTarget] : undefined);
       let resolvedModelConfigs = modelConfigs;
-      if (targets) {
-        /**
-         * Read the provider *now*, not as it looked when the proposal was
-         * written, and merge each model's fields into it.
-         *
-         * The stored copy is a snapshot, and a snapshot is only correct for as
-         * long as nothing else writes. Eight price proposals made in one go all
-         * held the same snapshot, so approving them in a row restored the old
-         * prices seven times over and left one model's change standing — with
-         * every row in the queue marked `applied`. Reading here makes each
-         * approval compose with the ones before it instead of undoing them.
-         */
-        const current = await getProviderById(claimed.targetId);
-        if (!current) throw new Error("找不到该服务商，可能已被删除");
-        const live = { ...(current.modelConfigs ?? {}) };
-        for (const { clientId, patch } of targets) {
-          live[clientId] = { ...(live[clientId] ?? {}), ...patch };
-        }
-        resolvedModelConfigs = live;
-      }
 
-      // `null` on the protocol list means "no protocols at all" — the same
-      // thing the editor sends as `[]`. Normalised here so the database layer
-      // keeps one shape.
-      const updated = await updateProvider(claimed.targetId, {
-        ...rest,
-        ...(resolvedModelConfigs !== undefined
-          ? { modelConfigs: resolvedModelConfigs }
-          : {}),
-        ...(textSpecs !== undefined ? { textSpecs: textSpecs ?? [] } : {}),
+      // Read, merge, check and write as one step.
+      //
+      // Reading the provider *now*, rather than as it looked when the proposal
+      // was written, is what makes approvals compose instead of undoing each
+      // other — eight price proposals made in one go all held the same
+      // snapshot, so approving them in a row restored the old prices seven
+      // times over. But reading *here* was not enough on its own: the read sat
+      // outside the write's transaction, so two approvals in flight at once —
+      // two tabs, or one administrator approving quickly — both read the same
+      // state, and the second write discarded the first's change while both
+      // rows were marked `applied`. The whole read-merge-write now happens
+      // inside one IMMEDIATE transaction, which is the only thing that makes
+      // "read the current state" and "write it back" a single decision.
+      const updated = await withTransaction(async () => {
+        if (targets) {
+          const current = await getProviderById(claimed.targetId!);
+          if (!current) throw new Error("找不到该服务商，可能已被删除");
+          const live = { ...(current.modelConfigs ?? {}) };
+          for (const { clientId, patch } of targets) {
+            live[clientId] = { ...(live[clientId] ?? {}), ...patch };
+          }
+          resolvedModelConfigs = live;
+
+          /**
+           * The free-model audit, second time round.
+           *
+           * Every tool that writes modelConfigs now checks before it writes —
+           * and this is the backstop for a proposal that predates that, or one
+           * whose tool was bypassed. Scoped to `patches`, so it can only speak
+           * about prices *this* proposal wrote: without the scope, every
+           * approval touching one model of a provider that contains a free one
+           * would fail on a price it never mentioned.
+           */
+          const findings = auditModelConfigs(live, {
+            patches: Object.fromEntries(targets.map((t) => [t.clientId, t.patch])),
+          });
+          const blocking = findings.filter((f) => f.blocking);
+          if (blocking.length > 0) {
+            throw new Error(renderFindingsRefusal(blocking, findings));
+          }
+        }
+
+        // `null` on the protocol list means "no protocols at all" — the same
+        // thing the editor sends as `[]`. Normalised here so the database layer
+        // keeps one shape.
+        return updateProvider(claimed.targetId!, {
+          ...rest,
+          ...(resolvedModelConfigs !== undefined
+            ? { modelConfigs: resolvedModelConfigs }
+            : {}),
+          ...(textSpecs !== undefined ? { textSpecs: textSpecs ?? [] } : {}),
+        });
       });
       if (!updated) throw new Error("找不到该服务商，可能已被删除");
       // Prices, context and thinking levels are all printed by the catalogue,
@@ -268,6 +293,7 @@ export async function POST(
         id,
         "applied",
         `已更新服务商 ${updated.name}（${appliedFields.join(", ") || "无字段"}）`,
+        "applied",
       );
       return NextResponse.json({ ok: true, data: { status: "applied", providerId: updated.id } });
     }
@@ -282,6 +308,7 @@ export async function POST(
         id,
         "applied",
         `已新建服务商 ${created.name}（${Object.keys(spec).join(", ")}）`,
+        "applied",
       );
       return NextResponse.json({ ok: true, data: { status: "applied", providerId: created.id } });
     }
@@ -301,6 +328,7 @@ export async function POST(
         id,
         "applied",
         `已更新媒体服务商 ${updated.name}（${Object.keys(patch).join(", ") || "无字段"}）`,
+        "applied",
       );
       return NextResponse.json({ ok: true, data: { status: "applied", providerId: updated.id } });
     }
@@ -318,6 +346,7 @@ export async function POST(
         claimed.id,
         "applied",
         `已更新自定义文档，共 ${parsedPages.length} 页`,
+        "applied",
       );
       return NextResponse.json({ ok: true, data: { status: "applied", pages: parsedPages.length } });
     }
@@ -338,6 +367,7 @@ export async function POST(
         id,
         "applied",
         `已新建媒体服务商 ${created.name}（${Object.keys(spec.models ?? {}).length} 个模型）`,
+        "applied",
       );
       return NextResponse.json({ ok: true, data: { status: "applied", providerId: created.id } });
     }
@@ -349,7 +379,7 @@ export async function POST(
     // admin saw the class name, the model saw the class name, and the second
     // could only guess again. It is the part of the error anyone can act on.
     const message = describeApplyFailure(err);
-    await setAssistantActionStatus(me.id, id, "failed", message);
+    await setAssistantActionStatus(me.id, id, "failed", message, "applied");
     const status = err instanceof MediaProviderValidationError ? 400 : 422;
     return NextResponse.json(
       { ok: false, error: { code: "apply_failed", message } },
