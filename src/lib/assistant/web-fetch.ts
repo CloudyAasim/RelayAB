@@ -38,7 +38,17 @@ export const MAX_FETCH_BYTES = 200_000;
 /** A page that takes this long to start answering is not a page. */
 export const FETCH_TIMEOUT_MS = 20_000;
 
-const MAX_REDIRECTS = 3;
+/**
+ * How many hops a URL may take before it is treated as a maze.
+ *
+ * Three was one too few for ordinary sites. `https://www.agnes-ai.cn/doc`
+ * — a documentation page the assistant is likely to be asked to read — takes
+ * four: it 302s to `http://…/en/docs/`, on to the current section, and on
+ * again to `/en/docs/overview`. Measured, not guessed. Every extra hop is
+ * re-checked from the top by `checkUrl` and `resolvePublicAddresses`, so the
+ * ceiling is about patience rather than safety.
+ */
+const MAX_REDIRECTS = 5;
 
 /** What the model is told when something is refused, and why. */
 export class WebFetchError extends Error {
@@ -159,12 +169,31 @@ function literalAddress(hostname: string): string | null {
  * and the resolved case after, because a name can point anywhere.
  */
 export async function assertPublicHost(hostname: string): Promise<void> {
+  await resolvePublicAddresses(hostname);
+}
+
+/**
+ * The addresses a hostname currently resolves to, all of them public.
+ *
+ * Returns the set so a caller can check it again afterwards. That check is the
+ * only defence left against DNS rebinding that does not require owning the
+ * socket: the guard above resolves once and `fetch` resolves again, so a name
+ * served with a zero TTL answers `93.184.216.34` to the first question and
+ * `127.0.0.1` to the second, milliseconds apart. Nothing in between binds the
+ * connection to the address that was checked.
+ *
+ * Re-reading after the response arrives cannot undo the request, but it can
+ * refuse to hand the body over — and the body is what matters here, because
+ * the answer is what reaches the model and the reader. A GET to a metadata
+ * endpoint that is then discarded does not put a credential in a transcript.
+ */
+async function resolvePublicAddresses(hostname: string): Promise<string[]> {
   const literal = literalAddress(hostname);
   if (literal) {
     if (isPrivateAddress(literal)) {
       throw new WebFetchError(`不访问内网地址：${literal}`, "blocked_address");
     }
-    return;
+    return [literal];
   }
 
   let addresses: Array<{ address: string }>;
@@ -182,6 +211,16 @@ export async function assertPublicHost(hostname: string): Promise<void> {
     if (isPrivateAddress(address)) {
       throw new WebFetchError(`不访问指向内网的域名：${hostname}`, "blocked_address");
     }
+  }
+  return addresses.map((a) => a.address).sort();
+}
+
+/** Resolve, and answer null instead of throwing. For the after-the-fact check. */
+async function tryResolvePublicAddresses(hostname: string): Promise<string[] | null> {
+  try {
+    return await resolvePublicAddresses(hostname);
+  } catch {
+    return null;
   }
 }
 
@@ -286,6 +325,7 @@ function checkUrl(raw: string): URL {
 async function readCapped(
   res: Response,
   cap: number,
+  signal: AbortSignal,
 ): Promise<{ text: string; bytes: number; truncated: boolean }> {
   const reader = res.body?.getReader();
   if (!reader) return { text: "", bytes: 0, truncated: false };
@@ -295,9 +335,32 @@ async function readCapped(
   let bytes = 0;
   let truncated = false;
 
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  try {
+    for (;;) {
+      /**
+       * Raced against the deadline, not merely governed by one.
+       *
+       * `AbortSignal.timeout` was passed to `fetch`, which covers the headers
+       * and the connection — so a server that answered with headers and then
+       * went quiet held this loop open indefinitely. The signal was not
+       * carried this far, so `FETCH_TIMEOUT_MS` was not enforced on the body at
+       * all, and the tool call sat there with nothing arriving.
+       *
+       * `reader.read()` does not observe the signal on its own. Raced against
+       * it, the read returns when the deadline fires and the body is released.
+       */
+      const chunk = await Promise.race([
+        reader.read(),
+        new Promise<{ done: true; value?: Uint8Array }>((resolve) => {
+          if (signal.aborted) {
+            resolve({ done: true });
+            return;
+          }
+          signal.addEventListener("abort", () => resolve({ done: true }), { once: true });
+        }),
+      ]);
+      if (chunk.done) break;
+      const value = chunk.value!;
     // Slice to what is left of the budget rather than taking the whole chunk:
     // a chunk is whatever the transport felt like sending, and the guarantee
     // is the cap, not the cap plus a chunk.
@@ -308,13 +371,24 @@ async function readCapped(
       break;
     }
     const take = value.byteLength > room ? value.subarray(0, room) : value;
-    bytes += take.byteLength;
-    out += decoder.decode(take, { stream: true });
-    if (bytes >= cap) {
-      truncated = true;
-      await reader.cancel();
-      break;
+      bytes += take.byteLength;
+      out += decoder.decode(take, { stream: true });
+      if (bytes >= cap) {
+        truncated = true;
+        await reader.cancel();
+        break;
+      }
     }
+  } finally {
+    // The signal fired, or the loop returned: either way the stream must not
+    // stay open behind a call that has already decided it is finished.
+    void reader.cancel().catch(() => {});
+  }
+  if (signal.aborted) {
+    throw new WebFetchError(
+      `读取响应体超时（${Math.round(FETCH_TIMEOUT_MS / 1000)} 秒），已放弃这次抓取。`,
+      "unreachable",
+    );
   }
   return { text: out, bytes, truncated };
 }
@@ -334,7 +408,7 @@ export async function fetchPage(
   let redirects = 0;
 
   for (;;) {
-    await assertPublicHost(url.hostname);
+    const checkedAddresses = await resolvePublicAddresses(url.hostname);
 
     let res: Response;
     try {
@@ -351,6 +425,30 @@ export async function fetchPage(
       throw new WebFetchError(
         `取不到这个网址：${err instanceof Error ? err.message : String(err)}`,
         "unreachable",
+      );
+    }
+
+    /**
+     * Did the name still mean what it meant when we checked?
+     *
+     * The check above and the resolution `fetch` performed are two separate
+     * questions asked of the same authority, and nothing ties the answer to the
+     * connection that was actually opened. A hostname served with a zero TTL
+     * answers them differently, which is how a name that passed the guard ends
+     * up connected to a private address.
+     *
+     * This cannot prevent the request — it has already been made — but it can
+     * stop the response, and the response is the part that reaches the model
+     * and the reader. Discarded rather than returned empty, so a rebind reads as
+     * the blocked address it is rather than as a site that happened to be
+     * empty.
+     */
+    const afterAddresses = await tryResolvePublicAddresses(url.hostname);
+    if (afterAddresses === null || afterAddresses.join(",") !== checkedAddresses.join(",")) {
+      throw new WebFetchError(
+        `这个域名在校验之后换了指向（${checkedAddresses.join(", ")} → ` +
+          `${afterAddresses?.join(", ") ?? "解析失败"}），已丢弃这次响应。`,
+        "blocked_address",
       );
     }
 
@@ -383,7 +481,11 @@ export async function fetchPage(
       );
     }
 
-    const { text, bytes, truncated } = await readCapped(res, MAX_FETCH_BYTES);
+    const { text, bytes, truncated } = await readCapped(
+      res,
+      MAX_FETCH_BYTES,
+      AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    );
     const isHtml = /html|xml/i.test(contentType) || /^\s*<(?:!doctype|html)/i.test(text);
 
     return {

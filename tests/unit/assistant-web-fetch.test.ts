@@ -41,9 +41,23 @@ vi.mock("node:dns/promises", () => ({
     };
     const addresses = table[hostname];
     if (!addresses) throw new Error(`no such host: ${hostname}`);
+    // `rebind.example` is a zero-TTL name, so it answers differently to the
+    // second question of the same pair. That is the whole attack: the guard
+    // asks once, `fetch` asks again, and nothing ties the answer to the
+    // connection. The fixture was here from the start and no test used it.
+    if (hostname === "rebind.example" && rebindQueries++ > 0) {
+      return [{ address: "127.0.0.1", family: 4 }];
+    }
     return addresses.map((address) => ({ address, family: 4 }));
   }),
 }));
+
+/** How many times the stub has been asked about `rebind.example`. */
+let rebindQueries = 0;
+
+function resetRebind(): void {
+  rebindQueries = 0;
+}
 
 const TOOLS_SOURCE = readFileSync(join(process.cwd(), "src", "lib", "assistant", "tools.ts"), "utf-8");
 
@@ -343,5 +357,57 @@ describe("the prompt tells the model what it can and cannot do", () => {
 
   it("has a tool description that says the same at the moment of the call", () => {
     expect(TOOLS_SOURCE).toMatch(/name: "fetch_page"[\s\S]{0,400}先调它再回答/);
+  });
+});
+
+describe("a name that changes its mind between the check and the connection", () => {
+  beforeEach(() => {
+    resetRebind();
+  });
+
+  it("the response is dropped rather than read", async () => {
+    // The guard and `fetch` ask the same authority two different questions, and
+    // nothing binds the answer to the connection that was opened. A zero-TTL
+    // name answers them differently: public to the first question, loopback to
+    // the second.
+    //
+    // The request has already gone out by the time that is visible, so this
+    // cannot prevent it. It can stop the *body* — and the body is what reaches
+    // the model and the reader, which is the difference between a discarded GET
+    // and an instance role sitting in a transcript.
+    const fetchImpl = vi.fn(
+      async () => new Response("AKIA…credentials", { headers: { "content-type": "text/plain" } }),
+    ) as unknown as typeof fetch;
+
+    await expect(fetchPage("https://rebind.example/latest/meta-data/", fetchImpl)).rejects.toThrow(
+      /换了指向|blocked/i,
+    );
+  });
+
+  it("and the check has run again rather than the guard being trusted", async () => {
+    // Otherwise the above passes for the wrong reason — a stub that always
+    // throws, say. Two questions have to have been asked of the DNS stub.
+    const lookup = (await import("node:dns/promises")).lookup as unknown as {
+      mock: { calls: unknown[][] };
+    };
+    lookup.mockClear();
+    await expect(
+      fetchPage(
+        "https://rebind.example/x",
+        vi.fn(async () => new Response("secret")) as unknown as typeof fetch,
+      ),
+    ).rejects.toThrow();
+    expect(lookup.mock.calls.length, "the name was only resolved once").toBeGreaterThanOrEqual(2);
+  });
+
+  it("a name that stays put is not punished for it", async () => {
+    // The check after the fact costs a second lookup on every fetch. It is only
+    // worth paying while it does not refuse ordinary pages.
+    const fetchImpl = guardedFetch(
+      () => new Response("a normal page", { headers: { "content-type": "text/plain" } }),
+    );
+    const result = await fetchPage("https://public.example/", fetchImpl as unknown as typeof fetch);
+    expect(result.text).toContain("a normal page");
+    expect(fetchImpl).toHaveBeenCalledOnce();
   });
 });
