@@ -72,7 +72,20 @@ function isSafeUrl(url: string): boolean {
 }
 
 const MARKDOWN_IMAGE = /!\[\s*([^\]]*)\s*\]\(\s*([^)\s]+)[^)]*\)/g;
-const BARE_URL = /https?:\/\/[^\s<>()]+[^\s<>().,;:!?]/gi;
+/**
+ * A bare address, up to the punctuation that ends it.
+ *
+ * The stopping set has to carry the CJK marks as well as the ASCII ones. The
+ * assistant answers in Chinese, so `见 https://y.com。` is the ordinary shape
+ * of a sentence ending in a link — and with ASCII-only boundaries the `。` was
+ * matched as part of the address, which put a full stop inside the `href` and
+ * swallowed the sentence's last character into the link text.
+ *
+ * Both halves exclude them: the run must stop *before* a CJK mark, and the
+ * last character must not be one either, or `https://y.com。后面` still
+ * resolves to the whole run.
+ */
+const BARE_URL = /https?:\/\/[^\s<>()，。、；：！？“”‘’《》【】（）]+[^\s<>().,;:!?，。、；：！？“”‘’《》【】（）]/gi;
 
 /**
  * One of our own artefact paths, matched by the shape it actually has.
@@ -117,6 +130,17 @@ const CODE_BLOCKS = [/```[\s\S]*?(?:```|$)/g, /`[^`\n]+`/g];
  */
 const shieldFor = (index: number): string => ` \uE000${index}\uE001 `;
 const SHIELD_BACK = / \uE000(\d+)\uE001 /g;
+
+/**
+ * Where `splitLinks` parks a matched link until it can be written back in
+ * place. Private-use characters, and a different pair from the code shields
+ * above, so neither can be mistaken for the other. No space padding here,
+ * because unlike the shields these are *not* sitting next to a URL \u2014 they are
+ * what the URL became, and the prose that surrounded it keeps its own spaces.
+ * `split` keeps the delimiters, which is how the loop tells a placeholder from
+ * prose.
+ */
+const LINK_HOLD_SPLIT = /(\uE002\d+\uE003)/;
 
 /**
  * One piece of our own: replace every code span with a placeholder, so the link
@@ -164,30 +188,51 @@ export function splitLinks(text: string): Segment[] {
     segments.push(segment);
   };
 
+  /**
+   * Every match becomes a placeholder rather than a segment.
+   *
+   * These used to `push` the link and return a space, which left the prose
+   * to be appended once at the very end — so `Prose` rendered every link in
+   * the answer first and the sentence they came from afterwards, stripped of
+   * the words that had surrounded them. "见 https://x 就能看到。" rendered as
+   * `<a>https://x</a>见 就能看到。` — every answer that cites a URL, which is
+   * most of them, and it is on by default.
+   *
+   * A placeholder keeps the position: the link is written where it was found,
+   * and the text around it survives on both sides. The markers are private-use
+   * characters, a different pair from the ones `shieldCode` uses above, so
+   * neither can be mistaken for the other's and neither can appear in model
+   * output — a bare number would, since an answer that says "第 1 步" has one.
+   */
+  const links: Array<{ value: string; label: string }> = [];
+  const hold = (url: string, label: string): string => {
+    links.push({ value: url, label });
+    return `${links.length - 1}`;
+  };
+
   // Markdown image syntax is a redundant reference to something already shown,
   // so it becomes a plain link rather than a second picture - and never literal
   // brackets, which is what it looked like before.
   let rest = masked.replace(MARKDOWN_IMAGE, (_match, alt: string, url: string) => {
-    if (isSafeUrl(url)) push({ kind: "link", value: url, label: alt.trim() || url });
-    return "";
+    if (!isSafeUrl(url)) return _match;
+    return hold(url, alt.trim() || url);
   });
 
-  rest = rest.replace(BARE_URL, (url: string) => {
-    if (isSafeUrl(url)) push({ kind: "link", value: url, label: url });
-    return " ";
-  });
+  rest = rest.replace(BARE_URL, (url: string) => (isSafeUrl(url) ? hold(url, url) : url));
+  rest = rest.replace(ARTIFACT_PATH, (url: string) => (isSafeUrl(url) ? hold(url, url) : url));
+  rest = rest.replace(RELATIVE_PATH, (url: string) => (isSafeUrl(url) ? hold(url, url) : url));
 
-  rest = rest.replace(ARTIFACT_PATH, (url: string) => {
-    if (isSafeUrl(url)) push({ kind: "link", value: url, label: url });
-    return " ";
-  });
+  // Interleave text and links in the order they were written.
+  for (const piece of rest.split(LINK_HOLD_SPLIT)) {
+    if (!piece) continue;
+    if (/^\d+$/.test(piece)) {
+      const link = links[Number(piece.slice(1, -1))];
+      if (link) push({ kind: "link", value: link.value, label: link.label });
+      continue;
+    }
+    push({ kind: "text", value: piece });
+  }
 
-  rest = rest.replace(RELATIVE_PATH, (url: string) => {
-    if (isSafeUrl(url)) push({ kind: "link", value: url, label: url });
-    return " ";
-  });
-
-  push({ kind: "text", value: rest });
   // Restore before collapsing runs of spaces: the shields carry one space on each
   // side to stop `BARE_URL` eating them, and collapsing first would merge them
   // into the neighbouring text so the restore could no longer find them.

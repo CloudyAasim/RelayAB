@@ -66,8 +66,17 @@ function acceptedKeys(schema: { shape: Record<string, unknown> }): string[] {
   return Object.keys(schema.shape);
 }
 
-/** Fields the proposal carries for the server, not for the model. */
-const NOT_PATCH_FIELDS = new Set(["providerId", "summary", "name", "apiKey"]);
+/**
+ * Fields the proposal carries for the server, not for the patch.
+ *
+ * `confirmFindings` is here for the same reason as `providerId` and `summary`
+ * rather than by exemption: it is consumed before a patch is built, deciding
+ * whether a proposal is created at all. The acknowledgement it carries is
+ * recorded on the proposal's summary, because a decision is not a
+ * configuration field — `proposal-apply-parity.test.ts` states the same rule
+ * for the same three keys.
+ */
+const NOT_PATCH_FIELDS = new Set(["providerId", "summary", "name", "apiKey", "confirmFindings"]);
 
 describe("every field the assistant offers has somewhere to land", () => {
   it("propose_provider_update → ProviderArgsSchema", () => {

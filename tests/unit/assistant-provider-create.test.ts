@@ -93,11 +93,20 @@ describe("assistant: proposing a provider that does not exist yet", () => {
     user: { ...u, timezone: "shanghai" as const },
   });
 
+  /**
+   * `confirmFindings` is here because every model this tool creates is written
+   * at a literal zero price — it has no price parameter — so the free-model
+   * gate fires on each one and `confirmFindings` is the only way through. These
+   * tests are about where the key ends up, so the acknowledgement is just
+   * background; what matters is that refusing happens before a proposal exists,
+   * which `refuses an unconfirmed free model` covers.
+   */
   const SPEC = {
     name: "MiniMax CN",
     baseUrl: "https://api.minimaxi.com/v1",
     summary: "接入 MiniMax 国内区",
     modelMapping: { "minimax-m2": "MiniMax-M2" },
+    confirmFindings: ["all_zero:minimax-m2"],
   };
 
   it("records a create with no key anywhere in it", async () => {
@@ -119,6 +128,25 @@ describe("assistant: proposing a provider that does not exist yet", () => {
     expect(action?.diff).not.toMatch(/apiKey["':]\s*sk-/);
     expect(result.content).not.toMatch(/apiKey["':]\s*sk-/);
     expect(result.content).toContain("管理员在界面上补填 API 密钥");
+  });
+
+  it("refuses an unconfirmed free model, and says which way out exists", async () => {
+    // This tool has no price parameter, so every model it writes lands at
+    // 0/0 — and nothing used to say so. The provider went in enabled and free,
+    // the diff showed the zeros as an ordinary starting value, and there was no
+    // `all_zero` finding anywhere because this path never called the audit.
+    const { confirmFindings: _dropped, ...unconfirmed } = SPEC;
+    const result = await executeTool(
+      "propose_provider_create",
+      JSON.stringify(unconfirmed),
+      ctx(admin) as never,
+    );
+
+    expect(result.ok, "an unconfirmed zero-price model was accepted").toBe(false);
+    expect(result.content).toContain("all_zero");
+    // A refusal the model cannot answer is a dead end: it refuses, the model
+    // repeats the same call, and refuses again.
+    expect(result.content).toMatch(/confirmFindings/);
   });
 
   it("refuses a create that carries a key, whatever the model sends", async () => {

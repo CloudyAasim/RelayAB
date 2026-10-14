@@ -700,7 +700,9 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
           modelMapping: {
             type: "object",
             description:
-              "客户端模型名 → 上游模型名 的【完整】替换表。注意：整份替换，不是增量。想只加一个映射就必须先用 list_providers 拿到现状、合并、再把整张表传回来 —— 只传新增的那一条会把其余所有模型删掉。",
+              "客户端模型名 → 上游模型名 的【完整】替换表。注意：整份替换，不是增量。想只加一个映射就必须先用 list_providers 拿到现状、合并、再把整张表传回来 —— 只传新增的那一条会把其余所有模型删掉。" +
+              "\n表里新增的模型会按「免费」创建（这个工具不设置价格），所以会撞上 free-model 闸门；" +
+              "已经在表里的模型价格原样保留，不会被这次改动清零。",
             additionalProperties: { type: "string" },
           },
           textSpecs: {
@@ -739,6 +741,14 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
             description:
               "OpenAI 侧上游说的是哪种协议：responses（原生，/v1/responses 原样透传）或 chat。" +
               "注意 chat→responses 没有请求转换：客户端调 /v1/chat/completions 时永远发往 <API 地址>/chat/completions。",
+          },
+          confirmFindings: {
+            type: "array",
+            description:
+              'free-model 闸门的确认清单，逐条模型写「code:模型名」，例如 all_zero:agnes-3.0-flash。**不要原样重发一遍**，再说一次得到的是同一个拒绝。\n' +
+              "只有当 modelMapping 里新增的模型确实免费（厂商文档或官方定价页明写）时才需要写。" +
+              "已经在表里的模型这次不会被重新定价，所以不需要在这里声明它们的零价。",
+            items: { type: "string" },
           },
         },
         required: ["providerId", "summary"],
@@ -943,7 +953,10 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
     function: {
       name: "propose_provider_create",
       description:
-        "提出一次「新建聊天服务商」的变更，管理员在界面上确认并补填 API 密钥后才会真正创建。这个工具不接收密钥，也不该向用户索取 —— 密钥由管理员在确认时自己填，所以你提议的内容里绝不能包含任何密钥。同样需要管理员点确认。",
+        "提出一次「新建聊天服务商」的变更，管理员在界面上确认并补填 API 密钥后才会真正创建。这个工具不接收密钥，也不该向用户索取 —— 密钥由管理员在确认时自己填，所以你提议的内容里绝不能包含任何密钥。同样需要管理员点确认。" +
+        "**这个工具不能设置价格**：新建的每个模型都会以 0/0 写入，所以会被 free-model 闸门拦下。" +
+        "如果这些模型其实收费，请在闸门提示里用 confirmFindings 逐条确认「确认就是免费」之前，" +
+        "先问用户定价是多少 —— 定价要由管理员在确认界面上补，不要在这里编一个数字。",
       parameters: {
         type: "object",
         properties: {
@@ -961,6 +974,13 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
             type: "object",
             description: "客户端模型名 → 上游模型名。新建时这张表就是全部，所以传完整的一份。",
             additionalProperties: { type: "string" },
+          },
+          confirmFindings: {
+            type: "array",
+            description:
+              'free-model 闸门的确认清单，逐条模型写「code:模型名」，例如 all_zero:MiniMax-M2。' +
+              "只有当用户明确说过这个模型确实免费时才写。不要原样重发一遍 —— 再说一次得到的是同一个拒绝。",
+            items: { type: "string" },
           },
         },
         required: ["name", "summary"],
@@ -2924,6 +2944,10 @@ async function proposeProviderUpdate(
   if (!provider) return fail(`找不到服务商 ${providerId.data}。`);
 
   const patch: Record<string, unknown> = {};
+  // Which per-model fields the `modelMapping` branch below actually writes, so
+  // the free-model audit can be scoped to them. See the branch for why it is
+  // not simply "every field of every model".
+  let mappingTouched: Record<string, Record<string, unknown>> | undefined;
   if (typeof args.baseUrl === "string") patch.baseUrl = args.baseUrl.trim();
   if (typeof args.anthropicBaseUrl === "string") patch.anthropicBaseUrl = args.anthropicBaseUrl.trim();
   if (typeof args.openaiEnabled === "boolean") patch.openaiEnabled = args.openaiEnabled;
@@ -2974,6 +2998,14 @@ async function proposeProviderUpdate(
       if (typeof v === "string") mapping[k] = v;
     }
     patch.modelMapping = mapping;
+    // What this proposal actually writes, per model. The free-model audit is
+    // scoped to these fields so that a proposal which only renames a model or
+    // adds one is not blocked by a price it never touched — the same
+    // narrowing `propose_model_configs_bulk` does. An entry that is new to
+    // this provider is this proposal's own writing of every field, so it
+    // carries all of them; an entry that already existed carries only the
+    // field that moved.
+    mappingTouched = {};
     // Keep the per-model config in step with the mapping: a model added to the
     // table with no config would fall back to a default context window, which is
     // how a 200k model ends up advertised as 1M.
@@ -2981,20 +3013,33 @@ async function proposeProviderUpdate(
     for (const [client, upstream] of Object.entries(mapping)) {
       // Keep an existing, already-corrected config rather than overwriting it
       // with the table's generic numbers; only fill in what is missing.
-      const existingCfg = configs[client] as
-        | { upstreamId?: string; contextLength?: number; maxOutputTokens?: number }
-        | undefined;
-      const known = knownModelOrDefault(existingCfg?.upstreamId ?? upstream);
+      const existingCfg = configs[client] as Record<string, unknown> | undefined;
+      const known = knownModelOrDefault((existingCfg?.upstreamId as string) ?? upstream);
+      // Spread first. This used to rebuild the entry from eight known fields,
+      // so every field it did not name was dropped on the floor:
+      // `cachedInputCost`, `cacheWriteCost`, `reasoningLevels`,
+      // `reasoningEffortSupported` and `thinkingSwitchSupported` all silently
+      // reverted to their defaults, and the two prices were written as a
+      // literal 0 — so asking to add one model to a provider marked every
+      // model that provider had as free, with no `all_zero` finding anywhere
+      // to notice, because this path never called the audit that would have
+      // raised one. The prices and the enabled flag now come from the entry
+      // that is already there; only a genuinely new model is still free, and
+      // that one goes through `auditModelConfigs` like every other path.
       configs[client] = {
+        ...(existingCfg ?? {}),
         upstreamId: upstream,
         clientId: client,
-        displayName: client,
-        contextLength: existingCfg?.contextLength ?? known.context,
-        maxOutputTokens: existingCfg?.maxOutputTokens ?? known.output,
-        inputCost: 0,
-        outputCost: 0,
-        enabled: true,
+        displayName: (existingCfg?.displayName as string) ?? client,
+        contextLength: (existingCfg?.contextLength as number) ?? known.context,
+        maxOutputTokens: (existingCfg?.maxOutputTokens as number) ?? known.output,
+        inputCost: (existingCfg?.inputCost as number) ?? 0,
+        outputCost: (existingCfg?.outputCost as number) ?? 0,
+        enabled: (existingCfg?.enabled as boolean) ?? true,
       };
+      mappingTouched[client] = existingCfg
+        ? { upstreamId: upstream }
+        : (configs[client] as Record<string, unknown>);
     }
     for (const gone of Object.keys(configs)) {
       if (!(gone in mapping)) delete configs[gone];
@@ -3086,7 +3131,38 @@ async function proposeProviderUpdate(
   }
   const summary =
     typeof args.summary === "string" && args.summary.trim() ? args.summary.trim() : "未说明的变更";
-  const diff = renderProviderDiff(provider, patch, summary);
+
+  /**
+   * The free-model audit, which this path used to skip entirely.
+   *
+   * `modelMapping` is the only way to add a model, and adding one builds a
+   * config entry — with the prices the branch chose, which were two literal
+   * zeros. So asking the model to register one free model marked the whole
+   * provider free, and the `all_zero` finding that exists precisely to catch
+   * that was never raised here, because `auditModelConfigs` had no call on
+   * this path. The tool even declared `confirmFindings` in its schema, so
+   * there was a way out that went nowhere.
+   *
+   * `mappingTouched` scopes the audit to what this proposal writes: an entry
+   * it is creating carries all its fields, one that already existed carries
+   * only the upstream name if that moved. Nothing here blocks a proposal over
+   * a price it did not touch — the same narrowing §5.5 gave the other two
+   * tools, and the reason it matters here is that a provider's paid models
+   * are all 0/0-adjacent to the `all_zero` rule by being untouched.
+   */
+  let finalSummary = summary;
+  if (mappingTouched && patch.modelConfigs) {
+    const findings = auditModelConfigs(patch.modelConfigs as Record<string, Record<string, unknown>>, {
+      patches: mappingTouched,
+    });
+    const { blocking, acknowledged } = partitionFindings(findings, args.confirmFindings);
+    if (blocking.length > 0) {
+      return fail(renderFindingsRefusal(blocking, findings));
+    }
+    finalSummary = acknowledgedSummary(summary, acknowledged);
+  }
+
+  const diff = renderProviderDiff(provider, patch, finalSummary);
 
   /**
    * The gate between writing a proposal and asking for approval.
@@ -3104,7 +3180,12 @@ async function proposeProviderUpdate(
     userId: ctx.user.id,
     kind: "provider.update",
     targetId: provider.id,
-    summary,
+    // The acknowledgement is not part of the patch — nothing about the
+    // provider changes because someone looked at it — so it rides in the
+    // proposal's own text, which is what the administrator reads before
+    // approving. A free model with nothing on screen saying anyone confirmed
+    // it looks exactly like one that got free by accident.
+    summary: finalSummary,
     args: patch,
     diff,
   });
@@ -3290,6 +3371,10 @@ async function proposeProviderCreate(
         displayName: client,
         contextLength: known.context,
         maxOutputTokens: known.output,
+        // Zero, because this tool has no way to say otherwise — see the gate
+        // below. Which is exactly why the gate has to be here: every provider
+        // the assistant creates is free until someone edits it, and nothing
+        // used to say so before the administrator approved it.
         inputCost: 0,
         outputCost: 0,
         enabled: true,
@@ -3300,6 +3385,31 @@ async function proposeProviderCreate(
 
   const summary =
     typeof args.summary === "string" && args.summary.trim() ? args.summary.trim() : "未说明的变更";
+
+  /**
+   * The free-model audit, which this path skipped like `modelMapping` did.
+   *
+   * Every model here is written at a literal zero price, so `all_zero` fires on
+   * each one — and the refusal names `confirmFindings`, which is declared in
+   * this tool's schema but was never read by it. An unconfirmed provider could
+   * be created with its models free and enabled, and the diff showed the zeros
+   * as an ordinary starting value rather than as something waiting on a
+   * decision.
+   *
+   * Every field is this proposal's own writing, so every field is in scope.
+   */
+  let finalSummary = summary;
+  if (spec.modelConfigs) {
+    const configs = spec.modelConfigs as Record<string, Record<string, unknown>>;
+    const patches = Object.fromEntries(Object.keys(configs).map((k) => [k, configs[k]]));
+    const findings = auditModelConfigs(configs, { patches });
+    const { blocking, acknowledged } = partitionFindings(findings, args.confirmFindings);
+    if (blocking.length > 0) {
+      return fail(renderFindingsRefusal(blocking, findings));
+    }
+    finalSummary = acknowledgedSummary(summary, acknowledged);
+  }
+
   /**
    * The gate between writing a proposal and asking for approval.
    *
@@ -3315,7 +3425,11 @@ async function proposeProviderCreate(
   const action = await createAssistantAction({
     userId: ctx.user.id,
     kind: "provider.create",
-    summary,
+    // The acknowledgement changes nothing about the provider, so it rides in
+    // the proposal's own text — which is what the administrator reads before
+    // approving. A provider whose models are free with nothing saying anyone
+    // confirmed it looks exactly like one that got free by accident.
+    summary: finalSummary,
     args: spec,
     diff: renderCreateDiff(spec, summary),
   });

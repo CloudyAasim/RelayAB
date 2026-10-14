@@ -183,3 +183,102 @@ describe("both proposal tools behave the same", () => {
     expect(body, `${fn} refuses without naming a way out`).toMatch(/renderFindingsRefusal\(/);
   });
 });
+
+/**
+ * Which tools carry the gate, worked out rather than listed.
+ *
+ * The `it.each` above names two tools, and those two were the two that had it.
+ * `propose_provider_update` and `propose_provider_create` both write
+ * `modelConfigs` — one to fill in a config for every model the mapping names,
+ * the other to build the whole provider — and neither called the audit. The
+ * first rebuilt each row from eight known fields, writing `inputCost: 0` and
+ * `outputCost: 0` literally, so asking to add one model marked every model that
+ * provider had as free, dropped `cachedInputCost`, `cacheWriteCost`,
+ * `reasoningLevels`, `reasoningEffortSupported` and `thinkingSwitchSupported`
+ * on the way, and raised no `all_zero` finding — the check that exists for
+ * exactly that was never called on that path. The second has no price
+ * parameter at all, so every provider it created was free whether or not
+ * anyone had decided that.
+ *
+ * Nothing here was invisible. Both tools declared `confirmFindings` in their
+ * schema — `propose_provider_update` did, `propose_provider_create` did not —
+ * and neither read it. A field can be offered to the model and never
+ * consumed, and every test stays green.
+ *
+ * So the list of gated tools is derived from the source instead. Adding a tool
+ * that writes modelConfigs without the gate now fails here rather than in a
+ * production invoice.
+ */
+describe("every tool that writes modelConfigs carries the gate", () => {
+  const tools = toolDefinitions(true);
+
+  /** Handler name for a tool, from its snake_case definition name. */
+  const handlerFor = (toolName: string): string =>
+    toolName.replace(/_([a-z])/g, (_m, c: string) => c.toUpperCase());
+
+  function toolBody(fn: string): string {
+    // Some tools are handled inline in the `executeTool` switch rather than by a
+    // named function; there is no source span to read for those, so they
+    // contribute nothing here. The exact-list assertion below is what keeps
+    // that from becoming a silent gap.
+    const start = TOOLS.indexOf(`async function ${fn}(`);
+    if (start < 0) return "";
+    const next = TOOLS.slice(start + 1).search(/\n(?:export )?(?:async )?function [A-Za-z]/);
+    const end = next < 0 ? TOOLS.length : start + 1 + next;
+    return TOOLS.slice(start, end);
+  }
+
+  /**
+   * A tool that *writes* modelConfigs, in any of the three shapes a write
+   * takes here: a full table assigned onto the patch or the spec
+   * (`patch.modelConfigs = …`, used when a mapping is replaced wholesale), or
+   * per-model targets that apply merges in (`args: { modelConfigTargets }`).
+   *
+   * Reading one — `auditProviderConfig` reports on what is there without
+   * changing it — is not a write and must not be gated, or the diagnosis tool
+   * would start refusing to answer questions.
+   */
+  const WRITES_MODEL_CONFIGS = /(?:patch|spec)\.modelConfigs\s*=/;
+  const WRITES_MODEL_TARGETS = /modelConfigTargets/;
+  const writers = tools
+    .map((t) => t.function.name)
+    .map((name) => ({ tool: name, fn: handlerFor(name), body: toolBody(handlerFor(name)) }))
+    .filter(({ body }) => WRITES_MODEL_CONFIGS.test(body) || WRITES_MODEL_TARGETS.test(body));
+
+  // First, because everything below iterates this list. An empty one would
+  // make every loop body run zero times and this file would still be green.
+  it("finds the tools that write modelConfigs", () => {
+    expect(writers.map((w) => w.tool).sort()).toEqual(
+      [
+        "propose_model_configs_update",
+        "propose_provider_create",
+        "propose_provider_update",
+      ].sort(),
+    );
+  });
+
+  it.each(writers.map((w) => [w.tool, w.fn]))("%s audits", (tool, fn) => {
+    expect(toolBody(fn), `${tool} writes modelConfigs without the gate`).toMatch(
+      /auditModelConfigs\(/,
+    );
+  });
+
+  it.each(writers.map((w) => [w.tool, w.fn]))("%s has a way out", (tool, fn) => {
+    const body = toolBody(fn);
+    expect(body, `${tool} refuses with no way to proceed`).toMatch(/partitionFindings\(/);
+    expect(body, `${tool} refuses without naming confirmFindings`).toMatch(
+      /renderFindingsRefusal\(/,
+    );
+  });
+
+  it.each(writers.map((w) => [w.tool]))("%s offers confirmFindings to the model", (tool) => {
+    const def = tools.find((t) => t.function.name === tool)!;
+    const params = def.function.parameters as { properties?: Record<string, unknown> };
+    // A gate whose way out is not in the schema refuses forever: the model
+    // cannot name the thing that would let it through.
+    expect(
+      Object.keys(params.properties ?? {}),
+      `${tool} can refuse but cannot confirm — the refusal has no exit`,
+    ).toContain("confirmFindings");
+  });
+});
