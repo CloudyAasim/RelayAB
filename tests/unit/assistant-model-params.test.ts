@@ -73,7 +73,17 @@ describe("a configured parameter reaches the request", () => {
       /toWireMessages\(kept, user\.id\)/,
     );
     // …and the window it trims is the one the declared length sized.
-    expect(CHAT).toMatch(/fitToWindow\(history, settings\?\.contextLength\)/);
+    //
+    // Read from `settings` *or* the request parameters, because the two are
+    // not two spellings of the same thing: the route passes no `settings` at
+    // all on the account path (`onAccount ? null : stored`) and puts the
+    // declared window in `modelParams` instead. Pinning the single-settings
+    // form made that path's window unfindable — the assertion below was
+    // satisfied by the one call site whose window was missing half the time.
+    expect(CHAT).toMatch(/fitToWindow\(\s*history,\s*settings\?\.contextLength/);
+    expect(CHAT, "the account path's declared window is never read").toMatch(
+      /settings\?\.contextLength\s*\?\?\s*opts\.modelParams\?\.contextLength/,
+    );
     // Whole turns from the front, never half a message: half a tool result is a
     // fact the model will act on. Pinned by the absence of any content rewrite,
     // stated as two direct shapes rather than a slice of the file, which stops

@@ -62,8 +62,26 @@ describe("the transcript actually uses it", () => {
     // A guard that exists but is not consulted is the same as no guard.
     expect(CHAT).toContain("transcriptReadRef.current.accept(token)");
     const at = CHAT.indexOf("transcriptReadRef.current.accept(token)");
-    const set = CHAT.indexOf("setMessages(json?.data?.messages ?? [])", at);
+    const set = CHAT.indexOf("setMessages(json.data.messages ?? [])", at);
     expect(set).toBeGreaterThan(at);
+  });
+
+  it("and does not write when the read was not a thread", () => {
+    // `json?.data?.messages ?? []` was the shape that could not tell "this
+    // thread is empty" from "the server did not answer with a thread": a
+    // gateway serving an HTML error page lands in the second, and the
+    // transcript was rewritten to nothing with nothing on screen saying so.
+    // The write is now gated, and `?.` is gone because the guard above has
+    // already established there is a body.
+    const at = CHAT.indexOf("transcriptReadRef.current.accept(token)");
+    const guard = CHAT.indexOf("if (!res.ok || !json?.data)", at);
+    const set = CHAT.indexOf("setMessages(json.data.messages ?? [])", at);
+    expect(guard, "nothing stands between a failed read and the transcript")
+      .toBeGreaterThan(at);
+    expect(guard).toBeLessThan(set);
+    expect(CHAT, "the empty-thread and failed-read shapes are still merged").not.toContain(
+      "setMessages(json?.data?.messages ?? [])",
+    );
   });
 
   it("keeps the current read and drops the overtaken one, not the other way round", () => {

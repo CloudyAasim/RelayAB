@@ -116,6 +116,15 @@ export function PendingActions({ isAdmin }: { isAdmin: boolean }) {
       announcePendingChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      // Same reason as the branch above, and the branch above says it out
+      // loud: "retyping a secret because the server hiccupped helps nobody".
+      // A request that never reached the server is the definition of a
+      // hiccup, yet this path cleared the field — so the one failure mode the
+      // comment describes was the only one that made the administrator retype
+      // their key.
+      if (apiKey && decision === "approve") {
+        setKeys((prev) => ({ ...prev, [id]: apiKey }));
+      }
     } finally {
       setBusyId(null);
     }

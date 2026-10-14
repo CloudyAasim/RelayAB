@@ -120,7 +120,12 @@ describe("a new conversation is in the history without a page reload", () => {
   });
 
   it("and the list is what the history drawer reads", () => {
-    expect(CHAT).toMatch(/setThreads\(json\?\.data\?\.threads \?\? \[\]\)/);
+    // Only written when the read produced a body. `?? []` after a failed read
+    // is not an empty list, it is a lost one — and the drawer said "no history"
+    // rather than "could not load", which is what a gateway error page looks
+    // like from here.
+    expect(CHAT).toMatch(/setThreads\(json\.data\.threads \?\? \[\]\)/);
+    expect(CHAT).not.toMatch(/setThreads\(json\?\.data\?\.threads \?\? \[\]\)/);
   });
 });
 

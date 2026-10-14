@@ -223,6 +223,8 @@ async function summariseDropped(args: {
       ...(args.upstream.extraHeaders ? { extraHeaders: args.upstream.extraHeaders } : {}),
       ...(args.upstream.transport ? { transport: args.upstream.transport } : {}),
       maxTokens: SUMMARY_MAX_TOKENS,
+      // Without this the call has no deadline at all — see SUMMARY_TIMEOUT_MS.
+      timeoutMs: SUMMARY_TIMEOUT_MS,
       messages: [
         {
           role: "system",
@@ -252,6 +254,24 @@ const SUMMARY_MIN_CHARS = 2_000;
 /** What is fed to the summariser; the rest of the prefix is already gone. */
 const SUMMARY_INPUT_CHARS = 12_000;
 const SUMMARY_MAX_TOKENS = 2_000;
+
+/**
+ * How long the summary call may take, on its own clock.
+ *
+ * `callAssistantModel` arms a deadline only when the caller passes one
+ * (`client.ts:183`) — the streaming path has no default, unlike its
+ * non-streaming sibling at `client.ts:484`. This call passed nothing, so an
+ * upstream that accepts the connection and then never sends a frame held the
+ * turn open indefinitely: `MAX_TURN_MS` is checked at the bottom of the *tool*
+ * loop, and this runs before that loop is entered, so the one ceiling the turn
+ * has never applied here. The route's keep-alive kept firing every 25s, so
+ * nothing timed the connection out either, and a few such turns pinned the box.
+ *
+ * Its own budget rather than the turn's, because `summariseDropped` is called
+ * before `startedAt` exists — and because a summary is optional by design (see
+ * the catch in there): it is never worth a wait long enough to look like a hang.
+ */
+const SUMMARY_TIMEOUT_MS = 45_000;
 
 /** Held back from a declared window for the system prompt and the answer. */
 const RESERVED_TOKENS = 4_000;
@@ -571,7 +591,20 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
   // Compress the cut before describing it to the model, so the window does not
   // simply begin halfway through a conversation. A summary the reader can see
   // is also a summary the model can reason over; a silent cut is neither.
-  const { kept, dropped } = fitToWindow(history, settings?.contextLength);
+  //
+  // Read from `modelParams` as well as `settings`, because on the account path
+  // the route deliberately passes no `settings` at all (`settings` is null when
+  // the account credential is paying) and the window it declared arrives in
+  // `modelParams` instead. Looking only at `settings` meant every account-mode
+  // user fell through to `historyBudgetTokens`' fixed 24,000-token fallback —
+  // a window barely twice what the system prompt and one turn already cost, so
+  // long conversations were compressed almost immediately and every
+  // compression cost an extra model call. The declared window was on the row
+  // the whole time.
+  const { kept, dropped } = fitToWindow(
+    history,
+    settings?.contextLength ?? opts.modelParams?.contextLength ?? null,
+  );
   const summary =
     dropped.length > 0
       ? await summariseDropped({

@@ -206,6 +206,19 @@ export function AssistantChat({
   const [uploads, setUploads] = useState<PendingUpload[]>([]);
   /** Kept beside the chips so `send` can read the bytes without a second picker. */
   const uploadFilesRef = useRef(new Map<string, File>());
+  /**
+   * Every object URL this page has created and not yet handed back.
+   *
+   * A blob URL is pinned to the document until it is revoked, and the whole
+   * file behind it with it. Two of the three places that could release one —
+   * overflowing the attachment limit, and dropping a chip — never saw the
+   * URLs a *sent* attachment used: `send` cleared `uploads` while the local
+   * echo kept rendering the picture from that URL until the server's own
+   * reference replaced it. So a 25 MB clip sent in a long session stayed
+   * resident for as long as the tab was open. Revoking on unmount is late but
+   * it is bounded, and it cannot break a preview still on screen.
+   */
+  const liveObjectUrlsRef = useRef(new Set<string>());
   const [relayKey, setRelayKey] = useState("");
   /**
    * The mode and the account model are **not** state.
@@ -295,10 +308,31 @@ export function AssistantChat({
     el.style.height = `${el.scrollHeight}px`;
   }, [input]);
 
+  /**
+   * Hand back every blob URL still outstanding when this page goes away.
+   *
+   * Deliberately not on send: the local echo renders the picture from that URL
+   * until the server's own reference replaces it, so revoking it there would
+   * leave a broken image on a turn that had not finished writing.
+   */
+  useEffect(() => {
+    const live = liveObjectUrlsRef.current;
+    return () => {
+      for (const url of live) URL.revokeObjectURL(url);
+      live.clear();
+    };
+  }, []);
+
   const loadThreads = useCallback(async () => {
     const res = await fetch("/api/assistant/threads", { cache: "no-store" });
     const json = (await res.json().catch(() => null)) as { data?: { threads?: Thread[] } } | null;
-    setThreads(json?.data?.threads ?? []);
+    // An empty list and a failed read are different states, and only one of
+    // them is the truth. Rewriting to `[]` on a gateway error page or a dropped
+    // connection tells the reader their history is empty — which is also what
+    // they are told after a failed deploy, when nothing is actually wrong with
+    // their history.
+    if (!res.ok || !json?.data) return;
+    setThreads(json.data.threads ?? []);
   }, []);
 
   /**
@@ -318,7 +352,17 @@ export function AssistantChat({
       | null;
     // A read that has been overtaken is not an error, it is just obsolete.
     if (!transcriptReadRef.current.accept(token)) return;
-    setMessages(json?.data?.messages ?? []);
+    // Nor is a read that failed. `json?.data?.messages ?? []` conflated "this
+    // thread has no messages yet" with "the server did not answer with a
+    // thread": a 502 — the shape a container restart takes while the gateway
+    // returns an HTML error page — left `res.json()` null and the transcript
+    // was rewritten to nothing. The conversation was not deleted, nothing on
+    // screen said so, and nothing would put it back until the next read.
+    if (!res.ok || !json?.data) {
+      setError(t("assistant.loadFailed"));
+      return;
+    }
+    setMessages(json.data.messages ?? []);
   }, []);
 
   /**
@@ -478,6 +522,15 @@ export function AssistantChat({
    */
   function newThread() {
     if (busy) return;
+    // Retire every read still in flight before clearing the transcript. The
+    // effect below reaches the `else setMessages([])` branch when there is no
+    // threadId, and that branch claims no sequence number — so a `loadThread`
+    // for the previous conversation, issued by the `finally` of the turn that
+    // just finished, still held the newest token when it landed and wrote its
+    // messages over the empty state. The old conversation came back, and
+    // nothing afterwards would clear it again. The window is one round trip,
+    // which is exactly the window in which someone reaches for "new chat".
+    transcriptReadRef.current.begin();
     setThreadId(null);
     setMessages([]);
     setError(null);
@@ -581,12 +634,14 @@ export function AssistantChat({
       const key = `${file.name}:${file.size}:${file.lastModified}`;
       if (files.has(key) || accepted.some((u) => u.key === key)) continue;
       files.set(key, file);
+      const previewUrl = URL.createObjectURL(file);
+      liveObjectUrlsRef.current.add(previewUrl);
       accepted.push({
         key,
         name: file.name,
         contentType: type,
         size: file.size,
-        previewUrl: URL.createObjectURL(file),
+        previewUrl,
       });
     }
 
@@ -597,6 +652,7 @@ export function AssistantChat({
       for (const extra of [...prev, ...accepted].slice(MAX_UPLOADS)) {
         files.delete(extra.key);
         URL.revokeObjectURL(extra.previewUrl);
+        liveObjectUrlsRef.current.delete(extra.previewUrl);
         refused.push(`${extra.name} 超过一次 ${MAX_UPLOADS} 个的上限`);
       }
       return next;
@@ -609,7 +665,10 @@ export function AssistantChat({
     uploadFilesRef.current.delete(key);
     setUploads((prev) => {
       const gone = prev.find((u) => u.key === key);
-      if (gone) URL.revokeObjectURL(gone.previewUrl);
+      if (gone) {
+        URL.revokeObjectURL(gone.previewUrl);
+        liveObjectUrlsRef.current.delete(gone.previewUrl);
+      }
       return prev.filter((u) => u.key !== key);
     });
   }
@@ -662,6 +721,11 @@ export function AssistantChat({
     setError(null);
     setInput("");
     setUploads([]);
+    // Retire the sent files, or they stay "already chosen" forever. `addFiles`
+    // dedupes against this map, so the same picture chosen twice — "translate
+    // this one the other way" — matched its own key and was skipped in silence:
+    // no chip appeared, nothing said why, and the send button stayed disabled.
+    for (const u of picked) files.delete(u.key);
     setLiveArtifacts([]);
 
     // The local echo shows the picture from the object URL the chip was using;
@@ -1263,6 +1327,8 @@ export function AssistantChat({
                       onClick={() => {
                         setThreadId(th.id);
                         setHistoryOpen(false);
+                        // The clear `newThread` and `removeThread` both do.
+                        setError(null);
                       }}
                       title={th.title}
                       className="min-w-0 flex-1 truncate rounded-md px-2 py-2 text-left text-sm leading-snug"
