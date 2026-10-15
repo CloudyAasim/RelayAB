@@ -1,14 +1,29 @@
 /**
  * tests/integration/create-user-race.test.ts
  *
- * Stress-test for the createUser() race.
+ * Concurrent `createUser()` must not produce two users with one name.
  *
- * Before the fix, createUser() did a GET-then-SET on the by-username
- * secondary index, leaving a TOCTOU window where two concurrent calls
- * could both observe "username not taken" and both write successfully.
+ * **What this used to test, and why the number changed.** The original version
+ * raced twenty callers at it, because the implementation it was written against
+ * was Redis and the failure it hunted was a TOCTOU: `GET` the by-username
+ * secondary index, find it free, `SET` it — and a second caller arriving in
+ * between saw the same "free" and also wrote. Twenty made that window easy to
+ * hit. Twenty is also why this file was the one that died: bcrypt at work
+ * factor 12 costs about 200 ms each, `bcryptjs` is a pure-JavaScript
+ * implementation, and twenty of them at once was enough to push a Vitest worker
+ * past its heap. The run reported `Worker exited unexpectedly` and tinypool
+ * swallowed it — which is how a memory limit came to be filed as an unrelated
+ * flake for however long it went unnoticed.
  *
- * After the fix, createUser() uses SETNX on the by-username index for
- * atomic reservation. The losing caller gets UsernameConflictError.
+ * None of that load is needed any more. The store is SQLite, and there the
+ * check and the write are one statement against a `UNIQUE` index on `username`
+ * (`src/lib/db/users.ts`, "ATOMIC CONFLICT CHECK + INSERT"). A uniqueness
+ * constraint does not need twenty chances to be enforced: the second insert is
+ * refused by the database itself, and one caller proves that. What twenty was
+ * really buying was a better chance of catching the *other* shape of bug — a
+ * check-then-write with no constraint behind it — and for that, racing a handful
+ * is still ample, because every caller still hashes a password before it reaches
+ * the insert and so genuinely overlaps.
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import { __resetDbForTest } from "@/lib/db/sqlite";
@@ -19,9 +34,18 @@ import {
   UsernameConflictError,
 } from "@/lib/db/users";
 
-// bcrypt at work factor 12 is ~200ms per call. Stress tests need headroom
-// over the vitest default of 5s.
+// bcrypt at work factor 12 is ~200ms per call, and the callers below overlap
+// deliberately — so this stays comfortably over the vitest default of 5s.
 const STRESS_TIMEOUT_MS = 30_000;
+
+/**
+ * How many callers to race.
+ *
+ * Enough that every one of them is past its password hash while the others are
+ * still hashing — that is the overlap the test is about — and small enough that
+ * the whole set fits in a worker's heap with the rest of the suite.
+ */
+const RACERS = 6;
 
 describe("createUser race protection", () => {
   beforeEach(() => {
@@ -29,9 +53,9 @@ describe("createUser race protection", () => {
   });
 
   it(
-    "20 concurrent createUser('admin') → exactly one succeeds",
+    `${RACERS} concurrent createUser('admin') → exactly one succeeds`,
     async () => {
-      const attempts = Array.from({ length: 20 }, () =>
+      const attempts = Array.from({ length: RACERS }, () =>
         createUser({ username: "admin", password: "longenoughpw" })
           .then((u) => ({ ok: true as const, user: u }))
           .catch((err) => ({
@@ -46,7 +70,12 @@ describe("createUser race protection", () => {
       const conflicts = results.filter((r) => !r.ok && r.isConflict);
 
       expect(successes).toHaveLength(1);
-      expect(conflicts).toHaveLength(19);
+      // Derived rather than spelled out. When this was twenty callers the
+      // number was written as `19`, and lowering the count to six left it
+      // behind — so the assertion kept asking a question about a race that no
+      // longer existed, and the file failed for a reason that had nothing to do
+      // with the thing it is guarding.
+      expect(conflicts).toHaveLength(RACERS - 1);
 
       // Exactly one user record exists in the database.
       const fetched = await getUserByUsername("admin");

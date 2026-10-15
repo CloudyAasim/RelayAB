@@ -245,40 +245,52 @@ describe("i18n: client/server boundary", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("the server-only helper is only imported by the server components that need it", () => {
-    const importers = files
-      .filter((f) => /from\s+["']@\/lib\/i18n\/server["']/.test(f.source))
-      .map((f) => f.rel)
-      .sort();
-    expect(importers).toEqual([
-      "src/app/(admin)/admin/docs/[section]/page.tsx",
-      "src/app/(admin)/admin/docs/page.tsx",
-      "src/app/(admin)/admin/keys/page.tsx",
-      "src/app/(admin)/admin/media-providers/page.tsx",
-      "src/app/(admin)/admin/page.tsx",
-      "src/app/(admin)/admin/providers/page.tsx",
-      "src/app/(admin)/admin/settings/page.tsx",
-      "src/app/(admin)/admin/usage/page.tsx",
-      "src/app/(admin)/admin/users/page.tsx",
-      "src/app/(user)/dashboard/docs/[section]/page.tsx",
-      "src/app/(user)/dashboard/docs/page.tsx",
-      "src/app/(user)/dashboard/page.tsx",
-      "src/app/(user)/dashboard/settings/page.tsx",
-      "src/app/(user)/dashboard/usage/page.tsx",
-      // Route handlers may import the server-only helper too: they are
-      // server-side by construction (they localize flash-banner messages).
-      "src/app/api/admin/users/[id]/delete-form/route.ts",
-      "src/app/layout.tsx",
-      "src/app/license/page.tsx",
-      "src/app/page.tsx",
-      // Shared server components used by every docs surface.
-      "src/components/docs/IntegrationDocs.tsx",
-      "src/components/docs/ProtocolReference.tsx",
-      "src/components/docs/PublicDocsFrame.tsx",
-      // Renders scripts/spec-check.ts on /admin/docs/spec-check; server-only
-      // for the same reason as ProtocolReference: it awaits getT().
-      "src/components/docs/SpecCheckReference.tsx",
-    ]);
+  it("every importer is server-side by construction, not by being on a list", () => {
+    /**
+     * This used to assert the importers equalled a hand-written list of twenty
+     * two paths, and it failed for a year and a half of ordinary refactoring:
+     * `dashboard/docs/page.tsx` was split into `UserDocsScreen.tsx`, four
+     * pages were added, one route handler was added — and the assertion broke
+     * each time, without any of it being a defect.
+     *
+     * It was checking the wrong thing. A list of names can only ever say "the
+     * set of importers has not changed", which is a statement about the past,
+     * and the project's own lesson applies: a check that can only fail when
+     * something it does not care about happens gets ignored, and then it is
+     * not a check at all. Worse, it was the *only* thing keeping the two
+     * assertions apart — it made the client/server boundary look like a
+     * registry to be maintained rather than a rule to be satisfied.
+     *
+     * The rule is the one the helper's own name states: it pulls in
+     * `next/headers`, so anything that imports it must not be a client
+     * component. Asserting that property means a new server component can
+     * import the helper without being registered anywhere, and a client
+     * component still cannot — which is the part that was ever at risk.
+     */
+    const importers = files.filter((f) =>
+      /from\s+["']@\/lib\/i18n\/server["']/.test(f.source),
+    );
+    // First, because every loop below walks this list: an empty one would run
+    // zero iterations and this file would still be green.
+    expect(importers.length, "nothing imports the helper, so nothing is being checked")
+      .toBeGreaterThan(5);
+
+    const clientImporters = importers
+      .filter((f) => /^\s*["']use client["']/m.test(f.source))
+      .map((f) => f.rel);
+    expect(
+      clientImporters,
+      "a client component imports a helper that reaches for next/headers — " +
+        "next build fails with \"You're importing a component that needs next/headers\"",
+    ).toEqual([]);
+  });
+
+  it("and the helper is still reachable, so the rule above is not vacuous", () => {
+    // The positive half. Without it, deleting every import would satisfy the
+    // assertion above, and a locale-aware server page would silently fall back
+    // to the default language instead of failing loudly.
+    expect(readFileSync(join(SRC, "lib/i18n/server.ts"), "utf8")).toMatch(/next\/headers/);
+    expect(readFileSync(join(SRC, "app/page.tsx"), "utf8")).toMatch(/@\/lib\/i18n\/server/);
   });
 });
 

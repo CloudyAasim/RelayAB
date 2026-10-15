@@ -94,18 +94,38 @@ describe("assistant: what a stuck model looks like", () => {
     expect(repeatedCall(["x()", "x()"], 3)).toBeNull();
   });
 
-  it("the turn is bounded by the clock and nothing else", () => {
+  it("the turn is bounded by a clock, a stuck model, and no round count", () => {
     // There used to be three ceilings and two of them counted. Both counters
     // reported a model that was doing exactly the right thing as stuck: a
     // configuration job re-reads the same provider after every write, a
     // documentation job re-reads the same page after every edit, and both were
-    // told they had made no progress. `repeatedCall` survives as a helper — it is
-    // a reasonable thing to test — but the loop must not consult it, and there
-    // must be no round ceiling to hit at all.
-    expect(CHAT).not.toMatch(/repeatedCall\(signatures\)/);
-    expect(CHAT).not.toMatch(/< MAX_ROUNDS/);
+    // told they had made no progress. The round counter is the one that could
+    // never be fixed — a long task is long — so it is gone for good, and the
+    // loop must never grow one back.
+    expect(CHAT, "a turn is not bounded by counting rounds").not.toMatch(/< MAX_ROUNDS/);
     expect(CHAT).not.toContain("用完了");
-    // The one that is left.
+
+    /**
+     * The wall clock is the ceiling, and this was the whole argument for a
+     * while: a stuck model would sit on the connection for half an hour, and
+     * the accepted cost of that was simplicity.
+     *
+     * It is not sufficient, and this was measured rather than argued. Thirty
+     * identical calls in a row take a fraction of a second — nothing in between
+     * them but a tool dispatch — so the loop turned thousands of times before the
+     * clock had moved far enough to notice, and each of those turns wrote a row.
+     * A test whose stubbed upstream always answered with the same tool call did
+     * exactly this and exhausted the heap well inside the thirty minutes the
+     * clock allows. The cost was paid in memory, not in patience.
+     *
+     * So the check is back, and it is not the ceiling it was. It fires on
+     * thirty of the *identical* call in a row, which is the one shape a stuck
+     * model takes and the one shape real work does not: the jobs above
+     * interleave their reads with their writes, and `repeatedCall` ignores a
+     * tail that is not wholly identical. Nothing here limits how many different
+     * things a turn may do.
+     */
+    expect(CHAT, "the stuck-model check is not consulted").toMatch(/repeatedCall\(signatures\)/);
     expect(CHAT).toMatch(/Date\.now\(\) - startedAt > MAX_TURN_MS/);
   });
 });

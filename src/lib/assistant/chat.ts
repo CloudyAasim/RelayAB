@@ -634,6 +634,8 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
   let stopReason: string | null = null;
   let rounds = 0;
   const signatures: string[] = [];
+  /** Set when a model calls the same thing until the turn is cut short. */
+  let loopingTurn = false;
   const startedAt = Date.now();
   /**
    * The one ceiling on this turn, handed down to every call in it.
@@ -730,6 +732,33 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
 
     for (const call of turn.toolCalls) {
       signatures.push(callSignature(call.function.name, call.function.arguments));
+
+      /**
+       * Stop a model that has stopped making progress.
+       *
+       * `repeatedCall` existed for this and was never called: it was exported,
+       * unit-tested directly, and nothing in the turn loop consulted it. The
+       * only ceiling on a turn was the 30-minute wall clock, which is a bound on
+       * time and not on *work* — so a model that keeps asking for the same thing
+       * gets asked, over and over, for half an hour, and each of those calls
+       * writes a row. Not hypothetical: a test whose stubbed upstream always
+       * answers with the same tool call did exactly this, and ran the heap out
+       * before the clock noticed.
+       *
+       * The threshold is three identical calls in a row, which is past the
+       * "read a provider, then act on it" pattern that two would allow.
+       */
+      const looping = repeatedCall(signatures);
+      if (looping) {
+        stopReason =
+          `助手连续 ${MAX_IDENTICAL_CALLS} 次调用同一个工具（${toolNameOf(looping)}）而没有新的输入，` +
+          `这一轮已经停下。可以直接告诉它接下来该做什么。`;
+        // Labelled, because the `break` here is inside the per-call loop and
+        // would only have left that one. The turn ends below, outside it.
+        loopingTurn = true;
+        break;
+      }
+
       emit({ type: "tool", toolName: call.function.name, text: call.function.arguments });
 
       let resultText: string;
@@ -786,6 +815,7 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
 
     // The one remaining ceiling. Checked here rather than around the call so a
     // model gets to see the result of the round it just finished.
+    if (loopingTurn) break;
     if (Date.now() - startedAt > MAX_TURN_MS) {
       stopReason = `这一轮已经跑了 ${Math.round(MAX_TURN_MS / 60000)} 分钟，已停止。可以把问题拆小一点再试。`;
       break;
@@ -793,8 +823,8 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
   }
 
   if (!stopReason) {
-    // Only reachable if the loop broke for a reason the time check did not set,
-    // which today cannot happen. Said so rather than inventing a cause.
+    // Only reachable if the loop broke for a reason neither the time check nor
+    // the repeat check set. Said so rather than inventing a cause.
     stopReason = "这一轮结束了。";
   }
   emit({ type: "error", text: stopReason });
