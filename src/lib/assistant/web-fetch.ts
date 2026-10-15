@@ -283,6 +283,23 @@ export interface WebFetchResult {
   bytes: number;
   truncated: boolean;
   text: string;
+  /**
+   * Whether any hop left HTTPS for plain HTTP.
+   *
+   * Recorded rather than refused, because refusing breaks real sites for no
+   * gain: `https://www.agnes-ai.cn/doc` — a documentation page the assistant
+   * is likely to be asked to read — answers 302 with an `http://` location of
+   * its own making, then 301s straight back. Refusing the first hop would have
+   * undone the redirect ceiling that makes the page reachable at all.
+   *
+   * So the hop is taken and the reader is told. What is actually at risk is
+   * worth being precise about: nothing secret is sent — this is a GET for a
+   * public page, and the request carries no credential — so the exposure is an
+   * intermediary rewriting the body, which matters because that body is what
+   * the model will reason from. Saying so is something the model can act on;
+   * a silent downgrade is not.
+   */
+  downgraded?: boolean;
 }
 
 /** Types worth reading. Anything else is a file, and a file is not a page. */
@@ -406,6 +423,8 @@ export async function fetchPage(
 ): Promise<WebFetchResult> {
   let url = checkUrl(rawUrl.trim());
   let redirects = 0;
+  /** Whether a hop left HTTPS for plain HTTP. See `WebFetchResult`. */
+  let downgraded = false;
 
   for (;;) {
     const checkedAddresses = await resolvePublicAddresses(url.hostname);
@@ -461,8 +480,12 @@ export async function fetchPage(
         throw new WebFetchError(`重定向超过 ${MAX_REDIRECTS} 次`, "unreachable");
       }
       // Resolved against the current URL, then checked from the top: the next
-      // hop's host goes through `assertPublicHost` like the first one did.
-      url = checkUrl(new URL(location, url).toString());
+      // hop's host goes through `resolvePublicAddresses` like the first one did.
+      const next = checkUrl(new URL(location, url).toString());
+      // Noted, not refused — see `WebFetchResult.downgraded` for why refusing
+      // would cost a reachable documentation page and buy nothing here.
+      if (url.protocol === "https:" && next.protocol === "http:") downgraded = true;
+      url = next;
       continue;
     }
 
@@ -487,6 +510,7 @@ export async function fetchPage(
       AbortSignal.timeout(FETCH_TIMEOUT_MS),
     );
     const isHtml = /html|xml/i.test(contentType) || /^\s*<(?:!doctype|html)/i.test(text);
+    const body = isHtml ? htmlToText(text) : text;
 
     return {
       url: rawUrl,
@@ -495,7 +519,14 @@ export async function fetchPage(
       contentType,
       bytes,
       truncated,
-      text: isHtml ? htmlToText(text) : text,
+      // Prefixed into the text rather than left as a field: the reader of this
+      // result is the model, and a flag in a JSON envelope is one more thing to
+      // notice while doing something else. A sentence at the top of the content
+      // is read as part of the content.
+      ...(downgraded
+        ? { text: `【注意：这个地址在跳转过程中从 HTTPS 降级到了 HTTP，正文未经加密传输，内容可能被中间人改写。以下内容请谨慎采信。】\n\n${body}` }
+        : { text: body }),
+      downgraded,
     };
   }
 }

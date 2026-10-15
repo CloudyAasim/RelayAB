@@ -15,7 +15,7 @@
  * so a double-click or a second tab is reported as "already handled" instead of
  * writing twice, and the UI should not pretend otherwise.
  */
-import { useCallback, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { announcePendingChanged, onPendingChanged } from "@/lib/assistant/pending-bus";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -42,11 +42,58 @@ const STATUS_TONE: Record<AssistantActionView["status"], "warning" | "success" |
 /** A create cannot be completed without a key, and the key is not in the action. */
 const CREATE_KINDS = new Set(["provider.create", "media_provider.create"]);
 
+/**
+ * Why the last decision was refused, held above the drawer.
+ *
+ * This component is rendered *inside* a Radix `Sheet`, and the sheet unmounts
+ * its content on close. Two fixes ago the banner was moved above the
+ * empty-state early return so it would survive the queue emptying — which it
+ * does — but the queue emptying is not the only way this component stops
+ * being on screen. Closing the drawer unmounts it outright, and the reason an
+ * apply failed went with it: the banner appeared, the administrator read it,
+ * they went back to the conversation, and reopening the drawer found an empty
+ * queue with no account of why. There is nowhere else to look — the panel
+ * reads pending only, so the row the server wrote the reason into is not in
+ * this list at all.
+ *
+ * Context rather than props because the element is built by the server page
+ * and handed down as `pendingPanel`; threading a callback into it from there
+ * would mean the page holding client state it has no business holding.
+ */
+const PendingErrorContext = createContext<PendingErrorState>([null, () => {}]);
+type PendingErrorState = [string | null, (message: string | null) => void];
+
+export function PendingErrorProvider({
+  error,
+  onError,
+  children,
+}: {
+  error: string | null;
+  onError: (message: string | null) => void;
+  children: React.ReactNode;
+}) {
+  return <PendingErrorContext.Provider value={[error, onError]}>{children}</PendingErrorContext.Provider>;
+}
+
+/** For tests and for anything rendering the queue without the drawer. */
+export function usePendingError(): PendingErrorState {
+  return useContext(PendingErrorContext);
+}
+
+/**
+ * The pending-proposal queue.
+ *
+ * Only the reason a decision was refused is owned above this boundary. The
+ * rest stays here, and should: `actions` is refetched on mount, and a key draft
+ * is something an administrator abandons by closing the drawer — keeping that
+ * across the boundary would put a secret in a tab after the thing it was for
+ * is gone.
+ */
 export function PendingActions({ isAdmin }: { isAdmin: boolean }) {
   const t = useT();
+  const [error, setError] = usePendingError();
   const [actions, setActions] = useState<AssistantActionView[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   /**
    * Key drafts, per action.
    *

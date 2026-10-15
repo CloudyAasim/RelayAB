@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/Sheet";
 import { useT } from "@/components/i18n/I18nProvider";
 import { readPretty, writePretty } from "@/lib/assistant/pretty";
+import { PendingErrorProvider } from "./PendingActions";
 import { latestRead } from "@/lib/assistant/latest-read";
 import type { AssistantConfig } from "@/lib/assistant/config";
 import { announcePendingChanged, onPendingChanged } from "@/lib/assistant/pending-bus";
@@ -243,6 +244,14 @@ export function AssistantChat({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pendingOpen, setPendingOpen] = useState(false);
+  /**
+   * Why the last approval or rejection was refused, held out here so closing
+   * the drawer does not take it with it. See `PendingActions` for the whole
+   * argument; the short version is that the banner was made to survive the
+   * queue emptying, and nobody checked the other way this panel stops being on
+   * screen — which is that it does.
+   */
+  const [pendingDecisionError, setPendingDecisionError] = useState<string | null>(null);
 
   /**
    * Open a drawer after the current gesture has finished.
@@ -1461,15 +1470,17 @@ export function AssistantChat({
       </Sheet>
 
       {pendingPanel && (
-        <Sheet open={pendingOpen} onOpenChange={setPendingOpen}>
-          <SheetContent side="right" className="overflow-y-auto">
-            <SheetHeader>
-              <SheetTitle>{t("actions.title")}</SheetTitle>
-              <SheetDescription>{t("actions.desc")}</SheetDescription>
-            </SheetHeader>
-            <div className="mt-4 space-y-3">{pendingPanel}</div>
-          </SheetContent>
-        </Sheet>
+        <PendingErrorProvider error={pendingDecisionError} onError={setPendingDecisionError}>
+          <Sheet open={pendingOpen} onOpenChange={setPendingOpen}>
+            <SheetContent side="right" className="overflow-y-auto">
+              <SheetHeader>
+                <SheetTitle>{t("actions.title")}</SheetTitle>
+                <SheetDescription>{t("actions.desc")}</SheetDescription>
+              </SheetHeader>
+              <div className="mt-4 space-y-3">{pendingPanel}</div>
+            </SheetContent>
+          </Sheet>
+        </PendingErrorProvider>
       )}
     </div>
   );
