@@ -146,8 +146,8 @@ describe("assistant: prose carries links, never a second picture", () => {
     // Scoped to AssistantBody: `MediaArtifacts` in the same file *should*
     // render an <img> — that is the tool result, and it is the one place a
     // picture belongs.
-    const start = BODY.indexOf("export function AssistantBody");
-    const end = BODY.indexOf("export function ToolResultCard");
+    const start = BODY.indexOf("function AssistantBody");
+    const end = BODY.indexOf("function ToolResultCard");
     expect(start).toBeGreaterThanOrEqual(0);
     expect(end).toBeGreaterThan(start);
     expect(BODY.slice(start, end)).not.toContain("<img");

@@ -27,10 +27,20 @@ const ARTIFACT_ROUTE = readFileSync(
  * export" is not a boundary anyone can reason about.
  */
 function sourceOf(file: string, name: string): string {
-  const start = file.search(new RegExp(`^export function ${name}\\b|^function ${name}\\b`, "m"));
+  // Matches the component by its identity, not by the wrapper it happens to
+  // wear: a plain `export function`, or `export const X = memo(function X…)`,
+  // which is what the answer renderer is now. Pinning the first form meant
+  // memoising it broke every test that read it, and "restore the old shape"
+  // is not a fix — it is the wrapper deciding what the tests may look at.
+  const start = file.search(
+    new RegExp(
+      `^export function ${name}\\b|^function ${name}\\b|^export const ${name}\\b`,
+      "m",
+    ),
+  );
   expect(start, `${name} is not defined any more`).toBeGreaterThanOrEqual(0);
   const rest = file.slice(start + 1);
-  const next = rest.search(/^(export )?function \w/m);
+  const next = rest.search(/^(export )?(async )?function \w|^export const \w/m);
   return next === -1 ? rest : rest.slice(0, next);
 }
 

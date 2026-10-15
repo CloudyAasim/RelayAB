@@ -160,13 +160,33 @@ export function createDocReader(pages: readonly DocPage[] | undefined): DocReade
     // The parameters guide is a guide like any other: it is read by its own
     // topic, not folded into a built-in one.
     if (section.surface === "user" && section.id === PARAMETERS_SECTION) {
-      const text = notesBlock();
+      const whole = notesBlock();
+      /**
+       * Cut it, and then say so.
+       *
+       * This returned every page's body concatenated with nothing limiting it,
+       * and set `truncated` with `text.length > MAX_PAGE_CHARS ? false : text.length < MAX_PAGE_CHARS`
+       * — which is backwards at both ends. A chapter under the limit was
+       * reported as cut; a chapter over it was reported as whole. The model
+       * reads that flag as "you are seeing all of it", so a 200,000-character
+       * concatenation told it there was nothing missing when the tool result
+       * ceiling in `chat.ts` was about to cut the text at an arbitrary byte a
+       * few lines later — a section boundary nowhere near.
+       *
+       * So the cut happens here, at a boundary this file chose, and the flag
+       * says which way round it went. The single-page branch above does the
+       * same thing and is why the shape is copied from it.
+       */
+      const text =
+        whole.length > MAX_PAGE_CHARS
+          ? `${whole.slice(0, MAX_PAGE_CHARS)}\n…（这一章很长，已截断，后面的页面请用 user:parameters#<id> 单独读）`
+          : whole;
       return {
         ok: true,
         topic: `user:${PARAMETERS_SECTION}`,
         title: section.summary,
         text,
-        truncated: text.length > MAX_PAGE_CHARS ? false : text.length < MAX_PAGE_CHARS,
+        truncated: text.length < whole.length,
       };
     }
 

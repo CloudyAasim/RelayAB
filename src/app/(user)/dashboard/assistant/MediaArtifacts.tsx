@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 
 /**
  * src/app/(user)/dashboard/assistant/MediaArtifacts.tsx
@@ -370,7 +370,21 @@ function Prose({ text }: { text: string }) {
  * exactly as it arrived, which is still a perfectly good way to read a
  * conversation and the way to see what the model actually wrote.
  */
-export function AssistantBody({
+/**
+ * One answer's rendered text.
+ *
+ * `memo` because of what it costs to render: `splitThinkingParts`, then
+ * `splitLinks` — five whole-text regular expressions — then a full Markdown
+ * parse. Every delta that arrives rebuilds the transcript array, so without
+ * this every answer in the conversation re-ran all of that on every token,
+ * including the ones that had been finished for minutes. With it, a message
+ * whose props are unchanged is not touched, and only the streaming one grows.
+ *
+ * The props are all strings and a boolean, which is what makes it work: an
+ * object or array rebuilt inline at the call site would compare unequal every
+ * time and the memo would never hit.
+ */
+export const AssistantBody = memo(function AssistantBody({
   text,
   reasoning,
   thinkingLabel,
@@ -483,7 +497,7 @@ export function AssistantBody({
       )}
     </div>
   );
-}
+});
 
 /**
  * The tool's JSON with the artefact references taken out.
@@ -530,7 +544,13 @@ export function toolContentForDisplay(content: string): string {
  * succeeded, because a box that only says "⚙ generate_image" gives the reader
  * nothing to go on until they open it.
  */
-export function ToolResultCard({
+/**
+ * `memo` for the same reason as {@link AssistantBody}, and it matters as much:
+ * a tool result is finished when it appears, so it never needs re-rendering —
+ * but without this it was re-parsed on every token of every answer that came
+ * after it.
+ */
+export const ToolResultCard = memo(function ToolResultCard({
   toolName,
   label,
   content,
@@ -590,7 +610,8 @@ export function ToolResultCard({
       </details>
     </div>
   );
-}
+});
+
 /** A short, honest description of a file, for the panel beside it. */
 const KIND_LABEL: Record<ArtifactRef["kind"], string> = {
   image: "图片",

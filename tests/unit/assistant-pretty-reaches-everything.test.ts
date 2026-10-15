@@ -29,8 +29,8 @@ const CHAT = readFileSync(
 
 describe("the switch reaches every part of the reply", () => {
   it("the tool card takes it, and the screen passes it", () => {
-    expect(ARTIFACTS).toMatch(/export function ToolResultCard\([\s\S]{0,600}pretty\?: boolean/);
-    expect(ARTIFACTS).toMatch(/export function ToolResultCard\([\s\S]{0,600}pretty = true/);
+    expect(ARTIFACTS).toMatch( /function ToolResultCard\([\s\S]{0,600}pretty\?: boolean/);
+    expect(ARTIFACTS).toMatch( /function ToolResultCard\([\s\S]{0,600}pretty = true/);
     expect(CHAT).toMatch(/<ToolResultCard[\s\S]{0,300}pretty=\{pretty\}/);
   });
 
@@ -41,7 +41,7 @@ describe("the switch reaches every part of the reply", () => {
   it("and artefacts survive it, because a picture has no raw form", () => {
     // Scoped to the card's own branch: `AssistantBody` has an earlier
     // `if (!pretty)`, and slicing from the first one finds the prose path.
-    const card = ARTIFACTS.slice(ARTIFACTS.indexOf("export function ToolResultCard"));
+    const card = ARTIFACTS.slice(ARTIFACTS.indexOf("function ToolResultCard"));
     const off = card.slice(card.indexOf("if (!pretty) {"), card.indexOf("if (!pretty) {") + 600);
     expect(off).toMatch(/<MediaArtifacts/);
   });

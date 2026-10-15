@@ -87,7 +87,7 @@ describe("the renderer draws them in that order", () => {
     // The regression in one assertion: `thinking.map(...)` followed by a single
     // `<Prose text={answer} />` is the shape that stacked them.
     expect(ARTIFACTS).toMatch(/const parts = splitThinkingParts\(text\)/);
-    const body = ARTIFACTS.slice(ARTIFACTS.indexOf("export function AssistantBody"));
+    const body = ARTIFACTS.slice(ARTIFACTS.indexOf("function AssistantBody"));
     expect(body).not.toMatch(/splitThinking\(text\)/);
     expect(body).toMatch(/part\.kind === "thinking"/);
   });
@@ -97,7 +97,7 @@ describe("the renderer draws them in that order", () => {
     // never used. The block showed a heading, the browser's small triangle, and
     // nothing else, so it read as a section with nothing under it — which is
     // how "the thinking disappeared" was reported by someone who could see it.
-    const body = ARTIFACTS.slice(ARTIFACTS.indexOf("export function AssistantBody"));
+    const body = ARTIFACTS.slice(ARTIFACTS.indexOf("function AssistantBody"));
     expect(body).toMatch(/\{expandLabel\}/);
     expect(body).toMatch(/\{collapseLabel\}/);
     expect(body).toMatch(/group-open:hidden/);

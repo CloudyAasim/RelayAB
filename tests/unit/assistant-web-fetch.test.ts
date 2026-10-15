@@ -389,6 +389,7 @@ describe("a name that changes its mind between the check and the connection", ()
     // throws, say. Two questions have to have been asked of the DNS stub.
     const lookup = (await import("node:dns/promises")).lookup as unknown as {
       mock: { calls: unknown[][] };
+      mockClear: () => void;
     };
     lookup.mockClear();
     await expect(
