@@ -15,6 +15,18 @@
  * This test reproduces that shape directly. It does not read the source to check
  * that a particular word is present — the bug was not a missing word, it was a
  * stored snapshot being treated as current.
+ *
+ * **What this file cannot tell you.** It reimplements the apply step and runs
+ * the two approvals one after another, so nothing here interleaves. That covers
+ * the sequential case — which is the case described above, and the one that was
+ * fixed — but a lost update needs two *reads* to see the same state before
+ * either *writes*, and a function called twice in sequence never produces that.
+ * So while the read sat outside the write's transaction, this file stayed green
+ * over a bug that was live in production.
+ *
+ * The overlapping case is covered for real in
+ * `assistant-apply-concurrent.test.ts`, which calls the endpoint twice without
+ * awaiting in between.
  */
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
