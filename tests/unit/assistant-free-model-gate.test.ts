@@ -282,3 +282,59 @@ describe("every tool that writes modelConfigs carries the gate", () => {
     ).toContain("confirmFindings");
   });
 });
+describe("adding a model is not a claim that it is free", () => {
+  /**
+   * The distinction the whole gate turns on, and the one that is invisible in
+   * the state it inspects.
+   *
+   * A brand-new model's row reads `inputCost: 0, outputCost: 0, enabled: true`
+   * — exactly the shape `all_zero` refuses. But those zeros were written by
+   * `propose_provider_update`'s mapping branch, which **has no price parameter
+   * at all**: nobody stated anything about price. Filling the patch with the
+   * built row therefore made the finding blocking on every single addition, and
+   * the only way past it was `confirmFindings` — i.e. the model had to assert
+   * something it had no means of expressing, or the administrator could not
+   * register a single vendor.
+   *
+   * `all_zero` names `["inputCost","outputCost","enabled"]`, so leaving those
+   * three out of the mapping patch is what makes the difference. The protection
+   * is not lost, because the tools where the statement is real pass the model's
+   * own fields: setting a price of zero, or re-enabling one, still lands those
+   * keys in the patch and still refuses.
+   */
+  it("the mapping branch does not put a price or an enabled flag in the patch", () => {
+    const start = TOOLS.indexOf("async function proposeProviderUpdate");
+    expect(start, "proposeProviderUpdate not found").toBeGreaterThan(-1);
+    const branch = TOOLS.slice(
+      start,
+      TOOLS.indexOf("for (const gone of Object.keys(configs))", start),
+    );
+
+    const patchForNewModel = branch.slice(branch.indexOf("mappingTouched[client] ="));
+    expect(patchForNewModel, "the mapping patch is gone").toContain("upstreamId: upstream");
+
+    // The three fields `all_zero` looks for.
+    for (const field of ["inputCost", "outputCost", "enabled"]) {
+      const declaresIt = new RegExp(`(^|[^\\w.])${field}\\s*:`).test(patchForNewModel);
+      expect(
+        declaresIt,
+        `the mapping patch declares ${field}, so a newly added model reads as a ` +
+          `free model the model never claimed — the gate will refuse every addition`,
+      ).toBe(false);
+    }
+  });
+
+  it("and a model that does state a price of zero is still refused", () => {
+    // The other half of the same distinction, so the fix cannot be read as
+    // "the gate no longer applies to modelMapping's neighbours".
+    const single = TOOLS.slice(
+      TOOLS.indexOf("async function proposeModelConfigUpdate"),
+      TOOLS.length,
+    );
+    expect(single).toMatch(/auditModelConfigs\(/);
+    expect(single).toMatch(/partitionFindings\(/);
+    expect(single, "the single-model tool cannot confirm either").toMatch(
+      /renderFindingsRefusal\(/,
+    );
+  });
+});

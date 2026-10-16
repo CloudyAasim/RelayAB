@@ -3039,7 +3039,31 @@ async function proposeProviderUpdate(
       };
       mappingTouched[client] = existingCfg
         ? { upstreamId: upstream }
-        : (configs[client] as Record<string, unknown>);
+        : {
+            /**
+             * Only what the `modelMapping` argument actually expresses.
+             *
+             * The tool has no price parameter — asking it to add a model cannot
+             * say anything about price, and the zeros it writes are this file's
+             * default rather than a statement the model made. Passing the whole
+             * built row here put `inputCost`, `outputCost` and `enabled` into
+             * the patch, and since `all_zero` names exactly those three fields,
+             * **every** newly added model was blocked for declaring itself free.
+             *
+             * The gate still does its job where the declaration is real: a
+             * model that already exists and is being given a price goes through
+             * `propose_model_config_update`, whose patch is the model's own
+             * fields — so setting a price of zero there is caught, and so is
+             * re-enabling one. What is no longer caught is "a new model needs
+             * someone to fill in its price", which is the administrator's job
+             * on the confirmation screen and not a defect to refuse over.
+             */
+            upstreamId: upstream,
+            clientId: client,
+            displayName: client,
+            contextLength: known.context,
+            maxOutputTokens: known.output,
+          };
     }
     for (const gone of Object.keys(configs)) {
       if (!(gone in mapping)) delete configs[gone];
