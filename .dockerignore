@@ -1,0 +1,29 @@
+# Everything the image does not need. Keeping this list right does two things:
+# it keeps the build context small over a link that is already the slowest part
+# of a push, and it keeps host artefacts — a Windows checkout's CRLF working
+# copy, a stale `.next` — from being copied in and rebuilt against.
+
+node_modules
+.next
+.git
+.github
+
+# Host-local and editor state.
+.env.local
+*.tsbuildinfo
+.DS_Store
+
+# Test scratch written into node_modules by the suite.
+.tmp-relayab-test
+
+# `docs/` and `scripts/` are NOT excluded, and that is deliberate. Two things
+# read them at runtime, from the running container rather than the repository:
+#
+#   src/lib/docs/protocol-doc.ts        → docs/模型适配协议/README.md
+#     which is the whole media adaptation specification, and the one tool
+#     (`get_media_spec_reference`) is built to hand the assistant verbatim.
+#   src/components/docs/SpecCheckReference.tsx → scripts/spec-check.ts
+#     which renders the validator's own source on /admin/docs/spec-check.
+#
+# Excluding them would not slow the build down; it would make both pages work
+# in development and fail in production.
