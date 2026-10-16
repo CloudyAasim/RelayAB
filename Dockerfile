@@ -112,7 +112,19 @@ RUN mkdir -p /data /app/data
 # process writes only to /data and /tmp, and the dependency tree is exactly what
 # pnpm.lock.yaml pinned.
 
-EXPOSE 3000
+# The port Dokku serves this app on, which for a public site is 443.
+#
+# Dokku reads EXPOSE out of the Dockerfile and writes nginx's `listen` from it,
+# so `EXPOSE 3000` produced a server block listening on 3000 instead — the
+# domain then had nothing on 443, every request fell through to the
+# `server_name _` default server on this host, and TLS failed with
+# "unrecognized name" because that block carries no certificate.
+#
+# 443 is the *served* port, not the port the process binds: Dokku injects
+# PORT=3000, `next start` listens there, and nginx proxies 443 to it. The
+# herokuish image this replaced declared nothing, which is why Dokku defaulted
+# to 443 and everything worked.
+EXPOSE 443
 
 # What Procfile asked for: `pnpm start` → `next start`.
 CMD ["pnpm", "start"]
