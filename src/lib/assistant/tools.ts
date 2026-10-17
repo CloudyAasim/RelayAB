@@ -153,6 +153,28 @@ export interface ToolResult {
    * lose the media rather than leak it.
    */
   artifacts?: RawArtifact[];
+  /**
+   * Set when this call was a question to the person, not an action on a system.
+   *
+   * The turn loop reads it and ends the turn there. That is the whole point:
+   * a stream cannot carry an answer back in, so a turn that asked a question
+   * and then kept working would be the model talking to itself — and the one
+   * place that pattern has already bitten is the free-model gate, where the
+   * only way out was for the user to retype `confirmFindings` into a fresh
+   * message. Asking is how the answer comes back.
+   */
+  askedUser?: UserQuestion;
+}
+
+/** A question put to the person in front of the screen. */
+export interface UserQuestion {
+  question: string;
+  /** Offered as buttons. Empty means the answer is entirely free-form. */
+  options?: string[];
+  /** Placeholder for the free-form box. */
+  placeholder?: string;
+  /** Shown under the question — what the answer will be used for. */
+  hint?: string;
 }
 
 /**
@@ -230,6 +252,50 @@ function okCompact(value: unknown): ToolResult {
 // ---------------------------------------------------------------------------
 
 const USER_TOOLS: AssistantToolDef[] = [
+  {
+    type: "function",
+    function: {
+      name: "ask_user",
+      description:
+        "向用户提一个问题，然后这一轮就结束，等他回答。\n\n" +
+        "**什么时候必须用它**：有一件事你不知道答案，而猜错的代价比多问一句大。" +
+        "典型的是需要人做决定或需要只有他知道的事——这个模型的价格是多少、" +
+        "要不要开启某个协议面、你更想要哪种做法。\n\n" +
+        "**什么时候不要用**：文档里写着答案的（先去查文档）、用户刚才说过的、" +
+        "你自己能定一个合理默认并把它讲清楚的。\n\n" +
+        "**用了它之后必须停止**。不要再调用任何其他工具，不要接着往下做，" +
+        "也不要「顺便假设一个答案继续」。用户的回答会在下一轮到达你手里。\n\n" +
+        "options 是给用户点的按钮——当他只有几个明确选择时给上它" +
+        "（比如「切成高级模式」「先只用 OpenAI 面」）；" +
+        "当他可能要自己输入（价格、URL）就留空，只用 question。",
+      parameters: {
+        type: "object",
+        properties: {
+          question: {
+            type: "string",
+            description: "要问的问题。一句话，具体到能直接回答。",
+          },
+          options: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "可选的候选答案，会显示成按钮让用户点。答案数量少而确定时用它，" +
+              "用户可能自己输入时不要给。",
+          },
+          placeholder: {
+            type: "string",
+            description: "自由输入框的占位提示，例如「输入每百万 token 的积分价格」。",
+          },
+          hint: {
+            type: "string",
+            description: "可选：这个问题问出来是为了什么、答案会用来做什么。",
+          },
+        },
+        required: ["question"],
+        additionalProperties: false,
+      },
+    },
+  },
   {
     type: "function",
     function: {
@@ -1033,6 +1099,68 @@ export function toolDefinitions(isAdmin: boolean): AssistantToolDef[] {
   return isAdmin ? [...USER_TOOLS, ...ADMIN_TOOLS] : USER_TOOLS;
 }
 
+/**
+ * Separates the machine-readable question from the prose meant for the model.
+ *
+ * The tool result is stored as a `tool` row, and that row is the only place a
+ * question survives a reload — so it carries both, with this between them. The
+ * model reads it as an HTML comment it will not restate; the client reads
+ * after it as JSON.
+ */
+export const ASK_USER_MARKER = "<!-- ask_user -->";
+
+/**
+ * Put a question to the person, and stop there.
+ *
+ * `askedUser` is what the turn loop watches for. It does not block and it does
+ * not wait — a stream cannot carry an answer back in, so the turn ends and the
+ * reply arrives as the next message. What the model is told is deliberately
+ * blunt, because the failure this exists to prevent is a model that asked a
+ * question and then answered it itself.
+ *
+ * The question is also written into the transcript, so the next turn can see
+ * what it asked rather than only that it asked.
+ */
+function askUser(args: Record<string, unknown>): ToolResult {
+  const parsed = z
+    .object({
+      question: z.string().trim().min(1).max(500),
+      options: z.array(z.string().trim().min(1).max(120)).max(8).optional(),
+      placeholder: z.string().trim().max(200).optional(),
+      hint: z.string().trim().max(300).optional(),
+    })
+    .safeParse(args);
+  if (!parsed.success) {
+    return fail("ask_user 需要一个非空的 question。");
+  }
+  const { question, options, placeholder, hint } = parsed.data;
+
+  return {
+    ok: true,
+    askedUser: {
+      question,
+      ...(options?.length ? { options } : {}),
+      ...(placeholder ? { placeholder } : {}),
+      ...(hint ? { hint } : {}),
+    },
+    // Written so that continuing to act on a guess is the harder reading.
+    content: [
+      "已经向用户提问，本轮到此结束。",
+      "",
+      `你问的是：${question}`,
+      "",
+      "不要调用任何其他工具，不要接着往下做，也不要假设一个答案继续。" +
+        "用户的回答会在下一轮到达，届时再继续。",
+      "",
+      // Carried so the question survives a reload. This tool call is persisted
+      // as a `tool` row, and without this the client would rebuild the thread
+      // from the database and find nothing to answer — a question that
+      // vanishes on refresh is worse than one that is never asked.
+      ASK_USER_MARKER + JSON.stringify({ question, options, placeholder, hint }),
+    ].join("\n"),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Execution
 // ---------------------------------------------------------------------------
@@ -1047,6 +1175,8 @@ export async function executeTool(
 
   switch (name) {
     // ---- shared --------------------------------------------------------
+    case "ask_user":
+      return askUser(args);
     case "list_gateway_models":
       return listGatewayModels(ctx);
     case "test_gateway_model":

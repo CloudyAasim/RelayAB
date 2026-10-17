@@ -26,7 +26,7 @@ import { callAssistantModel, UpstreamError, type ChatMessage, type ContentPart, 
 import { toolDefinitions, executeTool, type ToolContext } from "./tools";
 import { systemPrompt } from "./prompts";
 import type { ResolvedCredential } from "./credentials";
-import type { RawArtifact } from "./tools";
+import type { RawArtifact, UserQuestion } from "./tools";
 import { artifactRef, getAssistantArtifact, saveAssistantArtifact, type ArtifactRef } from "../db/assistant-artifacts";
 import { decryptSecret } from "../crypto/secrets";
 import {
@@ -393,12 +393,22 @@ export function redactToolCalls(
 }
 
 export interface ChatEvent {
-  type: "delta" | "reasoning" | "tool" | "done" | "error" | "action" | "artifact";
+  type: "delta" | "reasoning" | "tool" | "done" | "error" | "action" | "artifact" | "question";
   text?: string;
   toolName?: string;
   data?: unknown;
   /** Media a tool just produced, so the conversation can show it as it lands. */
   artifacts?: ArtifactRef[];
+  /**
+   * A question the assistant put to the person.
+   *
+   * Its own event rather than a `tool` one because the reader has to *answer*
+   * it: an option list and a free-form box are not something a transcript line
+   * can express, and rendering the question as ordinary text is what made the
+   * free-model gate dead-end — the refusal said "confirm and say again", and
+   * saying again meant knowing a key format the interface never showed.
+   */
+  question?: UserQuestion;
 }
 
 export interface RunChatOptions {
@@ -636,6 +646,8 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
   const signatures: string[] = [];
   /** Set when a model calls the same thing until the turn is cut short. */
   let loopingTurn = false;
+  /** Set the moment the model asks the user something. Ends the turn. */
+  let askedQuestion: UserQuestion | undefined;
   const startedAt = Date.now();
   /**
    * The one ceiling on this turn, handed down to every call in it.
@@ -783,6 +795,20 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
           resultText = withArtifactRefs(resultText, refs);
           emit({ type: "artifact", artifacts: refs });
         }
+
+        /**
+         * A question ends the turn, whatever came before or comes next.
+         *
+         * The alternative — carrying on — is the thing worth refusing: nothing
+         * can arrive in the middle of a stream, so a turn that asked and then
+         * kept going would be the model deciding its own answer and reporting it
+         * as the user's. Ending here also means the question is the last thing
+         * on screen, which is where a person looks when they come back to it.
+         */
+        if (result.askedUser) {
+          emit({ type: "question", question: result.askedUser, toolName: call.function.name });
+          askedQuestion = result.askedUser;
+        }
       } catch (err) {
         // A tool that throws is a fact the model can reason about, not a reason
         // to end the conversation.
@@ -813,6 +839,16 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
       messages.push({ role: "tool", content: resultText, tool_call_id: call.id });
     }
 
+    /**
+     * The turn ends where the question was asked.
+     *
+     * Checked after the tool result is persisted, so the next turn can see both
+     * the question and the fact that it went unanswered — a thread whose last
+     * tool row says "已向用户提问" is the thread that knows to wait rather than
+     * to propose.
+     */
+    if (askedQuestion) break;
+
     // The one remaining ceiling. Checked here rather than around the call so a
     // model gets to see the result of the round it just finished.
     if (loopingTurn) break;
@@ -820,6 +856,16 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
       stopReason = `这一轮已经跑了 ${Math.round(MAX_TURN_MS / 60000)} 分钟，已停止。可以把问题拆小一点再试。`;
       break;
     }
+  }
+
+  if (askedQuestion) {
+    // Not an error. The turn ended the way it was supposed to — it asked and is
+    // waiting — and painting that red is how a refusal becomes indistinguishable
+    // from a failure. The `question` event above already carries the thing the
+    // reader has to act on.
+    emit({ type: "done", data: { rounds, usage, pendingActions, awaitingAnswer: true } });
+    void finalText;
+    return;
   }
 
   if (!stopReason) {

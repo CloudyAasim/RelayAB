@@ -797,3 +797,103 @@ function Artifact({ artifact, downloadLabel }: { artifact: ArtifactRef; download
     </figure>
   );
 }
+
+/**
+ * A question the assistant asked, with somewhere to answer it.
+ *
+ * The point of the card is that answering is the *easy* thing to do. Before
+ * this, the only route from "the assistant needs something from you" back to
+ * progress was typing a tool argument by hand — the free-model gate said
+ * "confirm and send again", and sending again meant knowing the key format
+ * (`all_zero:model-id`) from a refusal message. That is a question asked in a
+ * language only one of the two parties speaks.
+ *
+ * So the options are buttons, and the free-form box is there for the answers
+ * that cannot be enumerated — a price, a URL, a name. Both paths end in the
+ * same place: an ordinary next message.
+ */
+export function QuestionCard({
+  question,
+  answered,
+  busy,
+  onAnswer,
+  labels,
+}: {
+  question: { question: string; options?: string[]; placeholder?: string; hint?: string };
+  /** Set once a reply exists, so a reloaded thread does not ask again. */
+  answered: boolean;
+  busy: boolean;
+  onAnswer: (answer: string) => void;
+  labels: { placeholder: string; send: string; answered: string };
+}) {
+  const [typed, setTyped] = useState("");
+  const { question: text, options, placeholder, hint } = question;
+
+  const submit = (answer: string) => {
+    const trimmed = answer.trim();
+    // An empty answer is not an answer, and sending one would look like a
+    // reply while telling the model nothing.
+    if (!trimmed || busy) return;
+    setTyped("");
+    onAnswer(trimmed);
+  };
+
+  return (
+    <div className="my-2 rounded-lg border border-primary/40 bg-primary/5 p-3">
+      <p className="text-sm font-medium">{text}</p>
+      {hint ? <p className="mt-1 text-xs text-muted-foreground">{hint}</p> : null}
+
+      {answered ? (
+        <p className="mt-3 text-xs text-muted-foreground">{labels.answered}</p>
+      ) : (
+        <div className="mt-3 space-y-2">
+          {options?.length ? (
+            <div className="flex flex-wrap gap-2">
+              {options.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => submit(option)}
+                  className={buttonVariants({ variant: "outline", size: "sm" })}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          {/*
+           * Always offered, even alongside the options. A list of choices is
+           * the assistant's idea of the possible answers, and being confined to
+           * it is the same failure as being told to retype a confirmation key —
+           * just quieter.
+           */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              submit(typed);
+            }}
+            className="flex gap-2"
+          >
+            <input
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              disabled={busy}
+              placeholder={placeholder ?? labels.placeholder}
+              aria-label={text}
+              className="min-w-0 flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm outline-none ring-1 ring-transparent focus-visible:ring-2 focus-visible:ring-ring"
+            />
+            <button
+              type="submit"
+              disabled={busy || !typed.trim()}
+              className={buttonVariants({ size: "sm" })}
+            >
+              {labels.send}
+            </button>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}

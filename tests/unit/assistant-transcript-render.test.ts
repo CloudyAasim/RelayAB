@@ -62,7 +62,7 @@ describe("the transcript actually uses it", () => {
     // A guard that exists but is not consulted is the same as no guard.
     expect(CHAT).toContain("transcriptReadRef.current.accept(token)");
     const at = CHAT.indexOf("transcriptReadRef.current.accept(token)");
-    const set = CHAT.indexOf("setMessages(json.data.messages ?? [])", at);
+    const set = CHAT.indexOf("setMessages(", at);
     expect(set).toBeGreaterThan(at);
   });
 
@@ -73,9 +73,15 @@ describe("the transcript actually uses it", () => {
     // transcript was rewritten to nothing with nothing on screen saying so.
     // The write is now gated, and `?.` is gone because the guard above has
     // already established there is a body.
+    //
+    // Matched by call rather than by one literal: the write is now preceded by
+    // restoring questions out of the stored rows, so pinning
+    // `setMessages(json.data.messages ?? [])` would only assert that nobody has
+    // ever restored a question — which is the change that made a question
+    // survive a reload.
     const at = CHAT.indexOf("transcriptReadRef.current.accept(token)");
     const guard = CHAT.indexOf("if (!res.ok || !json?.data)", at);
-    const set = CHAT.indexOf("setMessages(json.data.messages ?? [])", at);
+    const set = CHAT.indexOf("setMessages(", at);
     expect(guard, "nothing stands between a failed read and the transcript")
       .toBeGreaterThan(at);
     expect(guard).toBeLessThan(set);

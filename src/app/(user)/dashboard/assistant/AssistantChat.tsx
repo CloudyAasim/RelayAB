@@ -34,7 +34,7 @@ import { PendingErrorProvider } from "./PendingActions";
 import { latestRead } from "@/lib/assistant/latest-read";
 import type { AssistantConfig } from "@/lib/assistant/config";
 import { announcePendingChanged, onPendingChanged } from "@/lib/assistant/pending-bus";
-import { MediaArtifacts, ToolResultCard, AssistantBody } from "./MediaArtifacts";
+import { MediaArtifacts, ToolResultCard, AssistantBody, QuestionCard } from "./MediaArtifacts";
 import type { ArtifactRef } from "@/lib/db/assistant-artifacts";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";
 import { Pencil, Trash2, Paperclip, X } from "lucide-react";
@@ -85,6 +85,20 @@ interface Thread {
   updatedAt: string;
 }
 
+/**
+ * A question the assistant put to the person in front of the screen.
+ *
+ * Mirrors `UserQuestion` on the server. Re-declared rather than imported
+ * because this file is a client component and the server module pulls the
+ * whole tool catalogue with it.
+ */
+interface UserQuestion {
+  question: string;
+  options?: string[];
+  placeholder?: string;
+  hint?: string;
+}
+
 interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "tool";
@@ -99,6 +113,12 @@ interface ChatMessage {
    */
   reasoning?: string;
   toolName?: string | null;
+  /**
+   * A question the assistant is waiting on, carried on the message so it
+   * survives the stream ending and the thread being reloaded. Answering it
+   * clears this and sends the answer as the next user message.
+   */
+  question?: UserQuestion | null;
   /** Files the user attached, once the server has given them a URL. */
   attachments?: Attachment[];
 }
@@ -168,8 +188,83 @@ type EventPayload =
   | { type: "tool"; toolName?: string; text?: string }
   | { type: "artifact"; artifacts?: ArtifactRef[] }
   | { type: "action"; text?: string; data?: { actionId?: string } }
+  | { type: "question"; question?: UserQuestion }
   | { type: "error"; text?: string }
   | { type: "done"; data?: { pendingActions?: string[]; usage?: unknown } };
+
+/**
+ * The seam between a stored tool result's prose and its machine-readable half.
+ *
+ * Written out here rather than imported from `tools.ts`: that module is server
+ * code and importing it would pull the whole tool catalogue — and everything it
+ * reaches — into the browser bundle. The two copies have to stay identical, and
+ * `assistant-ask-user.test.ts` is what keeps them that way: it reads this
+ * source and the server's, and fails if they ever disagree.
+ */
+const ASK_USER_MARKER = "<!-- ask_user -->";
+
+/**
+ * Put the questions back where they belong after a reload.
+ *
+ * A question lives on an `ask_user` tool row, and the reader expects it on the
+ * assistant message that asked it — the row is plumbing. So each one is folded
+ * into the assistant message above it, and the tool row itself is dropped:
+ * rendering it as well would show the question twice, once answerable and once
+ * as a JSON blob in a details panel.
+ *
+ * A question counts as answered when a user message follows it. That is the
+ * same conclusion the live view reaches by holding the id, and it is derived
+ * from the transcript rather than from session state, which is the whole point
+ * — otherwise a reload would quietly un-answer a question that was answered.
+ */
+function restoreQuestions(rows: ChatMessage[]): {
+  messages: ChatMessage[];
+  answered: Set<string>;
+} {
+  const messages: ChatMessage[] = [];
+  const answered = new Set<string>();
+  let answeredEverythingAfter = false;
+
+  for (const row of rows) {
+    if (row.role === "user") {
+      // Any user turn answers whatever question is still open above it.
+      answeredEverythingAfter = true;
+      messages.push(row);
+      continue;
+    }
+    if (answeredEverythingAfter) {
+      const last = messages[messages.length - 1];
+      if (last?.question) answered.add(last.id);
+      answeredEverythingAfter = false;
+    }
+    if (row.role === "tool" && row.toolName === "ask_user") {
+      const at = row.content?.indexOf(ASK_USER_MARKER) ?? -1;
+      if (at === -1) {
+        messages.push(row);
+        continue;
+      }
+      let question: UserQuestion | null = null;
+      try {
+        question = JSON.parse(row.content.slice(at + ASK_USER_MARKER.length).trim()) as UserQuestion;
+      } catch {
+        question = null;
+      }
+      if (!question?.question) {
+        messages.push(row);
+        continue;
+      }
+      const last = messages[messages.length - 1];
+      if (last && last.role === "assistant") {
+        messages[messages.length - 1] = { ...last, question };
+      } else {
+        messages.push({ id: row.id, role: "assistant", content: "", question });
+      }
+      continue;
+    }
+    messages.push(row);
+  }
+  return { messages, answered };
+}
 
 interface Props {
   /**
@@ -252,6 +347,16 @@ export function AssistantChat({
    * screen — which is that it does.
    */
   const [pendingDecisionError, setPendingDecisionError] = useState<string | null>(null);
+  /**
+   * Which questions already have a reply.
+   *
+   * Held here rather than on the message because the answer is an ordinary next
+   * message: the question card has to know it is done without that answer being
+   * edited into the question itself, and a reloaded thread has to reach the same
+   * conclusion — which it does, because a question with a user message after it
+   * is a question that was answered.
+   */
+  const [answeredQuestionIds, setAnsweredQuestionIds] = useState<Set<string>>(new Set());
 
   /**
    * Open a drawer after the current gesture has finished.
@@ -371,7 +476,9 @@ export function AssistantChat({
       setError(t("assistant.loadFailed"));
       return;
     }
-    setMessages(json.data.messages ?? []);
+    const restored = restoreQuestions(json.data.messages ?? []);
+    setAnsweredQuestionIds(restored.answered);
+    setMessages(restored.messages);
   }, []);
 
   /**
@@ -719,6 +826,30 @@ export function AssistantChat({
   const canSend = config.ready;
   const missingUpstream = !config.ready;
 
+  /**
+   * Answer a question the assistant asked.
+   *
+   * The reply goes into the composer and is sent by the ordinary path rather
+   * than by a second one, because "the user typed this" and "the user clicked
+   * this" must be indistinguishable to everything downstream — the stored
+   * transcript, the usage row, and the model itself. A separate route would
+   * have been a place for those to drift.
+   *
+   * The answer is prefixed with the question it answers. A turn that ends on
+   * "which price?" leaves the next turn opening on an assistant message whose
+   * text is the question — and "210 / 840" as a reply to that is a guess the
+   * model has to make about what the numbers mean.
+   */
+  function answerQuestion(questionId: string, answer: string): void {
+    setAnsweredQuestionIds((prev) => new Set(prev).add(questionId));
+    const message = messages.find((m) => m.id === questionId);
+    const asked = message?.question?.question?.trim();
+    setInput(asked ? `${asked}\n\n${answer}` : answer);
+    // Sent on the next tick so the composer state is committed first — `send`
+    // reads `input`, and setting it in the same tick would send the old value.
+    queueMicrotask(() => void send());
+  }
+
   async function send() {
     const text = input.trim();
     const files = uploadFilesRef.current;
@@ -855,6 +986,19 @@ export function AssistantChat({
         } else if (evt.type === "error" && evt.text) {
           sawError = true;
           setError(evt.text);
+        } else if (evt.type === "question" && evt.question) {
+          // Lands on the assistant message rather than a banner: it is part of
+          // what the assistant said, and it has to stay answerable after a
+          // reload — a question in a dismissible banner is a question that
+          // gets lost, which is the state this whole path replaced.
+          setMessages((prev) => {
+            const rest = prev.filter((m) => m.id !== "streaming");
+            const last = rest[rest.length - 1];
+            if (last && last.role === "assistant") {
+              return [...rest.slice(0, -1), { ...last, question: evt.question! }];
+            }
+            return [...rest, { id: "streaming", role: "assistant", content: "", question: evt.question! }];
+          });
         } else if (evt.type === "artifact" && evt.artifacts?.length) {
           // Show it the moment the tool finishes, rather than waiting for the
           // turn to end and the thread to reload.
@@ -1125,6 +1269,19 @@ export function AssistantChat({
                       expandLabel={t("assistant.expand")}
                       collapseLabel={t("assistant.collapse")}
                     />
+                    {m.question && (
+                      <QuestionCard
+                        question={m.question}
+                        answered={answeredQuestionIds.has(m.id)}
+                        busy={busy}
+                        onAnswer={(answer) => answerQuestion(m.id, answer)}
+                        labels={{
+                          placeholder: t("assistant.question.placeholder"),
+                          send: t("assistant.question.send"),
+                          answered: t("assistant.question.answered"),
+                        }}
+                      />
+                    )}
                   </div>
                 </div>
               ),

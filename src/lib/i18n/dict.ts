@@ -984,6 +984,9 @@ const zhCN: Dict = {
   "assistant.collapse": "收起",
   "assistant.streamInterrupted":
     "连接中断了，这一轮没有跑完。上面这些是已经收到的部分——可以就着它继续问，或者重发一次。",
+  "assistant.question.placeholder": "在这里回答…",
+  "assistant.question.send": "发送",
+  "assistant.question.answered": "已回答，等助手继续。",
   "assistant.loadFailed":
     "这段对话没能加载出来（服务暂时不可用），上面显示的是上一次读到的内容，不是空白。稍后点开一次就好。",
   "assistant.pretty.switch": "输出美化",
@@ -2149,6 +2152,9 @@ const en: Dict = {
   "assistant.collapse": "Collapse",
   "assistant.streamInterrupted":
     "The connection dropped before this turn finished. What is above is the part that arrived — you can carry on from it, or send the request again.",
+  "assistant.question.placeholder": "Answer here…",
+  "assistant.question.send": "Send",
+  "assistant.question.answered": "Answered — waiting for the assistant to continue.",
   "assistant.loadFailed":
     "This conversation could not be loaded (the service is temporarily unavailable). What is on screen is what the last successful read produced, not an empty thread — try opening it again in a moment.",
   "assistant.pretty.switch": "Pretty output",
