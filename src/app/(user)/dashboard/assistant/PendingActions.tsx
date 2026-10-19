@@ -40,7 +40,7 @@ const STATUS_TONE: Record<AssistantActionView["status"], "warning" | "success" |
 };
 
 /** A create cannot be completed without a key, and the key is not in the action. */
-const CREATE_KINDS = new Set(["provider.create", "media_provider.create"]);
+const CREATE_KINDS = new Set(["provider.create", "media_provider.create", "search_provider.create"]);
 
 /**
  * Why the last decision was refused, held above the drawer.

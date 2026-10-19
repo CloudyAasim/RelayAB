@@ -240,6 +240,17 @@ export function AdminDocsContent({ section, t }: { section: AdminDocId; t: TFn }
             /admin/search
           </Link>
         </Card>
+        <Card>
+          <CardHeader
+            title={
+              <CardTitle icon={<FileCode className="h-4 w-4" />}>
+                {t("admin.docs.searchProtocol.title")}
+              </CardTitle>
+            }
+            description={t("admin.docs.searchProtocol.desc")}
+          />
+          <ProtocolReference kind="search" />
+        </Card>
       </div>
     );
   }

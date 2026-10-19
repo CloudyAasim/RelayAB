@@ -26,11 +26,36 @@ const PANEL = readFileSync(
   "utf-8",
 );
 
+const ROUTE = readFileSync(
+  join(process.cwd(), "src", "app", "api", "assistant", "actions", "[id]", "route.ts"),
+  "utf-8",
+);
+
+/** The create kinds a file declares, read out of the source. */
+function createKinds(source: string): string[] {
+  const match = /CREATE_KINDS = new Set\(\[([^\]]*)\]\)/.exec(source);
+  if (!match) return [];
+  return [...match[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+}
+
 describe("the approve panel, where the key is typed", () => {
   it("knows which actions are creates", () => {
     // A list rather than a `kind.endsWith("create")` at the call site, so the
-    // panel and the server agree on the same two names.
-    expect(PANEL).toMatch(/CREATE_KINDS = new Set\(\["provider\.create", "media_provider\.create"\]\)/);
+    // panel and the server agree on the same names.
+    expect(createKinds(PANEL)).toEqual([
+      "provider.create",
+      "media_provider.create",
+      "search_provider.create",
+    ]);
+  });
+
+  it("and the panel and the server agree on that list", () => {
+    // The panel shows the key field; the server demands one. If the two lists
+    // drift apart, an administrator is either asked for a key the server does
+    // not want, or the server refuses a create the panel let through. The
+    // comment above says the list exists so the two agree — so the agreement
+    // is checked, not assumed.
+    expect(createKinds(PANEL)).toEqual(createKinds(ROUTE));
   });
 
   it("shows the field for a create and hides it for an update", () => {

@@ -24,6 +24,8 @@ import {
 } from "@/lib/db/search-providers";
 import { getSettings } from "@/lib/db/settings";
 import { loadSearchConfig } from "@/lib/search/config";
+import { SEARCH_TEMPLATES } from "@/lib/search/templates";
+import { specDrift, type SpecDrift } from "@/lib/search/drift";
 import { Card } from "@/components/ui/Card";
 import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/components/ui/Table";
 import { Badge } from "@/components/ui/Badge";
@@ -35,8 +37,50 @@ import { SearchPanel } from "./SearchPanel";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * The built-in templates, as the form needs them.
+ *
+ * Plain documents, not code: the form can import one, edit it and save it
+ * back, and a deployment can then carry a vendor this build has never heard of.
+ */
+const TEMPLATE_OPTIONS = SEARCH_TEMPLATES.map((template) => ({
+  id: template.id,
+  name: template.name,
+  description: template.description,
+  spec: template.spec,
+}));
+
 function kindLabel(t: (key: string) => string, kind: PublicSearchProvider["kind"]): string {
   return t(`admin.searchProviders.kinds.${kind}`);
+}
+
+/**
+ * How a stored spec compares to the template it came from.
+ *
+ * The interesting case is "differs": the template moved and the stored copy did
+ * not. The paths are in the tooltip, because a badge that says "3 differences"
+ * without saying where is a badge nobody acts on.
+ */
+function SpecBadge({
+  drift,
+  t,
+}: {
+  drift: SpecDrift;
+  t: (key: string, vars?: Record<string, string | number>) => string;
+}) {
+  if (drift.kind === "in-sync") {
+    return <Badge tone="success">{t("admin.searchProviders.drift.inSync")}</Badge>;
+  }
+  if (drift.kind === "differs") {
+    return (
+      <span title={drift.paths.join("\n")}>
+        <Badge tone="warning">
+          {t("admin.searchProviders.drift.differs", { count: drift.paths.length })}
+        </Badge>
+      </span>
+    );
+  }
+  return <Badge tone="info">{t("admin.searchProviders.drift.noTemplate")}</Badge>;
 }
 
 export default async function SearchAdminPage() {
@@ -57,7 +101,7 @@ export default async function SearchAdminPage() {
     <SectionPageLayout>
       <SectionPageLayout.Title>{t("admin.searchProviders.title")}</SectionPageLayout.Title>
       <SectionPageLayout.Actions>
-        <CreateSearchProviderButton />
+        <CreateSearchProviderButton templates={TEMPLATE_OPTIONS} />
       </SectionPageLayout.Actions>
       <SectionPageLayout.Content>
         <p className="mb-4 text-sm text-muted-foreground">
@@ -70,7 +114,7 @@ export default async function SearchAdminPage() {
               icon={<Search className="h-5 w-5" />}
               title={t("admin.searchProviders.empty")}
               description={t("admin.searchProviders.emptyHint")}
-              action={<CreateSearchProviderButton />}
+              action={<CreateSearchProviderButton templates={TEMPLATE_OPTIONS} />}
             />
           ) : (
             <Table>
@@ -81,6 +125,7 @@ export default async function SearchAdminPage() {
                   <TH>{t("admin.searchProviders.baseUrl")}</TH>
                   <TH>{t("admin.searchProviders.priority")}</TH>
                   <TH>{t("admin.searchProviders.creditsPerCall")}</TH>
+                  <TH>{t("admin.searchProviders.spec")}</TH>
                   <TH>{t("dashboard.table.status")}</TH>
                   <TH className="w-40 text-right">{t("common.actions")}</TH>
                 </TR>
@@ -108,6 +153,15 @@ export default async function SearchAdminPage() {
                       {p.creditsPerCall}
                     </TD>
                     <TD>
+                      {p.spec ? (
+                        <SpecBadge drift={specDrift(p.spec)} t={t} />
+                      ) : (
+                        <span title={t("admin.searchProviders.legacyHint")}>
+                          <Badge tone="neutral">{t("admin.searchProviders.legacy")}</Badge>
+                        </span>
+                      )}
+                    </TD>
+                    <TD>
                       <div className="flex flex-wrap items-center gap-1">
                         <Badge tone={p.enabled ? "success" : "neutral"}>
                           {p.enabled
@@ -120,7 +174,7 @@ export default async function SearchAdminPage() {
                       </div>
                     </TD>
                     <TD className="text-right">
-                      <SearchProviderActions provider={p} />
+                      <SearchProviderActions provider={p} templates={TEMPLATE_OPTIONS} />
                     </TD>
                   </TR>
                 ))}

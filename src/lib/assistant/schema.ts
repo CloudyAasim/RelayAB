@@ -187,6 +187,12 @@ export const AssistantActionKindSchema = z.enum([
   "provider.create",
   "media_provider.update",
   "media_provider.create",
+  // The search backends. The third provider family, and the one the assistant
+  // could not touch at all until now: it could list and change chat providers
+  // and media providers, but not the search ones. Three kinds of provider and
+  // two of them manageable is an inconsistency, not a design.
+  "search_provider.update",
+  "search_provider.create",
   // The operator's own documentation chapter. A whole-list replacement like the
   // others, and for the same reason: the diff is the only thing between the
   // model and somebody's own writing disappearing.

@@ -6,55 +6,117 @@ import { useRouter } from "next/navigation";
 import { useT } from "@/components/i18n/I18nProvider";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { AlertCircle, CheckCircle2, Save } from "lucide-react";
 
-export type SearchProviderKind = "tavily" | "brave" | "searxng";
+/** The vendors that ship with a template, plus whatever a row names itself. */
+export const BUILTIN_KINDS = ["searxng", "tavily", "brave"] as const;
+
+export interface SearchTemplateOption {
+  id: string;
+  name: string;
+  description: string;
+  spec: unknown;
+}
 
 export interface SearchProviderRow {
   id: string;
   name: string;
-  kind: SearchProviderKind;
+  kind: string;
   baseUrl: string;
   enabled: boolean;
   priority: number;
   /** Whole credits this backend charges per call. */
   creditsPerCall: number;
   hasApiKey: boolean;
+  /** The row's own spec, when it has one. */
+  spec?: unknown;
 }
 
 interface Props {
+  /** Present → edit mode (PATCH); absent → create mode (POST). */
   provider?: SearchProviderRow;
+  /** Starting points shown as buttons. */
+  templates?: SearchTemplateOption[];
   onSaved?: () => void;
 }
 
 /**
  * Add or edit one search backend.
  *
- * The two kinds need different required fields, and saying so in the form is
- * better than letting the API refuse it after a save: a SearXNG row needs an
- * address, Tavily and Brave need a key. The API enforces the same rule, so the
- * form is a convenience rather than the only guard.
+ * The screen is the search adapter protocol made concrete: a backend is a
+ * name, an address, a credential and — when the vendor is one this build has
+ * no template for — a spec.
+ *
+ * **The address means one thing.** It is the *service root*, and the spec's
+ * path says where the service keeps its search endpoint. That is the change
+ * from before, when the same column held a whole endpoint for Tavily and
+ * Brave and a service root for SearXNG, and nothing said so. The resolved
+ * endpoint is shown under the field, so "where does this actually go" is
+ * something the operator reads rather than infers.
+ *
+ * A row that predates the protocol has no spec, and the form leaves it that
+ * way until somebody asks for a template — its address keeps the old meaning
+ * until then, so editing a price cannot change where a request goes.
  */
-export function SearchProviderForm({ provider, onSaved }: Props) {
+export function SearchProviderForm({ provider, templates, onSaved }: Props) {
   const t = useT();
   const router = useRouter();
   const editing = Boolean(provider);
 
   const [name, setName] = useState(provider?.name ?? "");
-  const [kind, setKind] = useState<SearchProviderKind>(provider?.kind ?? "searxng");
+  const [kind, setKind] = useState<string>(provider?.kind ?? "searxng");
   const [baseUrl, setBaseUrl] = useState(provider?.baseUrl ?? "");
   const [apiKey, setApiKey] = useState("");
   const [priority, setPriority] = useState(String(provider?.priority ?? 1));
   const [creditsPerCall, setCreditsPerCall] = useState(String(provider?.creditsPerCall ?? 1));
   const [enabled, setEnabled] = useState(provider?.enabled ?? true);
+  const [specText, setSpecText] = useState(
+    provider?.spec ? JSON.stringify(provider.spec, null, 2) : "",
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
-  const keyRequired = kind !== "searxng";
-  const urlRequired = kind === "searxng";
+  const hasSpec = specText.trim().length > 0;
 
-  async function save(e: React.FormEvent): Promise<void> {
-    e.preventDefault();
+  /** The endpoint this row would talk to, as far as the form can tell. */
+  function resolvedEndpoint(): string | null {
+    if (!hasSpec) {
+      if (kind === "searxng") return baseUrl.trim() ? `${baseUrl.trim().replace(/\/+$/, "")}/search` : null;
+      if (kind === "tavily") {
+        const root = baseUrl.trim() || "https://api.tavily.com";
+        return `${root.replace(/\/+$/, "")}/search`;
+      }
+      if (kind === "brave") {
+        const root = baseUrl.trim() || "https://api.search.brave.com";
+        return `${root.replace(/\/+$/, "")}/res/v1/web/search`;
+      }
+      return null;
+    }
+    try {
+      const spec = JSON.parse(specText) as { transport?: { path?: string }; baseUrl?: string };
+      const root = baseUrl.trim() || spec.baseUrl?.trim() || "";
+      if (!root) return null;
+      const path = spec.transport?.path ?? "";
+      return `${root.replace(/\/+$/, "")}${path.startsWith("/") ? path : path ? `/${path}` : ""}`;
+    } catch {
+      return null;
+    }
+  }
+
+  function loadTemplate(template: SearchTemplateOption): void {
+    setName(template.name);
+    setKind(template.id);
+    setSpecText(JSON.stringify(template.spec, null, 2));
+    const spec = template.spec as { baseUrl?: string };
+    // The template's address is a service root. Loading a template therefore
+    // replaces an address that used to be a whole endpoint — otherwise the
+    // root and the path would be added together and the request would go to
+    // `…/search/search`.
+    setBaseUrl(spec.baseUrl?.trim() ?? "");
+  }
+
+  async function save(): Promise<void> {
     setBusy(true);
     setError(null);
     setSaved(false);
@@ -66,18 +128,22 @@ export function SearchProviderForm({ provider, onSaved }: Props) {
       }
       const payload: Record<string, unknown> = {
         name: name.trim(),
-        kind,
+        kind: hasSpec ? kind : kind,
         baseUrl: baseUrl.trim(),
         enabled,
         priority: Number(priority) || 0,
         creditsPerCall: parsedCredits,
       };
-      // A blank key on edit means "keep the stored one", so it is omitted
-      // rather than sent as an empty string.
+      if (hasSpec) {
+        payload.spec = JSON.parse(specText);
+      }
+      // A blank key in edit mode means "keep the stored one".
       if (apiKey.trim() || !editing) payload.apiKey = apiKey.trim();
 
       const res = await fetch(
-        editing ? `/api/admin/search-providers/${provider!.id}` : "/api/admin/search-providers",
+        editing
+          ? `/api/admin/search-providers/${provider!.id}`
+          : "/api/admin/search-providers",
         {
           method: editing ? "PATCH" : "POST",
           headers: { "Content-Type": "application/json" },
@@ -101,8 +167,10 @@ export function SearchProviderForm({ provider, onSaved }: Props) {
     }
   }
 
+  const endpoint = resolvedEndpoint();
+
   return (
-    <form onSubmit={save} className="space-y-4">
+    <div className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
         <Input
           label={t("admin.searchProviders.name")}
@@ -116,16 +184,19 @@ export function SearchProviderForm({ provider, onSaved }: Props) {
           </label>
           <select
             value={kind}
-            onChange={(e) => setKind(e.target.value as SearchProviderKind)}
+            onChange={(e) => setKind(e.target.value)}
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
           >
-            <option value="searxng">{t("admin.searchProviders.kinds.searxng")}</option>
-            <option value="tavily">{t("admin.searchProviders.kinds.tavily")}</option>
-            <option value="brave">{t("admin.searchProviders.kinds.brave")}</option>
+            {BUILTIN_KINDS.map((k) => (
+              <option key={k} value={k}>
+                {t(`admin.searchProviders.kinds.${k}`)}
+              </option>
+            ))}
+            {!BUILTIN_KINDS.includes(kind as (typeof BUILTIN_KINDS)[number]) && (
+              <option value={kind}>{kind}</option>
+            )}
           </select>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {t("admin.searchProviders.kindHint")}
-          </p>
+          <p className="mt-1 text-xs text-muted-foreground">{t("admin.searchProviders.kindHint")}</p>
         </div>
       </div>
 
@@ -133,21 +204,20 @@ export function SearchProviderForm({ provider, onSaved }: Props) {
         label={t("admin.searchProviders.baseUrl")}
         value={baseUrl}
         onChange={(e) => setBaseUrl(e.target.value)}
-        placeholder={kind === "searxng" ? "http://relay-search.web:8080" : "https://..."}
-        required={urlRequired}
-        hint={t("admin.searchProviders.baseUrlHint")}
+        placeholder={kind === "searxng" ? "http://relay-search.web:8080" : "https://api.example.com"}
+        hint={
+          endpoint
+            ? `${t("admin.searchProviders.baseUrlHint")} → ${endpoint}`
+            : t("admin.searchProviders.baseUrlHint")
+        }
       />
 
       <Input
         type="password"
-        label={
-          keyRequired || editing
-            ? `${t("admin.searchProviders.apiKey")} (${t("admin.providers.edit.leaveBlank")})`
-            : t("admin.searchProviders.apiKey")
-        }
+        label={`${t("admin.searchProviders.apiKey")} (${t("admin.providers.edit.leaveBlank")})`}
         value={apiKey}
         onChange={(e) => setApiKey(e.target.value)}
-        required={keyRequired && !editing}
+        placeholder={editing ? "••••••" : ""}
         hint={t("admin.searchProviders.apiKeyHint")}
       />
 
@@ -179,12 +249,52 @@ export function SearchProviderForm({ provider, onSaved }: Props) {
         </label>
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
-      {saved && <p className="text-sm text-green-600">{t("common.success")}</p>}
+      <label className="block space-y-1">
+        <span className="flex flex-wrap items-center gap-3 text-sm font-medium text-foreground">
+          {t("admin.searchProviders.spec")}
+          {templates &&
+            templates.map((template) => (
+              <button
+                key={template.id}
+                type="button"
+                onClick={() => loadTemplate(template)}
+                title={template.description}
+                className="text-xs font-normal text-primary hover:underline"
+              >
+                {template.name}
+              </button>
+            ))}
+        </span>
+        <textarea
+          value={specText}
+          onChange={(e) => setSpecText(e.target.value)}
+          rows={14}
+          spellCheck={false}
+          placeholder={'{\n  "specVersion": 1,\n  "transport": { … }\n}'}
+          className="w-full rounded-md border border-input bg-background p-2 font-mono text-xs"
+        />
+        <span className="block text-xs text-muted-foreground">{t("admin.searchProviders.specHint")}</span>
+      </label>
 
-      <Button type="submit" loading={busy}>
-        {t("common.save")}
-      </Button>
-    </form>
+      {error && (
+        <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span className="break-all">{error}</span>
+        </div>
+      )}
+      {saved && (
+        <div className="flex items-center gap-2 text-sm text-success">
+          <CheckCircle2 className="h-4 w-4" />
+          {t("admin.searchProviders.saved")}
+        </div>
+      )}
+
+      <div className="flex justify-end gap-2 border-t border-border pt-3">
+        <Button type="button" loading={busy} onClick={save}>
+          <Save className="mr-1.5 h-4 w-4" />
+          {t("common.save")}
+        </Button>
+      </div>
+    </div>
   );
 }

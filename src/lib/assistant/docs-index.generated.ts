@@ -179,7 +179,7 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     surface: "admin",
     id: "search",
     summary: "网页搜索：SearXNG 后端、开关、按次计费、面板与排查",
-    keys: ["admin.docs.search.title","admin.docs.search.desc","admin.docs.search.arch","admin.docs.search.config","admin.docs.search.panel","admin.docs.search.security","admin.docs.search.assistant","admin.docs.search.trouble","admin.search.title","admin.search.desc"],
+    keys: ["admin.docs.search.title","admin.docs.search.desc","admin.docs.search.arch","admin.docs.search.config","admin.docs.search.panel","admin.docs.search.security","admin.docs.search.assistant","admin.docs.search.trouble","admin.search.title","admin.search.desc","admin.docs.searchProtocol.title","admin.docs.searchProtocol.desc"],
   },
   {
     surface: "admin",

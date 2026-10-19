@@ -41,6 +41,7 @@ import { createProvider, getProviderById, updateProvider } from "@/lib/db/provid
 import { withTransaction } from "@/lib/db/sqlite";
 import { auditModelConfigs, renderFindingsRefusal } from "@/lib/providers/config-audit";
 import { createMediaProvider, updateMediaProvider, MediaProviderValidationError } from "@/lib/db/media-providers";
+import { createSearchProvider, updateSearchProvider } from "@/lib/db/search-providers";
 import { updateSettings } from "@/lib/db/settings";
 import {
   checkProposal,
@@ -51,6 +52,8 @@ import {
   MediaProviderCreateSchema,
   ProviderArgsSchema,
   ProviderCreateSchema,
+  SearchProviderArgsSchema,
+  SearchProviderCreateSchema,
 } from "@/lib/assistant/proposal-validation";
 
 export const dynamic = "force-dynamic";
@@ -73,7 +76,7 @@ const DecisionSchema = z.object({
 });
 
 
-const CREATE_KINDS = new Set(["provider.create", "media_provider.create"]);
+const CREATE_KINDS = new Set(["provider.create", "media_provider.create", "search_provider.create"]);
 
 /**
  * Refresh the pages that render the model catalogue.
@@ -375,6 +378,52 @@ export async function POST(
         id,
         "applied",
         `已新建媒体服务商 ${created.name}（${Object.keys(spec.models ?? {}).length} 个模型）`,
+        "applied",
+      );
+      return NextResponse.json({ ok: true, data: { status: "applied", providerId: created.id } });
+    }
+
+    if (claimed.kind === "search_provider.update") {
+      if (!claimed.targetId) throw new Error("变更缺少目标搜索提供商 id");
+      const patch = payload as z.infer<typeof SearchProviderArgsSchema>;
+      const updated = await updateSearchProvider(claimed.targetId, {
+        ...(patch.kind !== undefined ? { kind: patch.kind } : {}),
+        ...(patch.baseUrl !== undefined ? { baseUrl: patch.baseUrl } : {}),
+        ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
+        ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
+        ...(patch.creditsPerCall !== undefined ? { creditsPerCall: patch.creditsPerCall } : {}),
+        // `null` clears the spec and returns the row to its template; anything
+        // else is a spec, already checked by `checkProposal` above.
+        ...(patch.spec !== undefined ? { spec: patch.spec as never } : {}),
+      });
+      if (!updated) throw new Error("找不到该搜索提供商，可能已被删除");
+      await setAssistantActionStatus(
+        me.id,
+        id,
+        "applied",
+        `已更新搜索提供商 ${updated.name}（${Object.keys(patch).join(", ") || "无字段"}）`,
+        "applied",
+      );
+      return NextResponse.json({ ok: true, data: { status: "applied", providerId: updated.id } });
+    }
+
+    if (claimed.kind === "search_provider.create") {
+      const spec = payload as z.infer<typeof SearchProviderCreateSchema>;
+      const created = await createSearchProvider({
+        name: spec.name,
+        kind: spec.kind,
+        baseUrl: spec.baseUrl ?? "",
+        apiKey: parsed.data.apiKey!.trim(),
+        enabled: spec.enabled ?? true,
+        priority: spec.priority ?? 1,
+        creditsPerCall: spec.creditsPerCall ?? 1,
+        ...(spec.spec !== undefined ? { spec: spec.spec as never } : {}),
+      });
+      await setAssistantActionStatus(
+        me.id,
+        id,
+        "applied",
+        `已新建搜索提供商 ${created.name}`,
         "applied",
       );
       return NextResponse.json({ ok: true, data: { status: "applied", providerId: created.id } });

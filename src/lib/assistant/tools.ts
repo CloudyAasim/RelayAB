@@ -26,6 +26,13 @@ import {
   listMediaProviders,
   resolveMediaProviderForModel,
 } from "../db/media-providers";
+import {
+  getSearchProviderById,
+  listSearchProviders,
+} from "../db/search-providers";
+import { effectiveEndpoint, effectiveSearchConfig } from "../search/effective";
+import { SEARCH_TEMPLATES } from "../search/templates";
+import { readSearchProtocolDoc } from "../docs/search-protocol-doc";
 import { getProviderById, listProviders } from "../db/providers";
 import { collectVoiceCatalogue } from "../media/voices";
 import { listUsers, getUserById } from "../db/users";
@@ -53,7 +60,7 @@ import { readProtocolDoc } from "../docs/protocol-doc";
 import { getPublicUrl } from "../config";
 import { knownModelOrDefault } from "../providers/known-models";
 import { decryptSecret } from "../crypto/secrets";
-import { renderProviderDiff, renderMediaDiff, renderDocPagesDiff } from "./diff";
+import { renderProviderDiff, renderMediaDiff, renderSearchProviderDiff, renderDocPagesDiff } from "./diff";
 import { ASSISTANT_PAGE_READ_LIMIT } from "./docs-reader";
 import { getSettings } from "../db/settings";
 import { parseTextSpec, readTextSpec } from "../protocol/text-spec";
@@ -1182,6 +1189,132 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
   {
     type: "function",
     function: {
+      name: "list_search_providers",
+      description:
+        "列出所有搜索提供商（网页搜索的后端），包括它们当前实际请求的地址、用的协议（spec）、以及与内置模板的差异。\n" +
+        "**地址那一行是最终生效的地址** —— 旧记录的地址按旧规则解释，新记录按协议解释，别自己推断。\n" +
+        "改某一份 spec 前用 full=true 取回完整 JSON。",
+      parameters: {
+        type: "object",
+        properties: {
+          full: {
+            type: "boolean",
+            description: "true 时返回每条记录完整的 spec JSON（只在真的要改 spec 时用）。",
+          },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_search_spec_reference",
+      description:
+        "读搜索适配协议的原文，或者当前内置的协议模板。\n" +
+        "写 spec 之前先读它 —— 字段名和语法以这份原文为准，不要凭印象写。\n" +
+        "what=\"protocol\"：协议全文（用 offset/limit 分段读，读到 nextOffset 就接着读下一段）。\n" +
+        "what=\"templates\"：本部署内置的模板，一字不差的可套用副本。\n" +
+        "语法和媒体适配协议是同一套：值写成 \"$.query\" 是取作用域里的值，写成 \"{{…}}\" 是模板，其余是字面量。",
+      parameters: {
+        type: "object",
+        properties: {
+          what: {
+            type: "string",
+            enum: ["protocol", "templates"],
+            description: "protocol = 协议原文；templates = 内置模板",
+          },
+          offset: {
+            type: "integer",
+            description: "what=\"protocol\" 时的起始字符位置，从 0 开始。",
+          },
+          limit: {
+            type: "integer",
+            description: "what=\"protocol\" 时这一次返回多少字符。",
+          },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "propose_search_provider_create",
+      description:
+        "提出一次「新建搜索提供商」的变更，管理员在界面上确认并补填 API 密钥后才会真正创建。\n" +
+        "这个工具不接收密钥，也不该向用户索取 —— 密钥由管理员在确认时自己填。\n" +
+        "**优先用内置模板**：kind 填 searxng / tavily / brave，工具会带上对应的默认协议；" +
+        "只有在接一个没有模板的厂商时才自己写 spec。",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "显示名称" },
+          kind: {
+            type: "string",
+            description:
+              "厂商标签。用内置模板时填 searxng / tavily / brave；自带 spec 时可以填任何名字，spec.vendor 会写进用量统计。",
+          },
+          summary: { type: "string", description: "一句话说明这次变更的目的" },
+          baseUrl: {
+            type: "string",
+            description:
+              "服务地址。**服务根地址**，不是完整端点 —— 端点路径由协议里的 transport.path 决定。自带 spec 时如果 spec.baseUrl 有值，这一条优先。",
+          },
+          apiKeyHint: {
+            type: "string",
+            description:
+              "一句话说明这个密钥是给哪个厂商的（例如「Tavily 的 key」）。不要写密钥本身。",
+          },
+          priority: { type: "integer", description: "数值越小越优先" },
+          creditsPerCall: {
+            type: "integer",
+            description: "每次调用扣多少整数积分；0 表示免费。不填按 1。",
+          },
+          enabled: { type: "boolean" },
+          spec: {
+            type: "object",
+            description:
+              "可选的完整搜索协议。没有内置模板的厂商才需要写，形状必须与 get_search_spec_reference 返回的模板逐字一致。",
+            additionalProperties: true,
+          },
+        },
+        required: ["name", "kind", "summary"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "propose_search_provider_update",
+      description:
+        "提出一次搜索提供商配置变更，同样需要管理员确认才执行。只能改已存在的搜索提供商，不能新建。\n" +
+        "只写要改的字段，其余原样保留。spec 是整份替换 —— 要改就先用 list_search_providers(full=true) 取回现状再改。",
+      parameters: {
+        type: "object",
+        properties: {
+          providerId: { type: "string" },
+          summary: { type: "string", description: "一句话说明这次变更的目的" },
+          kind: { type: "string" },
+          baseUrl: { type: "string", description: "服务根地址" },
+          enabled: { type: "boolean" },
+          priority: { type: "integer" },
+          creditsPerCall: { type: "integer" },
+          spec: {
+            type: "object",
+            description: "整份替换的搜索协议。传 null 表示清掉这份协议，回到内置模板。",
+            additionalProperties: true,
+          },
+        },
+        required: ["providerId", "summary"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "list_users",
       description: "列出所有用户及其角色、配额和密钥数。",
       parameters: { type: "object", properties: {}, additionalProperties: false },
@@ -1331,6 +1464,12 @@ export async function executeTool(
     case "get_media_spec_reference":
       if (!isAdmin) return fail("这是管理员功能。");
       return mediaSpecReferenceTool(args);
+    case "list_search_providers":
+      if (!isAdmin) return fail("这是管理员功能。");
+      return listSearchProvidersTool(args.full === true);
+    case "get_search_spec_reference":
+      if (!isAdmin) return fail("这是管理员功能。");
+      return searchSpecReferenceTool(args);
     case "list_voices":
       // Not admin-only: the voice list is a read about what this account can
       // speak with, exactly like `/v1/audio/voices`, and gating it would make
@@ -1357,6 +1496,12 @@ export async function executeTool(
     case "propose_media_provider_create":
       if (!isAdmin) return fail("这是管理员功能。");
       return proposeMediaProviderCreate(args, ctx);
+    case "propose_search_provider_create":
+      if (!isAdmin) return fail("这是管理员功能。");
+      return proposeSearchProviderCreate(args, ctx);
+    case "propose_search_provider_update":
+      if (!isAdmin) return fail("这是管理员功能。");
+      return proposeSearchProviderUpdate(args, ctx);
     case "list_users":
       if (!isAdmin) return fail("这是管理员功能。");
       return listUsersTool();
@@ -3957,6 +4102,233 @@ function renderCreateDiff(spec: Record<string, unknown>, summary: string): strin
       const entries = Object.entries(value as Record<string, string>);
       lines.push(
         `  headers：${entries.length ? entries.map(([k, v]) => `${k}: ${v}`).join("；") : "（无）"}`,
+      );
+      continue;
+    }
+    lines.push(`  ${key}：${JSON.stringify(value)}`);
+  }
+  lines.push("");
+  lines.push("  apiKey：（不在这份提议里）批准时由管理员在界面上填写");
+  return lines.join("\n");
+}
+
+/**
+ * The search backends, and what each of them actually talks to.
+ *
+ * The interesting field is the **endpoint**: a row's address and the spec's
+ * path together decide where a request goes, and before the protocol the same
+ * column meant two different things depending on the vendor. So the tool
+ * reports the resolved endpoint rather than making the model reason about it.
+ */
+async function listSearchProvidersTool(full = false): Promise<ToolResult> {
+  const rows = await listSearchProviders();
+  return okCompact(
+    rows.map((row) => {
+      const config = effectiveSearchConfig(row);
+      const drift = config ? config.drift : null;
+      return {
+        id: row.id,
+        name: row.name,
+        kind: row.kind,
+        enabled: row.enabled,
+        priority: row.priority,
+        creditsPerCall: row.creditsPerCall,
+        hasApiKey: row.encryptedApiKey.length > 0,
+        /**
+         * The address as it is stored, and the address the request will use.
+         *
+         * Both, because they can differ: a row written before the protocol
+         * keeps the old reading of its address, and a row with a spec has its
+         * path appended to the root.
+         */
+        baseUrl: row.baseUrl || null,
+        endpoint: config ? effectiveEndpoint(config) : null,
+        legacy: config?.legacy ?? true,
+        ...(drift && drift.kind === "differs"
+          ? {
+              templateDrift: {
+                templateId: drift.templateId,
+                paths: drift.paths,
+                how:
+                  "用 get_search_spec_reference(what=\"templates\") 取回当前模板的完整值，" +
+                  "对照上面的 paths 逐条判断，然后只改这些路径。整份套用模板会把已存的本地修正一起冲掉。",
+              },
+            }
+          : {}),
+        // The spec is a summary unless `full` was asked for. A summary that is
+        // not the shape the engine reads teaches a shape that does not work.
+        spec: row.spec
+          ? full
+            ? row.spec
+            : {
+                vendor: (row.spec as { vendor?: string }).vendor,
+                displayName: (row.spec as { displayName?: string }).displayName,
+                transport: (row.spec as { transport?: unknown }).transport,
+                response: (row.spec as { response?: unknown }).response,
+              }
+          : null,
+        ...(full ? {} : { note: "spec 正文未包含；要改某一条时用 full=true 单独取一次。" }),
+      };
+    }),
+  );
+}
+
+/**
+ * The search protocol, and the templates that come with it.
+ *
+ * The same two things the media side needed and could not reach: the protocol
+ * is a file, and the templates are a module value. Both are here so a spec can
+ * be written against the real text rather than against a recollection of it.
+ */
+async function searchSpecReferenceTool(args: Record<string, unknown>): Promise<ToolResult> {
+  const what = args.what === "templates" ? "templates" : "protocol";
+
+  if (what === "templates") {
+    return ok({
+      templates: SEARCH_TEMPLATES.map((template) => ({
+        id: template.id,
+        name: template.name,
+        description: template.description,
+        spec: template.spec,
+      })),
+      note:
+        "模板是「起点」，不是「正确答案」。已存的 spec 可能带着模板里没有的、故意的本地修正，" +
+        "整份套用会把它们冲掉 —— 用 propose_search_provider_update 按 templateDrift 列出的路径逐条改。",
+    });
+  }
+
+  const { text, error } = await readSearchProtocolDoc();
+  if (!text) return fail(error ?? "读不到搜索适配协议原文。");
+
+  const total = text.length;
+  const offset = Math.max(0, typeof args.offset === "number" ? Math.trunc(args.offset) : 0);
+  const asked = typeof args.limit === "number" ? Math.trunc(args.limit) : PROTOCOL_CHUNK_CHARS;
+  const limit = Math.min(Math.max(asked, 1), MAX_PROTOCOL_CHUNK_CHARS);
+  const slice = text.slice(offset, offset + limit);
+  const end = offset + slice.length;
+
+  return ok({
+    total,
+    offset,
+    returned: slice.length,
+    ...(end < total ? { nextOffset: end } : {}),
+    text: slice,
+  });
+}
+
+async function proposeSearchProviderCreate(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<ToolResult> {
+  if ("apiKey" in args || "api_key" in args) {
+    return fail(
+      "不要在工具参数里放 API 密钥。这个工具不接收它，管理员会在确认界面上自己填。你也不该向用户索取密钥。",
+    );
+  }
+
+  const name = z.string().transform((v) => v.trim()).pipe(z.string().min(1).max(120)).safeParse(args.name);
+  if (!name.success) return fail("缺少 name。");
+  const kind = z.string().transform((v) => v.trim()).pipe(z.string().min(1).max(60)).safeParse(args.kind);
+  if (!kind.success) return fail("缺少 kind。");
+
+  const spec: Record<string, unknown> = { name: name.data, kind: kind.data };
+  if (typeof args.baseUrl === "string") spec.baseUrl = args.baseUrl.trim();
+  if (typeof args.priority === "number" && Number.isInteger(args.priority)) {
+    spec.priority = args.priority;
+  }
+  if (typeof args.creditsPerCall === "number" && Number.isInteger(args.creditsPerCall)) {
+    spec.creditsPerCall = args.creditsPerCall;
+  }
+  if (typeof args.enabled === "boolean") spec.enabled = args.enabled;
+  if (args.spec !== undefined && args.spec !== null) spec.spec = args.spec;
+
+  const summary =
+    typeof args.summary === "string" && args.summary.trim() ? args.summary.trim() : "未说明的变更";
+  const diff = renderSearchCreateDiff(spec, summary);
+
+  const gate = checkProposal("search_provider.create" as ProposalKind, spec);
+  if (!gate.ok) return fail(gate.message!);
+  const action = await createAssistantAction({
+    userId: ctx.user.id,
+    kind: "search_provider.create",
+    summary,
+    args: spec,
+    diff,
+  });
+
+  return ok({
+    ...(gate.warnings.length > 0 ? { warnings: gate.warnings } : {}),
+    actionId: action.id,
+    status: "pending",
+    message:
+      "新建请求已生成。还需要管理员在界面上补填 API 密钥并确认，才会产生搜索提供商。请把下面这份内容告诉用户。",
+    diff,
+  });
+}
+
+async function proposeSearchProviderUpdate(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<ToolResult> {
+  const providerId = z.string().min(1).safeParse(args.providerId);
+  if (!providerId.success) return fail("缺少 providerId。");
+
+  const provider = await getSearchProviderById(providerId.data);
+  if (!provider) return fail(`找不到搜索提供商 ${providerId.data}。`);
+
+  const patch: Record<string, unknown> = {};
+  if (typeof args.kind === "string") patch.kind = args.kind.trim();
+  if (typeof args.baseUrl === "string") patch.baseUrl = args.baseUrl.trim();
+  if (typeof args.enabled === "boolean") patch.enabled = args.enabled;
+  if (typeof args.priority === "number" && Number.isInteger(args.priority)) {
+    patch.priority = args.priority;
+  }
+  if (typeof args.creditsPerCall === "number" && Number.isInteger(args.creditsPerCall)) {
+    patch.creditsPerCall = args.creditsPerCall;
+  }
+  if (args.spec !== undefined) patch.spec = args.spec;
+
+  if (Object.keys(patch).length === 0) {
+    return fail("没有要改的字段。");
+  }
+
+  const summary =
+    typeof args.summary === "string" && args.summary.trim() ? args.summary.trim() : "未说明的变更";
+  const diff = renderSearchProviderDiff(provider, patch, summary);
+
+  const gate = checkProposal("search_provider.update" as ProposalKind, patch);
+  if (!gate.ok) return fail(gate.message!);
+  const action = await createAssistantAction({
+    userId: ctx.user.id,
+    kind: "search_provider.update",
+    targetId: provider.id,
+    summary,
+    args: patch,
+    diff,
+  });
+
+  return ok({
+    ...(gate.warnings.length > 0 ? { warnings: gate.warnings } : {}),
+    actionId: action.id,
+    status: "pending",
+    message: "变更请求已生成，等管理员在界面上确认。请把下面这份内容告诉用户。",
+    diff,
+  });
+}
+
+/**
+ * The before/after a search-provider create shows: nothing, then everything.
+ */
+function renderSearchCreateDiff(spec: Record<string, unknown>, summary: string): string {
+  const lines = [`新增搜索提供商：${summary}`, ""];
+  for (const [key, value] of Object.entries(spec)) {
+    if (key === "spec") {
+      lines.push("  spec：");
+      lines.push(
+        JSON.stringify(value, null, 2)
+          .split("\n")
+          .map((l) => `    ${l}`)
+          .join("\n"),
       );
       continue;
     }

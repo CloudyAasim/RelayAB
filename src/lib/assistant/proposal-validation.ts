@@ -27,6 +27,7 @@ import { z, ZodError } from "zod";
 import { ModelConfigMergePatchSchema, ModelConfigPatchSchema } from "../db/types";
 import { MediaProviderValidationError } from "../db/media-providers";
 import { validateMediaSpecs } from "../media/spec";
+import { validateSearchSpec } from "../search/spec";
 import { validatePage } from "../docs/custom";
 
 export type ProposalKind =
@@ -34,6 +35,8 @@ export type ProposalKind =
   | "provider.create"
   | "media_provider.update"
   | "media_provider.create"
+  | "search_provider.update"
+  | "search_provider.create"
   | "doc_pages.update";
 
 export interface ProposalCheck {
@@ -238,11 +241,54 @@ export const MediaProviderCreateSchema = z
   })
   .strict();
 
+/**
+ * A search provider's own fields.
+ *
+ * `kind` is a free tag rather than an enum of the three built-ins: a row that
+ * carries a spec may name any vendor, and that is the whole point of the
+ * protocol. `spec` is validated by the protocol's own parser — see
+ * `searchSpecIssues` below — so the assistant cannot propose a spec the admin
+ * panel would refuse.
+ */
+export const SearchProviderArgsSchema = z
+  .object({
+    kind: z.string().min(1).max(60).optional(),
+    baseUrl: z.string().max(500).optional(),
+    enabled: z.boolean().optional(),
+    priority: z.number().int().optional(),
+    creditsPerCall: z.number().int().min(0).optional(),
+    /**
+     * The row's own spec. `null` returns the row to its template.
+     *
+     * Typed as `unknown` on purpose: the spec is checked by
+     * `parseSearchSpec`, which knows what a spec is. A zod schema here would be
+     * a second description of the protocol, and a second description is how a
+     * rule ends up validated on one side of a door and not the other.
+     */
+    spec: z.unknown().optional(),
+  })
+  .strict();
+
+/** A create's payload, which is a whole provider rather than a patch of one. */
+export const SearchProviderCreateSchema = z
+  .object({
+    name: z.string().min(1).max(120),
+    kind: z.string().min(1).max(60),
+    baseUrl: z.string().max(500).optional(),
+    enabled: z.boolean().optional(),
+    priority: z.number().int().optional(),
+    creditsPerCall: z.number().int().min(0).optional(),
+    spec: z.unknown().optional(),
+  })
+  .strict();
+
 const SCHEMA_FOR: Record<ProposalKind, z.ZodType> = {
   "provider.update": ProviderArgsSchema,
   "provider.create": ProviderCreateSchema,
   "media_provider.update": MediaArgsSchema,
   "media_provider.create": MediaProviderCreateSchema,
+  "search_provider.update": SearchProviderArgsSchema,
+  "search_provider.create": SearchProviderCreateSchema,
   "doc_pages.update": DocPagesArgsSchema,
 };
 
@@ -280,6 +326,19 @@ export function describeZodIssues(err: ZodError): string {
 function mediaSpecIssues(specs: unknown[]): string[] {
   if (specs.length === 0) return [];
   return validateMediaSpecs(specs).errors;
+}
+
+/**
+ * The search protocol's own rules, read from its own validator.
+ *
+ * Not a copy: `parseSearchSpec` is the single description of what a spec may
+ * contain, and the admin panel's save calls it too. A second set of rules here
+ * would be the same mistake the media side already made once — a rule that is
+ * checked in the panel and in neither of the assistant's tools.
+ */
+function searchSpecIssues(spec: unknown): string[] {
+  if (spec === undefined || spec === null) return [];
+  return validateSearchSpec(spec).errors;
 }
 
 /** Page rules that are about the list rather than any one page. */
@@ -326,6 +385,22 @@ export function checkProposal(kind: ProposalKind, args: unknown): ProposalCheck 
       };
     }
     const warnings = specs.length > 0 ? validateMediaSpecs(specs).warnings : [];
+    return { ok: true, data, warnings };
+  }
+
+  if (kind === "search_provider.update" || kind === "search_provider.create") {
+    const issues = searchSpecIssues(data.spec);
+    if (issues.length > 0) {
+      return {
+        ok: false,
+        warnings: [],
+        message:
+          `这份搜索协议通不过协议校验，我先没有生成提案 —— 管理台保存时用的是同一份校验，` +
+          `在这里过得去，在那里也过得去。逐条改掉再重提：\n` +
+          issues.map((i, n) => `${n + 1}. ${i}`).join("\n"),
+      };
+    }
+    const warnings = data.spec ? validateSearchSpec(data.spec).warnings : [];
     return { ok: true, data, warnings };
   }
 

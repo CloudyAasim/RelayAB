@@ -14,7 +14,6 @@ import {
   getSearchProviderById,
   MAX_CREDITS_PER_CALL,
   SearchProviderValidationError,
-  SEARCH_PROVIDER_KINDS,
   toPublicSearchProvider,
   updateSearchProvider,
 } from "@/lib/db/search-providers";
@@ -35,12 +34,21 @@ async function requireAdmin(): Promise<NextResponse | null> {
 const PatchSchema = z
   .object({
     name: z.string().trim().min(1).max(120).optional(),
-    kind: z.enum(SEARCH_PROVIDER_KINDS).optional(),
+    /**
+     * The vendor tag.
+     *
+     * A free string rather than an enum: a row that carries its own spec may
+     * name any vendor, and that is the whole point of the protocol. The three
+     * built-ins are what the panel offers as a starting point.
+     */
+    kind: z.string().trim().min(1).max(60).optional(),
     baseUrl: z.string().max(500).optional(),
     apiKey: z.string().max(500).optional(),
     enabled: z.boolean().optional(),
     priority: z.number().int().min(0).max(10_000).optional(),
     creditsPerCall: z.number().int().min(0).max(MAX_CREDITS_PER_CALL).optional(),
+    /** The row's own search spec. `null` returns the row to its template. */
+    spec: z.unknown().optional(),
   })
   .strict();
 

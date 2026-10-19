@@ -159,6 +159,11 @@ CREATE TABLE IF NOT EXISTS search_providers (
   -- row rather than in one global setting because two backends can have very
   -- different economics (a paid API and a self-hosted instance).
   credits_per_call  INTEGER NOT NULL DEFAULT 1,
+  -- The row's own search spec: the declarative description of how to talk to
+  -- this vendor. Empty means "use the built-in template this row's kind
+  -- names", which is what every row written before the protocol existed means.
+  -- A row that carries one can describe a vendor this build has never heard of.
+  spec              TEXT NOT NULL DEFAULT '',
   created_at        TEXT NOT NULL,
   updated_at        TEXT NOT NULL
 );
@@ -573,6 +578,10 @@ const ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; type: string
   // Per-provider search price. Rows created before this existed keep the
   // previous global default of one credit rather than becoming free.
   { table: "search_providers", column: "credits_per_call", type: "INTEGER NOT NULL DEFAULT 1" },
+  // The search adapter protocol. Empty for every existing row, which reads as
+  // "use the built-in template this row's kind names" — so an upgrade cannot
+  // change what a single request looks like.
+  { table: "search_providers", column: "spec", type: "TEXT NOT NULL DEFAULT ''" },
 ];
 
 function addColumnIfMissing(

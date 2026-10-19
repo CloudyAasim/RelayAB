@@ -328,6 +328,57 @@ function fmtNum(n: unknown): string {
 }
 
 /**
+ * What a `propose_search_provider_update` would do.
+ *
+ * The one line that matters most is the **endpoint**: a search provider's
+ * address is where every request goes, and before the protocol the same column
+ * meant a whole endpoint for one vendor and a service root for another. So the
+ * diff says which address is in force and which one the request will use.
+ */
+export function renderSearchProviderDiff(
+  provider: {
+    id: string;
+    name: string;
+    kind: string;
+    baseUrl: string;
+    enabled: boolean;
+    priority: number;
+    creditsPerCall: number;
+    spec?: unknown;
+  },
+  patch: Record<string, unknown>,
+  summary?: string,
+): string {
+  const out: string[] = [
+    `搜索提供商：${provider.name}  (${provider.id})`,
+    `变更摘要：${summary ?? "(未填写)"}`,
+    "",
+  ];
+
+  out.push(
+    ...section("字段变更", [
+      patchedLine(patch, "kind", provider.kind),
+      patchedLine(patch, "baseUrl", provider.baseUrl),
+      patchedLine(patch, "enabled", provider.enabled),
+      patchedLine(patch, "priority", provider.priority),
+      patchedLine(patch, "creditsPerCall", provider.creditsPerCall),
+    ]),
+  );
+
+  if ("spec" in patch) {
+    const before = provider.spec ? JSON.stringify(provider.spec, null, 2) : "(用内置模板)";
+    const after =
+      patch.spec === null ? "(用内置模板)" : JSON.stringify(patch.spec, null, 2);
+    out.push("协议（spec）：");
+    out.push(`    - ${before}`);
+    out.push(`    + ${after}`);
+    out.push("");
+  }
+
+  out.push("注意：本次变更不会触碰加密密钥。");
+  return out.join("\n");
+}
+/**
  * A model field's value, for a line an operator is asked to make a decision on.
  *
  * `fmtNum` answers only for numbers, and a model row is not only numbers: a

@@ -6,10 +6,16 @@ import { Pencil, Power, Search, Trash2 } from "lucide-react";
 import { useT } from "@/components/i18n/I18nProvider";
 import { Button } from "@/components/ui/Button";
 import { LegacyModal as Modal } from "@/components/ui/Modal";
-import { SearchProviderForm, type SearchProviderRow } from "./SearchProviderForm";
+import { SearchProviderForm, type SearchProviderRow, type SearchTemplateOption } from "./SearchProviderForm";
 import { SearchProviderTestModal } from "./SearchProviderTestModal";
 
-export function SearchProviderActions({ provider }: { provider: SearchProviderRow }) {
+export function SearchProviderActions({
+  provider,
+  templates,
+}: {
+  provider: SearchProviderRow;
+  templates?: SearchTemplateOption[];
+}) {
   const t = useT();
   const [editOpen, setEditOpen] = useState(false);
   const [testOpen, setTestOpen] = useState(false);
@@ -91,6 +97,7 @@ export function SearchProviderActions({ provider }: { provider: SearchProviderRo
       >
         <SearchProviderForm
           provider={provider}
+          templates={templates}
           onSaved={() => {
             setEditOpen(false);
           }}

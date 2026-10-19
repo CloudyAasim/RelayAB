@@ -7,9 +7,9 @@ import { Plus } from "lucide-react";
 import { useT } from "@/components/i18n/I18nProvider";
 import { Button } from "@/components/ui/Button";
 import { LegacyModal as Modal } from "@/components/ui/Modal";
-import { SearchProviderForm } from "./SearchProviderForm";
+import { SearchProviderForm, type SearchTemplateOption } from "./SearchProviderForm";
 
-export function CreateSearchProviderButton() {
+export function CreateSearchProviderButton({ templates }: { templates?: SearchTemplateOption[] }) {
   const t = useT();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -28,6 +28,7 @@ export function CreateSearchProviderButton() {
         wide
       >
         <SearchProviderForm
+          templates={templates}
           onSaved={() => {
             setOpen(false);
             router.refresh();

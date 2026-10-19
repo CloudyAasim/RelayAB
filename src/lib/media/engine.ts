@@ -17,6 +17,7 @@
  *   status   → compared against the async rule's success/failure states
  */
 import { decryptSecret } from "../crypto/secrets";
+import { getPath, isProvided, resolveTemplate } from "../spec/primitives";
 import { STRUCTURED_CONTENT_TYPES } from "./spec";
 import type {
   MediaErrorRule,
@@ -132,29 +133,15 @@ export function buildMediaScope(input: Record<string, unknown>): Record<string, 
 // Path + template resolution
 // ---------------------------------------------------------------------------
 
-/** Read a dotted/indexed path such as `$.a.b[0].c` out of a value. */
-export function getPath(value: unknown, path: string): unknown {
-  if (path === "$" || path === "") return value;
-  const body = path.startsWith("$.") ? path.slice(2) : path.startsWith("$") ? path.slice(1) : null;
-  if (body === null) return undefined;
-
-  let current: unknown = value;
-  for (const rawSegment of body.split(".")) {
-    if (current === null || current === undefined) return undefined;
-    const match = /^([^[\]]*)((?:\[\d+\])*)$/.exec(rawSegment);
-    if (!match) return undefined;
-    const [, key, indexPart] = match;
-    if (key) {
-      if (typeof current !== "object") return undefined;
-      current = (current as Record<string, unknown>)[key];
-    }
-    for (const indexMatch of indexPart.matchAll(/\[(\d+)\]/g)) {
-      if (!Array.isArray(current)) return undefined;
-      current = current[Number(indexMatch[1])];
-    }
-  }
-  return current;
-}
+/**
+ * Read a dotted/indexed path such as `$.a.b[0].c` out of a value.
+ *
+ * Lives in `src/lib/spec/primitives.ts` because the search protocol reads
+ * documents the same way, and two copies of a path reader is two places for a
+ * vendor's field name to be misread. Re-exported here because the media
+ * protocol's own public surface has always included it.
+ */
+export { getPath };
 
 function sameValue(a: unknown, b: unknown): boolean {
   if (a === b) return true;
@@ -170,13 +157,6 @@ function sameValue(a: unknown, b: unknown): boolean {
   return false;
 }
 
-function resolveTemplate(text: string, scope: unknown): string {
-  return text.replace(/\{\{([^}]+)\}\}/g, (_match, path: string) => {
-    const resolved = getPath(scope, path.trim());
-    return resolved === undefined || resolved === null ? "" : String(resolved);
-  });
-}
-
 /**
  * Is a value "provided"?
  *
@@ -189,10 +169,11 @@ function resolveTemplate(text: string, scope: unknown): string {
  * Treating `""` as present made `$ifPresent` pick the blank branch, and the
  * `""` value is then dropped by the item collector — the client's image silently
  * disappeared into `upstream_contract_mismatch`. `0` and `false` stay present.
+ *
+ * The rule itself now lives in `src/lib/spec/primitives.ts`, because the search
+ * protocol needs the same reading of "absent" and two copies of it is one more
+ * place for the two protocols to disagree.
  */
-function isProvided(value: unknown): boolean {
-  return value !== undefined && value !== null && value !== "";
-}
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)

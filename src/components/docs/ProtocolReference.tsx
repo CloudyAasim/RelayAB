@@ -1,27 +1,33 @@
 /**
  * src/components/docs/ProtocolReference.tsx
  *
- * Renders the media adapter protocol **from the repository file**
- * (`docs/模型适配协议/README.md`) so the admin panel and the repo can never
- * disagree about the syntax. Ships with one-click copy in both Markdown and
- * plain text, because this is the block operators paste into an AI assistant
- * to get a spec written or corrected.
+ * Renders an adapter protocol **from the repository file** so the admin panel
+ * and the repo can never disagree about the syntax. Ships with one-click copy
+ * in both Markdown and plain text, because this is the block operators paste
+ * into an AI assistant to get a spec written or corrected.
  *
- * The file is on disk at runtime — `pnpm start` runs `next start` from the
- * project root — and it is read through `readProtocolDoc`, which the
- * assistant's `get_media_spec_reference` uses as well. There used to be no way
- * for the assistant to read this: the protocol lives in a file rather than in
- * the i18n dictionary, so `read_docs` returned the sentence that announces it
- * and none of it.
+ * Two protocols, one component: the media one (`docs/模型适配协议/README.md`)
+ * and the search one (`docs/搜索适配协议/README.md`). They are read through the
+ * same reader pattern, and the assistant's `get_media_spec_reference` /
+ * `get_search_spec_reference` read the same files, so the panel and the model
+ * always see the same text.
+ *
+ * The files are on disk at runtime — `pnpm start` runs `next start` from the
+ * project root — and they are read through `readProtocolDoc` /
+ * `readSearchProtocolDoc`. There used to be no way for the assistant to read
+ * the media protocol: it lives in a file rather than in the i18n dictionary, so
+ * `read_docs` returned the sentence that announces it and none of it.
  */
 import { getT } from "@/lib/i18n/server";
 import { markdownToHtml, markdownToPlainText } from "@/lib/markdown";
 import { readProtocolDoc } from "@/lib/docs/protocol-doc";
+import { readSearchProtocolDoc } from "@/lib/docs/search-protocol-doc";
 import { CopyButtons } from "./CopyButtons";
 
-export async function ProtocolReference() {
+export async function ProtocolReference({ kind = "media" }: { kind?: "media" | "search" }) {
   const { t } = await getT();
-  const { text: source } = await readProtocolDoc();
+  const { text: source } =
+    kind === "search" ? await readSearchProtocolDoc() : await readProtocolDoc();
 
   const buttons = source
     ? [

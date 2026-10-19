@@ -14,11 +14,12 @@
  *    environment. Otherwise disabling every provider would not actually
  *    disable anything.
  *
- * Kept out of `web-search.ts` so the HTTP adapters stay free of database
+ * Kept out of `web-search.ts` so the HTTP layer stays free of database
  * imports and can be unit-tested with an injected environment.
  */
 import { decryptSecret } from "../crypto/secrets";
 import { listSearchProviders, type SearchProviderRecord } from "../db/search-providers";
+import { effectiveSearchConfig } from "./effective";
 import {
   createSearchBackend,
   resolveSearchBackend,
@@ -47,6 +48,9 @@ export interface ActiveBackendInfo {
  * currently switched off is the whole point of that button.
  */
 export function backendForSearchProvider(row: SearchProviderRecord): SearchBackend | null {
+  const config = effectiveSearchConfig(row);
+  if (!config) return null;
+
   let apiKey = "";
   if (row.encryptedApiKey) {
     try {
@@ -57,15 +61,20 @@ export function backendForSearchProvider(row: SearchProviderRecord): SearchBacke
       return null;
     }
   }
+
   return createSearchBackend({
-    kind: row.kind,
-    baseUrl: row.baseUrl || undefined,
+    spec: config.spec,
+    baseUrl: config.baseUrl,
+    // Only the operator's own address is worth showing an administrator.
+    ...(config.operatorAddress ? { operatorAddress: config.operatorAddress } : {}),
     apiKey: apiKey || undefined,
     // The row id, so a usage row points at the exact provider that served it.
     usageProviderId: row.id,
+    provider: config.spec.vendor ?? row.kind,
     source: "db",
     describe: row.name,
     creditsPerCall: row.creditsPerCall,
+    credentialHint: "该提供商的 API 密钥",
   });
 }
 

@@ -715,6 +715,18 @@ const zhCN: Dict = {
   "admin.searchProviders.enable": "启用",
   "admin.searchProviders.disable": "停用",
   "admin.searchProviders.editTitle": "编辑 {name}",
+  "admin.searchProviders.spec": "协议（spec）",
+  "admin.searchProviders.specHint":
+    "留空表示用上面选中的内置模板。填上 JSON 就是一份自描述的协议：厂商的地址、参数、鉴权方式和结果字段都在里面，换厂商不用改代码、不用重新部署。点上面的模板名可以套用一份再改。",
+  "admin.searchProviders.saved": "已保存",
+  "admin.searchProviders.drift.inSync": "与模板一致",
+  "admin.searchProviders.drift.differs": "与模板有 {count} 处不同",
+  "admin.searchProviders.drift.noTemplate": "自写协议",
+  "admin.searchProviders.legacy": "旧版记录",
+  "admin.searchProviders.legacyHint": "这条记录早于协议，地址按旧规则解释。套用一次模板即可改用新规则。",
+  "admin.docs.searchProtocol.title": "搜索适配协议",
+  "admin.docs.searchProtocol.desc":
+    "搜索后端的声明式协议全文，与仓库里的文件同源。新增一个厂商只改这份 JSON，不改代码、不重新部署。",
   "admin.search.title": "搜索设置",
   "admin.search.desc": "助手和 /v1/search 共用的搜索能力。提供商在上方管理；这里是总开关、按次积分和当前后端测试。",
   "admin.search.status.title": "运行状态",
@@ -1977,6 +1989,19 @@ const en: Dict = {
   "admin.searchProviders.creditsPerCall": "Credits per call",
   "admin.searchProviders.creditsHint": "Whole credits charged per search; 0 means free. Applies to the provider that is currently serving.",
   "admin.searchProviders.creditsInvalid": "Credits must be a non-negative integer.",
+  "admin.searchProviders.spec": "Protocol (spec)",
+  "admin.searchProviders.specHint":
+    "Leave empty to use the built-in template chosen above. A JSON document here is a self-describing protocol: the vendor's address, parameters, credential and result fields all live in it, so a new vendor needs no code change and no redeploy. Click a template name to start from one.",
+  "admin.searchProviders.saved": "Saved",
+  "admin.searchProviders.drift.inSync": "Matches the template",
+  "admin.searchProviders.drift.differs": "{count} differences from the template",
+  "admin.searchProviders.drift.noTemplate": "Hand-written spec",
+  "admin.searchProviders.legacy": "Legacy row",
+  "admin.searchProviders.legacyHint":
+    "This row predates the protocol, so its address is read the old way. Applying a template once switches it to the new rule.",
+  "admin.docs.searchProtocol.title": "Search adapter protocol",
+  "admin.docs.searchProtocol.desc":
+    "The full declarative protocol for search backends, read from the same file the repository holds. A new vendor is one JSON document — no code change, no redeploy.",
   "admin.searchProviders.defaultEndpoint": "Official default endpoint",
   "admin.searchProviders.keySet": "Key stored",
   "admin.searchProviders.active": "Active",
