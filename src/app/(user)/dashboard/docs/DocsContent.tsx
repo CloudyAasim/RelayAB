@@ -15,6 +15,7 @@ import {
   Sparkles,
   Image as ImageIcon,
   Coins,
+  Search,
 } from "lucide-react";
 
 interface Props {
@@ -102,6 +103,31 @@ export function DocsContent({
           <UrlRow label={t("docs.url.openaiBase")} value={openaiBase} />
           <UrlRow label={t("docs.url.anthropicBase")} value={anthropicBase} />
         </div>
+      </Card>
+    );
+  }
+
+  if (section === "search") {
+    return (
+      <Card>
+        <CardHeader
+          title={
+            <span className="flex items-center gap-2">
+              <Search className="h-4 w-4 text-muted-foreground" />
+              {t("docs.search.title")}
+            </span>
+          }
+          description={t("docs.search.desc")}
+        />
+        <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
+          <li>{t("docs.search.endpoint")}</li>
+          <li>{t("docs.search.auth")}</li>
+          <li>{t("docs.search.request")}</li>
+          <li>{t("docs.search.response")}</li>
+          <li>{t("docs.search.billing")}</li>
+          <li>{t("docs.search.errors")}</li>
+          <li>{t("docs.search.note")}</li>
+        </ul>
       </Card>
     );
   }

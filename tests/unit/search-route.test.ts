@@ -21,6 +21,7 @@ import { __resetDbForTest } from "@/lib/db/sqlite";
 import { createUser, getUserById } from "@/lib/db/users";
 import { createApiKey } from "@/lib/db/keys";
 import { listUsageByKey } from "@/lib/db/usage";
+import { updateSettings } from "@/lib/db/settings";
 
 let userId = "";
 let plainKey = "";
@@ -175,6 +176,18 @@ describe("a successful search", () => {
     expect(user?.quotaUsed).toBe(3000);
   });
 
+  it("prefers the price saved in the admin panel over the environment", async () => {
+    // The panel is the authority; the environment is a fallback for
+    // deployments that never open it. Getting this backwards makes a saved
+    // edit look broken after the next restart.
+    await updateSettings({ searchCreditsPerCall: 2 });
+    process.env.SEARCH_CREDITS_PER_CALL = "5";
+    stubSearch([]);
+    const res = await post({ query: "x" });
+    expect(((await res.json()) as { credits: number }).credits).toBe(2);
+    expect((await getUserById(userId))?.quotaUsed).toBe(2000);
+  });
+
   it("works over GET as well", async () => {
     stubSearch([{ title: "A", url: "https://a.example", content: "aa" }]);
     const res = await GET(
@@ -199,6 +212,19 @@ describe("what is refused without charging", () => {
   it("a query longer than the provider accepts", async () => {
     const res = await post({ query: "x".repeat(401) });
     expect(res.status).toBe(400);
+    expect((await getUserById(userId))?.quotaUsed).toBe(0);
+  });
+
+  it("a deployment where an administrator turned search off", async () => {
+    // The switch in the panel has to reach both doors. A disabled search that
+    // still answers here is a button that lies.
+    await updateSettings({ searchEnabled: false });
+    const impl = stubSearch([]);
+    const res = await post({ query: "x" });
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("search_disabled");
+    expect(impl).not.toHaveBeenCalled();
     expect((await getUserById(userId))?.quotaUsed).toBe(0);
   });
 

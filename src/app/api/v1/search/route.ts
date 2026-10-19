@@ -11,8 +11,9 @@
  * Authentication, quotas and usage recording are the same as every other paid
  * endpoint. The price is **per call**, not per result: the upstream work is
  * the same whether the query matched nine pages or none, and a price that
- * varies with the result count would be unreadable on a usage bill.
- * `SEARCH_CREDITS_PER_CALL` sets it; the default is 1 whole credit.
+ * varies with the result count would be unreadable on a usage bill. The admin
+ * panel (`/admin/search`) sets it; `SEARCH_CREDITS_PER_CALL` is the fallback,
+ * and 1 whole credit is the default.
  *
  * Failures are not charged. A search that never reached SearXNG, or that
  * SearXNG refused, produced nothing to bill for — and charging for it would
@@ -32,17 +33,10 @@ import {
   searchWeb,
   WebSearchError,
 } from "@/lib/assistant/web-search";
+import { loadSearchConfig } from "@/lib/search/config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-/** Whole 积分 charged per search call. 0 makes it free. */
-function creditsPerCall(): number {
-  const raw = process.env.SEARCH_CREDITS_PER_CALL?.trim();
-  if (raw === undefined || raw === "") return 1;
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed >= 0 ? Math.trunc(parsed) : 1;
-}
 
 /**
  * A search failure, in the shape the gateway already uses for upstream errors.
@@ -86,6 +80,18 @@ async function handle(req: Request, body: SearchBody): Promise<Response> {
     return proxyError(403, "user_not_found", "The account owning this key no longer exists");
   }
 
+  const config = await loadSearchConfig();
+  if (!config.enabled) {
+    // The same switch the assistant's tool reads, so "off" means off rather
+    // than "off for this door".
+    return proxyError(
+      503,
+      "search_disabled",
+      "Web search is disabled by the administrator",
+      quotaHeaders(owner),
+    );
+  }
+
   const rawQuery = body.query ?? body.q;
   const query = typeof rawQuery === "string" ? rawQuery.trim() : "";
   if (!query) {
@@ -113,7 +119,7 @@ async function handle(req: Request, body: SearchBody): Promise<Response> {
     );
   }
 
-  const price = creditsPerCall();
+  const price = config.creditsPerCall;
   const creditsUsed = price * CREDIT_SCALE;
 
   // Read-modify-write is not needed: the repository increments in one SQL

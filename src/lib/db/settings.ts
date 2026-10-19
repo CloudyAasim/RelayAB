@@ -40,6 +40,21 @@ export interface AppSettings {
    */
   publicCatalog?: boolean;
   /**
+   * Whether web search is served at all.
+   *
+   * Absent means "yes": the feature existed before this switch did, and a
+   * deployment that upgrades into it should keep working. `false` turns off
+   * both `/v1/search` and the assistant's `web_search`, because they are the
+   * same capability and an operator who turns it off means the vendor traffic,
+   * not one of the two doors to it.
+   */
+  searchEnabled?: boolean;
+  /**
+   * Whole credits charged per search call. Absent falls through to
+   * `SEARCH_CREDITS_PER_CALL`, then to 1.
+   */
+  searchCreditsPerCall?: number;
+  /**
    * Per-model documentation overrides, keyed by client-visible model id.
    *
    * The *facts* — which models exist, their context window, their price —
@@ -99,6 +114,8 @@ const SITE_DESCRIPTION_KEY = "siteDescription";
 const ANNOUNCEMENT_KEY = "announcement";
 const SUPPORT_CONTACT_KEY = "supportContact";
 const PUBLIC_CATALOG_KEY = "publicCatalog";
+const SEARCH_ENABLED_KEY = "searchEnabled";
+const SEARCH_CREDITS_PER_CALL_KEY = "searchCreditsPerCall";
 const MODEL_NOTES_KEY = "modelNotes";
 const DOC_PAGES_KEY = "docPages";
 
@@ -153,6 +170,16 @@ export async function getSettings(): Promise<AppSettings> {
   const pub = byKey.get(PUBLIC_CATALOG_KEY)?.trim();
   if (pub === "true") out.publicCatalog = true;
 
+  // Both search settings are stored as text like everything else here. Absence
+  // keeps the default rather than inventing a value: `searchEnabled` absent
+  // means on, and `searchCreditsPerCall` absent means "use the environment".
+  const searchEnabled = byKey.get(SEARCH_ENABLED_KEY)?.trim();
+  if (searchEnabled === "true") out.searchEnabled = true;
+  if (searchEnabled === "false") out.searchEnabled = false;
+  const rawPrice = byKey.get(SEARCH_CREDITS_PER_CALL_KEY)?.trim();
+  const searchPrice = rawPrice ? Number(rawPrice) : NaN;
+  if (Number.isInteger(searchPrice) && searchPrice >= 0) out.searchCreditsPerCall = searchPrice;
+
   return out;
 }
 
@@ -173,6 +200,14 @@ export async function updateSettings(settings: Partial<AppSettings>): Promise<Ap
     }
     if (settings.publicCatalog !== undefined) {
       write(PUBLIC_CATALOG_KEY, settings.publicCatalog ? "true" : "false");
+    }
+    if (settings.searchEnabled !== undefined) {
+      write(SEARCH_ENABLED_KEY, settings.searchEnabled ? "true" : "false");
+    }
+    if (settings.searchCreditsPerCall !== undefined) {
+      // Validated by the admin route before it gets here; stored as text
+      // because the column is TEXT and this is the only numeric setting.
+      write(SEARCH_CREDITS_PER_CALL_KEY, String(Math.max(0, Math.trunc(settings.searchCreditsPerCall))));
     }
     if (settings.modelNotes !== undefined) {
       const notes = settings.modelNotes ?? {};

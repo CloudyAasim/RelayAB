@@ -20,6 +20,7 @@ import {
   BarChart3,
   Image as ImageIcon,
   FileCode,
+  Search,
 } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { ProtocolReference } from "@/components/docs/ProtocolReference";
@@ -202,6 +203,41 @@ export function AdminDocsContent({ section, t }: { section: AdminDocId; t: TFn }
             description={t("admin.docs.protocol.desc")}
           />
           <ProtocolReference />
+        </Card>
+      </div>
+    );
+  }
+
+  if (section === "search") {
+    return (
+      <div className="space-y-4 sm:space-y-5">
+        <Card>
+          <CardHeader
+            title={
+              <CardTitle icon={<Search className="h-4 w-4" />}>{t("admin.docs.search.title")}</CardTitle>
+            }
+            description={t("admin.docs.search.desc")}
+          />
+          <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
+            <li>{t("admin.docs.search.arch")}</li>
+            <li>{t("admin.docs.search.config")}</li>
+            <li>{t("admin.docs.search.panel")}</li>
+            <li>{t("admin.docs.search.security")}</li>
+            <li>{t("admin.docs.search.trouble")}</li>
+          </ul>
+        </Card>
+        <Card>
+          <CardHeader
+            title={
+              <CardTitle icon={<Wrench className="h-4 w-4" />}>
+                {t("admin.search.title")}
+              </CardTitle>
+            }
+            description={t("admin.search.desc")}
+          />
+          <Link href="/admin/search" className="text-sm text-primary hover:underline">
+            /admin/search
+          </Link>
         </Card>
       </div>
     );

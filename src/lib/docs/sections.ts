@@ -38,6 +38,10 @@ export type TFn = (key: string, vars?: Record<string, string | number>) => strin
 const USER_SECTION_IDS = [
   "start",
   "endpoints",
+  // Search is its own endpoint and its own billing unit. Filing it under
+  // "endpoints" would leave the price and the errors nowhere to live; filing
+  // it under "media" would be wrong in both directions.
+  "search",
   "openai",
   "anthropic",
   "responses",
@@ -101,8 +105,13 @@ export const ADMIN_SECTION_IDS = [
   "media",
   // The judge's own source, rendered from scripts/spec-check.ts. It lives on its
   // own page because it is ~1,400 lines — a reference to read or copy, not part
-  // of the protocol prose.
+  // of the protocol prose. It stays immediately after `media`: the judge is
+  // what checks the protocol, and the two are read together.
   "spec-check",
+  // Search is a capability the operator runs, not a field of a provider. It
+  // has its own backend, its own price and its own failure modes, so it gets
+  // its own chapter rather than a paragraph in the media one.
+  "search",
   "usage",
   "trouble",
   "ops",
@@ -132,6 +141,7 @@ export const USER_SECTION_ID_LIST: readonly string[] = USER_SECTION_IDS;
 const USER_LABEL_KEYS = [
   "docs.nav.start",
   "docs.nav.endpoints",
+  "docs.nav.search",
   "docs.nav.openai",
   "docs.nav.anthropic",
   "docs.nav.responses",
@@ -195,6 +205,7 @@ export function adminDocSections(t: TFn): DocSection[] {  return [
     { id: "quota", label: t("admin.docs.nav.quota") },
     { id: "media", label: t("admin.docs.nav.media") },
     { id: "spec-check", label: t("admin.docs.nav.specCheck") },
+    { id: "search", label: t("admin.docs.nav.search") },
     { id: "usage", label: t("admin.docs.nav.usage") },
     { id: "trouble", label: t("admin.docs.nav.trouble") },
     { id: "ops", label: t("admin.docs.nav.ops") },

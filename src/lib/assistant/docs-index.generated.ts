@@ -48,6 +48,26 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
   },
   {
     surface: "user",
+    id: "endpoints",
+    summary: "本部署的对外地址：/v1 与 /anthropic 的 base URL 怎么填",
+    keys: ["docs.url.title","docs.url.desc","docs.url.public","docs.url.openaiBase","docs.url.anthropicBase"],
+  },
+  {
+    surface: "user",
+    id: "media",
+    summary: "媒体能力总览与模型目录：图片、视频、语音、音乐",
+    keys: ["docs.media.title","docs.media.desc","docs.media.line1","docs.media.image","docs.media.edit","docs.media.video","docs.media.tts","docs.media.stt","docs.media.music","docs.media.voices","docs.media.voicesNote","docs.media.billing","docs.help.contactAdmin"],
+    chrome: ["docs.catalog.reasoningSwitchOnly","docs.catalog.reasoningAlwaysOn","docs.catalog.reasoningEffortOnly","docs.catalog.reasoningNone","docs.catalog.baseUrl","docs.catalog.chatModels","docs.catalog.mediaModels","docs.catalog.support","docs.catalog.search","docs.catalog.searchPlaceholder","docs.catalog.filter","docs.catalog.all","docs.catalog.chat","docs.catalog.media","docs.catalog.count","docs.catalog.groupChat","docs.catalog.groupMedia","docs.catalog.groupChatDesc","docs.catalog.groupMediaDesc","docs.catalog.model","docs.catalog.providerOf","docs.catalog.context","docs.catalog.maxOutput","docs.catalog.kind","docs.catalog.endpoint","docs.catalog.rateIn","docs.catalog.perMillion","docs.catalog.rateOut","docs.catalog.rateCachedRead","docs.catalog.rateCachedWrite","docs.catalog.pricePerItem","docs.catalog.perItem","docs.catalog.empty","docs.catalog.priority","docs.catalog.detail","docs.catalog.base","docs.catalog.format","docs.catalog.upstream","docs.catalog.reasoningLevels","docs.catalog.thinkingSwitch","docs.catalog.thinkingSwitchYes","docs.catalog.thinkingSwitchNo","docs.catalog.modes","docs.catalog.maxReference","docs.catalog.sizes","docs.catalog.detailEmpty","docs.catalog.providerGroup","docs.catalog.enabled","docs.catalog.disabled","docs.catalog.modelCount"],
+    after: "实时模型目录用 list_gateway_models 取，那才是当前这张表的真实内容；这一页里内嵌的目录组件是按页面渲染的界面，不是文档正文。",
+  },
+  {
+    surface: "user",
+    id: "search",
+    summary: "网页搜索接口 /v1/search：怎么调、按次计费、失败不扣费",
+    keys: ["docs.search.title","docs.search.desc","docs.search.endpoint","docs.search.auth","docs.search.request","docs.search.response","docs.search.billing","docs.search.errors","docs.search.note"],
+  },
+  {
+    surface: "user",
     id: "openai",
     summary: "OpenAI 兼容用法：chat/completions、鉴权、示例",
     keys: ["docs.openai.title","docs.openai.desc","docs.openai.line1","docs.openai.sharesBase","docs.openai.baseUrl","docs.openai.header","docs.openai.example","docs.openai.modelListHint","docs.openai.errors.title","docs.openai.errors.body","docs.openai.errors.shapeLabel","docs.openai.errors.typeHint","docs.openai.errors.quotaTip","docs.openai.errors.balanceHint"],
@@ -154,6 +174,12 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     id: "spec-check",
     summary: "spec 自检：怎么验证一份 spec 写对了",
     keys: ["admin.docs.specCheck.title","admin.docs.specCheck.desc","admin.docs.specCheck.fixtures","admin.docs.specCheck.openStandalone","admin.docs.nav.media","admin.docs.specCheck.usage","admin.docs.specCheck.readonly"],
+  },
+  {
+    surface: "admin",
+    id: "search",
+    summary: "网页搜索：SearXNG 后端、开关、按次计费、面板与排查",
+    keys: ["admin.docs.search.title","admin.docs.search.desc","admin.docs.search.arch","admin.docs.search.config","admin.docs.search.panel","admin.docs.search.security","admin.docs.search.trouble","admin.search.title","admin.search.desc"],
   },
   {
     surface: "admin",

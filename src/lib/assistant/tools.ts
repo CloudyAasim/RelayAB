@@ -65,6 +65,7 @@ import {
 } from "../protocol/text-protocols";
 import { DEPLOYMENT_NOTES } from "./deployment-notes";
 import { searchWeb, WebSearchError, MAX_SEARCH_RESULTS } from "./web-search";
+import { loadSearchConfig } from "../search/config";
 import { fetchPage, WebFetchError } from "./web-fetch";
 import { createDocReader } from "./docs-reader";
 import { DEFAULT_LOCALE, type Locale } from "../i18n/dict";
@@ -3975,6 +3976,12 @@ async function webSearchTool(args: Record<string, unknown>): Promise<ToolResult>
       : 6;
 
   try {
+    // The same switch `/v1/search` reads. "Off" has to mean off in both
+    // places, or the panel is a button that does not do what it says.
+    const config = await loadSearchConfig();
+    if (!config.enabled) {
+      return fail("网页搜索已被管理员关闭（管理台 → 搜索）。请直接告诉用户，不要凭记忆补搜索结果。");
+    }
     const outcome = await searchWeb(query, { limit });
     if (outcome.results.length === 0) {
       return ok({

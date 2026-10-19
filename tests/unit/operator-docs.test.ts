@@ -378,6 +378,7 @@ describe("the outline", () => {
     expect(ids).toEqual([
       "start",
       "endpoints",
+      "search",
       "openai",
       "anthropic",
       "responses",
