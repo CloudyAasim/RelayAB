@@ -84,6 +84,20 @@ export const ProviderArgsSchema = z
      */
     headers: z.record(z.string(), z.string()).optional(),
     upstreamFormat: z.enum(["responses", "chat", "anthropic"]).optional(),
+    /**
+     * Which of the two rule sets the engine reads.
+     *
+     * Added because the tool could write `textSpecs` but had no way to say they
+     * should apply — so a provider could end up holding rules that nothing
+     * executed. `activeSpecFor` returns null unless this is `"advanced"`, which
+     * makes the omission consequential rather than cosmetic: the administrator
+     * sees rules saved in the panel and no behaviour change anywhere.
+     *
+     * Optional rather than required, because leaving it alone keeps a row's
+     * current meaning — including `null`, which means "apply whatever rules it
+     * has", the behaviour every provider had before this field existed.
+     */
+    activeMode: z.enum(["simple", "advanced"]).optional(),
     openaiEnabled: z.boolean().optional(),
     anthropicEnabled: z.boolean().optional(),
     enabled: z.boolean().optional(),

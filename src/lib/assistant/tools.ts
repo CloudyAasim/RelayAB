@@ -57,7 +57,7 @@ import { renderProviderDiff, renderMediaDiff, renderDocPagesDiff } from "./diff"
 import { ASSISTANT_PAGE_READ_LIMIT } from "./docs-reader";
 import { getSettings } from "../db/settings";
 import { parseTextSpec, readTextSpec } from "../protocol/text-spec";
-import { validateTextSpecs, SURFACES, faceOf } from "../protocol/text-specs";
+import { activeModeOf, validateTextSpecs, SURFACES, faceOf } from "../protocol/text-specs";
 import {
   TEXT_PROTOCOL_PRESETS,
   TEXT_PROTOCOL_LABELS,
@@ -762,6 +762,15 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
           priority: {
             type: "integer",
             description: "数值越小越优先被选中；并列时取第一个匹配的",
+          },
+          activeMode: {
+            type: "string",
+            enum: ["simple", "advanced"],
+            description:
+              "规则读哪一套：advanced 生效，simple 完全不执行。**配了 textSpecs 却留在这里没有切换，" +
+              "等于规则一条都没跑** —— 界面上看得到，行为上不存在。" +
+              "不确定就先查 list_providers：它会告诉你这个服务商现在存的是什么、" +
+              "有几条规则、引擎实际读哪一套。",
           },
           modelMapping: {
             type: "object",
@@ -2153,6 +2162,17 @@ async function listProvidersTool(): Promise<ToolResult> {
         // provider's configuration and gets it wrong. Shown as the list it is:
         // a singular `textSpec` hid two of the three possible entries.
         textSpecs: p.textSpecs ?? [],
+        /**
+         * The stored mode, and separately the mode the engine resolves it to.
+         *
+         * The second value is the one that answers "are my rules running?",
+         * and it cannot be derived by the model without knowing that `null`
+         * means "advanced when rules exist" — so it is computed here rather
+         * than left as an inference the reader has to make.
+         */
+        activeMode: p.activeMode ?? null,
+        effectiveMode: activeModeOf(p),
+        rulesCount: (p.textSpecs ?? []).length,
       };
     }),
   );
@@ -3086,6 +3106,27 @@ async function proposeProviderUpdate(
   if (typeof args.priority === "number" && Number.isInteger(args.priority)) {
     patch.priority = args.priority;
   }
+  if (args.activeMode === "simple" || args.activeMode === "advanced") {
+    // Only accepted when it means something. Switching a provider that has no
+    // rules to "advanced" changes nothing at runtime and reads in the diff like
+    // a change that did, so the proposal says so instead of writing it.
+    const ruleCount = (provider.textSpecs ?? []).length;
+    // A non-empty `textSpecs` in the same call can create the rules this switch
+    // would then apply, so it counts. An empty array is not "some rules" — it is
+    // the clear-everything form, and switching to advanced on top of it would
+    // still change nothing.
+    const addsRules = Array.isArray(args.textSpecs) && args.textSpecs.length > 0;
+    if (args.activeMode === "advanced" && ruleCount === 0 && !addsRules) {
+      return ok({
+        status: "needs_attention",
+        message:
+          `这个服务商现在一条参数规则都没有，切到 advanced 不会改变任何行为 —— ` +
+          `引擎读的是同一套「原样透传」。先写规则（textSpecs），再切。`,
+        patch: {},
+      });
+    }
+    patch.activeMode = args.activeMode;
+  }
   if (typeof args.upstreamFormat === "string") {
     if (args.upstreamFormat !== "chat" && args.upstreamFormat !== "responses") {
       return fail('upstreamFormat 只能是 "chat" 或 "responses"。');
@@ -3267,13 +3308,37 @@ async function proposeProviderUpdate(
         .filter((p) => faces[p] === false);
 
       patch.textSpecs = list;
+
+      // The other half of the same trap: a rule for an interface nobody calls
+      // is inert, and so is a rule in a provider whose mode is `simple` —
+      // `activeSpecFor` returns null unless the mode resolves to "advanced".
+      // The editor shows both as saved, so the only place the mismatch can be
+      // said out loud is here, before the administrator is asked to approve.
+      const modeAfter =
+        patch.activeMode === "simple" || patch.activeMode === "advanced"
+          ? patch.activeMode
+          : activeModeOf(provider);
+      const modeIssue =
+        list.length > 0 && modeAfter !== "advanced"
+          ? `这个服务商的参数规则读取模式是 simple，这 ${list.length} 条规则写进去也不会执行。` +
+            `在同一份提案里带上 activeMode: "advanced"（或之后单独切换）才会生效。`
+          : null;
+
       if (offFace.length > 0) {
         return ok({
           status: "needs_attention",
           message:
             `协议已经写好，但 ${offFace.join("、")} 所属的协议面是关着的：` +
             `规则会被保存，可不会有请求走到它。要让它生效，请同时把对应的协议面打开` +
-            `（openaiEnabled / anthropicEnabled），再提交一次。`,
+            `（openaiEnabled / anthropicEnabled），再提交一次。` +
+            (modeIssue ? `\n${modeIssue}` : ""),
+          patch,
+        });
+      }
+      if (modeIssue) {
+        return ok({
+          status: "needs_attention",
+          message: `协议已经写好，但${modeIssue}`,
           patch,
         });
       }

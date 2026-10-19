@@ -12,7 +12,7 @@
 import type { Provider } from "../db/types";
 import type { MediaProvider } from "../media/spec";
 import type { DocPage } from "../docs/custom";
-import { surfaceOf } from "../protocol/text-specs";
+import { activeModeOf, surfaceOf } from "../protocol/text-specs";
 import { ASSISTANT_PAGE_READ_LIMIT } from "./docs-reader";
 
 /** Stored documents keyed by the interface they govern, for a before/after. */
@@ -111,6 +111,40 @@ export function renderProviderDiff(
       else if (!(k in before)) out.push(`  + ${k}: ${after[k]}`);
       else out.push(`  ~ ${k}: ${before[k]} → ${after[k]}`);
     }
+  }
+
+  // Which rule set the engine reads.
+  //
+  // `activeMode` is not just another stored flag: `activeSpecFor` returns null
+  // unless it says "advanced", so flipping it from simple to advanced turns
+  // rules that were inert into rules that rewrite every request — and flipping
+  // it the other way silently disables them while they stay visible in the
+  // panel. The stored value can also be null, which `activeModeOf` resolves
+  // from whether rules exist, so the diff shows the *effective* mode on both
+  // sides rather than a bare null the administrator has to interpret.
+  if (patch.activeMode !== undefined) {
+    const beforeStored = provider.activeMode ?? null;
+    const before = activeModeOf(provider);
+    const after = patch.activeMode === "simple" || patch.activeMode === "advanced"
+      ? patch.activeMode
+      : before;
+    // The rules this proposal leaves behind: a proposal that sends textSpecs
+    // and activeMode together is judged by the count it is actually creating,
+    // not the one already stored.
+    const ruleCount = Array.isArray(patch.textSpecs)
+      ? (patch.textSpecs as string[]).length
+      : (provider.textSpecs ?? []).length;
+    out.push("参数规则读取模式：");
+    out.push(
+      `  - ${before}${beforeStored === null ? `（未显式设置，按现有 ${(provider.textSpecs ?? []).length} 条规则推断）` : ""}`,
+    );
+    out.push(`  + ${after}`);
+    out.push(
+      after === "advanced"
+        ? `  ${ruleCount} 条规则将参与改写上游请求。`
+        : `  ${ruleCount} 条规则将完全不执行${ruleCount ? "（规则仍保留，切回 advanced 即恢复）" : ""}。`,
+    );
+    out.push("");
   }
 
   // The protocols, by interface.
