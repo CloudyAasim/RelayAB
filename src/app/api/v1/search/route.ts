@@ -1,0 +1,179 @@
+/**
+ * app/api/v1/search/route.ts
+ *
+ * Web search as a gateway endpoint: `POST /v1/search`, `GET /v1/search?q=`.
+ *
+ * The same `searchWeb()` the assistant's `web_search` tool calls. Exposing it
+ * separately is the point: a client that only needs the links should not have
+ * to pay a language model to ask for them. Searching costs no tokens, and the
+ * response here is the search result list, not a generated answer.
+ *
+ * Authentication, quotas and usage recording are the same as every other paid
+ * endpoint. The price is **per call**, not per result: the upstream work is
+ * the same whether the query matched nine pages or none, and a price that
+ * varies with the result count would be unreadable on a usage bill.
+ * `SEARCH_CREDITS_PER_CALL` sets it; the default is 1 whole credit.
+ *
+ * Failures are not charged. A search that never reached SearXNG, or that
+ * SearXNG refused, produced nothing to bill for — and charging for it would
+ * make an outage look like usage.
+ */
+import { NextResponse } from "next/server";
+
+import { authenticateBearer, reasonToHttp, resolveAuthHeader } from "@/lib/auth/apikey";
+import { getUserById, incrementUserQuotaUsed } from "@/lib/db/users";
+import { touchApiKeyLastUsed } from "@/lib/db/keys";
+import { recordUsage } from "@/lib/db/usage";
+import { proxyError, quotaHeaders } from "@/lib/proxy/errors";
+import { CREDIT_SCALE } from "@/lib/quota/credits";
+import {
+  MAX_QUERY_CHARS,
+  MAX_SEARCH_RESULTS,
+  searchWeb,
+  WebSearchError,
+} from "@/lib/assistant/web-search";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+/** Whole 积分 charged per search call. 0 makes it free. */
+function creditsPerCall(): number {
+  const raw = process.env.SEARCH_CREDITS_PER_CALL?.trim();
+  if (raw === undefined || raw === "") return 1;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.trunc(parsed) : 1;
+}
+
+/**
+ * A search failure, in the shape the gateway already uses for upstream errors.
+ *
+ * `not_configured` is 503 rather than 500: the deployment is missing a
+ * backend, not failing at a request. A caller can retry later; nothing about
+ * the request was wrong.
+ */
+function searchErrorResponse(err: WebSearchError, headers?: Record<string, string>): Response {
+  const map: Record<WebSearchError["code"], { status: number; code: string }> = {
+    not_configured: { status: 503, code: "search_unavailable" },
+    bad_key: { status: 502, code: "search_auth_failed" },
+    rate_limited: { status: 429, code: "rate_limited" },
+    upstream_error: { status: 502, code: "search_upstream_error" },
+    unreachable: { status: 502, code: "search_unreachable" },
+  };
+  const mapped = map[err.code];
+  return proxyError(mapped.status, mapped.code, err.message, headers);
+}
+
+interface SearchBody {
+  query?: unknown;
+  q?: unknown;
+  limit?: unknown;
+}
+
+function parseLimit(raw: unknown): number {
+  const parsed = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : NaN;
+  if (!Number.isFinite(parsed)) return 6;
+  return Math.min(Math.max(Math.trunc(parsed), 1), MAX_SEARCH_RESULTS);
+}
+
+async function handle(req: Request, body: SearchBody): Promise<Response> {
+  const auth = await authenticateBearer({ authHeader: resolveAuthHeader(req) });
+  if (!auth.ok || !auth.key) {
+    const http = reasonToHttp(auth.reason);
+    return proxyError(http.status, http.code, http.message);
+  }
+  const owner = auth.user ?? (await getUserById(auth.key.userId));
+  if (!owner) {
+    return proxyError(403, "user_not_found", "The account owning this key no longer exists");
+  }
+
+  const rawQuery = body.query ?? body.q;
+  const query = typeof rawQuery === "string" ? rawQuery.trim() : "";
+  if (!query) {
+    return proxyError(400, "invalid_request", "query is required");
+  }
+  if (query.length > MAX_QUERY_CHARS) {
+    return proxyError(
+      400,
+      "invalid_request",
+      `query is too long (${query.length} characters, maximum ${MAX_QUERY_CHARS})`,
+    );
+  }
+  const limit = parseLimit(body.limit);
+
+  let outcome;
+  try {
+    outcome = await searchWeb(query, { limit });
+  } catch (err) {
+    if (err instanceof WebSearchError) return searchErrorResponse(err, quotaHeaders(owner));
+    return proxyError(
+      502,
+      "search_failed",
+      `search failed: ${err instanceof Error ? err.message : String(err)}`,
+      quotaHeaders(owner),
+    );
+  }
+
+  const price = creditsPerCall();
+  const creditsUsed = price * CREDIT_SCALE;
+
+  // Read-modify-write is not needed: the repository increments in one SQL
+  // statement and hands back the row, which is what the quota headers report.
+  const updated = creditsUsed > 0
+    ? await incrementUserQuotaUsed(auth.key.userId, creditsUsed)
+    : owner;
+
+  await touchApiKeyLastUsed(auth.key.id);
+  await recordUsage({
+    apiKeyId: auth.key.id,
+    userId: auth.key.userId,
+    // There is no chat provider behind a search. A stable pseudo-id keeps the
+    // usage table answerable ("what did search cost?") without pretending a
+    // vendor served it.
+    providerId: "searxng",
+    model: "web-search",
+    upstreamModel: outcome.provider,
+    promptTokens: 0,
+    completionTokens: 0,
+    creditsUsed,
+    capability: "web.search",
+    status: "success",
+    errorMessage: null,
+  });
+
+  return NextResponse.json(
+    {
+      object: "search",
+      query: outcome.query,
+      provider: outcome.provider,
+      results: outcome.results,
+      // Whole 积分, the same unit an operator types into the panel.
+      credits: price,
+    },
+    { headers: updated ? quotaHeaders(updated) : quotaHeaders(owner) },
+  );
+}
+
+export async function POST(req: Request): Promise<Response> {
+  let body: SearchBody;
+  try {
+    body = ((await req.json()) ?? {}) as SearchBody;
+  } catch {
+    return proxyError(400, "bad_json", "Invalid JSON body");
+  }
+  return handle(req, body);
+}
+
+/**
+ * `GET` as well as `POST`.
+ *
+ * Search is a read, and `GET /v1/search?q=…` is what a browser, a curl one-liner
+ * and most SDKs reach for first. The query is in the URL either way, so this
+ * adds no exposure that `POST` did not already have.
+ */
+export async function GET(req: Request): Promise<Response> {
+  const url = new URL(req.url);
+  return handle(req, {
+    query: url.searchParams.get("q") ?? url.searchParams.get("query"),
+    limit: url.searchParams.get("limit"),
+  });
+}
