@@ -48,6 +48,13 @@ export interface SearchBackend {
   source: "db" | "env";
   /** The internal address, when the kind has one worth showing (SearXNG). */
   baseUrl?: string;
+  /**
+   * What one call costs, when the backend itself says so.
+   *
+   * Only a database provider carries a price: the environment fallback has no
+   * row to hold one, and keeps using the feature-wide setting.
+   */
+  creditsPerCall?: number;
   /** Host shown back to the model, never the key. */
   describe: string;
   search(query: string, limit: number, fetchImpl: typeof fetch): Promise<WebSearchResult[]>;
@@ -63,6 +70,8 @@ export interface CreateSearchBackendInput {
   source?: "db" | "env";
   /** Operator-visible name; falls back to the vendor's own. */
   describe?: string;
+  /** Per-call price, when this backend came from a provider row. */
+  creditsPerCall?: number;
 }
 
 export class WebSearchError extends Error {
@@ -218,6 +227,7 @@ export function createSearchBackend(input: CreateSearchBackendInput): SearchBack
     usageProviderId,
     source,
     ...(input.baseUrl?.trim() ? { baseUrl: input.baseUrl.trim() } : {}),
+    ...(input.creditsPerCall !== undefined ? { creditsPerCall: input.creditsPerCall } : {}),
   };
 
   if (input.kind === "tavily") {

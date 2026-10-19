@@ -56,6 +56,8 @@ describe("with no provider rows", () => {
       source: "env",
       kind: "searxng",
       baseUrl: "http://relay-search.web:8080",
+      // No row, no row price: the feature-wide fallback price applies.
+      creditsPerCall: null,
     });
   });
 
@@ -73,6 +75,7 @@ describe("with provider rows", () => {
       kind: "searxng",
       baseUrl: "https://db.example",
       priority: 1,
+      creditsPerCall: 4,
     });
 
     const backend = await resolveActiveSearchBackend();
@@ -80,9 +83,16 @@ describe("with provider rows", () => {
     expect(backend?.usageProviderId).toBe(row.id);
     expect(backend?.describe).toBe("Local");
     expect(backend?.baseUrl).toBe("https://db.example");
+    // The price travels with the backend, so billing cannot pick another one.
+    expect(backend?.creditsPerCall).toBe(4);
 
     const info = await activeSearchBackendInfo();
-    expect(info).toMatchObject({ source: "db", name: "Local", usageProviderId: row.id });
+    expect(info).toMatchObject({
+      source: "db",
+      name: "Local",
+      usageProviderId: row.id,
+      creditsPerCall: 4,
+    });
   });
 
   it("takes the first enabled row by priority, then name", async () => {

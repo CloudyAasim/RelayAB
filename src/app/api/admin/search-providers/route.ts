@@ -14,6 +14,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import {
   createSearchProvider,
   listSearchProviders,
+  MAX_CREDITS_PER_CALL,
   SearchProviderValidationError,
   SEARCH_PROVIDER_KINDS,
   toPublicSearchProvider,
@@ -40,6 +41,7 @@ const CreateSchema = z
     apiKey: z.string().max(500).optional(),
     enabled: z.boolean().optional(),
     priority: z.number().int().min(0).max(10_000).optional(),
+    creditsPerCall: z.number().int().min(0).max(MAX_CREDITS_PER_CALL).optional(),
   })
   .strict();
 

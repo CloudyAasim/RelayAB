@@ -113,13 +113,32 @@ describe("POST /api/admin/search-providers", () => {
   it("creates a provider from the form body", async () => {
     await asAdmin();
     const res = await createPOST(
-      json({ name: "Local", kind: "searxng", baseUrl: "https://s.example", priority: 3 }),
+      json({
+        name: "Local",
+        kind: "searxng",
+        baseUrl: "https://s.example",
+        priority: 3,
+        creditsPerCall: 4,
+      }),
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      data: { provider: { id: string; name: string; priority: number; enabled: boolean } };
+      data: {
+        provider: {
+          id: string;
+          name: string;
+          priority: number;
+          enabled: boolean;
+          creditsPerCall: number;
+        };
+      };
     };
-    expect(body.data.provider).toMatchObject({ name: "Local", priority: 3, enabled: true });
+    expect(body.data.provider).toMatchObject({
+      name: "Local",
+      priority: 3,
+      enabled: true,
+      creditsPerCall: 4,
+    });
     expect(await getSearchProviderById(body.data.provider.id)).not.toBeNull();
   });
 
@@ -144,6 +163,14 @@ describe("POST /api/admin/search-providers", () => {
     await asAdmin();
     expect((await createPOST(json({ name: "x", kind: "brave" }))).status).toBe(400);
   });
+
+  it("rejects a negative price before it reaches the repository", async () => {
+    await asAdmin();
+    const res = await createPOST(
+      json({ name: "x", kind: "searxng", baseUrl: "https://s.example", creditsPerCall: -1 }),
+    );
+    expect(res.status).toBe(400);
+  });
 });
 
 describe("GET/PATCH/DELETE /api/admin/search-providers/[id]", () => {
@@ -154,11 +181,15 @@ describe("GET/PATCH/DELETE /api/admin/search-providers/[id]", () => {
     const read = await oneGET(new Request("http://localhost"), ctx(row.id));
     expect(read.status).toBe(200);
 
-    const patched = await onePATCH(json({ name: "T2", enabled: false }), ctx(row.id));
+    const patched = await onePATCH(
+      json({ name: "T2", enabled: false, creditsPerCall: 6 }),
+      ctx(row.id),
+    );
     expect(patched.status).toBe(200);
     const stored = await getSearchProviderById(row.id);
     expect(stored?.name).toBe("T2");
     expect(stored?.enabled).toBe(false);
+    expect(stored?.creditsPerCall).toBe(6);
     // A PATCH without a key must not erase the stored credential.
     expect(stored?.encryptedApiKey).toBe(row.encryptedApiKey);
 

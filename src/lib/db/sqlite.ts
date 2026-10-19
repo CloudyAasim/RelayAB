@@ -155,6 +155,10 @@ CREATE TABLE IF NOT EXISTS search_providers (
   encrypted_api_key TEXT NOT NULL DEFAULT '',
   enabled           INTEGER NOT NULL DEFAULT 1,
   priority          INTEGER NOT NULL DEFAULT 1,
+  -- What one call through this provider costs, in whole credits. Kept on the
+  -- row rather than in one global setting because two backends can have very
+  -- different economics (a paid API and a self-hosted instance).
+  credits_per_call  INTEGER NOT NULL DEFAULT 1,
   created_at        TEXT NOT NULL,
   updated_at        TEXT NOT NULL
 );
@@ -566,6 +570,9 @@ const ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; type: string
   { table: "assistant_settings", column: "web_search_default", type: "INTEGER" },
   { table: "assistant_settings", column: "web_search_limit", type: "INTEGER" },
   { table: "assistant_threads", column: "web_search", type: "INTEGER" },
+  // Per-provider search price. Rows created before this existed keep the
+  // previous global default of one credit rather than becoming free.
+  { table: "search_providers", column: "credits_per_call", type: "INTEGER NOT NULL DEFAULT 1" },
 ];
 
 function addColumnIfMissing(

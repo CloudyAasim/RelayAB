@@ -16,6 +16,8 @@ export interface SearchProviderRow {
   baseUrl: string;
   enabled: boolean;
   priority: number;
+  /** Whole credits this backend charges per call. */
+  creditsPerCall: number;
   hasApiKey: boolean;
 }
 
@@ -42,6 +44,7 @@ export function SearchProviderForm({ provider, onSaved }: Props) {
   const [baseUrl, setBaseUrl] = useState(provider?.baseUrl ?? "");
   const [apiKey, setApiKey] = useState("");
   const [priority, setPriority] = useState(String(provider?.priority ?? 1));
+  const [creditsPerCall, setCreditsPerCall] = useState(String(provider?.creditsPerCall ?? 1));
   const [enabled, setEnabled] = useState(provider?.enabled ?? true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,12 +59,18 @@ export function SearchProviderForm({ provider, onSaved }: Props) {
     setError(null);
     setSaved(false);
     try {
+      const parsedCredits = Number(creditsPerCall);
+      if (!Number.isInteger(parsedCredits) || parsedCredits < 0) {
+        setError(t("admin.searchProviders.creditsInvalid"));
+        return;
+      }
       const payload: Record<string, unknown> = {
         name: name.trim(),
         kind,
         baseUrl: baseUrl.trim(),
         enabled,
         priority: Number(priority) || 0,
+        creditsPerCall: parsedCredits,
       };
       // A blank key on edit means "keep the stored one", so it is omitted
       // rather than sent as an empty string.
@@ -142,13 +151,22 @@ export function SearchProviderForm({ provider, onSaved }: Props) {
         hint={t("admin.searchProviders.apiKeyHint")}
       />
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-3">
         <Input
           label={t("admin.searchProviders.priority")}
           type="number"
           min={0}
           value={priority}
           onChange={(e) => setPriority(e.target.value)}
+        />
+        <Input
+          label={t("admin.searchProviders.creditsPerCall")}
+          type="number"
+          min={0}
+          step={1}
+          value={creditsPerCall}
+          onChange={(e) => setCreditsPerCall(e.target.value)}
+          hint={t("admin.searchProviders.creditsHint")}
         />
         <label className="flex items-center gap-2 self-end pb-2 text-sm text-foreground">
           <input

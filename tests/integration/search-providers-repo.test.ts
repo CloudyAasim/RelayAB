@@ -31,8 +31,43 @@ describe("create", () => {
     });
     expect(row.enabled).toBe(true);
     expect(row.priority).toBe(1);
+    // One credit was the old global default; a new row must not silently
+    // become free just because the price moved onto the row.
+    expect(row.creditsPerCall).toBe(1);
     expect(row.encryptedApiKey).toBe("");
     expect(toPublicSearchProvider(row).hasApiKey).toBe(false);
+  });
+
+  it("stores a per-provider price, including zero", async () => {
+    const free = await createSearchProvider({
+      name: "Free",
+      kind: "searxng",
+      baseUrl: "https://free.example",
+      creditsPerCall: 0,
+    });
+    expect(free.creditsPerCall).toBe(0);
+    expect(toPublicSearchProvider(free).creditsPerCall).toBe(0);
+
+    const paid = await createSearchProvider({
+      name: "Paid",
+      kind: "searxng",
+      baseUrl: "https://paid.example",
+      creditsPerCall: 7,
+    });
+    expect(paid.creditsPerCall).toBe(7);
+  });
+
+  it("refuses a negative or fractional price", async () => {
+    for (const creditsPerCall of [-1, 1.5]) {
+      await expect(
+        createSearchProvider({
+          name: "Bad",
+          kind: "searxng",
+          baseUrl: "https://bad.example",
+          creditsPerCall,
+        }),
+      ).rejects.toBeInstanceOf(SearchProviderValidationError);
+    }
   });
 
   it("requires an address for SearXNG", async () => {
@@ -83,6 +118,30 @@ describe("update", () => {
     const updated = await updateSearchProvider(row.id, { name: "T2" });
     expect(updated?.name).toBe("T2");
     expect(updated?.encryptedApiKey).toBe(before);
+  });
+
+  it("changes only the price when that is all the patch carries", async () => {
+    const row = await createSearchProvider({
+      name: "S",
+      kind: "searxng",
+      baseUrl: "https://s.example",
+      creditsPerCall: 2,
+    });
+    const updated = await updateSearchProvider(row.id, { creditsPerCall: 9 });
+    expect(updated?.creditsPerCall).toBe(9);
+    // The rest of the row is untouched.
+    expect(updated).toMatchObject({ name: "S", kind: "searxng", baseUrl: "https://s.example" });
+  });
+
+  it("refuses a negative price on update", async () => {
+    const row = await createSearchProvider({
+      name: "S",
+      kind: "searxng",
+      baseUrl: "https://s.example",
+    });
+    await expect(updateSearchProvider(row.id, { creditsPerCall: -2 })).rejects.toBeInstanceOf(
+      SearchProviderValidationError,
+    );
   });
 
   it("re-encrypts when a new key is supplied", async () => {

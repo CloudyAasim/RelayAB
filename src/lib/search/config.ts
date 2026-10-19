@@ -31,6 +31,15 @@ export interface SearchConfig {
   enabled: boolean;
   /** Whole 积分 charged per call. 0 is a deliberate "free". */
   creditsPerCall: number;
+  /**
+   * Whether that price came from the active provider row.
+   *
+   * The provider's own price wins: two backends can have very different
+   * economics, and a global number would either overcharge the cheap one or
+   * lose money on the expensive one. The global setting survives only as the
+   * price of the environment fallback, which has no row to hold one.
+   */
+  creditsFromProvider: boolean;
   /** Whether any backend is configured at all. */
   backendConfigured: boolean;
   /** Human-readable backend name ("SearXNG", "Tavily", …), never the key. */
@@ -57,12 +66,14 @@ export interface SearchConfig {
 export async function loadSearchConfig(settings?: AppSettings): Promise<SearchConfig> {
   const stored = settings ?? (await getSettings());
   const backend = await activeSearchBackendInfo();
+  const providerPrice = backend.source === "db" ? backend.creditsPerCall : null;
   return {
     // Absent means on. The feature predates the switch, so an upgrade must not
     // silently turn it off; only an explicit `false` does.
     enabled: stored.searchEnabled !== false,
     creditsPerCall:
-      stored.searchCreditsPerCall ?? envSearchCredits() ?? DEFAULT_SEARCH_CREDITS,
+      providerPrice ?? stored.searchCreditsPerCall ?? envSearchCredits() ?? DEFAULT_SEARCH_CREDITS,
+    creditsFromProvider: providerPrice !== null,
     backendConfigured: backend.configured,
     backendName: backend.name,
     backendUrl: backend.baseUrl,

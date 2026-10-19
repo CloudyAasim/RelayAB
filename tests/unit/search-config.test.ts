@@ -122,6 +122,48 @@ describe("the effective configuration", () => {
     const config = await loadSearchConfig();
     expect(config.backendSource).toBe("env");
     expect(config.backendProviderId).toBe("searxng");
+    // No row to carry a price, so the fallback setting is what bills.
+    expect(config.creditsFromProvider).toBe(false);
+  });
+
+  it("bills the active provider's own price, ahead of the saved global one", async () => {
+    await updateSettings({ searchCreditsPerCall: 2 });
+    process.env.SEARCH_CREDITS_PER_CALL = "5";
+    await createSearchProvider({
+      name: "Cheap",
+      kind: "searxng",
+      baseUrl: "https://cheap.example",
+      priority: 1,
+      creditsPerCall: 7,
+    });
+
+    const config = await loadSearchConfig();
+    expect(config.creditsPerCall).toBe(7);
+    expect(config.creditsFromProvider).toBe(true);
+  });
+
+  it("uses the price of the provider that actually serves", async () => {
+    const chosen = await createSearchProvider({
+      name: "Second",
+      kind: "searxng",
+      baseUrl: "https://second.example",
+      priority: 2,
+      creditsPerCall: 3,
+    });
+    // The priority-1 row is disabled, so the second one answers — and its price
+    // is the one that must apply.
+    const off = await createSearchProvider({
+      name: "First",
+      kind: "searxng",
+      baseUrl: "https://first.example",
+      priority: 1,
+      creditsPerCall: 9,
+    });
+    await updateSearchProvider(off.id, { enabled: false });
+
+    const config = await loadSearchConfig();
+    expect(config.backendProviderId).toBe(chosen.id);
+    expect(config.creditsPerCall).toBe(3);
   });
 
   it("is unconfigured when every provider is disabled, even with the environment set", async () => {

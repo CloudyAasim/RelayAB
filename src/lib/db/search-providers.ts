@@ -36,6 +36,8 @@ export interface SearchProviderRecord {
   encryptedApiKey: string;
   enabled: boolean;
   priority: number;
+  /** Whole credits charged per call through this backend. */
+  creditsPerCall: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -52,6 +54,7 @@ export interface CreateSearchProviderInput {
   apiKey?: string;
   enabled?: boolean;
   priority?: number;
+  creditsPerCall?: number;
 }
 
 export interface UpdateSearchProviderInput {
@@ -61,7 +64,11 @@ export interface UpdateSearchProviderInput {
   apiKey?: string;
   enabled?: boolean;
   priority?: number;
+  creditsPerCall?: number;
 }
+
+/** A sanity ceiling, not an economic statement. */
+export const MAX_CREDITS_PER_CALL = 1_000_000;
 
 export class SearchProviderValidationError extends Error {
   constructor(public readonly issues: string[]) {
@@ -80,6 +87,7 @@ function rowToSearchProvider(row: Record<string, unknown>): SearchProviderRecord
     encryptedApiKey: String(row.encrypted_api_key ?? ""),
     enabled: fromDbBool(row.enabled),
     priority: Number(row.priority ?? 1),
+    creditsPerCall: Number(row.credits_per_call ?? 1),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };
@@ -112,6 +120,7 @@ function validate(input: {
   kind: SearchProviderKind;
   baseUrl: string;
   apiKey: string;
+  creditsPerCall: number;
 }): string[] {
   const issues: string[] = [];
   if (!input.name.trim()) issues.push("name is required");
@@ -125,6 +134,13 @@ function validate(input: {
   if (input.baseUrl.trim() && !isHttpUrl(input.baseUrl.trim())) {
     issues.push("base URL must be http(s)");
   }
+  // Zero is a deliberate "free", so the range starts there; a negative price
+  // would credit the caller on every search.
+  if (!Number.isInteger(input.creditsPerCall) || input.creditsPerCall < 0) {
+    issues.push("credits per call must be a non-negative integer");
+  } else if (input.creditsPerCall > MAX_CREDITS_PER_CALL) {
+    issues.push(`credits per call must be at most ${MAX_CREDITS_PER_CALL}`);
+  }
   return issues;
 }
 
@@ -133,7 +149,14 @@ export async function createSearchProvider(
 ): Promise<SearchProviderRecord> {
   const key = input.apiKey?.trim() ?? "";
   const baseUrl = input.baseUrl?.trim() ?? "";
-  const issues = validate({ name: input.name, kind: input.kind, baseUrl, apiKey: key });
+  const creditsPerCall = input.creditsPerCall ?? 1;
+  const issues = validate({
+    name: input.name,
+    kind: input.kind,
+    baseUrl,
+    apiKey: key,
+    creditsPerCall,
+  });
   if (issues.length) throw new SearchProviderValidationError(issues);
 
   const now = new Date().toISOString();
@@ -145,14 +168,16 @@ export async function createSearchProvider(
     encryptedApiKey: key ? encryptSecret(key) : "",
     enabled: input.enabled ?? true,
     priority: Number.isInteger(input.priority) ? Math.trunc(input.priority!) : 1,
+    creditsPerCall: Math.trunc(creditsPerCall),
     createdAt: now,
     updatedAt: now,
   };
 
   run(
     `INSERT INTO search_providers
-       (id, name, kind, base_url, encrypted_api_key, enabled, priority, created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?)`,
+       (id, name, kind, base_url, encrypted_api_key, enabled, priority,
+        credits_per_call, created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?)`,
     [
       record.id,
       record.name,
@@ -161,6 +186,7 @@ export async function createSearchProvider(
       record.encryptedApiKey,
       toDbBool(record.enabled),
       record.priority,
+      record.creditsPerCall,
       record.createdAt,
       record.updatedAt,
     ],
@@ -198,6 +224,8 @@ export async function updateSearchProvider(
   // providers: the form never has to hold the secret again.
   const encryptedApiKey = newKey ? encryptSecret(newKey) : existing.encryptedApiKey;
   const name = patch.name === undefined ? existing.name : patch.name.trim();
+  const creditsPerCall =
+    patch.creditsPerCall === undefined ? existing.creditsPerCall : Math.trunc(patch.creditsPerCall);
 
   // Validation needs to know whether a usable key exists after the merge, not
   // just whether this patch carried one.
@@ -207,6 +235,7 @@ export async function updateSearchProvider(
     kind,
     baseUrl,
     apiKey: keyPresent ? "present" : "",
+    creditsPerCall,
   });
   if (issues.length) throw new SearchProviderValidationError(issues);
 
@@ -219,13 +248,14 @@ export async function updateSearchProvider(
     enabled: patch.enabled === undefined ? existing.enabled : patch.enabled,
     priority:
       patch.priority === undefined ? existing.priority : Math.trunc(patch.priority),
+    creditsPerCall,
     updatedAt: new Date().toISOString(),
   };
 
   run(
     `UPDATE search_providers
         SET name = ?, kind = ?, base_url = ?, encrypted_api_key = ?,
-            enabled = ?, priority = ?, updated_at = ?
+            enabled = ?, priority = ?, credits_per_call = ?, updated_at = ?
       WHERE id = ?`,
     [
       merged.name,
@@ -234,6 +264,7 @@ export async function updateSearchProvider(
       merged.encryptedApiKey,
       toDbBool(merged.enabled),
       merged.priority,
+      merged.creditsPerCall,
       merged.updatedAt,
       id,
     ],

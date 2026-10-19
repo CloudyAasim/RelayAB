@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getUserById } from "@/lib/db/users";
 import { cachedBuildModelCatalog } from "@/lib/db/data-cache";
+import { getSettings } from "@/lib/db/settings";
+import { loadSearchConfig } from "@/lib/search/config";
 import { getT } from "@/lib/i18n/server";
 import { SectionPageLayout } from "@/components/layouts";
 import { ModelsWorkspace } from "./ModelsWorkspace";
@@ -17,11 +19,17 @@ export default async function ModelsPage() {
   const sessionUser = await getCurrentUser();
   if (!sessionUser) redirect("/login");
 
-  const [{ t }, fullUser, catalog] = await Promise.all([
+  const [{ t }, fullUser, catalog, settings] = await Promise.all([
     getT(),
     getUserById(sessionUser.id),
     cachedBuildModelCatalog(),
+    getSettings(),
   ]);
+
+  // Only an administrator can run the search probe; the route enforces it too,
+  // and the card is not rendered at all for anyone else.
+  const searchConfig =
+    sessionUser.role === "admin" ? await loadSearchConfig(settings) : null;
 
   // One catalogue feeds both the docs page and this tester, so the two can
   // never list different models.
@@ -103,6 +111,30 @@ export default async function ModelsPage() {
             empty: t("dashboard.models.media.empty"),
             unsupported: t("dashboard.models.media.unsupported"),
           }}
+          searchTest={
+            searchConfig
+              ? {
+                  labels: {
+                    title: t("admin.search.test.title"),
+                    desc: t("admin.search.test.desc"),
+                    query: t("admin.search.test.query"),
+                    placeholder: t("admin.search.test.placeholder"),
+                    run: t("admin.search.test.run"),
+                    unbilled: t("admin.search.test.unbilled"),
+                    // The numbers are only known after the probe runs, so the
+                    // placeholders are kept as tokens and filled in the client.
+                    latency: t("admin.search.test.latency", {
+                      ms: "{ms}",
+                      backend: "{backend}",
+                    }),
+                    empty: t("admin.search.test.empty"),
+                    unavailable: t("admin.search.status.backendMissing"),
+                    failed: t("common.failed"),
+                  },
+                  backendName: searchConfig.backendConfigured ? searchConfig.backendName : null,
+                }
+              : undefined
+          }
           probeLabels={{
             title: t("dashboard.models.custom.title"),
             desc: t("dashboard.models.custom.desc"),

@@ -2,12 +2,16 @@
  * app/(admin)/admin/search/page.tsx
  *
  * Search providers, listed the same way as chat and media providers: one row
- * each, with edit/disable/delete/test behind the row actions. The feature-wide
- * switch and price sit below the list, because they are one setting rather
- * than one per row.
+ * each, with edit/disable/delete/test behind the row actions. Each row carries
+ * its own price, because a paid API and a self-hosted instance do not have the
+ * same economics. The feature-wide switch sits below the list; the environment
+ * fallback's price is edited there too, since it has no row to hold one.
  *
  * Usage statistics are not here any more. They live on `/admin/usage`, where
  * every other kind of spend is reported, so the two cannot disagree.
+ *
+ * The "test the active backend" box is not here either: it moved to the single
+ * testing page (`/dashboard/models`), next to the model testers.
  */
 import { redirect } from "next/navigation";
 import { Search } from "lucide-react";
@@ -76,6 +80,7 @@ export default async function SearchAdminPage() {
                   <TH>{t("admin.searchProviders.kind")}</TH>
                   <TH>{t("admin.searchProviders.baseUrl")}</TH>
                   <TH>{t("admin.searchProviders.priority")}</TH>
+                  <TH>{t("admin.searchProviders.creditsPerCall")}</TH>
                   <TH>{t("dashboard.table.status")}</TH>
                   <TH className="w-40 text-right">{t("common.actions")}</TH>
                 </TR>
@@ -99,6 +104,9 @@ export default async function SearchAdminPage() {
                       )}
                     </TD>
                     <TD className="text-muted-foreground">{p.priority}</TD>
+                    <TD className="text-muted-foreground">
+                      {p.creditsPerCall}
+                    </TD>
                     <TD>
                       <div className="flex flex-wrap items-center gap-1">
                         <Badge tone={p.enabled ? "success" : "neutral"}>
@@ -125,6 +133,7 @@ export default async function SearchAdminPage() {
           enabled={config.enabled}
           storedEnabled={settings.searchEnabled ?? null}
           creditsPerCall={config.creditsPerCall}
+          creditsFromProvider={config.creditsFromProvider}
           storedCredits={settings.searchCreditsPerCall ?? null}
           backendConfigured={config.backendConfigured}
           backendName={config.backendName}

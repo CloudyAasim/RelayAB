@@ -172,6 +172,25 @@ describe("a successful search", () => {
     });
   });
 
+  it("charges the active provider's own price, not the fallback", async () => {
+    await updateSettings({ searchCreditsPerCall: 1 });
+    const row = await createSearchProvider({
+      name: "Paid",
+      kind: "searxng",
+      baseUrl: "https://paid.example",
+      creditsPerCall: 3,
+    });
+    stubSearch([{ title: "A", url: "https://a.example", content: "aa" }]);
+
+    const res = await post({ query: "x" });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { credits: number }).credits).toBe(3);
+    expect((await getUserById(userId))?.quotaUsed).toBe(3000);
+
+    const usage = await listUsageByKey(keyId);
+    expect(usage[0]).toMatchObject({ providerId: row.id, creditsUsed: 3000 });
+  });
+
   it("reports the remaining balance in the quota headers", async () => {
     stubSearch([]);
     const res = await post({ query: "x" });

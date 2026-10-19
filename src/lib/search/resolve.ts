@@ -36,6 +36,8 @@ export interface ActiveBackendInfo {
   baseUrl: string | null;
   source: "db" | "env" | null;
   usageProviderId: string | null;
+  /** The row's own price; null when the environment fallback is in use. */
+  creditsPerCall: number | null;
 }
 
 /**
@@ -63,6 +65,7 @@ export function backendForSearchProvider(row: SearchProviderRecord): SearchBacke
     usageProviderId: row.id,
     source: "db",
     describe: row.name,
+    creditsPerCall: row.creditsPerCall,
   });
 }
 
@@ -96,6 +99,7 @@ export async function activeSearchBackendInfo(
       baseUrl: null,
       source: null,
       usageProviderId: null,
+      creditsPerCall: null,
     };
   }
   return {
@@ -105,6 +109,7 @@ export async function activeSearchBackendInfo(
     baseUrl: backend.baseUrl ?? null,
     source: backend.source,
     usageProviderId: backend.usageProviderId,
+    creditsPerCall: backend.creditsPerCall ?? null,
   };
 }
 

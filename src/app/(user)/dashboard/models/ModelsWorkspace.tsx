@@ -3,7 +3,8 @@
 /**
  * src/app/(user)/dashboard/models/ModelsWorkspace.tsx
  *
- * The three model tools, and the one piece of state they share.
+ * The model testers, the search tester, and the one piece of state the model
+ * tools share.
  *
  * **Why this is a client component at all.** The probe can ask a vendor what
  * models it serves, and the testers can only choose from what they are given.
@@ -21,6 +22,7 @@ import { useCallback, useState } from "react";
 import { ModelTester } from "./ModelTester";
 import { MediaTester } from "./MediaTester";
 import { CustomModelProbe } from "./CustomModelProbe";
+import { SearchTester, type SearchTestLabels } from "./SearchTester";
 
 type GatewayLabels = React.ComponentProps<typeof ModelTester>["labels"];
 type MediaLabels = React.ComponentProps<typeof MediaTester>["labels"];
@@ -33,12 +35,18 @@ export function ModelsWorkspace({
   gatewayLabels,
   mediaLabels,
   probeLabels,
+  searchTest,
 }: {
   catalogChatModels: string[];
   catalogMediaModels: MediaModel[];
   gatewayLabels: GatewayLabels;
   mediaLabels: MediaLabels;
   probeLabels: ProbeLabels;
+  /**
+   * Present only for administrators: the search test route is admin-only, and
+   * its results name the backend, which a regular user has no reason to see.
+   */
+  searchTest?: { labels: SearchTestLabels; backendName: string | null };
 }) {
   /**
    * Models a vendor listed through the probe, for this page view only.
@@ -70,6 +78,10 @@ export function ModelsWorkspace({
       <MediaTester models={mediaModels} labels={mediaLabels} />
 
       <CustomModelProbe labels={probeLabels} onFetched={onFetched} />
+
+      {searchTest && (
+        <SearchTester labels={searchTest.labels} backendName={searchTest.backendName} />
+      )}
     </div>
   );
 }

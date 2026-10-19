@@ -12,6 +12,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import {
   deleteSearchProvider,
   getSearchProviderById,
+  MAX_CREDITS_PER_CALL,
   SearchProviderValidationError,
   SEARCH_PROVIDER_KINDS,
   toPublicSearchProvider,
@@ -39,6 +40,7 @@ const PatchSchema = z
     apiKey: z.string().max(500).optional(),
     enabled: z.boolean().optional(),
     priority: z.number().int().min(0).max(10_000).optional(),
+    creditsPerCall: z.number().int().min(0).max(MAX_CREDITS_PER_CALL).optional(),
   })
   .strict();
 
