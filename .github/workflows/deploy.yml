@@ -12,8 +12,12 @@ on:
   workflow_dispatch:
 
 # Dokku 的同一个 app 不能并发构建，否则会互相覆盖 slug。
+#
+# 按 ref 分组而不是一个固定名字：同一个分支的两次推送仍然排队，但一次
+# 卡在 in_progress 的旧运行（GitHub 偶发：步骤都已完成，job 状态没落地）
+# 不会把后续分支/推送一起堵死。2026-10-19 实际遇到过这种僵住 20+ 分钟的情况。
 concurrency:
-  group: dokku-deploy
+  group: dokku-deploy-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
