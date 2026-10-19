@@ -30,10 +30,11 @@ import { CREDIT_SCALE } from "@/lib/quota/credits";
 import {
   MAX_QUERY_CHARS,
   MAX_SEARCH_RESULTS,
-  searchWeb,
   WebSearchError,
 } from "@/lib/assistant/web-search";
+import { searchActive } from "@/lib/search/resolve";
 import { loadSearchConfig } from "@/lib/search/config";
+import { WEB_SEARCH_CAPABILITY, WEB_SEARCH_MODEL } from "@/lib/search/usage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -108,7 +109,7 @@ async function handle(req: Request, body: SearchBody): Promise<Response> {
 
   let outcome;
   try {
-    outcome = await searchWeb(query, { limit });
+    outcome = await searchActive(query, { limit });
   } catch (err) {
     if (err instanceof WebSearchError) return searchErrorResponse(err, quotaHeaders(owner));
     return proxyError(
@@ -132,16 +133,16 @@ async function handle(req: Request, body: SearchBody): Promise<Response> {
   await recordUsage({
     apiKeyId: auth.key.id,
     userId: auth.key.userId,
-    // There is no chat provider behind a search. A stable pseudo-id keeps the
-    // usage table answerable ("what did search cost?") without pretending a
-    // vendor served it.
-    providerId: "searxng",
-    model: "web-search",
+    // A database provider records its row id; an environment backend records
+    // its kind. Either way the usage row names the thing that actually
+    // answered, and `model` remains the stable marker the statistics use.
+    providerId: outcome.providerId,
+    model: WEB_SEARCH_MODEL,
     upstreamModel: outcome.provider,
     promptTokens: 0,
     completionTokens: 0,
     creditsUsed,
-    capability: "web.search",
+    capability: WEB_SEARCH_CAPABILITY,
     status: "success",
     errorMessage: null,
   });

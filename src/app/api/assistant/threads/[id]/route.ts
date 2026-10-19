@@ -13,6 +13,7 @@ import {
   getAssistantThread,
   listAssistantMessages,
   renameAssistantThread,
+  setAssistantThreadWebSearch,
 } from "@/lib/db/assistant";
 
 export const dynamic = "force-dynamic";
@@ -58,20 +59,54 @@ export async function PATCH(
   // Trim before the length check: the repository stores `title.trim().slice(0, 120)`
   // and refuses an empty result, so a whitespace-only title used to fall through
   // validation and come back as 404 "对话不存在" for a thread that was right there.
-  const parsed = z.object({ title: z.string().trim().min(1).max(120) }).safeParse(await req.json().catch(() => null));
+  //
+  // `webSearch` rides on the same PATCH: the composer's toggle has to survive a
+  // reload, and giving it a second endpoint for one boolean would be two
+  // places to keep authorized.
+  const PatchSchema = z
+    .object({
+      title: z.string().trim().min(1).max(120).optional(),
+      webSearch: z.boolean().optional(),
+    })
+    .strict()
+    .refine((v) => v.title !== undefined || v.webSearch !== undefined, {
+      message: "没有要修改的内容",
+    });
+  const parsed = PatchSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json(
-      { ok: false, error: { code: "bad_request", message: "标题不合法" } },
+      { ok: false, error: { code: "bad_request", message: "请求内容不合法" } },
       { status: 400 },
     );
   }
   const { id } = await context.params;
-  const thread = await renameAssistantThread(me.id, id, parsed.data.title);
+
+  let thread = await getAssistantThread(me.id, id);
   if (!thread) {
     return NextResponse.json(
       { ok: false, error: { code: "not_found", message: "对话不存在" } },
       { status: 404 },
     );
+  }
+  if (parsed.data.title !== undefined) {
+    const renamed = await renameAssistantThread(me.id, id, parsed.data.title);
+    if (!renamed) {
+      return NextResponse.json(
+        { ok: false, error: { code: "not_found", message: "对话不存在" } },
+        { status: 404 },
+      );
+    }
+    thread = renamed;
+  }
+  if (parsed.data.webSearch !== undefined) {
+    const updated = await setAssistantThreadWebSearch(me.id, id, parsed.data.webSearch);
+    if (!updated) {
+      return NextResponse.json(
+        { ok: false, error: { code: "not_found", message: "对话不存在" } },
+        { status: 404 },
+      );
+    }
+    thread = updated;
   }
   return NextResponse.json({ ok: true, data: { thread } });
 }

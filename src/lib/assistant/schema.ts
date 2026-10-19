@@ -12,6 +12,8 @@
  */
 import { z } from "zod";
 
+import { MAX_SEARCH_RESULTS } from "./web-search";
+
 /**
  * How the user's own upstream speaks. Only OpenAI-compatible chat completions
  * is supported today; `protocol` exists so an Anthropic-style upstream can be
@@ -80,6 +82,17 @@ export const AssistantSettingsSchema = z.object({
    * does not accept the other.
    */
   thinkingType: z.string().min(1).max(64).nullable().optional(),
+  /**
+   * Whether new conversations start with web search on.
+   *
+   * Nullable rather than defaulted to true: a row written before this existed
+   * must mean "the default", and the default is on — but an explicit `false`
+   * is the user's choice and must survive. The composer's per-conversation
+   * toggle overrides this for the conversation it is in.
+   */
+  webSearchDefault: z.boolean().nullable().optional(),
+  /** How many results one search asks for. Null means six. */
+  webSearchLimit: z.number().int().min(1).max(MAX_SEARCH_RESULTS).nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -98,6 +111,14 @@ export const AssistantThreadSchema = z.object({
   id: z.string().min(1),
   userId: z.string().min(1),
   title: z.string(),
+  /**
+   * This conversation's web-search choice.
+   *
+   * `null` means "inherit the user's default" — the same distinction the
+   * settings column makes, and the reason the composer can show a per-thread
+   * state without having to write a value on every thread ever created.
+   */
+  webSearch: z.boolean().nullable().default(null),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -231,6 +252,14 @@ export function rowToAssistantSettings(row: Record<string, unknown>): AssistantS
     topP: (row.top_p as number | null) ?? null,
     reasoningEffort: (row.reasoning_effort as string | null) ?? null,
     thinkingType: (row.thinking_type as string | null) ?? null,
+    webSearchDefault:
+      row.web_search_default === null || row.web_search_default === undefined
+        ? null
+        : Number(row.web_search_default) !== 0,
+    webSearchLimit:
+      row.web_search_limit === null || row.web_search_limit === undefined
+        ? null
+        : Number(row.web_search_limit),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
@@ -247,6 +276,10 @@ export function rowToAssistantThread(row: Record<string, unknown>): AssistantThr
     id: row.id,
     userId: row.user_id,
     title: row.title,
+    webSearch:
+      row.web_search === null || row.web_search === undefined
+        ? null
+        : Number(row.web_search) !== 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });

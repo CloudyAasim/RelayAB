@@ -13,7 +13,6 @@ import { z } from "zod";
 
 import { getCurrentUser } from "@/lib/auth/session";
 import { getSettings, updateSettings } from "@/lib/db/settings";
-import { listRecentSearchUsage, searchUsageTotals } from "@/lib/db/usage";
 import { loadSearchConfig } from "@/lib/search/config";
 import { MAX_SEARCH_RESULTS } from "@/lib/assistant/web-search";
 
@@ -48,20 +47,8 @@ export async function GET(): Promise<Response> {
 
   const settings = await getSettings();
   const config = await loadSearchConfig(settings);
-  const now = Date.now();
-  const since24h = new Date(now - 24 * 60 * 60 * 1000).toISOString();
-  const since7d = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
-
-  const [last24h, last7d, total, recent] = await Promise.all([
-    searchUsageTotals(since24h),
-    searchUsageTotals(since7d),
-    searchUsageTotals(),
-    listRecentSearchUsage(20),
-  ]);
-
-  // The stored values are reported apart from the effective ones: an operator
-  // who has not touched the panel is running on the environment/default, and
-  // "1" without that distinction looks like a saved choice.
+  // Usage lives on /admin/usage with everything else. Keeping a second copy
+  // here is how the two screens start disagreeing about the same money.
   return NextResponse.json({
     ok: true,
     data: {
@@ -71,8 +58,6 @@ export async function GET(): Promise<Response> {
         creditsPerCall: settings.searchCreditsPerCall ?? null,
       },
       maxResults: MAX_SEARCH_RESULTS,
-      stats: { last24h, last7d, total },
-      recent,
     },
   });
 }

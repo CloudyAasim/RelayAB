@@ -25,6 +25,7 @@ import {
   AssistantSettingsError,
 } from "@/lib/db/assistant";
 import { probeUpstream } from "@/lib/assistant/client";
+import { MAX_SEARCH_RESULTS } from "@/lib/assistant/web-search";
 
 export const dynamic = "force-dynamic";
 
@@ -62,6 +63,11 @@ const PutSchema = z.object({
   // the form, dropped on save, and read back as "never configured", with
   // nothing to tell the user that it had been set.
   thinkingType: z.string().min(1).max(64).nullable().optional(),
+  // Web-search preferences. Nullable because "not chosen" is a real state:
+  // null means the default (on, six results), and a later change to the
+  // default should still reach a user who never touched these.
+  webSearchDefault: z.boolean().nullable().optional(),
+  webSearchLimit: z.number().int().min(1).max(MAX_SEARCH_RESULTS).nullable().optional(),
 });
 
 const ProbeSchema = z.object({

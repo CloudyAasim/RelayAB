@@ -64,7 +64,7 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     surface: "user",
     id: "search",
     summary: "网页搜索接口 /v1/search：怎么调、按次计费、失败不扣费",
-    keys: ["docs.search.title","docs.search.desc","docs.search.endpoint","docs.search.auth","docs.search.request","docs.search.response","docs.search.billing","docs.search.errors","docs.search.note"],
+    keys: ["docs.search.title","docs.search.desc","docs.search.endpoint","docs.search.auth","docs.search.request","docs.search.response","docs.search.billing","docs.search.errors","docs.search.note","docs.search.assistant"],
   },
   {
     surface: "user",
@@ -179,7 +179,7 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     surface: "admin",
     id: "search",
     summary: "网页搜索：SearXNG 后端、开关、按次计费、面板与排查",
-    keys: ["admin.docs.search.title","admin.docs.search.desc","admin.docs.search.arch","admin.docs.search.config","admin.docs.search.panel","admin.docs.search.security","admin.docs.search.trouble","admin.search.title","admin.search.desc"],
+    keys: ["admin.docs.search.title","admin.docs.search.desc","admin.docs.search.arch","admin.docs.search.config","admin.docs.search.panel","admin.docs.search.security","admin.docs.search.assistant","admin.docs.search.trouble","admin.search.title","admin.search.desc"],
   },
   {
     surface: "admin",

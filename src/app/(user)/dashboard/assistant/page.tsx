@@ -15,6 +15,9 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { getPublicAssistantSettings } from "@/lib/db/assistant";
 import { cachedBuildModelCatalog } from "@/lib/db/data-cache";
 import { resolveAssistantConfig } from "@/lib/assistant/config";
+import { loadSearchConfig } from "@/lib/search/config";
+import { DEFAULT_WEB_SEARCH_LIMIT } from "@/lib/search/usage";
+import { MAX_SEARCH_RESULTS } from "@/lib/assistant/web-search";
 import { getT } from "@/lib/i18n/server";
 import { SectionPageLayout } from "@/components/layouts";
 import { AssistantChat } from "./AssistantChat";
@@ -27,12 +30,18 @@ export default async function AssistantPage() {
   const sessionUser = await getCurrentUser();
   if (!sessionUser) redirect("/login");
 
-  const [{ t }, settings, catalog] = await Promise.all([
+  const [{ t }, settings, catalog, searchConfig] = await Promise.all([
     getT(),
     getPublicAssistantSettings(sessionUser.id),
     cachedBuildModelCatalog(),
+    loadSearchConfig(),
   ]);
   const isAdmin = sessionUser.role === "admin";
+  // Availability is a deployment fact, not a preference: the composer toggle is
+  // disabled (with a reason) when the feature is off or has no backend.
+  const webSearchAvailable = searchConfig.enabled && searchConfig.backendConfigured;
+  const webSearchDefault = settings?.webSearchDefault ?? true;
+  const webSearchLimit = settings?.webSearchLimit ?? DEFAULT_WEB_SEARCH_LIMIT;
 
   /**
    * What the model field offers before anybody presses anything.
@@ -115,12 +124,23 @@ export default async function AssistantPage() {
       <SectionPageLayout.Content>
         <AssistantChat
           config={config}
+          webSearchAvailable={webSearchAvailable}
+          webSearchDefault={webSearchDefault}
           settingsPanel={
             <AssistantSettingsPanel
               initial={settings}
               suggestedModels={suggestedModels}
               accountModels={suggestedModels}
               accountFacts={accountFacts}
+              isAdmin={isAdmin}
+              webSearch={{
+                available: webSearchAvailable,
+                defaultOn: webSearchDefault,
+                limit: webSearchLimit,
+                maxResults: MAX_SEARCH_RESULTS,
+                backendName: searchConfig.backendName,
+                backendSource: searchConfig.backendSource,
+              }}
             />
           }
           pendingPanel={isAdmin ? <PendingActions isAdmin={isAdmin} /> : null}

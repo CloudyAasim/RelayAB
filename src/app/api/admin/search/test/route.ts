@@ -15,9 +15,9 @@ import { getCurrentUser } from "@/lib/auth/session";
 import {
   MAX_QUERY_CHARS,
   MAX_SEARCH_RESULTS,
-  searchWeb,
   WebSearchError,
 } from "@/lib/assistant/web-search";
+import { searchActive } from "@/lib/search/resolve";
 
 export const dynamic = "force-dynamic";
 
@@ -56,7 +56,7 @@ export async function POST(req: Request): Promise<Response> {
 
   const started = Date.now();
   try {
-    const outcome = await searchWeb(parsed.data.query, {
+    const outcome = await searchActive(parsed.data.query, {
       limit: parsed.data.limit ?? 5,
     });
     return NextResponse.json({

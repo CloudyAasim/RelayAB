@@ -64,7 +64,10 @@ describe("an empty turn is still refused", () => {
     // not on a function name: the check is "before the work", and naming one
     // caller would make the test pass while a different path started first.
     const check = ROUTE.indexOf("消息不能为空");
-    const work = ROUTE.indexOf("getSettings().then", check);
+    // The turn's first read. It used to be `getSettings().then(...)`; the route
+    // now awaits the row once and reuses it for search and documentation, so the
+    // anchor is the read itself rather than the shape it had at the time.
+    const work = ROUTE.indexOf("await getSettings()", check);
     expect(check).toBeGreaterThan(-1);
     expect(work, "the empty check runs after the turn starts").toBeGreaterThan(check);
   });

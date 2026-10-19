@@ -135,6 +135,32 @@ CREATE TABLE IF NOT EXISTS media_providers (
   updated_at        TEXT NOT NULL
 );
 
+-- Web-search backends, managed like every other provider.
+--
+-- kind is the wire protocol ('tavily' | 'brave' | 'searxng'); base_url is
+-- the endpoint for SearXNG and an optional override for the keyed APIs.
+-- encrypted_api_key is empty for a keyless SearXNG row rather than NULL,
+-- because the column is NOT NULL and the repository already treats "" as
+-- "no key" everywhere.
+--
+-- When this table has no rows the resolver falls back to the environment
+-- variables (TAVILY_API_KEY / BRAVE_SEARCH_API_KEY / SEARXNG_URL), so an
+-- upgrade does not silently turn search off. Once a row exists it is the
+-- authority: disabling every row is a real "off", not "fall back".
+CREATE TABLE IF NOT EXISTS search_providers (
+  id                TEXT PRIMARY KEY,
+  name              TEXT NOT NULL,
+  kind              TEXT NOT NULL,
+  base_url          TEXT NOT NULL DEFAULT '',
+  encrypted_api_key TEXT NOT NULL DEFAULT '',
+  enabled           INTEGER NOT NULL DEFAULT 1,
+  priority          INTEGER NOT NULL DEFAULT 1,
+  created_at        TEXT NOT NULL,
+  updated_at        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_search_providers_enabled
+  ON search_providers(enabled, priority);
+
 CREATE TABLE IF NOT EXISTS usage_logs (
   id                TEXT PRIMARY KEY,
   api_key_id        TEXT NOT NULL,
@@ -270,6 +296,11 @@ CREATE TABLE IF NOT EXISTS assistant_settings (
   -- read as the key path and nobody is moved.
   credential_mode    TEXT,
   account_model      TEXT,
+  -- Per-user web-search preferences. NULL means "the default": search on, six
+  -- results. NULL rather than a defaulted value because upgrading must not
+  -- change what an existing assistant does.
+  web_search_default INTEGER,
+  web_search_limit   INTEGER,
   created_at         TEXT NOT NULL,
   updated_at         TEXT NOT NULL
 );
@@ -330,6 +361,10 @@ CREATE TABLE IF NOT EXISTS assistant_threads (
   id          TEXT PRIMARY KEY,
   user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   title       TEXT NOT NULL,
+  -- This conversation's web-search choice. NULL inherits the user's default;
+  -- 0/1 is an explicit choice the composer made. The request also carries the
+  -- value each turn, so the server never depends on this column alone.
+  web_search  INTEGER,
   created_at  TEXT NOT NULL,
   updated_at  TEXT NOT NULL
 );
@@ -525,6 +560,12 @@ const ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; type: string
   // reads as the key path, which is what every existing row is.
   { table: "assistant_settings", column: "credential_mode", type: "TEXT" },
   { table: "assistant_settings", column: "account_model", type: "TEXT" },
+  // Web-search preferences and the per-conversation choice. All nullable:
+  // NULL means "use the default", which is exactly what a row written before
+  // these existed should mean.
+  { table: "assistant_settings", column: "web_search_default", type: "INTEGER" },
+  { table: "assistant_settings", column: "web_search_limit", type: "INTEGER" },
+  { table: "assistant_threads", column: "web_search", type: "INTEGER" },
 ];
 
 function addColumnIfMissing(

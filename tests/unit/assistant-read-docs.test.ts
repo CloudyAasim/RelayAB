@@ -133,7 +133,10 @@ describe("the loop is given the language to answer in", () => {
     // point of resolving it here is that the reader is not a hypothetical.
     // The operator's pages come from the same read, for the same reason.
     expect(CHAT_ROUTE).toMatch(/getServerLocale\(\)/);
-    expect(CHAT_ROUTE).toMatch(/getSettings\(\)\.then\(\(s\) => s\.docPages \?\? \[\]\)/);
+    // One settings read serves the search switch and the documentation pages;
+    // the pages are derived from that row rather than fetched again.
+    expect(CHAT_ROUTE).toMatch(/const appSettings = await getSettings\(\)/);
+    expect(CHAT_ROUTE).toMatch(/const docPages = appSettings\.docPages \?\? \[\]/);
     expect(CHAT_ROUTE).toMatch(/locale,\s*\n\s*docPages,\s*\n\s*credential,/);
   });
 

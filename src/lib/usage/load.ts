@@ -54,6 +54,21 @@ import {
   seriesFromBuckets,
   summarizeBuckets,
 } from "./buckets";
+import { isWebSearchUsage } from "../search/usage";
+
+/**
+ * Web search, as a **subset** of the report above.
+ *
+ * Search rows are already inside `summary`, `series` and every breakdown —
+ * `recordUsage` writes them like any other request. This view exists so an
+ * operator can see how much of the total is search; it must never be added to
+ * the totals, and no page renders it as an extra breakdown row.
+ */
+export interface UsageWebSearchReport {
+  summary: UsageSummary;
+  series: UsageSeriesPoint[];
+  byProvider: UsageGroupRow[];
+}
 
 export interface UsageReport {
   range: UsageRange;
@@ -63,6 +78,8 @@ export interface UsageReport {
   byModel: UsageGroupRow[];
   byProvider: UsageGroupRow[];
   byUser: UsageGroupRow[];
+  /** A filtered view of the figures above, never an addition to them. */
+  webSearch: UsageWebSearchReport;
   /** Keys whose retained log window was full, so range figures may undercount. */
   truncatedKeys: number;
 }
@@ -109,6 +126,7 @@ export async function loadUsageReport(
       range.key === "all" && !input.model
         ? await sumAllTime(keyIds)
         : summarizeBuckets(bucketRows);
+    const searchRows = bucketRows.filter(isWebSearchUsage);
     return {
       range,
       summary,
@@ -121,6 +139,15 @@ export async function loadUsageReport(
       byModel: groupBuckets(bucketRows, "model"),
       byProvider: groupBuckets(bucketRows, "providerId"),
       byUser: input.includeUsers ? groupBuckets(bucketRows, "userId") : [],
+      webSearch: {
+        summary: summarizeBuckets(searchRows),
+        series: fillSeries(
+          seriesFromBuckets(searchRows, range.grain, tzOffsetMinutes),
+          range,
+          tzOffsetMinutes,
+        ),
+        byProvider: groupBuckets(searchRows, "providerId"),
+      },
       // Nothing was cut: these figures were summed as the traffic arrived.
       truncatedKeys: 0,
     };
@@ -142,6 +169,7 @@ export async function loadUsageReport(
       ? await sumAllTime(keyIds)
       : summarize(logs, range.fromIso, range.toIso);
 
+  const searchLogs = logs.filter(isWebSearchUsage);
   return {
     range,
     summary,
@@ -154,6 +182,15 @@ export async function loadUsageReport(
     byModel: group(logs, "model", range.fromIso, range.toIso),
     byProvider: group(logs, "providerId", range.fromIso, range.toIso),
     byUser: input.includeUsers ? group(logs, "userId", range.fromIso, range.toIso) : [],
+    webSearch: {
+      summary: summarize(searchLogs, range.fromIso, range.toIso),
+      series: fillSeries(
+        series(searchLogs, range.grain, tzOffsetMinutes, range.fromIso, range.toIso),
+        range,
+        tzOffsetMinutes,
+      ),
+      byProvider: group(searchLogs, "providerId", range.fromIso, range.toIso),
+    },
     truncatedKeys,
   };
 }

@@ -223,6 +223,7 @@ export function AdminDocsContent({ section, t }: { section: AdminDocId; t: TFn }
             <li>{t("admin.docs.search.config")}</li>
             <li>{t("admin.docs.search.panel")}</li>
             <li>{t("admin.docs.search.security")}</li>
+            <li>{t("admin.docs.search.assistant")}</li>
             <li>{t("admin.docs.search.trouble")}</li>
           </ul>
         </Card>

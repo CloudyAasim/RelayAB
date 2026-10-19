@@ -21,7 +21,11 @@
  */
 import { getCurrentUser } from "@/lib/auth/session";
 import { getAssistantSettings } from "@/lib/db/assistant";
-import { createAssistantThread, getAssistantThread } from "@/lib/db/assistant";
+import {
+  createAssistantThread,
+  getAssistantThread,
+  setAssistantThreadWebSearch,
+} from "@/lib/db/assistant";
 import { runChat, type ChatEvent } from "@/lib/assistant/chat";
 import { resolveAssistantConfig } from "@/lib/assistant/config";
 import { resolveToolCredential } from "@/lib/assistant/credentials";
@@ -35,6 +39,8 @@ import { getServerLocale } from "@/lib/i18n/server";
 import { getSettings } from "@/lib/db/settings";
 import { saveAssistantArtifact, artifactRef } from "@/lib/db/assistant-artifacts";
 import type { MessageAttachment } from "@/lib/assistant/schema";
+import { loadSearchConfig } from "@/lib/search/config";
+import { DEFAULT_WEB_SEARCH_LIMIT } from "@/lib/search/usage";
 
 export const dynamic = "force-dynamic";
 
@@ -226,6 +232,8 @@ export async function POST(req: Request): Promise<Response> {
     threadId?: unknown;
     relayKey?: unknown;
     attachments?: unknown;
+    /** The composer's per-conversation web-search toggle. */
+    webSearch?: unknown;
   };
   try {
     body = (await req.json()) as typeof body;
@@ -275,6 +283,22 @@ export async function POST(req: Request): Promise<Response> {
    */
   const stored = await getAssistantSettings(me.id);
   const config = resolveAssistantConfig(stored);
+
+  /**
+   * Web search is resolved from three layers, narrowest first:
+   *
+   *  1. what this request says (the composer's toggle),
+   *  2. what the conversation last chose (`assistant_threads.web_search`),
+   *  3. the user's default (`assistant_settings.web_search_default`).
+   *
+   * Then the deployment's own switch and a configured backend are applied on
+   * top. A client cannot turn search on when the operator turned it off or
+   * when no provider exists — the boolean is a preference, not a capability.
+   */
+  const appSettings = await getSettings();
+  const searchConfig = await loadSearchConfig(appSettings);
+  const requestedWebSearch =
+    body.webSearch === true ? true : body.webSearch === false ? false : null;
 
   /**
    * A model is required, on both paths, and there is no fallback. Checked
@@ -369,15 +393,33 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const threadId = typeof body.threadId === "string" ? body.threadId : null;
-  const thread = threadId
+  let thread = threadId
     ? await getAssistantThread(me.id, threadId)
-    : await createAssistantThread(me.id, message.slice(0, 60) || firstUploadTitle(uploads.files));
+    : await createAssistantThread(
+        me.id,
+        message.slice(0, 60) || firstUploadTitle(uploads.files),
+        // Only an explicit choice is stored; null keeps inheriting the user's
+        // default, so changing that default still affects untouched threads.
+        requestedWebSearch,
+      );
   if (!thread) {
     return Response.json(
       { ok: false, error: { code: "not_found", message: "对话不存在" } },
       { status: 404 },
     );
   }
+
+  // Keep the conversation's stored choice in step with what this turn used.
+  if (threadId && requestedWebSearch !== null && thread.webSearch !== requestedWebSearch) {
+    const updated = await setAssistantThreadWebSearch(me.id, thread.id, requestedWebSearch);
+    if (updated) thread = updated;
+  }
+
+  const webSearchChoice =
+    requestedWebSearch ?? thread.webSearch ?? stored?.webSearchDefault ?? true;
+  const webSearchEnabled =
+    webSearchChoice && searchConfig.enabled && searchConfig.backendConfigured;
+  const webSearchLimit = stored?.webSearchLimit ?? DEFAULT_WEB_SEARCH_LIMIT;
 
   /**
    * Resolved here, while the request context is still live. The tool loop runs
@@ -387,11 +429,13 @@ export async function POST(req: Request): Promise<Response> {
    * deployment that does not set RELAY_PUBLIC_URL. The documentation tool and
    * its language have to come from here for the same reason.
    */
-  const [gatewayBase, locale, docPages] = await Promise.all([
+  const [gatewayBase, locale] = await Promise.all([
     resolvePublicUrl(),
     getServerLocale(),
-    getSettings().then((s) => s.docPages ?? []),
   ]);
+  // Already loaded above for the search settings; a second read would be the
+  // same row twice in one request.
+  const docPages = appSettings.docPages ?? [];
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
@@ -473,6 +517,8 @@ export async function POST(req: Request): Promise<Response> {
           docPages,
           credential,
           gatewayBase,
+          webSearchEnabled,
+          webSearchLimit,
           signal: req.signal,
           emit: send,
         });

@@ -662,6 +662,11 @@ OpenAI 则**没有**任何列表接口，只能在 spec 里声明。同一 id �
 | `GET /api/admin/users/[id]/delete-form` | 删除用户前的确认表单 |
 | `GET /api/user/keys` · `GET/PATCH/DELETE /api/user/keys/[id]` | 用户自己的 Key 管理 |
 | `GET /api/user/profile` | 已登录用户的个人资料 |
+| `POST/GET /v1/search` | 计费网页搜索（Bearer `sk-relay-…`），按次固定扣费 |
+| `GET/PUT /api/admin/search` | 读取 / 保存网页搜索总开关与每次调用价格 |
+| `GET/POST /api/admin/search-providers` | 列出 / 新建搜索后端（SearXNG、Tavily、Brave） |
+| `GET/PATCH/DELETE /api/admin/search-providers/[id]` | 查看 / 修改 / 删除单个后端；`apiKey` 留空表示保留原密钥 |
+| `POST /api/admin/search-providers/[id]/test` | 用该后端跑一次查询；不计费，停用状态下也能测 |
 
 ---
 

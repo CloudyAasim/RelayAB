@@ -699,6 +699,11 @@ at its `/api/...` path.
 | `GET /api/admin/users/[id]/delete-form` | Confirmation form before deleting a user |
 | `GET /api/user/keys` · `GET/PATCH/DELETE /api/user/keys/[id]` | The user's own key management |
 | `GET /api/user/profile` | The signed-in user's own profile |
+| `POST/GET /v1/search` | Paid web search (Bearer `sk-relay-…`); billed at a fixed price per call |
+| `GET/PUT /api/admin/search` | Read / save the global search switch and per-call price |
+| `GET/POST /api/admin/search-providers` | List / create search backends (SearXNG, Tavily, Brave) |
+| `GET/PATCH/DELETE /api/admin/search-providers/[id]` | View / update / delete one backend; a blank `apiKey` keeps the stored key |
+| `POST /api/admin/search-providers/[id]/test` | Run one query through that backend; never billed, and works while it is disabled |
 
 ---
 

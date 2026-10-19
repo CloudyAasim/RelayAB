@@ -52,6 +52,8 @@ export async function GET(req: Request): Promise<Response> {
       byKey: report.byKey,
       byModel: report.byModel,
       byProvider: report.byProvider,
+      // A subset of the figures above, for the web-search card. Not additive.
+      webSearch: report.webSearch,
       truncatedKeys: report.truncatedKeys,
     },
   });

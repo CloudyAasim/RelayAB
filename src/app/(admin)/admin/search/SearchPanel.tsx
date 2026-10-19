@@ -7,7 +7,6 @@ import { useT } from "@/components/i18n/I18nProvider";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import type { SearchUsageRow, SearchUsageTotals } from "@/lib/db/usage";
 
 interface Props {
   enabled: boolean;
@@ -17,9 +16,8 @@ interface Props {
   backendConfigured: boolean;
   backendName: string | null;
   backendUrl: string | null;
-  maxResults: number;
-  stats: { last24h: SearchUsageTotals; last7d: SearchUsageTotals; total: SearchUsageTotals };
-  recent: SearchUsageRow[];
+  backendSource: "db" | "env" | null;
+  providerCount: number;
 }
 
 interface TestResult {
@@ -29,12 +27,15 @@ interface TestResult {
   latencyMs: number;
 }
 
-/** Storage units are 0.001 积分; the panel speaks whole credits. */
-function credits(units: number): string {
-  const value = units / 1000;
-  return Number.isInteger(value) ? String(value) : value.toFixed(3).replace(/0+$/, "");
-}
-
+/**
+ * The feature-wide switches: whether search is on, what a call costs, and a
+ * test against whichever backend is currently winning.
+ *
+ * The provider list itself lives above this card. Keeping the two apart is
+ * deliberate: providers are independent rows with their own save buttons, and
+ * a single "save" that rewrote all of them is exactly the failure the settings
+ * page already had to unwind once.
+ */
 export function SearchPanel(props: Props) {
   const t = useT();
   const router = useRouter();
@@ -50,7 +51,7 @@ export function SearchPanel(props: Props) {
   const [testError, setTestError] = useState<string | null>(null);
   const [test, setTest] = useState<TestResult | null>(null);
 
-  async function save(e: React.FormEvent) {
+  async function save(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     setSaving(true);
     setSaveError(null);
@@ -82,7 +83,7 @@ export function SearchPanel(props: Props) {
     }
   }
 
-  async function runTest(e: React.FormEvent) {
+  async function runTest(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     setTesting(true);
     setTestError(null);
@@ -108,6 +109,13 @@ export function SearchPanel(props: Props) {
     }
   }
 
+  const sourceLabel =
+    props.backendSource === "db"
+      ? t("admin.search.status.sourceDb", { count: props.providerCount })
+      : props.backendSource === "env"
+        ? t("admin.search.status.sourceEnv")
+        : null;
+
   return (
     <div className="space-y-6">
       <Card className="max-w-3xl">
@@ -128,6 +136,7 @@ export function SearchPanel(props: Props) {
                 <span className="text-destructive">{t("admin.search.status.backendMissing")}</span>
               )}
             </div>
+            {sourceLabel && <div className="mt-1 text-muted-foreground">{sourceLabel}</div>}
             {props.backendUrl && (
               <div className="mt-1 break-all text-muted-foreground">
                 {t("admin.search.status.url")}: <code className="rounded bg-muted px-1">{props.backendUrl}</code>
@@ -171,10 +180,7 @@ export function SearchPanel(props: Props) {
       </Card>
 
       <Card className="max-w-3xl">
-        <CardHeader
-          title={t("admin.search.test.title")}
-          description={t("admin.search.test.desc")}
-        />
+        <CardHeader title={t("admin.search.test.title")} description={t("admin.search.test.desc")} />
         <form onSubmit={runTest} className="flex flex-wrap items-end gap-2">
           <div className="min-w-[240px] flex-1">
             <Input
@@ -216,61 +222,6 @@ export function SearchPanel(props: Props) {
                 ))}
               </ol>
             )}
-          </div>
-        )}
-      </Card>
-
-      <Card className="max-w-3xl">
-        <CardHeader title={t("admin.search.stats.title")} description={t("admin.search.stats.desc")} />
-        <div className="grid gap-3 sm:grid-cols-3">
-          {(["last24h", "last7d", "total"] as const).map((key) => (
-            <div key={key} className="rounded-md border border-border p-3">
-              <p className="text-xs text-muted-foreground">{t(`admin.search.stats.${key}`)}</p>
-              <p className="mt-1 text-lg font-medium">
-                {t("admin.search.stats.calls", { n: props.stats[key].calls })}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {t("admin.search.stats.credits", { n: credits(props.stats[key].creditsUsed) })}
-              </p>
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      <Card className="max-w-3xl">
-        <CardHeader title={t("admin.search.recent.title")} />
-        {props.recent.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t("admin.search.recent.empty")}</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-muted-foreground">
-                  <th className="py-2 pr-3 font-medium">{t("admin.search.recent.time")}</th>
-                  <th className="py-2 pr-3 font-medium">{t("admin.search.recent.user")}</th>
-                  <th className="py-2 pr-3 font-medium">{t("admin.search.recent.key")}</th>
-                  <th className="py-2 pr-3 font-medium">{t("admin.search.recent.status")}</th>
-                  <th className="py-2 font-medium">{t("admin.search.recent.credits")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {props.recent.map((row) => (
-                  <tr key={row.id} className="border-b border-border/50 last:border-0">
-                    <td className="py-2 pr-3 text-muted-foreground">
-                      {new Date(row.createdAt).toLocaleString()}
-                    </td>
-                    <td className="py-2 pr-3">{row.username || "—"}</td>
-                    <td className="py-2 pr-3 text-muted-foreground">{row.keyLabel || "—"}</td>
-                    <td className="py-2 pr-3">
-                      {row.status === "success"
-                        ? t("admin.search.recent.success")
-                        : t("admin.search.recent.error")}
-                    </td>
-                    <td className="py-2">{credits(row.creditsUsed)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
         )}
       </Card>

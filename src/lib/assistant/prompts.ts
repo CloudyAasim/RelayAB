@@ -463,6 +463,22 @@ drift 只说明两边不一样，不说明哪边对：取回模板，对照 path
 
 一次改太多东西是最容易把线上打挂的做法。一次只动一处，改完让用户先测。`;
 
-export function systemPrompt(isAdmin: boolean): string {
-  return isAdmin ? ADMIN_SYSTEM_PROMPT : USER_SYSTEM_PROMPT;
+/**
+ * Added when the conversation's search switch is off.
+ *
+ * The tool is also hidden from the definitions and refused by `executeTool`;
+ * this sentence exists so the model does not spend a turn trying to call
+ * something it has been told about elsewhere in the prompt, and so it tells
+ * the reader how to turn it back on instead of claiming it searched.
+ */
+const WEB_SEARCH_OFF_NOTE = `
+
+## 本轮关闭了网页搜索
+
+用户在输入框旁边关闭了联网搜索。**本轮不要调用 web_search**，也不要声称自己搜索过。
+需要实时信息或厂商文档时，告诉用户打开那个开关后再问；不要凭记忆补一个网址或字段。`;
+
+export function systemPrompt(isAdmin: boolean, opts: { webSearch?: boolean } = {}): string {
+  const base = isAdmin ? ADMIN_SYSTEM_PROMPT : USER_SYSTEM_PROMPT;
+  return opts.webSearch === false ? `${base}${WEB_SEARCH_OFF_NOTE}` : base;
 }

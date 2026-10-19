@@ -9,5 +9,6 @@ export * from "./users";
 export * from "./keys";
 export * from "./providers";
 export * from "./media-providers";
+export * from "./search-providers";
 export * from "./usage";
 export * from "./bootstrap";

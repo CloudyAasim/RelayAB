@@ -127,6 +127,7 @@ export function DocsContent({
           <li>{t("docs.search.billing")}</li>
           <li>{t("docs.search.errors")}</li>
           <li>{t("docs.search.note")}</li>
+          <li>{t("docs.search.assistant")}</li>
         </ul>
       </Card>
     );

@@ -21,6 +21,7 @@
  * their vendor's documentation.
  */
 import { useEffect, useId, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -107,6 +108,20 @@ export interface AssistantSettingsView {
    * "do not think" at all.
    */
   thinkingType?: AssistantThinkingType | null;
+  /** New conversations start with search on/off. Null means the default. */
+  webSearchDefault?: boolean | null;
+  /** Results per search; null means six. */
+  webSearchLimit?: number | null;
+}
+
+export interface WebSearchSettings {
+  /** The deployment can search: the feature is on and a backend exists. */
+  available: boolean;
+  defaultOn: boolean;
+  limit: number;
+  maxResults: number;
+  backendName: string | null;
+  backendSource: "db" | "env" | null;
 }
 
 export function AssistantSettingsPanel({
@@ -114,8 +129,20 @@ export function AssistantSettingsPanel({
   suggestedModels = [],
   accountModels = [],
   accountFacts = {},
+  isAdmin = false,
+  webSearch = {
+    available: false,
+    defaultOn: true,
+    limit: 6,
+    maxResults: 8,
+    backendName: null,
+    backendSource: null,
+  },
 }: {
   initial: AssistantSettingsView | null;
+  /** Admins additionally see where the backend comes from and how to manage it. */
+  isAdmin?: boolean;
+  webSearch?: WebSearchSettings;
   /**
    * Models to offer on the key path before anything is probed.
    *
@@ -174,6 +201,12 @@ export function AssistantSettingsPanel({
   const [thinkingType, setThinkingType] = useState<AssistantThinkingType | null>(
     initial?.thinkingType ?? null,
   );
+  const [webSearchDefault, setWebSearchDefault] = useState<boolean>(
+    initial?.webSearchDefault ?? webSearch.defaultOn,
+  );
+  const [webSearchLimit, setWebSearchLimit] = useState<number>(
+    initial?.webSearchLimit ?? webSearch.limit,
+  );
   const [busy, setBusy] = useState<"probe" | "save" | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshNote, setRefreshNote] = useState<string | null>(null);
@@ -210,6 +243,11 @@ export function AssistantSettingsPanel({
     setMaxOutputTokens(initial.maxOutputTokens ?? null);
     setTemperature(initial.temperature ?? null);
     setTopP(initial.topP ?? null);
+    setWebSearchDefault(initial.webSearchDefault ?? webSearch.defaultOn);
+    setWebSearchLimit(initial.webSearchLimit ?? webSearch.limit);
+    // `webSearch` is intentionally not a dependency: it is a server-rendered
+    // fact, and re-seeding on every object identity would fight the form.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial, seed]);
 
   /** Everything the form knows, in the shape the route takes. */
@@ -230,6 +268,11 @@ export function AssistantSettingsPanel({
       topP,
       reasoningEffort,
       thinkingType,
+      // Sent explicitly rather than omitted when unchanged: the form is the
+      // place the choice is made, and an omitted field means "leave the stored
+      // value", which would make unchecking the box a no-op.
+      webSearchDefault,
+      webSearchLimit,
     };
   }
 
@@ -728,6 +771,71 @@ export function AssistantSettingsPanel({
           <p className="mt-1.5 text-xs text-muted-foreground">
             {t("assistant.settings.filledFromDeployment")}
           </p>
+        )}
+      </fieldset>
+
+      <fieldset className="space-y-2.5 border-t border-border pt-3">
+        <legend className="text-sm font-medium">{t("assistant.settings.webSearch.title")}</legend>
+        <p className="text-xs text-muted-foreground">
+          {webSearch.available
+            ? t("assistant.settings.webSearch.available")
+            : t("assistant.settings.webSearch.unavailable")}
+        </p>
+
+        <label className="flex items-start gap-2 text-sm text-foreground">
+          <input
+            type="checkbox"
+            checked={webSearchDefault}
+            onChange={(e) => setWebSearchDefault(e.target.checked)}
+            disabled={!webSearch.available}
+            className="mt-0.5 h-4 w-4 rounded border-input text-primary focus:ring-ring disabled:opacity-50"
+          />
+          <span>
+            {t("assistant.settings.webSearch.defaultOn")}
+            <span className="mt-0.5 block text-xs text-muted-foreground">
+              {t("assistant.settings.webSearch.defaultHint")}
+            </span>
+          </span>
+        </label>
+
+        <div className="max-w-[10rem]">
+          <Input
+            label={t("assistant.settings.webSearch.limit")}
+            type="number"
+            min={1}
+            max={webSearch.maxResults}
+            value={webSearchLimit}
+            disabled={!webSearch.available}
+            onChange={(e) => {
+              const next = Number(e.target.value);
+              setWebSearchLimit(
+                Number.isFinite(next)
+                  ? Math.min(Math.max(Math.trunc(next), 1), webSearch.maxResults)
+                  : 1,
+              );
+            }}
+            hint={t("assistant.settings.webSearch.limitHint", { max: webSearch.maxResults })}
+          />
+        </div>
+
+        {isAdmin && (
+          <div className="space-y-1 rounded-md bg-muted/50 p-2 text-xs text-muted-foreground">
+            <p>
+              {webSearch.backendName
+                ? t("assistant.settings.webSearch.backend", { name: webSearch.backendName })
+                : t("assistant.settings.webSearch.noBackend")}
+            </p>
+            <p>
+              {webSearch.backendSource === "db"
+                ? t("assistant.settings.webSearch.sourceDb")
+                : webSearch.backendSource === "env"
+                  ? t("assistant.settings.webSearch.sourceEnv")
+                  : t("assistant.settings.webSearch.sourceNone")}
+            </p>
+            <Link href="/admin/search" className="inline-block text-primary hover:underline">
+              {t("assistant.settings.webSearch.manage")}
+            </Link>
+          </div>
         )}
       </fieldset>
 

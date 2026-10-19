@@ -36,9 +36,33 @@ export type SearchProvider = "tavily" | "brave" | "searxng";
 
 export interface SearchBackend {
   provider: SearchProvider;
+  /**
+   * What to write into `usage_logs.provider_id`.
+   *
+   * A database row uses its own id, so a usage row points at the exact provider
+   * that served the call. An environment backend uses its kind, which is also
+   * what rows written before providers existed contain.
+   */
+  usageProviderId: string;
+  /** Whether this came from the provider table or the environment fallback. */
+  source: "db" | "env";
+  /** The internal address, when the kind has one worth showing (SearXNG). */
+  baseUrl?: string;
   /** Host shown back to the model, never the key. */
   describe: string;
   search(query: string, limit: number, fetchImpl: typeof fetch): Promise<WebSearchResult[]>;
+}
+
+export interface CreateSearchBackendInput {
+  kind: SearchProvider;
+  /** SearXNG's base address; for Tavily/Brave an optional full endpoint. */
+  baseUrl?: string;
+  apiKey?: string;
+  /** Defaults to `kind`, which is what the environment path wants. */
+  usageProviderId?: string;
+  source?: "db" | "env";
+  /** Operator-visible name; falls back to the vendor's own. */
+  describe?: string;
 }
 
 export class WebSearchError extends Error {
@@ -176,72 +200,121 @@ function normalize(
 // Providers
 // ---------------------------------------------------------------------------
 
-function tavily(key: string): SearchBackend {
-  return {
-    provider: "tavily",
-    describe: "Tavily",
-    async search(query, limit, fetchImpl) {
-      const res = await fetchImpl("https://api.tavily.com/search", {
-        method: "POST",
-        signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${key}`,
-        },
-        body: JSON.stringify({
-          query,
-          search_depth: "basic",
-          max_results: limit,
-          include_answer: false,
-          include_raw_content: false,
-        }),
-      });
-      const body = await checkedBody(res, "Tavily", "TAVILY_API_KEY");
-      const data = JSON.parse(body) as { results?: unknown };
-      return normalize(data.results, (entry) => ({
-        title: String(entry.title ?? ""),
-        url: String(entry.url ?? ""),
-        snippet: String(entry.content ?? entry.snippet ?? ""),
-      })).slice(0, limit);
-    },
-  };
-}
+/**
+ * Build a backend from a provider row or from the environment.
+ *
+ * One factory for both sources, so the wire behavior of a SearXNG instance
+ * cannot depend on whether an operator typed it into the panel or set
+ * `SEARXNG_URL`. Returns null when the configuration cannot possibly work — a
+ * missing key, a missing address, a non-http address — which the resolver uses
+ * to skip an unusable row rather than fail a search with a vague error.
+ */
+export function createSearchBackend(input: CreateSearchBackendInput): SearchBackend | null {
+  const source = input.source ?? "env";
+  const usageProviderId = input.usageProviderId ?? input.kind;
+  const describe = input.describe?.trim() || null;
 
-function brave(key: string): SearchBackend {
-  return {
-    provider: "brave",
-    describe: "Brave Search",
-    async search(query, limit, fetchImpl) {
-      const url = new URL("https://api.search.brave.com/res/v1/web/search");
-      url.searchParams.set("q", query);
-      url.searchParams.set("count", String(limit));
-      // The docs answer in Chinese; asking for Chinese results first is what
-      // puts docs.bigmodel.cn at the top instead of an English mirror.
-      url.searchParams.set("search_lang", "zh-hans");
-      const res = await fetchImpl(url.toString(), {
-        signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
-        headers: {
-          accept: "application/json",
-          "x-subscription-token": key,
-        },
-      });
-      const body = await checkedBody(res, "Brave", "BRAVE_SEARCH_API_KEY");
-      const data = JSON.parse(body) as { web?: { results?: unknown } };
-      return normalize(data.web?.results, (entry) => ({
-        title: String(entry.title ?? ""),
-        url: String(entry.url ?? ""),
-        snippet: String(entry.description ?? ""),
-      })).slice(0, limit);
-    },
+  const base = {
+    usageProviderId,
+    source,
+    ...(input.baseUrl?.trim() ? { baseUrl: input.baseUrl.trim() } : {}),
   };
-}
 
-function searxng(baseUrl: string, apiKey?: string): SearchBackend {
+  if (input.kind === "tavily") {
+    const key = input.apiKey?.trim();
+    if (!key) return null;
+    const name = describe ?? "Tavily";
+    const endpoint = input.baseUrl?.trim() || "https://api.tavily.com/search";
+    return {
+      ...base,
+      provider: "tavily",
+      describe: name,
+      async search(query, limit, fetchImpl) {
+        const res = await fetchImpl(endpoint, {
+          method: "POST",
+          signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${key}`,
+          },
+          body: JSON.stringify({
+            query,
+            search_depth: "basic",
+            max_results: limit,
+            include_answer: false,
+            include_raw_content: false,
+          }),
+        });
+        const body = await checkedBody(
+          res,
+          name,
+          source === "env" ? "TAVILY_API_KEY" : "该提供商的 API 密钥",
+        );
+        const data = JSON.parse(body) as { results?: unknown };
+        return normalize(data.results, (entry) => ({
+          title: String(entry.title ?? ""),
+          url: String(entry.url ?? ""),
+          snippet: String(entry.content ?? entry.snippet ?? ""),
+        })).slice(0, limit);
+      },
+    };
+  }
+
+  if (input.kind === "brave") {
+    const key = input.apiKey?.trim();
+    if (!key) return null;
+    const name = describe ?? "Brave Search";
+    const endpoint = input.baseUrl?.trim() || "https://api.search.brave.com/res/v1/web/search";
+    return {
+      ...base,
+      provider: "brave",
+      describe: name,
+      async search(query, limit, fetchImpl) {
+        const url = new URL(endpoint);
+        url.searchParams.set("q", query);
+        url.searchParams.set("count", String(limit));
+        // The docs answer in Chinese; asking for Chinese results first is what
+        // puts docs.bigmodel.cn at the top instead of an English mirror.
+        url.searchParams.set("search_lang", "zh-hans");
+        const res = await fetchImpl(url.toString(), {
+          signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
+          headers: {
+            accept: "application/json",
+            "x-subscription-token": key,
+          },
+        });
+        const body = await checkedBody(
+          res,
+          name,
+          source === "env" ? "BRAVE_SEARCH_API_KEY" : "该提供商的 API 密钥",
+        );
+        const data = JSON.parse(body) as { web?: { results?: unknown } };
+        return normalize(data.web?.results, (entry) => ({
+          title: String(entry.title ?? ""),
+          url: String(entry.url ?? ""),
+          snippet: String(entry.description ?? ""),
+        })).slice(0, limit);
+      },
+    };
+  }
+
+  const searxBase = input.baseUrl?.trim();
+  if (!searxBase) return null;
+  try {
+    const parsed = new URL(searxBase);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+  } catch {
+    return null;
+  }
+  const name = describe ?? "SearXNG";
+  const apiKey = input.apiKey?.trim();
   return {
+    ...base,
+    baseUrl: searxBase,
     provider: "searxng",
-    describe: "SearXNG",
+    describe: name,
     async search(query, limit, fetchImpl) {
-      const url = new URL("search", baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`);
+      const url = new URL("search", searxBase.endsWith("/") ? searxBase : `${searxBase}/`);
       url.searchParams.set("q", query);
       url.searchParams.set("format", "json");
       url.searchParams.set("language", "zh-CN");
@@ -253,7 +326,11 @@ function searxng(baseUrl: string, apiKey?: string): SearchBackend {
           ...(apiKey ? { "x-api-key": apiKey } : {}),
         },
       });
-      const body = await checkedBody(res, "SearXNG", "SEARXNG_URL");
+      const body = await checkedBody(
+        res,
+        name,
+        source === "env" ? "SEARXNG_URL / SEARXNG_API_KEY" : "该提供商的配置",
+      );
       const data = JSON.parse(body) as { results?: unknown };
       return normalize(data.results, (entry) => ({
         title: String(entry.title ?? ""),
@@ -268,13 +345,13 @@ function searxng(baseUrl: string, apiKey?: string): SearchBackend {
  * Turn a provider's HTTP answer into a sentence the operator can act on.
  *
  * The generic "upstream returned HTTP 401" is the least useful thing to say to
- * someone who only needs to know which variable is wrong.
+ * someone who only needs to know which variable or provider record is wrong.
  */
-async function checkedBody(res: Response, name: string, envVar: string): Promise<string> {
+async function checkedBody(res: Response, name: string, hint: string): Promise<string> {
   const signal = AbortSignal.timeout(SEARCH_TIMEOUT_MS);
   if (res.status === 401 || res.status === 403) {
     throw new WebSearchError(
-      `${name} 拒绝了密钥（HTTP ${res.status}）。请检查 ${envVar} 是否正确、是否已启用。`,
+      `${name} 拒绝了访问（HTTP ${res.status}）。请检查 ${hint} 是否正确、是否已启用。`,
       "bad_key",
     );
   }
@@ -301,26 +378,26 @@ async function checkedBody(res: Response, name: string, envVar: string): Promise
  */
 export function resolveSearchBackend(env: NodeJS.ProcessEnv = process.env): SearchBackend | null {
   const tavilyKey = env.TAVILY_API_KEY?.trim();
-  if (tavilyKey) return tavily(tavilyKey);
+  if (tavilyKey) return createSearchBackend({ kind: "tavily", apiKey: tavilyKey });
 
   const braveKey = env.BRAVE_SEARCH_API_KEY?.trim();
-  if (braveKey) return brave(braveKey);
+  if (braveKey) return createSearchBackend({ kind: "brave", apiKey: braveKey });
 
   const searxBase = env.SEARXNG_URL?.trim();
   if (searxBase) {
-    try {
-      const url = new URL(searxBase);
-      if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-    } catch {
-      return null;
-    }
-    return searxng(searxBase, env.SEARXNG_API_KEY?.trim() || undefined);
+    return createSearchBackend({
+      kind: "searxng",
+      baseUrl: searxBase,
+      apiKey: env.SEARXNG_API_KEY?.trim() || undefined,
+    });
   }
   return null;
 }
 
 export interface SearchOutcome {
   provider: SearchProvider;
+  /** What the usage row should attribute this call to. */
+  providerId: string;
   /** Human-readable backend name, safe to show. */
   backend: string;
   query: string;
@@ -335,7 +412,18 @@ export interface SearchOutcome {
  */
 export async function searchWeb(
   rawQuery: string,
-  opts: { limit?: number; fetchImpl?: typeof fetch; env?: NodeJS.ProcessEnv } = {},
+  opts: {
+    limit?: number;
+    fetchImpl?: typeof fetch;
+    env?: NodeJS.ProcessEnv;
+    /**
+     * A backend already chosen by the resolver (database providers first).
+     *
+     * When present it wins; when absent the environment path is used, which is
+     * what keeps existing deployments and the unit tests working unchanged.
+     */
+    backend?: SearchBackend;
+  } = {},
 ): Promise<SearchOutcome> {
   const query = rawQuery.trim();
   if (!query) throw new WebSearchError("搜索词是空的。", "upstream_error");
@@ -343,10 +431,11 @@ export async function searchWeb(
     throw new WebSearchError(`搜索词太长（${query.length} 字符），请控制在 ${MAX_QUERY_CHARS} 以内。`, "upstream_error");
   }
 
-  const backend = resolveSearchBackend(opts.env);
+  const backend = opts.backend ?? resolveSearchBackend(opts.env);
   if (!backend) {
     throw new WebSearchError(
-      "没有配置搜索后端。请设置 TAVILY_API_KEY、BRAVE_SEARCH_API_KEY 或 SEARXNG_URL 之一" +
+      "没有可用的搜索后端。请到「管理 → 网页搜索」添加一个提供商，" +
+        "或在环境变量里设置 TAVILY_API_KEY / BRAVE_SEARCH_API_KEY / SEARXNG_URL" +
         "（SearXNG 需要开启 JSON 输出）。没配置之前不要声称自己「搜索过」。",
       "not_configured",
     );
@@ -372,5 +461,11 @@ export async function searchWeb(
     );
   }
 
-  return { provider: backend.provider, backend: backend.describe, query, results };
+  return {
+    provider: backend.provider,
+    providerId: backend.usageProviderId,
+    backend: backend.describe,
+    query,
+    results,
+  };
 }

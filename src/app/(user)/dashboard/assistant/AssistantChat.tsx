@@ -37,7 +37,7 @@ import { announcePendingChanged, onPendingChanged } from "@/lib/assistant/pendin
 import { MediaArtifacts, ToolResultCard, AssistantBody, QuestionCard } from "./MediaArtifacts";
 import type { ArtifactRef } from "@/lib/db/assistant-artifacts";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";
-import { Pencil, Trash2, Paperclip, X } from "lucide-react";
+import { Globe, Pencil, Trash2, Paperclip, X } from "lucide-react";
 import { useId } from "react";
 
 /**
@@ -83,6 +83,8 @@ interface Thread {
   id: string;
   title: string;
   updatedAt: string;
+  /** This conversation's search choice; null inherits the user's default. */
+  webSearch: boolean | null;
 }
 
 /**
@@ -276,12 +278,18 @@ interface Props {
    * lost on refresh, and the answer depended on whichever copy the request read.
    */
   config: AssistantConfig;
+  /** Whether the deployment can search at all (feature on + a backend). */
+  webSearchAvailable: boolean;
+  /** What the user chose for new conversations. */
+  webSearchDefault: boolean;
   settingsPanel: React.ReactNode;
   pendingPanel: React.ReactNode | null;
 }
 
 export function AssistantChat({
   config,
+  webSearchAvailable,
+  webSearchDefault,
   settingsPanel,
   pendingPanel,
 }: Props) {
@@ -297,6 +305,14 @@ export function AssistantChat({
   const [threads, setThreads] = useState<Thread[]>([]);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  /**
+   * This conversation's web-search switch.
+   *
+   * The server is the authority: the boolean travels with every message and
+   * the chat route refuses the tool when it is false. This state is what the
+   * composer renders, and it is restored from the thread when one is opened.
+   */
+  const [webSearch, setWebSearch] = useState(webSearchDefault);
   const [input, setInput] = useState("");
   /** Files picked but not yet sent. The preview chips render from here. */
   const [uploads, setUploads] = useState<PendingUpload[]>([]);
@@ -462,7 +478,7 @@ export function AssistantChat({
     const token = transcriptReadRef.current.begin();
     const res = await fetch(`/api/assistant/threads/${id}`, { cache: "no-store" });
     const json = (await res.json().catch(() => null)) as
-      | { data?: { messages?: ChatMessage[] } }
+      | { data?: { messages?: ChatMessage[]; thread?: { webSearch?: boolean | null } } }
       | null;
     // A read that has been overtaken is not an error, it is just obsolete.
     if (!transcriptReadRef.current.accept(token)) return;
@@ -479,7 +495,10 @@ export function AssistantChat({
     const restored = restoreQuestions(json.data.messages ?? []);
     setAnsweredQuestionIds(restored.answered);
     setMessages(restored.messages);
-  }, []);
+    // A thread with no explicit choice (null) follows the user's default, which
+    // is also what the server will do on the next turn.
+    setWebSearch(json.data.thread?.webSearch ?? webSearchDefault);
+  }, [webSearchDefault]);
 
   /**
    * Coming back from a locked screen.
@@ -651,6 +670,30 @@ export function AssistantChat({
     setMessages([]);
     setError(null);
     setHistoryOpen(false);
+    // A new conversation inherits the user's default rather than carrying the
+    // previous conversation's choice forward as a hidden setting.
+    setWebSearch(webSearchDefault);
+  }
+
+  /**
+   * Flip this conversation's search switch.
+   *
+   * The value also travels with the next message, so a failed PATCH here costs
+   * a persisted preference, not the toggle: the turn that follows still uses
+   * the state the reader just chose.
+   */
+  function toggleWebSearch(): void {
+    if (!webSearchAvailable || busy) return;
+    const next = !webSearch;
+    setWebSearch(next);
+    if (!threadId) return; // The first turn stores it when it creates the thread.
+    void fetch(`/api/assistant/threads/${threadId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ webSearch: next }),
+    }).catch(() => {
+      // Nothing to repair here: the next turn carries the same boolean.
+    });
   }
 
   function startRename(target: Thread) {
@@ -914,6 +957,10 @@ export function AssistantChat({
           // chosen for one turn and be gone on the next.
           ...(config.mode === "key" && relayKey.trim() ? { relayKey: relayKey.trim() } : {}),
           ...(attachments.length ? { attachments } : {}),
+          // Sent on every turn, not only when it changes: the route stores it
+          // on the thread and uses it for this turn, so a reload cannot make
+          // the conversation's state and the turn's behavior disagree.
+          webSearch,
         }),
         signal: controller.signal,
       });
@@ -1372,6 +1419,33 @@ export function AssistantChat({
                 }}
               />
             </label>
+            {/*
+              Web search, next to the paperclip, where every chat client puts
+              it. A button with `aria-pressed` rather than a checkbox because
+              the state is "this conversation searches" — a switch, not a
+              setting buried in a panel.
+            */}
+            <button
+              type="button"
+              onClick={toggleWebSearch}
+              aria-pressed={webSearch}
+              aria-label={webSearch ? t("assistant.webSearch.on") : t("assistant.webSearch.off")}
+              title={
+                !webSearchAvailable
+                  ? t("assistant.webSearch.unavailable")
+                  : webSearch
+                    ? t("assistant.webSearch.onHint")
+                    : t("assistant.webSearch.offHint")
+              }
+              disabled={!webSearchAvailable || busy}
+              className={`mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors ${
+                webSearch && webSearchAvailable
+                  ? "bg-primary/10 text-primary hover:bg-primary/15"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              } disabled:cursor-not-allowed disabled:opacity-40`}
+            >
+              <Globe className="h-4 w-4" aria-hidden />
+            </button>
             <textarea
               id="assistant-input"
               ref={inputRef}
@@ -1495,6 +1569,9 @@ export function AssistantChat({
                         setHistoryOpen(false);
                         // The clear `newThread` and `removeThread` both do.
                         setError(null);
+                        // Show the conversation's own choice immediately; the
+                        // transcript read that follows confirms it.
+                        setWebSearch(th.webSearch ?? webSearchDefault);
                       }}
                       title={th.title}
                       className="min-w-0 flex-1 truncate rounded-md px-2 py-2 text-left text-sm leading-snug"

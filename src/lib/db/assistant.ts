@@ -93,6 +93,10 @@ export interface SaveAssistantSettingsInput {
    * way to turn it off and no way to say so.
    */
   thinkingType?: string | null;
+  /** New conversations start with search on/off. `null` means "the default". */
+  webSearchDefault?: boolean | null;
+  /** Results per search. `null` means six. */
+  webSearchLimit?: number | null;
 }
 
 /**
@@ -156,6 +160,8 @@ export async function saveAssistantSettings(
     topP: pick(input.topP, existing?.topP),
     reasoningEffort: pick(input.reasoningEffort, existing?.reasoningEffort),
     thinkingType: pick(input.thinkingType, existing?.thinkingType),
+    webSearchDefault: pick(input.webSearchDefault, existing?.webSearchDefault ?? null),
+    webSearchLimit: pick(input.webSearchLimit, existing?.webSearchLimit ?? null),
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
@@ -164,8 +170,9 @@ export async function saveAssistantSettings(
     `INSERT INTO assistant_settings
        (user_id, base_url, encrypted_api_key, model, credential_mode, account_model,
         protocol, extra_headers, context_length, max_output_tokens, temperature, top_p,
-        reasoning_effort, thinking_type, created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        reasoning_effort, thinking_type, web_search_default, web_search_limit,
+        created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
      ON CONFLICT(user_id) DO UPDATE SET
        base_url = excluded.base_url,
        encrypted_api_key = excluded.encrypted_api_key,
@@ -180,6 +187,8 @@ export async function saveAssistantSettings(
        top_p = excluded.top_p,
        reasoning_effort = excluded.reasoning_effort,
        thinking_type = excluded.thinking_type,
+       web_search_default = excluded.web_search_default,
+       web_search_limit = excluded.web_search_limit,
        updated_at = excluded.updated_at`,
     [
       row.userId,
@@ -196,6 +205,14 @@ export async function saveAssistantSettings(
       row.topP ?? null,
       row.reasoningEffort ?? null,
       row.thinkingType ?? null,
+      // Boolean columns are INTEGER in SQLite; `pick` keeps null meaning "use
+      // the default", so it must not be coerced to false here.
+      row.webSearchDefault === null || row.webSearchDefault === undefined
+        ? null
+        : row.webSearchDefault
+          ? 1
+          : 0,
+      row.webSearchLimit ?? null,
       row.createdAt,
       row.updatedAt,
     ],
@@ -244,20 +261,43 @@ export async function getAssistantThread(
 export async function createAssistantThread(
   userId: string,
   title = "新对话",
+  webSearch: boolean | null = null,
 ): Promise<AssistantThread> {
   const now = new Date().toISOString();
   const thread: AssistantThread = {
     id: generateId(),
     userId,
     title: title.trim().slice(0, 120) || "新对话",
+    webSearch,
     createdAt: now,
     updatedAt: now,
   };
   run(
-    "INSERT INTO assistant_threads (id, user_id, title, created_at, updated_at) VALUES (?,?,?,?,?)",
-    [thread.id, thread.userId, thread.title, thread.createdAt, thread.updatedAt],
+    `INSERT INTO assistant_threads (id, user_id, title, web_search, created_at, updated_at)
+     VALUES (?,?,?,?,?,?)`,
+    [
+      thread.id,
+      thread.userId,
+      thread.title,
+      webSearch === null ? null : webSearch ? 1 : 0,
+      thread.createdAt,
+      thread.updatedAt,
+    ],
   );
   return thread;
+}
+
+/** Remember this conversation's web-search choice. */
+export async function setAssistantThreadWebSearch(
+  userId: string,
+  threadId: string,
+  webSearch: boolean,
+): Promise<AssistantThread | null> {
+  const changed = run(
+    "UPDATE assistant_threads SET web_search = ?, updated_at = ? WHERE id = ? AND user_id = ?",
+    [webSearch ? 1 : 0, new Date().toISOString(), threadId, userId],
+  );
+  return changed > 0 ? getAssistantThread(userId, threadId) : null;
 }
 
 export async function renameAssistantThread(

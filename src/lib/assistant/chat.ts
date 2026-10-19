@@ -476,6 +476,14 @@ export interface RunChatOptions {
   locale?: Locale;
   /** The operator's own documentation pages, resolved by the route. */
   docPages?: DocPage[];
+  /**
+   * Whether this turn may search. Resolved by the route from the composer's
+   * per-conversation choice, the user's default, and the deployment's switch.
+   * Defaults to on so a caller that says nothing keeps the old behavior.
+   */
+  webSearchEnabled?: boolean;
+  /** The user's preferred result count, clamped by the tool. */
+  webSearchLimit?: number;
   signal?: AbortSignal;
   emit: (event: ChatEvent) => void;
 }
@@ -575,7 +583,10 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
           }
         : { model: "" };
   const isAdmin = user.role === "admin";
-  const tools = toolDefinitions(isAdmin);
+  // `undefined` means on: callers that predate the toggle keep the old
+  // behavior, and only an explicit false removes the tool.
+  const webSearch = opts.webSearchEnabled !== false;
+  const tools = toolDefinitions(isAdmin, { webSearch });
   const ctx: ToolContext = {
     user,
     ...(credential.kind === "key" ? { relayKey: credential.relayKey } : {}),
@@ -586,6 +597,8 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
     ...(opts.attachments?.length ? { attachments: opts.attachments } : {}),
     ...(opts.locale ? { locale: opts.locale } : {}),
     ...(opts.docPages ? { docPages: opts.docPages } : {}),
+    webSearchEnabled: webSearch,
+    ...(opts.webSearchLimit !== undefined ? { webSearchLimit: opts.webSearchLimit } : {}),
   };
 
   // The user's turn goes in first so it is persisted even if the upstream is
@@ -630,7 +643,7 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
       : null;
 
   const messages: ChatMessage[] = [
-    { role: "system", content: systemPrompt(isAdmin) },
+    { role: "system", content: systemPrompt(isAdmin, { webSearch }) },
     ...(summary ? [{ role: "system" as const, content: SUMMARY_HEADER + summary }] : []),
     ...(await toWireMessages(kept, user.id)),
   ];

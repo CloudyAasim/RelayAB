@@ -13,6 +13,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { __resetDbForTest } from "@/lib/db/sqlite";
 import { getSettings, updateSettings } from "@/lib/db/settings";
 import { loadSearchConfig, envSearchCredits, DEFAULT_SEARCH_CREDITS } from "@/lib/search/config";
+import { createSearchProvider, updateSearchProvider } from "@/lib/db/search-providers";
 
 const saved = {
   searxng: process.env.SEARXNG_URL,
@@ -96,6 +97,43 @@ describe("the effective configuration", () => {
     expect(config.backendConfigured).toBe(true);
     expect(config.backendName).toBe("SearXNG");
     expect(config.backendUrl).toBe("http://relay-search.web:8080");
+  });
+
+  it("prefers a stored provider over the environment and says where it came from", async () => {
+    process.env.SEARXNG_URL = "https://env.example";
+    const row = await createSearchProvider({
+      name: "Local SearXNG",
+      kind: "searxng",
+      baseUrl: "https://db.example",
+      priority: 1,
+    });
+
+    const config = await loadSearchConfig();
+    expect(config.backendConfigured).toBe(true);
+    expect(config.backendName).toBe("Local SearXNG");
+    expect(config.backendUrl).toBe("https://db.example");
+    expect(config.backendSource).toBe("db");
+    expect(config.backendKind).toBe("searxng");
+    expect(config.backendProviderId).toBe(row.id);
+  });
+
+  it("reports the environment as the source only while no row exists", async () => {
+    process.env.SEARXNG_URL = "https://env.example";
+    const config = await loadSearchConfig();
+    expect(config.backendSource).toBe("env");
+    expect(config.backendProviderId).toBe("searxng");
+  });
+
+  it("is unconfigured when every provider is disabled, even with the environment set", async () => {
+    process.env.SEARXNG_URL = "https://env.example";
+    const row = await createSearchProvider({ name: "Only", kind: "searxng", baseUrl: "https://db.example" });
+    await updateSearchProvider(row.id, { enabled: false });
+
+    const config = await loadSearchConfig();
+    // Falling back here would make the disable button a decoration.
+    expect(config.backendConfigured).toBe(false);
+    expect(config.backendSource).toBeNull();
+    expect(config.backendProviderId).toBeNull();
   });
 
   it("does not expose a backend URL for a keyed provider", async () => {

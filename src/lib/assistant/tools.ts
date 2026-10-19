@@ -64,7 +64,9 @@ import {
   CONFIGURABLE_PROTOCOLS,
 } from "../protocol/text-protocols";
 import { DEPLOYMENT_NOTES } from "./deployment-notes";
-import { searchWeb, WebSearchError, MAX_SEARCH_RESULTS } from "./web-search";
+import { WebSearchError, MAX_SEARCH_RESULTS } from "./web-search";
+import { DEFAULT_WEB_SEARCH_LIMIT } from "../search/usage";
+import { searchActive } from "../search/resolve";
 import { loadSearchConfig } from "../search/config";
 import { fetchPage, WebFetchError } from "./web-fetch";
 import { createDocReader } from "./docs-reader";
@@ -128,6 +130,22 @@ export interface ToolContext {
    * reads them once rather than once per call.
    */
   docPages?: DocPage[];
+  /**
+   * Whether this turn may use `web_search`.
+   *
+   * The composer's per-conversation toggle travels here. Hiding the tool from
+   * the definitions is the first half; a model can still emit a call by name,
+   * so `executeTool` refuses when this is false. `undefined` means on, which is
+   * what every non-assistant caller wants.
+   */
+  webSearchEnabled?: boolean;
+  /**
+   * How many results the caller asked for, before the per-provider cap.
+   *
+   * A user preference rather than an operator setting: six is the default, and
+   * the operator's ceiling is `MAX_SEARCH_RESULTS`.
+   */
+  webSearchLimit?: number;
 }
 
 /** A media file the tool produced, for the caller to store and hand a URL back. */
@@ -1171,8 +1189,16 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
   },
 ];
 
-export function toolDefinitions(isAdmin: boolean): AssistantToolDef[] {
-  return isAdmin ? [...USER_TOOLS, ...ADMIN_TOOLS] : USER_TOOLS;
+export function toolDefinitions(
+  isAdmin: boolean,
+  opts: { webSearch?: boolean } = {},
+): AssistantToolDef[] {
+  const list = isAdmin ? [...USER_TOOLS, ...ADMIN_TOOLS] : [...USER_TOOLS];
+  // `undefined` means on: every caller that has no opinion keeps today's
+  // catalogue, and only an explicit "this turn has search off" removes it.
+  return opts.webSearch === false
+    ? list.filter((tool) => tool.function.name !== "web_search")
+    : list;
 }
 
 /**
@@ -1266,7 +1292,12 @@ export async function executeTool(
     case "fetch_page":
       return fetchPageTool(args);
     case "web_search":
-      return webSearchTool(args);
+      // Hiding the definition is not enough: a model that has seen the tool in
+      // an earlier turn can emit the name anyway, and this turn said no.
+      if (ctx.webSearchEnabled === false) {
+        return fail("本轮已关闭网页搜索。需要联网时请让用户在输入框旁边打开开关。");
+      }
+      return webSearchTool(args, ctx);
     case "generate_image":
       return mediaGenerate(args, ctx, "image");
     case "generate_speech":
@@ -3967,13 +3998,20 @@ async function listUsersTool(): Promise<ToolResult> {  const { users } = await l
  * does: the model can say what happened, and an exception would end the turn
  * along with everything it had established.
  */
-async function webSearchTool(args: Record<string, unknown>): Promise<ToolResult> {
+async function webSearchTool(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<ToolResult> {
   const query = typeof args.query === "string" ? args.query.trim() : "";
   if (!query) return fail("缺少 query。");
+  // The user's preference is the ceiling the model may not exceed; the
+  // operator's hard limit caps that in turn.
+  const cap = Math.min(ctx.webSearchLimit ?? MAX_SEARCH_RESULTS, MAX_SEARCH_RESULTS);
+  const fallback = Math.min(DEFAULT_WEB_SEARCH_LIMIT, cap);
   const limit =
     typeof args.limit === "number" && Number.isFinite(args.limit)
-      ? Math.min(Math.max(Math.trunc(args.limit), 1), MAX_SEARCH_RESULTS)
-      : 6;
+      ? Math.min(Math.max(Math.trunc(args.limit), 1), cap)
+      : fallback;
 
   try {
     // The same switch `/v1/search` reads. "Off" has to mean off in both
@@ -3982,7 +4020,7 @@ async function webSearchTool(args: Record<string, unknown>): Promise<ToolResult>
     if (!config.enabled) {
       return fail("网页搜索已被管理员关闭（管理台 → 搜索）。请直接告诉用户，不要凭记忆补搜索结果。");
     }
-    const outcome = await searchWeb(query, { limit });
+    const outcome = await searchActive(query, { limit });
     if (outcome.results.length === 0) {
       return ok({
         backend: outcome.backend,

@@ -22,7 +22,7 @@ import { __resetDbForTest } from "@/lib/db/sqlite";
 import { InMemoryCookieStore, getSessionFromStore } from "@/lib/auth/session";
 import { createUser } from "@/lib/db/users";
 import { getSettings } from "@/lib/db/settings";
-import { listRecentSearchUsage } from "@/lib/db/usage";
+import { getOne } from "@/lib/db/sqlite";
 
 async function login(store: InMemoryCookieStore, id: string, role: "admin" | "user"): Promise<void> {
   const s = await getSessionFromStore(store);
@@ -71,7 +71,7 @@ describe("GET /api/admin/search", () => {
     expect(res.status).toBe(403);
   });
 
-  it("reports the effective configuration and empty usage", async () => {
+  it("reports the effective configuration", async () => {
     await asAdmin();
     const { GET } = await import("@/app/api/admin/search/route");
     const res = await GET();
@@ -81,8 +81,6 @@ describe("GET /api/admin/search", () => {
       data: {
         config: { enabled: boolean; creditsPerCall: number; backendConfigured: boolean; backendName: string };
         stored: { enabled: boolean | null; creditsPerCall: number | null };
-        stats: { total: { calls: number; creditsUsed: number } };
-        recent: unknown[];
       };
     };
     expect(body.ok).toBe(true);
@@ -94,8 +92,6 @@ describe("GET /api/admin/search", () => {
     });
     // Nothing saved yet: the panel must be able to tell a default from a choice.
     expect(body.data.stored).toEqual({ enabled: null, creditsPerCall: null });
-    expect(body.data.stats.total).toEqual({ calls: 0, creditsUsed: 0 });
-    expect(body.data.recent).toEqual([]);
   });
 });
 
@@ -176,7 +172,10 @@ describe("POST /api/admin/search/test", () => {
     };
     expect(body.data.results).toHaveLength(1);
     expect(body.data.billed).toBe(false);
-    expect(await listRecentSearchUsage()).toHaveLength(0);
+    const row = getOne<{ n: number }>(
+      "SELECT COUNT(*) AS n FROM usage_logs WHERE capability = 'web.search'",
+    );
+    expect(row?.n).toBe(0);
   });
 
   it("still runs while the feature is switched off, because that is when it is needed", async () => {

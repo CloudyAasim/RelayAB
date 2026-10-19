@@ -220,7 +220,9 @@ describe("the tool, through the same path a turn uses", () => {
         user: { id: "u1", username: "u", role: "user", timezone: "shanghai" },
       } as never);
       expect(result.ok).toBe(false);
-      expect(result.content).toMatch(/没有配置搜索后端/);
+      // The wording moved when providers became a list: the message now has to
+      // name the panel *and* the environment fallback, because either can fix it.
+      expect(result.content).toMatch(/没有可用的搜索后端[\s\S]*网页搜索[\s\S]*SEARXNG_URL/);
     } finally {
       for (const [k, v] of saved) {
         if (v === undefined) delete process.env[k];

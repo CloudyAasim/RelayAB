@@ -12,6 +12,7 @@ import { SectionPageLayout } from "@/components/layouts";
 import { UsageScopePicker } from "@/components/usage/UsageScopePicker";
 import { UsageViewTabs } from "@/components/usage/UsageViewTabs";
 import { UsageAccountSummary } from "@/components/usage/UsageAccountSummary";
+import { UsageWebSearchCard } from "@/components/usage/UsageWebSearchCard";
 import { UsageBarChart } from "@/components/usage/UsageBarChart";
 import {
   UsageBreakdownTable,
@@ -210,6 +211,22 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
                 }
           }
         />
+
+        <div className="mb-4 sm:mb-6">
+          <UsageWebSearchCard
+            summary={report.webSearch.summary}
+            totalCredits={report.summary.creditsUsed}
+            labels={{
+              title: t("usage.webSearch.title"),
+              description: t("usage.webSearch.description"),
+              calls: t("usage.webSearch.calls"),
+              credits: t("usage.webSearch.credits"),
+              share: t("usage.webSearch.share"),
+              empty: t("usage.webSearch.empty"),
+              subsetHint: t("usage.webSearch.subsetHint"),
+            }}
+          />
+        </div>
 
         <Card className="mb-4 space-y-3 sm:mb-6">
           <UsageScopePicker

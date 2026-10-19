@@ -7,12 +7,13 @@
  * Three callers need the same answers: the public `/v1/search` route, the
  * assistant's `web_search` tool, and the admin panel. Reading them separately
  * is how a panel comes to say "enabled" while the endpoint is refusing, or a
- * price edit reaches one door and not the other. The environment is the
- * fallback rather than the authority, so an operator can change the price in
- * the panel without redeploying.
+ * price edit reaches one door and not the other. The provider table is the
+ * authority for *which* backend answers; the environment is only the fallback
+ * for a deployment that has never added a provider row.
  */
 import { getSettings, type AppSettings } from "@/lib/db/settings";
-import { resolveSearchBackend } from "@/lib/assistant/web-search";
+import { activeSearchBackendInfo } from "./resolve";
+import type { SearchProvider } from "@/lib/assistant/web-search";
 
 /** Used when neither the settings row nor the environment names a price. */
 export const DEFAULT_SEARCH_CREDITS = 1;
@@ -35,12 +36,18 @@ export interface SearchConfig {
   /** Human-readable backend name ("SearXNG", "Tavily", …), never the key. */
   backendName: string | null;
   /**
-   * The internal SearXNG address, when that is the backend.
+   * The backend's address, when it has one worth showing.
    *
-   * Admin-only: it is an internal hostname, and putting it in a user-facing
-   * response would be a small piece of network topology leaked for no reason.
+   * Admin-only: it can be an internal hostname, and putting it in a
+   * user-facing response would leak a piece of network topology for no reason.
    */
   backendUrl: string | null;
+  /** Where the active backend came from: the provider table or the environment. */
+  backendSource: "db" | "env" | null;
+  /** The provider's kind. */
+  backendKind: SearchProvider | null;
+  /** The id written into usage rows for this backend. */
+  backendProviderId: string | null;
 }
 
 /**
@@ -49,15 +56,18 @@ export interface SearchConfig {
  */
 export async function loadSearchConfig(settings?: AppSettings): Promise<SearchConfig> {
   const stored = settings ?? (await getSettings());
-  const backend = resolveSearchBackend();
+  const backend = await activeSearchBackendInfo();
   return {
     // Absent means on. The feature predates the switch, so an upgrade must not
     // silently turn it off; only an explicit `false` does.
     enabled: stored.searchEnabled !== false,
     creditsPerCall:
       stored.searchCreditsPerCall ?? envSearchCredits() ?? DEFAULT_SEARCH_CREDITS,
-    backendConfigured: backend !== null,
-    backendName: backend?.describe ?? null,
-    backendUrl: process.env.SEARXNG_URL?.trim() || null,
+    backendConfigured: backend.configured,
+    backendName: backend.name,
+    backendUrl: backend.baseUrl,
+    backendSource: backend.source,
+    backendKind: backend.kind,
+    backendProviderId: backend.usageProviderId,
   };
 }

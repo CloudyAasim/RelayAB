@@ -22,6 +22,7 @@ import { createUser, getUserById } from "@/lib/db/users";
 import { createApiKey } from "@/lib/db/keys";
 import { listUsageByKey } from "@/lib/db/usage";
 import { updateSettings } from "@/lib/db/settings";
+import { createSearchProvider } from "@/lib/db/search-providers";
 
 let userId = "";
 let plainKey = "";
@@ -148,6 +149,29 @@ describe("a successful search", () => {
     });
   });
 
+  it("attributes the call to the database provider that served it", async () => {
+    // The environment still points at a SearXNG instance here: once a provider
+    // row exists it is authoritative, and the usage row must name that row so
+    // an operator can tell which backend earned the credits.
+    const row = await createSearchProvider({
+      name: "Local",
+      kind: "searxng",
+      baseUrl: "https://db.example",
+      priority: 1,
+    });
+    stubSearch([{ title: "A", url: "https://a.example", content: "aa" }]);
+
+    const res = await post({ query: "x" });
+    expect(res.status).toBe(200);
+
+    const usage = await listUsageByKey(keyId);
+    expect(usage[0]).toMatchObject({
+      model: "web-search",
+      providerId: row.id,
+      capability: "web.search",
+    });
+  });
+
   it("reports the remaining balance in the quota headers", async () => {
     stubSearch([]);
     const res = await post({ query: "x" });
@@ -234,7 +258,7 @@ describe("what is refused without charging", () => {
     expect(res.status).toBe(503);
     const body = (await res.json()) as { error: { code: string; message: string } };
     expect(body.error.code).toBe("search_unavailable");
-    expect(body.error.message).toMatch(/没有配置搜索后端/);
+    expect(body.error.message).toMatch(/没有可用的搜索后端[\s\S]*网页搜索/);
     expect((await getUserById(userId))?.quotaUsed).toBe(0);
   });
 
