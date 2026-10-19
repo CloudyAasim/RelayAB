@@ -64,6 +64,7 @@ import {
   CONFIGURABLE_PROTOCOLS,
 } from "../protocol/text-protocols";
 import { DEPLOYMENT_NOTES } from "./deployment-notes";
+import { searchWeb, WebSearchError, MAX_SEARCH_RESULTS } from "./web-search";
 import { fetchPage, WebFetchError } from "./web-fetch";
 import { createDocReader } from "./docs-reader";
 import { DEFAULT_LOCALE, type Locale } from "../i18n/dict";
@@ -358,9 +359,35 @@ const USER_TOOLS: AssistantToolDef[] = [
   {
     type: "function",
     function: {
+      name: "web_search",
+      description:
+        "搜索公开网页，返回标题、网址和摘要。**不知道厂商文档地址时先用它**，拿到候选地址再用 fetch_page 读正文 —— 摘要不是文档，不能拿摘要里的字段名去写配置。\n" +
+        "工具本身只做检索，不读页面；结果里每条 url 都可以直接交给 fetch_page。\n" +
+        "如果部署没有配置搜索后端，它会明确告诉你，这时才向用户要链接；**不要在没有调用它的情况下声称「我搜索了」**。",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "搜索词。写清楚厂商名和要找的东西，例如「智谱 BigModel 图像生成 API 文档」。",
+          },
+          limit: {
+            type: "integer",
+            description: "最多返回几条，1–8，默认 6。",
+          },
+        },
+        required: ["query"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "fetch_page",
       description:
-        "抓取一个公开网页并读出正文文字。查厂商官方文档、API 参考、报错说明时用它 —— 这些内容不能靠记忆编。用户给了一个网址、或者问题需要看某个具体页面时，先调它再回答。只支持 http/https 的公网地址，内网地址会被拒绝；返回的是正文纯文本，不含图片和脚本。",
+        "抓取一个公开网页并读出正文文字。查厂商官方文档、API 参考、报错说明时用它 —— 这些内容不能靠记忆编。用户给了一个网址、或者问题需要看某个具体页面时，先调它再回答。只支持 http/https 的公网地址，内网地址会被拒绝；返回的是正文纯文本，不含图片和脚本。\n" +
+        "如果页面是单页应用、正文抓不到，工具会自动尝试同域的 Markdown 版本、llms.txt 和 openapi.json，并在结果里标出可继续读的地址。",
       parameters: {
         type: "object",
         properties: {
@@ -1237,6 +1264,8 @@ export async function executeTool(
       return readDocsTool(args, ctx);
     case "fetch_page":
       return fetchPageTool(args);
+    case "web_search":
+      return webSearchTool(args);
     case "generate_image":
       return mediaGenerate(args, ctx, "image");
     case "generate_speech":
@@ -3924,6 +3953,53 @@ async function listUsersTool(): Promise<ToolResult> {  const { users } = await l
 }
 
 /**
+ * Search the public web.
+ *
+ * The tool the assistant was missing: `fetch_page` can read a URL it already
+ * knows, and "I need the vendor's API reference" is precisely the case where
+ * it does not know one. Without this the model either recites an address from
+ * memory (which is how an invented endpoint reaches a spec) or asks the user
+ * for a link.
+ *
+ * A refusal — no backend configured, key rejected, provider throttled — comes
+ * back as a *result*, not an exception, for the same reason every other tool
+ * does: the model can say what happened, and an exception would end the turn
+ * along with everything it had established.
+ */
+async function webSearchTool(args: Record<string, unknown>): Promise<ToolResult> {
+  const query = typeof args.query === "string" ? args.query.trim() : "";
+  if (!query) return fail("缺少 query。");
+  const limit =
+    typeof args.limit === "number" && Number.isFinite(args.limit)
+      ? Math.min(Math.max(Math.trunc(args.limit), 1), MAX_SEARCH_RESULTS)
+      : 6;
+
+  try {
+    const outcome = await searchWeb(query, { limit });
+    if (outcome.results.length === 0) {
+      return ok({
+        backend: outcome.backend,
+        query: outcome.query,
+        results: [],
+        note:
+          "搜索后端没有返回任何结果。换一组关键词再试一次（把厂商名和要找的东西分开写），" +
+          "或者直接问用户文档地址；不要凭记忆补一个网址。",
+      });
+    }
+    return ok({
+      backend: outcome.backend,
+      query: outcome.query,
+      results: outcome.results,
+      note:
+        "这些是搜索摘要，不是文档正文。核对字段名、参数取值和端点之前，先用 fetch_page 打开其中至少一个官方页面。",
+    });
+  } catch (err) {
+    if (err instanceof WebSearchError) return fail(err.message);
+    return fail(`搜索失败：${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/**
  * Read a public web page.
  *
  * Available to both tiers: reading a vendor's documentation is not an
@@ -3946,6 +4022,12 @@ async function fetchPageTool(args: Record<string, unknown>): Promise<ToolResult>
       contentType: page.contentType || "text/plain",
       bytes: page.bytes,
       truncated: page.truncated,
+      // Named explicitly: a body that came from somewhere else must not read
+      // as if the requested URL contained it.
+      ...(page.source ? { source: page.source } : {}),
+      ...(page.discovered && page.discovered.length > 0
+        ? { discovered: page.discovered, note: "以下地址可以用 fetch_page 继续读。" }
+        : {}),
       text: page.text,
     });
   } catch (err) {

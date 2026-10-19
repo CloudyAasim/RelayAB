@@ -39,6 +39,13 @@ vi.mock("node:dns/promises", () => ({
       "v6-local.example": ["fd00::1"],
       "maps-v4.example": ["::ffff:169.254.169.254"],
     };
+    // A CDN pool that legitimately answers with a different public address to
+    // each question. `docs.bigmodel.cn` does this in production, and an
+    // exact-set comparison refused it as a rebind.
+    if (hostname === "cdn.example") {
+      cdnQueries++;
+      return [{ address: cdnQueries % 2 === 1 ? "93.184.216.34" : "93.184.216.35", family: 4 }];
+    }
     const addresses = table[hostname];
     if (!addresses) throw new Error(`no such host: ${hostname}`);
     // `rebind.example` is a zero-TTL name, so it answers differently to the
@@ -55,8 +62,12 @@ vi.mock("node:dns/promises", () => ({
 /** How many times the stub has been asked about `rebind.example`. */
 let rebindQueries = 0;
 
+/** The same count for the rotating-public CDN fixture. */
+let cdnQueries = 0;
+
 function resetRebind(): void {
   rebindQueries = 0;
+  cdnQueries = 0;
 }
 
 const TOOLS_SOURCE = readFileSync(join(process.cwd(), "src", "lib", "assistant", "tools.ts"), "utf-8");
@@ -342,12 +353,16 @@ describe("the prompt tells the model what it can and cannot do", () => {
     }
   });
 
-  it("admits there is no search engine", () => {
-    // The one thing this cannot do. Saying "let me search" when there is no
-    // search is the same class of lie as "I have already configured it".
+  it("tells the model to search when it does not know the address", () => {
+    // The gap this replaced: `fetch_page` alone could only open a URL the
+    // model already knew, so "find the vendor's documentation" was
+    // unanswerable without the user supplying a link.
     for (const prompt of [ADMIN_SYSTEM_PROMPT, USER_SYSTEM_PROMPT]) {
-      expect(prompt).toMatch(/没有搜索引擎/);
-      expect(prompt).toMatch(/不要说「我搜索一下」/);
+      expect(prompt).toMatch(/web_search/);
+      expect(prompt).toMatch(/没有配置搜索后端/);
+      // And still: claiming to have searched without calling the tool is the
+      // lie the old wording was there to prevent.
+      expect(prompt).toMatch(/不要在没有真正调用工具的情况下[\s\S]{0,40}说「我搜索一下」/);
     }
   });
 
@@ -399,6 +414,18 @@ describe("a name that changes its mind between the check and the connection", ()
       ),
     ).rejects.toThrow();
     expect(lookup.mock.calls.length, "the name was only resolved once").toBeGreaterThanOrEqual(2);
+  });
+
+  it("a CDN that rotates among public addresses is not punished for it", async () => {
+    // The first version compared the two answers for equality. A large CDN
+    // answers from a rotating pool, so two public answers disagreed and a
+    // real documentation host was refused as if it had rebound. The security
+    // property is "the second answer is not private", not "it is identical".
+    const impl = guardedFetch(
+      () => new Response("rotating but public", { headers: { "content-type": "text/plain" } }),
+    );
+    const page = await fetchPage("https://cdn.example/docs", impl as unknown as typeof fetch);
+    expect(page.text).toBe("rotating but public");
   });
 
   it("a name that stays put is not punished for it", async () => {
