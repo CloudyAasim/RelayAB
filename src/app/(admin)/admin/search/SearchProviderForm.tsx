@@ -79,6 +79,24 @@ export function SearchProviderForm({ provider, templates, onSaved }: Props) {
 
   const hasSpec = specText.trim().length > 0;
 
+  /**
+   * The vendor the spec names.
+   *
+   * A row that carries its own spec is free to be any vendor, and the spec
+   * says which one — so the `kind` follows the spec rather than the other way
+   * round. A form that let the two disagree would record a row whose usage
+   * statistics name a vendor the request never went to.
+   */
+  const specVendor: string | null = (() => {
+    if (!hasSpec) return null;
+    try {
+      const parsed = JSON.parse(specText) as { vendor?: unknown };
+      return typeof parsed.vendor === "string" && parsed.vendor.trim() ? parsed.vendor.trim() : null;
+    } catch {
+      return null;
+    }
+  })();
+
   /** The endpoint this row would talk to, as far as the form can tell. */
   function resolvedEndpoint(): string | null {
     if (!hasSpec) {
@@ -128,7 +146,9 @@ export function SearchProviderForm({ provider, templates, onSaved }: Props) {
       }
       const payload: Record<string, unknown> = {
         name: name.trim(),
-        kind: hasSpec ? kind : kind,
+        // The spec names the vendor; the dropdown only matters for a row that
+        // uses a built-in template.
+        kind: specVendor ?? kind,
         baseUrl: baseUrl.trim(),
         enabled,
         priority: Number(priority) || 0,
@@ -183,20 +203,28 @@ export function SearchProviderForm({ provider, templates, onSaved }: Props) {
             {t("admin.searchProviders.kind")}
           </label>
           <select
-            value={kind}
+            value={specVendor ?? kind}
             onChange={(e) => setKind(e.target.value)}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            disabled={Boolean(specVendor)}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-70"
           >
             {BUILTIN_KINDS.map((k) => (
               <option key={k} value={k}>
                 {t(`admin.searchProviders.kinds.${k}`)}
               </option>
             ))}
-            {!BUILTIN_KINDS.includes(kind as (typeof BUILTIN_KINDS)[number]) && (
+            {specVendor && !BUILTIN_KINDS.includes(specVendor as (typeof BUILTIN_KINDS)[number]) && (
+              <option value={specVendor}>{specVendor}</option>
+            )}
+            {!specVendor && !BUILTIN_KINDS.includes(kind as (typeof BUILTIN_KINDS)[number]) && (
               <option value={kind}>{kind}</option>
             )}
           </select>
-          <p className="mt-1 text-xs text-muted-foreground">{t("admin.searchProviders.kindHint")}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {specVendor
+              ? t("admin.searchProviders.kindHintFromSpec")
+              : t("admin.searchProviders.kindHint")}
+          </p>
         </div>
       </div>
 

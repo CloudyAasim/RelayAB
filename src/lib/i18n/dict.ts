@@ -695,6 +695,8 @@ const zhCN: Dict = {
   "admin.searchProviders.kinds.tavily": "Tavily",
   "admin.searchProviders.kinds.brave": "Brave Search",
   "admin.searchProviders.kindHint": "SearXNG 是自建/自托管地址；Tavily、Brave 是官方 API。",
+  "admin.searchProviders.kindHintFromSpec":
+    "这份协议自己写了厂商（vendor），所以厂商以协议为准。",
   "admin.searchProviders.baseUrl": "Base URL",
   "admin.searchProviders.baseUrlHint": "SearXNG 必填（例如 http://relay-search.web:8080）。Tavily / Brave 留空使用官方地址。",
   "admin.searchProviders.apiKey": "API 密钥",
@@ -1981,6 +1983,8 @@ const en: Dict = {
   "admin.searchProviders.kinds.tavily": "Tavily",
   "admin.searchProviders.kinds.brave": "Brave Search",
   "admin.searchProviders.kindHint": "SearXNG is a self-hosted address; Tavily and Brave are official APIs.",
+  "admin.searchProviders.kindHintFromSpec":
+    "This spec names its own vendor, so the spec decides which one it is.",
   "admin.searchProviders.baseUrl": "Base URL",
   "admin.searchProviders.baseUrlHint": "Required for SearXNG (e.g. http://relay-search.web:8080). Leave blank for Tavily / Brave to use the official endpoint.",
   "admin.searchProviders.apiKey": "API key",
