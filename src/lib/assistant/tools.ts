@@ -1050,6 +1050,45 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
             description: "客户端模型名 → 上游模型名。新建时这张表就是全部，所以传完整的一份。",
             additionalProperties: { type: "string" },
           },
+          openaiEnabled: { type: "boolean", description: "OpenAI 协议面，上游说 chat/responses 时开" },
+          anthropicEnabled: { type: "boolean", description: "Anthropic 协议面，上游说 /v1/messages 时开" },
+          anthropicBaseUrl: {
+            type: "string",
+            description: "Anthropic 面的 base URL。留空会根据 baseUrl 推导；上游两套形状不同域时才填。",
+          },
+          headers: {
+            type: "object",
+            description: "附在上游请求上的固定请求头，例如 {\"api-version\": \"2024-08-01-preview\"}。",
+            additionalProperties: { type: "string" },
+          },
+          textSpecs: {
+            type: "array",
+            description:
+              "每个兼容接口的参数规则，建库时一并写入。只有厂商和 OpenAI 兼容接口确实不同时才需要。" +
+              "新建时留空 activeMode 会按「有规则就用」推断，规则会生效；只有显式传 simple 才会让规则不执行。",
+            items: {
+              type: "object",
+              properties: {
+                specVersion: { type: "integer" },
+                protocol: { type: "string" },
+                parameters: { type: "object" },
+                request: { type: "object" },
+                response: { type: "object" },
+                errors: { type: "array", items: { type: "object" } },
+                limits: { type: "object" },
+              },
+              required: ["specVersion", "protocol"],
+              additionalProperties: true,
+            },
+          },
+          activeMode: {
+            type: "string",
+            enum: ["simple", "advanced"],
+            description:
+              "规则读哪一套：advanced 执行 textSpecs，simple 完全不执行。" +
+              "新建时一般不用传 —— 留空会按有没有规则推断。只有在明确要求「先存规则、暂不启用」时才传 simple。" +
+              "没有规则时传 advanced 没有意义，会被拒绝。",
+          },
           confirmFindings: {
             type: "array",
             description:
@@ -3602,6 +3641,86 @@ async function proposeProviderCreate(
     spec.modelConfigs = configs;
   }
 
+  if (typeof args.openaiEnabled === "boolean") spec.openaiEnabled = args.openaiEnabled;
+  if (typeof args.anthropicEnabled === "boolean") spec.anthropicEnabled = args.anthropicEnabled;
+  if (typeof args.anthropicBaseUrl === "string") {
+    // Empty means "derive it from baseUrl", which is stored as NULL — the same
+    // distinction the editor makes. `""` would reach the Anthropic client as a
+    // base URL of nothing.
+    spec.anthropicBaseUrl = args.anthropicBaseUrl.trim() || null;
+  }
+  if (args.headers !== undefined) {
+    if (args.headers === null) {
+      spec.headers = {};
+    } else if (typeof args.headers === "object") {
+      const headers: Record<string, string> = {};
+      for (const [k, v] of Object.entries(args.headers as Record<string, unknown>)) {
+        if (typeof v === "string" && k.trim()) headers[k.trim()] = v;
+      }
+      spec.headers = headers;
+    } else {
+      return fail("headers 必须是一个字符串键值对对象，例如 {\"api-version\": \"2024-08-01-preview\"}。");
+    }
+  }
+
+  /**
+   * The rules, validated here rather than at approval.
+   *
+   * Same reason as the update path: a spec the apply would reject is a
+   * proposal the administrator approves and then loses. A create has nothing
+   * stored to merge against, so the list is exactly what was sent.
+   */
+  let specs: string[] = [];
+  if (args.textSpecs !== undefined) {
+    if (args.textSpecs === null) {
+      specs = [];
+    } else if (!Array.isArray(args.textSpecs)) {
+      return fail("textSpecs 必须是数组，每一项是一份协议文档。");
+    } else {
+      const byProtocol = new Map<string, string>();
+      for (const entry of args.textSpecs as unknown[]) {
+        const parsed = parseTextSpec(entry);
+        if (!parsed.ok) {
+          return fail(`这份协议不能用，已列出问题：\n- ${parsed.errors.join("\n- ")}`);
+        }
+        byProtocol.set(parsed.spec.protocol, JSON.stringify(parsed.spec));
+      }
+      specs = [...byProtocol.values()];
+    }
+    spec.textSpecs = specs;
+  }
+
+  if (args.activeMode === "simple" || args.activeMode === "advanced") {
+    if (args.activeMode === "advanced" && specs.length === 0) {
+      return ok({
+        status: "needs_attention",
+        message:
+          "新建的服务商没有任何参数规则，advanced 和 simple 在行为上完全一样 —— " +
+          "引擎读的是同一套「原样透传」。先给出 textSpecs，再切 advanced。",
+        patch: {},
+      });
+    }
+    spec.activeMode = args.activeMode;
+  }
+
+  // The same trap as on update, on the create path: rules written without the
+  // mode that reads them are stored, displayed, and never executed.
+  const modeAfter =
+    spec.activeMode === "simple" || spec.activeMode === "advanced"
+      ? spec.activeMode
+      : specs.length > 0
+        ? "advanced" // null infers advanced when rules exist
+        : "simple";
+  if (specs.length > 0 && modeAfter !== "advanced") {
+    return ok({
+      status: "needs_attention",
+      message:
+        `这 ${specs.length} 条规则写进去也不会执行：这个服务商的参数规则读取模式是 simple。` +
+        `在同一份提案里带上 activeMode: "advanced" 才会生效。`,
+      patch: {},
+    });
+  }
+
   const summary =
     typeof args.summary === "string" && args.summary.trim() ? args.summary.trim() : "未说明的变更";
 
@@ -3756,6 +3875,28 @@ function renderCreateDiff(spec: Record<string, unknown>, summary: string): strin
       for (const [client, upstream] of Object.entries(value as Record<string, string>)) {
         lines.push(`  modelMapping.${client} → ${upstream}`);
       }
+      continue;
+    }
+    // A rule set is two full protocol documents. Printed as JSON it is a wall
+    // of text in which the one thing the administrator needs — which
+    // interfaces will be rewritten — is invisible.
+    if (key === "textSpecs") {
+      const protocols = (value as string[]).map((raw) => {
+        try {
+          const p = (JSON.parse(raw) as { protocol?: string }).protocol;
+          return p ?? "（未知接口）";
+        } catch {
+          return "（无法解析）";
+        }
+      });
+      lines.push(`  textSpecs：${protocols.length ? protocols.join("、") : "（无）"}`);
+      continue;
+    }
+    if (key === "headers") {
+      const entries = Object.entries(value as Record<string, string>);
+      lines.push(
+        `  headers：${entries.length ? entries.map(([k, v]) => `${k}: ${v}`).join("；") : "（无）"}`,
+      );
       continue;
     }
     lines.push(`  ${key}：${JSON.stringify(value)}`);

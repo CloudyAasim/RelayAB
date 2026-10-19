@@ -41,6 +41,14 @@ function propose(args: Record<string, unknown>): Promise<ToolResult> {
   );
 }
 
+function proposeCreate(args: Record<string, unknown>): Promise<ToolResult> {
+  return executeTool(
+    "propose_provider_create",
+    JSON.stringify({ summary: "测试", ...args }),
+    { user: { id: adminId, role: "admin" } } as never,
+  );
+}
+
 /** The payload handed back to the model, which is what it acts on. */
 function payload(result: ToolResult): Record<string, unknown> {
   return JSON.parse(result.content) as Record<string, unknown>;
@@ -139,6 +147,53 @@ describe("writing rules the engine will not read", () => {
 
     const result = await propose({ providerId: provider.id, textSpecs: [CHAT_RULE] });
     expect(payload(result).status).not.toBe("needs_attention");
+  });
+});
+
+describe("creating a provider with the full parameter set", () => {
+  const base = {
+    name: "Vendor",
+    modelMapping: { "vendor-1": "vendor-1" },
+    // New models are written at 0/0, which trips the free-model gate. This
+    // suite is about the rule set, so every create confirms the pricing.
+    confirmFindings: ["all_zero:vendor-1"],
+  };
+
+  it("writes the rules, the faces and the headers in one proposal", async () => {
+    const result = await proposeCreate({
+      ...base,
+      baseUrl: "https://api.vendor.example/v1",
+      anthropicEnabled: true,
+      anthropicBaseUrl: "https://api.vendor.example/anthropic",
+      headers: { "api-version": "2024-08-01-preview" },
+      textSpecs: [CHAT_RULE],
+    });
+    expect(result.ok).toBe(true);
+    const body = payload(result);
+    expect(body.status).toBe("pending");
+    // Null mode with rules present resolves to advanced, so the rules run.
+    const diff = String(body.diff);
+    expect(diff).toContain("textSpecs：openai-chat");
+    expect(diff).toContain("api-version: 2024-08-01-preview");
+    expect(diff).toContain("anthropicBaseUrl");
+  });
+
+  it("refuses rules that the created provider would never read", async () => {
+    const result = await proposeCreate({
+      name: base.name,
+      textSpecs: [CHAT_RULE],
+      activeMode: "simple",
+    });
+    const body = payload(result);
+    expect(body.status).toBe("needs_attention");
+    expect(String(body.message)).toContain("不会执行");
+  });
+
+  it("refuses an advanced mode with nothing to execute", async () => {
+    const result = await proposeCreate({ name: base.name, activeMode: "advanced" });
+    const body = payload(result);
+    expect(body.status).toBe("needs_attention");
+    expect(String(body.message)).toContain("没有任何参数规则");
   });
 });
 

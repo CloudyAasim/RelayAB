@@ -206,6 +206,22 @@ export const ProviderCreateSchema = z
     openaiEnabled: z.boolean().optional(),
     anthropicEnabled: z.boolean().optional(),
     anthropicBaseUrl: z.string().max(500).nullable().optional(),
+    /**
+     * The same two fields the update schema carries, for the same reason.
+     *
+     * A provider created by the assistant used to be creatable only in its
+     * transport shape: a vendor that needs a fixed header, or whose parameters
+     * differ from OpenAI's, had to be created twice — once by the assistant and
+     * once by hand in the panel. That is not "configure the provider", it is
+     * "create a placeholder".
+     *
+     * `activeMode` is accepted together with `textSpecs` so one proposal can do
+     * the whole thing; a create that writes rules and leaves the mode inferred
+     * would be the AgnesCN shape on day one.
+     */
+    headers: z.record(z.string(), z.string()).optional(),
+    textSpecs: z.array(z.string().max(200_000)).nullable().optional(),
+    activeMode: z.enum(["simple", "advanced"]).optional(),
     modelMapping: z.record(z.string(), z.string()).optional(),
     modelConfigs: z.record(z.string(), ModelConfigPatchSchema).optional(),
   })

@@ -302,7 +302,15 @@ export async function POST(
       const spec = payload as z.infer<typeof ProviderCreateSchema>;
       // The key comes from this request, not from the proposal: it is
       // encrypted on the way into the provider row and exists nowhere else.
-      const created = await createProvider({ ...spec, apiKey: parsed.data.apiKey!.trim() });
+      //
+      // `textSpecs: null` is the update payload's "clear everything" form; a
+      // create has nothing to clear, so it lands as the field being absent and
+      // `createProvider` writes its default empty list.
+      const created = await createProvider({
+        ...spec,
+        textSpecs: spec.textSpecs ?? undefined,
+        apiKey: parsed.data.apiKey!.trim(),
+      });
       await setAssistantActionStatus(
         me.id,
         id,
