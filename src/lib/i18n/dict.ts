@@ -359,7 +359,7 @@ const zhCN: Dict = {
   "docs.search.errorsTypeHint": "type 取 OpenAI 的那套分类。额度用尽是 insufficient_quota，不是 rate_limit_error —— 客户端遇到它应当停止调用并提示充值，而不是退避后重试。",
   "docs.search.errorsQuotaTip": "先看响应头里的 x-ratelimit-remaining：那是这次调用之后账户的余额。",
   "docs.search.note": "返回的是搜索摘要，不是文档正文。要核对字段名或参数取值，请再打开原始页面。",
-  "docs.search.assistant": "在 AI 助手页面，输入框旁边的地球图标控制当前对话是否联网；助手设置里可以设新对话的默认开关和每次返回多少条结果。也可以在同一个设置里填**自己的搜索服务**（OpenAI 兼容的搜索接口，地址就是完整端点）：填了以后助手的搜索走你自己的服务，费用由你的服务商收，不经过本中转站计费；不填就用站点的搜索提供商，那时这次搜索按站点的价格扣你的积分。",
+  "docs.search.assistant": "在 AI 助手页面，输入框旁边的地球图标控制当前对话是否联网；助手设置里可以设新对话的默认开关和每次返回多少条结果。也可以在同一个设置里选**用站点的搜索还是你自己的搜索服务**（OpenAI 兼容的搜索接口，地址就是完整端点）：用自己的服务时，助手的搜索走它，费用由你的服务商收，不经过本中转站计费；用站点的搜索时，这次搜索按站点的价格扣你的积分。",
   "docs.basics.title": "基本概念",
   "docs.basics.desc": "本服务提供兼容 OpenAI Chat Completions / Responses 与 Anthropic Messages 的接口。",
   "docs.basics.line1": "你只需要关心三件事：",
@@ -1238,9 +1238,20 @@ const zhCN: Dict = {
   "assistant.settings.webSearch.sourceEnv": "来自环境变量（尚无提供商记录）",
   "assistant.settings.webSearch.sourceNone": "—",
   "assistant.settings.webSearch.manage": "管理搜索提供商 →",
-  "assistant.settings.searchService.title": "用自己的搜索服务（可选）",
+  "assistant.settings.searchService.title": "搜索服务用哪个",
   "assistant.settings.searchService.hint":
-    "填了就用你自己的搜索服务，助手搜索时走它；费用由你的服务商收，不经过本中转站计费。留空则用站点的搜索提供商。",
+    "用自己的搜索服务时，助手搜索走它，费用由你的服务商收，不经过本中转站计费。",
+  "assistant.settings.searchService.sourceLegend": "搜索服务来源",
+  "assistant.settings.searchService.sourceDeployment": "站点的搜索",
+  "assistant.settings.searchService.sourceOwn": "我自己的",
+  "assistant.settings.searchService.sourceDeploymentHint":
+    "助手用站点的搜索提供商（管理员配置的），按站点的价格扣你的积分。",
+  "assistant.settings.searchService.sourceOwnHint":
+    "助手用你自己的搜索服务，费用由你的服务商收，不经过本中转站计费。",
+  "assistant.settings.searchService.deploymentBackend": "现在生效：站点的搜索服务（{name}）。",
+  "assistant.settings.searchService.deploymentBackendUnknown": "现在生效：站点的搜索服务。",
+  "assistant.settings.searchService.storedButUnused":
+    "你保存过一个自己的搜索服务（{url}），现在没有用它 —— 切到「我自己的」就会用上。",
   "assistant.settings.searchService.url": "搜索接口地址",
   "assistant.settings.searchService.urlHint":
     "完整地址（你填什么就请求什么，不会再拼接路径）。OpenAI 兼容形状：POST 这个地址，请求体 {query, limit}，返回 {results:[{title,url,snippet}]}。",
@@ -1248,9 +1259,15 @@ const zhCN: Dict = {
   "assistant.settings.searchService.keyHint":
     "用 Bearer 方式发送。留空表示不发送凭据（自建的、本机上的服务可能不需要）。",
   "assistant.settings.searchService.keyStored": "已保存（留空则不改动）",
+  "assistant.settings.searchService.keyClearing": "保存后将删除已存的密钥",
+  "assistant.settings.searchService.clearKey": "删除已保存的密钥",
   "assistant.settings.searchService.test": "测试搜索",
   "assistant.settings.searchService.testing": "测试中…",
   "assistant.settings.searchService.probeOk": "通了：{n} 条结果，{ms} 毫秒",
+  "assistant.settings.searchService.probeEmpty":
+    "通了，但这次没搜到结果（{ms} 毫秒）。服务是通的，搜索词可能太冷。",
+  "assistant.settings.searchService.probeWrongShape":
+    "这个地址答的不是搜索结果：返回的 JSON 里没有 results 数组。对着它的文档核对响应格式（要的是 {results:[{title,url,snippet}]}）。",
   "assistant.settings.searchService.probeFail": "不通",
   "assistant.settings.searchService.needsUrl": "先填搜索接口地址。",
   "assistant.settings.save": "保存",
@@ -1685,7 +1702,7 @@ const en: Dict = {
   "docs.search.errorsTypeHint": "The type comes from OpenAI's taxonomy. An exhausted balance is insufficient_quota, not rate_limit_error — a client that sees it should stop calling and ask for a top-up, not back off and retry.",
   "docs.search.errorsQuotaTip": "Look at x-ratelimit-remaining in the response headers first: that is the account's balance after the call.",
   "docs.search.note": "These are search snippets, not the document. Open the original page before relying on a field name or parameter value.",
-  "docs.search.assistant": "On the AI assistant page, the globe button beside the input controls whether that conversation searches; the assistant settings set the default for new conversations and how many results each search returns. The same settings take a **search service of your own** — an OpenAI-compatible search endpoint, where the address is the whole endpoint. Fill it in and the assistant searches through your service: your vendor bills you, and nothing is charged here. Leave it empty and the deployment's providers answer, at the deployment's price.",
+  "docs.search.assistant": "On the AI assistant page, the globe button beside the input controls whether that conversation searches; the assistant settings set the default for new conversations and how many results each search returns. The same settings let you choose **the deployment's search or a search service of your own** (an OpenAI-compatible search endpoint, where the address is the whole endpoint): with your own service the assistant searches through it, your vendor bills you, and nothing is charged here; with the deployment's, the search costs the deployment's price on your balance.",
   "docs.basics.title": "Basics",
   "docs.basics.desc": "RelayAB exposes spec-compatible OpenAI Chat Completions / Responses and Anthropic Messages endpoints.",
   "docs.basics.line1": "You only need three things:",
@@ -2589,9 +2606,20 @@ const en: Dict = {
   "assistant.settings.webSearch.sourceEnv": "From the environment (no provider rows yet)",
   "assistant.settings.webSearch.sourceNone": "—",
   "assistant.settings.webSearch.manage": "Manage search providers →",
-  "assistant.settings.searchService.title": "Use your own search service (optional)",
+  "assistant.settings.searchService.title": "Which search service to use",
   "assistant.settings.searchService.hint":
-    "Fill this in and the assistant searches through it. Your vendor bills you, not this relay, so nothing is charged to your balance. Leave it empty and the deployment's providers answer.",
+    "With your own service, the assistant searches through it: your vendor bills you, and nothing is charged here.",
+  "assistant.settings.searchService.sourceLegend": "Search service source",
+  "assistant.settings.searchService.sourceDeployment": "The deployment's",
+  "assistant.settings.searchService.sourceOwn": "My own",
+  "assistant.settings.searchService.sourceDeploymentHint":
+    "The assistant uses the deployment's search providers, at the deployment's price on your balance.",
+  "assistant.settings.searchService.sourceOwnHint":
+    "The assistant uses your own search service. Your vendor bills you; nothing is charged here.",
+  "assistant.settings.searchService.deploymentBackend": "In effect: the deployment's search service ({name}).",
+  "assistant.settings.searchService.deploymentBackendUnknown": "In effect: the deployment's search service.",
+  "assistant.settings.searchService.storedButUnused":
+    "You have a search service of your own stored ({url}) and it is not being used — switch to 'My own' to use it.",
   "assistant.settings.searchService.url": "Search endpoint",
   "assistant.settings.searchService.urlHint":
     "The complete address — what you type is what is called, nothing is appended. The OpenAI-compatible shape: POST to it with {query, limit}, answered with {results:[{title,url,snippet}]}.",
@@ -2599,9 +2627,15 @@ const en: Dict = {
   "assistant.settings.searchService.keyHint":
     "Sent as a Bearer credential. Leave it empty to send none at all — a service on your own machine may not want one.",
   "assistant.settings.searchService.keyStored": "stored (leave empty to keep it)",
+  "assistant.settings.searchService.keyClearing": "the stored key will be deleted on save",
+  "assistant.settings.searchService.clearKey": "Delete the stored key",
   "assistant.settings.searchService.test": "Test search",
   "assistant.settings.searchService.testing": "Testing…",
   "assistant.settings.searchService.probeOk": "Reachable: {n} results in {ms} ms",
+  "assistant.settings.searchService.probeEmpty":
+    "Reachable, but nothing came back ({ms} ms). The service works; the query may just be too cold.",
+  "assistant.settings.searchService.probeWrongShape":
+    "That address did not answer with search results: the JSON has no results array. Check the response shape against its docs (it should be {results:[{title,url,snippet}]}).",
   "assistant.settings.searchService.probeFail": "Not reachable",
   "assistant.settings.searchService.needsUrl": "Enter the search endpoint first.",
   "assistant.settings.save": "Save",

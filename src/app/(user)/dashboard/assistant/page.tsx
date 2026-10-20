@@ -16,6 +16,7 @@ import { getPublicAssistantSettings } from "@/lib/db/assistant";
 import { cachedBuildModelCatalog } from "@/lib/db/data-cache";
 import { resolveAssistantConfig } from "@/lib/assistant/config";
 import { loadSearchConfig } from "@/lib/search/config";
+import { useOwnSearchService } from "@/lib/search/user";
 import { DEFAULT_WEB_SEARCH_LIMIT } from "@/lib/search/usage";
 import { MAX_SEARCH_RESULTS } from "@/lib/assistant/web-search";
 import { getT } from "@/lib/i18n/server";
@@ -155,6 +156,9 @@ export default async function AssistantPage() {
                 backendSource: isAdmin ? searchConfig.backendSource : null,
                 ownBaseUrl: settings?.searchBaseUrl ?? null,
                 ownHasKey: settings?.hasSearchApiKey ?? false,
+                // The server's own answer about which backend is live, so the
+                // form and the assistant cannot disagree about it.
+                ownInUse: useOwnSearchService(settings),
               }}
             />
           }

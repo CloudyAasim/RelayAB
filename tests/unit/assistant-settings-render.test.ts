@@ -111,11 +111,14 @@ describe("the account path shows no key field", () => {
     expect(html, "the address field is labelled on the account path").not.toContain("API 地址");
   });
 
-  it("— and the user's own search service is offered on both paths", () => {
+  it("— and the user's own search service is a separate key, behind its own choice", () => {
     // A **different** key, for a **different** thing: the user's own search
     // service is theirs on either path, and the account path has no reason to
     // hide it. Counting every password field would have mistaken this one for
     // the upstream key — which is why the two are counted by their own ids.
+    //
+    // The fields are behind the source choice, because a search service that
+    // is not in use does not need its key on screen.
     for (const mode of ["account", "key"] as const) {
       const html = render({
         initial: {
@@ -124,11 +127,34 @@ describe("the account path shows no key field", () => {
           accountModel: "gpt-4o",
           credentialMode: mode,
           hasApiKey: false,
+          searchSource: "own",
+          searchBaseUrl: "https://my-gateway.example.com/v1/search",
         },
       });
       expect(countSearchKeyInputs(html), `no search-service key on the ${mode} path`).toBe(1);
       expect(html, `no search endpoint field on the ${mode} path`).toContain('name="searchBaseUrl"');
+      // And the upstream key is still counted apart from it.
+      expect(countUpstreamKeyInputs(html), `wrong upstream key count on the ${mode} path`).toBe(
+        mode === "key" ? 1 : 0,
+      );
     }
+  });
+
+  it("— and the source choice is shown, with the deployment's side as the default", () => {
+    // "The address box is filled in" is not something a person can read on
+    // the page, and a stored address with the deployment's provider in use
+    // looks exactly like the opposite.
+    const html = render({
+      initial: { baseUrl: "", model: "", accountModel: "gpt-4o", credentialMode: "account", hasApiKey: false },
+    });
+    // The choice is there, by the words a person would read.
+    expect(html, "no source choice on the page").toContain("站点的搜索");
+    expect(html, "no source choice on the page").toContain("我自己的");
+    // Nothing configured → the deployment's side, and no key field for a
+    // service that is not in use.
+    expect(html, "the search-service key is shown without a choice").not.toContain(
+      'name="searchApiKey"',
+    );
   });
 
   it("— even when the person has a key stored from the other path", () => {

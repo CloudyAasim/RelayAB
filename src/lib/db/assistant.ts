@@ -106,10 +106,21 @@ export interface SaveAssistantSettingsInput {
    */
   searchBaseUrl?: string | null;
   /**
+   * Which search backend the assistant uses.
+   *
+   * `null` clears it back to the automatic rule (own service when there is an
+   * address, the deployment's otherwise); `undefined` leaves it alone.
+   */
+  searchSource?: "deployment" | "own" | null;
+  /**
    * The key for that service. Blank or omitted keeps the stored one, exactly
    * like the assistant's own upstream key.
+   *
+   * `null` is different from blank: it is the explicit "delete it", which a
+   * blank password box cannot express — a blank box has to mean "I did not
+   * type it", not "remove what is there".
    */
-  searchApiKey?: string;
+  searchApiKey?: string | null;
 }
 
 /**
@@ -181,10 +192,17 @@ export async function saveAssistantSettings(
     searchBaseUrl:
       input.searchBaseUrl === undefined || input.searchBaseUrl === null
         ? (existing?.searchBaseUrl ?? null)
-        : input.searchBaseUrl.trim() || null,    encryptedSearchApiKey:
-      input.searchApiKey && input.searchApiKey.trim()
-        ? encryptSecret(input.searchApiKey.trim())
-        : (existing?.encryptedSearchApiKey ?? null),
+        : input.searchBaseUrl.trim() || null,
+    // Which of the two the assistant searches. `null` is the automatic rule.
+    searchSource: pick(input.searchSource, existing?.searchSource ?? null),
+    // `null` is the explicit "delete it"; blank means "I did not type one" and
+    // keeps whatever is stored.
+    encryptedSearchApiKey:
+      input.searchApiKey === null
+        ? null
+        : input.searchApiKey && input.searchApiKey.trim()
+          ? encryptSecret(input.searchApiKey.trim())
+          : (existing?.encryptedSearchApiKey ?? null),
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
@@ -194,9 +212,9 @@ export async function saveAssistantSettings(
        (user_id, base_url, encrypted_api_key, model, credential_mode, account_model,
         protocol, extra_headers, context_length, max_output_tokens, temperature, top_p,
         reasoning_effort, thinking_type, web_search_default, web_search_limit,
-        search_base_url, encrypted_search_api_key,
+        search_base_url, encrypted_search_api_key, search_source,
         created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
      ON CONFLICT(user_id) DO UPDATE SET
        base_url = excluded.base_url,
        encrypted_api_key = excluded.encrypted_api_key,
@@ -215,6 +233,7 @@ export async function saveAssistantSettings(
        web_search_limit = excluded.web_search_limit,
        search_base_url = excluded.search_base_url,
        encrypted_search_api_key = excluded.encrypted_search_api_key,
+       search_source = excluded.search_source,
        updated_at = excluded.updated_at`,
     [
       row.userId,
@@ -241,6 +260,7 @@ export async function saveAssistantSettings(
       row.webSearchLimit ?? null,
       row.searchBaseUrl ?? null,
       row.encryptedSearchApiKey ?? null,
+      row.searchSource ?? null,
       row.createdAt,
       row.updatedAt,
     ],

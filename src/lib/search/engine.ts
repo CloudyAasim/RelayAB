@@ -283,9 +283,24 @@ async function readCapped(res: Response, signal: AbortSignal, cap = MAX_SEARCH_B
  * not take a count — SearXNG, whose JSON output has no such parameter — will
  * happily answer with everything it has, and the caller asked for five.
  */
-export function parseSearchResults(spec: SearchSpec, payload: unknown, limit?: number): WebSearchResult[] {
+/**
+ * The hits in a payload, or null when the answer was not the shape the spec
+ * expects.
+ *
+ * The difference between "the vendor found nothing" and "the vendor answered
+ * something else" is the difference between a working service and a wrong
+ * address, and a caller that only sees an empty list cannot tell them apart.
+ * So the two answers are kept apart here, and the probe reports which one it
+ * got.
+ */
+export function readSearchItems(spec: SearchSpec, payload: unknown): unknown[] | null {
   const items = getPath(payload, spec.response.items);
-  if (!Array.isArray(items)) return [];
+  return Array.isArray(items) ? items : null;
+}
+
+export function parseSearchResults(spec: SearchSpec, payload: unknown, limit?: number): WebSearchResult[] {
+  const items = readSearchItems(spec, payload);
+  if (!items) return [];
 
   const seen = new Set<string>();
   const out: WebSearchResult[] = [];
@@ -349,17 +364,31 @@ export function effectiveLimit(spec: SearchSpec, requested: number): number {
 }
 
 /**
- * Run one search through a spec.
+ * What one search produced, and what the answer looked like.
  *
- * The whole of a vendor's wire behavior is here: build the request, send it,
- * read the answer, pull the hits out of it. Everything a vendor does
- * differently is in the spec.
+ * `shapeOk` is the part a caller needs and the results alone cannot carry:
+ * an empty list from a service that answered with something else is not the
+ * same thing as an empty list from a service that found nothing.
  */
-export async function executeSearch(
+export interface SearchExecutionReport {
+  results: WebSearchResult[];
+  /** Whether the answer carried the array the spec points at. */
+  shapeOk: boolean;
+  /** How many hits the answer carried, before the limit cut them. */
+  itemCount: number;
+}
+
+/**
+ * Run one search through a spec and report on the answer.
+ *
+ * The one place a search is actually performed. `executeSearch` below is the
+ * same thing without the report, for callers that only want hits.
+ */
+export async function executeSearchWithReport(
   spec: SearchSpec,
   baseUrl: string,
   args: SearchExecutionArgs,
-): Promise<WebSearchResult[]> {
+): Promise<SearchExecutionReport> {
   // Clamped before the request is built, not after the answer arrives: the
   // count the vendor is asked for and the count it is allowed to answer with
   // have to be the same number.
@@ -389,5 +418,26 @@ export async function executeSearch(
     );
   }
 
-  return parseSearchResults(spec, payload, limit);
+  const items = readSearchItems(spec, payload);
+  return {
+    results: parseSearchResults(spec, payload, limit),
+    shapeOk: items !== null,
+    itemCount: items?.length ?? 0,
+  };
+}
+
+/**
+ * Run one search through a spec.
+ *
+ * The whole of a vendor's wire behavior is here: build the request, send it,
+ * read the answer, pull the hits out of it. Everything a vendor does
+ * differently is in the spec.
+ */
+export async function executeSearch(
+  spec: SearchSpec,
+  baseUrl: string,
+  args: SearchExecutionArgs,
+): Promise<WebSearchResult[]> {
+  const report = await executeSearchWithReport(spec, baseUrl, args);
+  return report.results;
 }

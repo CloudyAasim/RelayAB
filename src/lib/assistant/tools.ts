@@ -72,7 +72,7 @@ import {
   CONFIGURABLE_PROTOCOLS,
 } from "../protocol/text-protocols";
 import { DEPLOYMENT_NOTES } from "./deployment-notes";
-import { WebSearchError, MAX_SEARCH_RESULTS } from "./web-search";
+import { WebSearchError, MAX_SEARCH_RESULTS, type SearchBackend } from "./web-search";
 import { DEFAULT_WEB_SEARCH_LIMIT } from "../search/usage";
 import { resolveSearchBackendForUser } from "../search/resolve";
 import { attributionKeyFor, runSearch } from "../search/billing";
@@ -4567,6 +4567,12 @@ async function webSearchTool(
       ? Math.min(Math.max(Math.trunc(args.limit), 1), cap)
       : fallback;
 
+  /**
+   * The backend that answered, kept outside the `try` so the catch block can
+   * say **which** one failed.
+   */
+  let backend: SearchBackend | null = null;
+
   try {
     // The same switch `/v1/search` reads. "Off" has to mean off in both
     // places, or the panel is a button that does not do what it says.
@@ -4581,7 +4587,7 @@ async function webSearchTool(
      * paying that vendor, and the deployment's provider is not theirs to
      * spend.
      */
-    const backend = await resolveSearchBackendForUser(ctx.user.id);
+    backend = await resolveSearchBackendForUser(ctx.user.id);
     if (!backend) {
       return fail(
         "没有可用的搜索后端。请在「AI 助手 → 设置」里配置你自己的搜索服务" +
@@ -4652,7 +4658,22 @@ async function webSearchTool(
         "这些是搜索摘要，不是文档正文。核对字段名、参数取值和端点之前，先用 fetch_page 打开其中至少一个官方页面。",
     });
   } catch (err) {
-    if (err instanceof WebSearchError) return fail(err.message);
+    if (err instanceof WebSearchError) {
+      /**
+       * Which backend failed, and what to do about it.
+       *
+       * The user's own service failing says nothing about the deployment's
+       * providers, and the fix is one click away in the settings — so the
+       * message names it. Without that, the model reports a broken search and
+       * the user goes looking at the wrong thing.
+       */
+      const own = backend?.source === "user";
+      return fail(
+        own
+          ? `${err.message}（这是你自己的搜索服务。在「AI 助手 → 设置」里可以切回站点的搜索服务。）`
+          : err.message,
+      );
+    }
     return fail(`搜索失败：${err instanceof Error ? err.message : String(err)}`);
   }
 }

@@ -101,6 +101,16 @@ export const AssistantSettingsSchema = z.object({
    * their own row and never in the deployment's provider table.
    */
   searchBaseUrl: z.string().nullable().optional(),
+  /**
+   * Which search backend the assistant uses.
+   *
+   * Null is the rule this feature started with: the user's own service when
+   * there is an address, the deployment's otherwise. "deployment" is the
+   * explicit "not mine, even though I have one" — a user whose own service is
+   * down for a while still wants the assistant to search, and the address they
+   * typed should not have to be thrown away to get there.
+   */
+  searchSource: z.enum(["deployment", "own"]).nullable().optional(),
   /** The key for that service, encrypted with the deployment's master key. */
   encryptedSearchApiKey: z.string().nullable().optional(),
   createdAt: z.string(),
@@ -280,6 +290,8 @@ export function rowToAssistantSettings(row: Record<string, unknown>): AssistantS
         ? null
         : Number(row.web_search_limit),
     searchBaseUrl: (row.search_base_url as string | null) ?? null,
+    searchSource:
+      (row.search_source as "deployment" | "own" | null | undefined) ?? null,
     encryptedSearchApiKey: (row.encrypted_search_api_key as string | null) ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

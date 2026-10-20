@@ -119,6 +119,14 @@ export interface AssistantSettingsView {
    * deployment's business.
    */
   searchBaseUrl?: string | null;
+  /**
+   * Which search backend the assistant uses, as stored.
+   *
+   * Null is the automatic rule (own service when there is an address, the
+   * deployment's otherwise) — every row written before the choice existed is in
+   * that state.
+   */
+  searchSource?: "deployment" | "own" | null;
   /** Whether a key is stored for it. The key itself is never echoed back. */
   hasSearchApiKey?: boolean;
 }
@@ -141,6 +149,14 @@ export interface WebSearchSettings {
   ownBaseUrl: string | null;
   /** Whether a key is stored for the user's own service. */
   ownHasKey: boolean;
+  /**
+   * Whether the user's own service is the one the assistant searches with.
+   *
+   * The server's answer, not the form's: the rule is "own when the source says
+   * so, otherwise own when there is an address", and a form that re-derived it
+   * could disagree with the assistant about which one is live.
+   */
+  ownInUse: boolean;
 }
 
 export function AssistantSettingsPanel({
@@ -158,6 +174,7 @@ export function AssistantSettingsPanel({
     backendSource: null,
     ownBaseUrl: null,
     ownHasKey: false,
+    ownInUse: false,
   },
 }: {
   initial: AssistantSettingsView | null;
@@ -188,6 +205,7 @@ export function AssistantSettingsPanel({
   const t = useT();
   const router = useRouter();
   const modeGroup = `${useId()}-mode`;
+  const searchSourceGroup = `${useId()}-search-source`;
 
   /**
    * Whether the account path can actually spend anything.
@@ -239,6 +257,20 @@ export function AssistantSettingsPanel({
     initial?.searchBaseUrl ?? webSearch.ownBaseUrl ?? "",
   );
   const [searchApiKey, setSearchApiKey] = useState("");
+  /** Whether the stored key is to be deleted rather than kept. */
+  const [clearSearchKey, setClearSearchKey] = useState(false);
+  /**
+   * Which of the two the assistant searches with.
+   *
+   * The choice is explicit because "the address is filled in" is not an answer
+   * a person can read on the page: a stored address with the deployment's
+   * provider in use looks exactly like the opposite. And it is a choice worth
+   * making, because a user's own service being down for a while should not
+   * mean the assistant cannot search.
+   */
+  const [searchSource, setSearchSource] = useState<"deployment" | "own">(
+    initial?.searchSource ?? (webSearch.ownInUse ? "own" : "deployment"),
+  );
   const [searchProbe, setSearchProbe] = useState<{ ok: boolean; text: string } | null>(null);
   const [searchBusy, setSearchBusy] = useState(false);
   const [busy, setBusy] = useState<"probe" | "save" | null>(null);
@@ -311,9 +343,12 @@ export function AssistantSettingsPanel({
       // The user's own search service. The address is sent explicitly, blank
       // included, because a cleared box has to mean "I have none" rather than
       // "leave whatever was there". The key is sent only when it was typed —
-      // a blank box must not overwrite a stored key.
+      // a blank box must not overwrite a stored key — and `null` is the
+      // explicit "delete it", which a blank box cannot express.
       searchBaseUrl: searchBaseUrl.trim() || null,
+      searchSource,
       ...(searchApiKey.trim() ? { searchApiKey: searchApiKey.trim() } : {}),
+      ...(clearSearchKey ? { searchApiKey: null } : {}),
     };
   }
 
@@ -341,15 +376,38 @@ export function AssistantSettingsPanel({
         }),
       });
       const json = (await res.json().catch(() => null)) as
-        | { ok: boolean; data?: { results?: unknown[]; latencyMs?: number }; error?: { message?: string } }
+        | {
+            ok: boolean;
+            data?: {
+              results?: unknown[];
+              latencyMs?: number;
+              shapeOk?: boolean;
+              itemCount?: number;
+            };
+            error?: { message?: string };
+          }
         | null;
       if (json?.ok) {
+        /**
+         * Three answers, not one.
+         *
+         * "Reachable" and "reachable, and the answer was a search result" are
+         * different, and "reachable, and the answer was something else" is the
+         * one that would otherwise look like a working service that found
+         * nothing.
+         */
+        const shapeOk = json.data?.shapeOk !== false;
+        const count = json.data?.itemCount ?? json.data?.results?.length ?? 0;
         setSearchProbe({
           ok: true,
-          text: t("assistant.settings.searchService.probeOk", {
-            n: json.data?.results?.length ?? 0,
-            ms: json.data?.latencyMs ?? 0,
-          }),
+          text: shapeOk
+            ? count > 0
+              ? t("assistant.settings.searchService.probeOk", {
+                  n: count,
+                  ms: json.data?.latencyMs ?? 0,
+                })
+              : t("assistant.settings.searchService.probeEmpty", { ms: json.data?.latencyMs ?? 0 })
+            : t("assistant.settings.searchService.probeWrongShape"),
         });
       } else {
         setSearchProbe({
@@ -459,6 +517,9 @@ export function AssistantSettingsPanel({
       if (json?.ok) {
         setMessage({ ok: true, text: t("assistant.settings.saved") });
         setApiKey("");
+        // The key deletion was a one-off request, not a state: once it is
+        // saved, the box is an empty box again.
+        setClearSearchKey(false);
         // The server's own answer, not the form's: a value it normalised or a
         // field it filled in should be what the next render shows.
         setSeed(json.data?.settings ?? null);
@@ -914,55 +975,133 @@ export function AssistantSettingsPanel({
           the user's — their address, their key, their bill. A search through
           it is not charged to the account, because the account is not the one
           paying the vendor.
+
+          **The choice is explicit.** "The address box is filled in" is not
+          something a person can read on the page, and a stored address with
+          the deployment's provider in use looks exactly like the opposite.
         */}
         <div className="space-y-2.5 rounded-md border border-border bg-muted/30 p-2.5">
           <p className="text-sm font-medium text-foreground">
             {t("assistant.settings.searchService.title")}
           </p>
-          <p className="text-xs text-muted-foreground">
-            {t("assistant.settings.searchService.hint")}
-          </p>
-          <Input
-            id="assistant-search-base-url"
-            name="searchBaseUrl"
-            label={t("assistant.settings.searchService.url")}
-            type="url"
-            placeholder="https://your-gateway.example.com/v1/search"
-            value={searchBaseUrl}
-            onChange={(e) => setSearchBaseUrl(e.target.value)}
-            hint={t("assistant.settings.searchService.urlHint")}
-          />
-          <Input
-            id="assistant-search-api-key"
-            name="searchApiKey"
-            label={t("assistant.settings.searchService.key")}
-            type="password"
-            autoComplete="off"
-            placeholder={webSearch.ownHasKey ? t("assistant.settings.searchService.keyStored") : ""}
-            value={searchApiKey}
-            onChange={(e) => setSearchApiKey(e.target.value)}
-            hint={t("assistant.settings.searchService.keyHint")}
-          />
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={probeSearch}
-              disabled={searchBusy || !searchBaseUrl.trim()}
-            >
-              {searchBusy
-                ? t("assistant.settings.searchService.testing")
-                : t("assistant.settings.searchService.test")}
-            </Button>
-            {searchProbe && (
-              <span
-                className={`text-xs ${searchProbe.ok ? "text-muted-foreground" : "text-destructive"}`}
-              >
-                {searchProbe.text}
-              </span>
-            )}
-          </div>
+
+          <fieldset className="space-y-2">
+            <legend className="sr-only">{t("assistant.settings.searchService.sourceLegend")}</legend>
+            <div className="grid grid-cols-2 gap-1.5" role="none">
+              {(["deployment", "own"] as const).map((option) => (
+                <label
+                  key={option}
+                  className={`cursor-pointer rounded-md border px-2.5 py-2 text-sm transition-colors ${
+                    searchSource === option
+                      ? "border-primary bg-primary/5 font-medium text-foreground"
+                      : "border-border text-muted-foreground hover:bg-muted/50"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name={searchSourceGroup}
+                    className="sr-only"
+                    checked={searchSource === option}
+                    onChange={() => {
+                      setSearchSource(option);
+                      setSearchProbe(null);
+                    }}
+                  />
+                  {option === "deployment"
+                    ? t("assistant.settings.searchService.sourceDeployment")
+                    : t("assistant.settings.searchService.sourceOwn")}
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {searchSource === "deployment"
+                ? t("assistant.settings.searchService.sourceDeploymentHint")
+                : t("assistant.settings.searchService.sourceOwnHint")}
+            </p>
+          </fieldset>
+
+          {searchSource === "own" ? (
+            <>
+              <Input
+                id="assistant-search-base-url"
+                name="searchBaseUrl"
+                label={t("assistant.settings.searchService.url")}
+                type="url"
+                placeholder="https://your-gateway.example.com/v1/search"
+                value={searchBaseUrl}
+                onChange={(e) => setSearchBaseUrl(e.target.value)}
+                hint={t("assistant.settings.searchService.urlHint")}
+              />
+              <Input
+                id="assistant-search-api-key"
+                name="searchApiKey"
+                label={t("assistant.settings.searchService.key")}
+                type="password"
+                autoComplete="off"
+                placeholder={
+                  clearSearchKey
+                    ? t("assistant.settings.searchService.keyClearing")
+                    : webSearch.ownHasKey
+                      ? t("assistant.settings.searchService.keyStored")
+                      : ""
+                }
+                value={searchApiKey}
+                onChange={(e) => {
+                  setSearchApiKey(e.target.value);
+                  if (e.target.value) setClearSearchKey(false);
+                }}
+                hint={t("assistant.settings.searchService.keyHint")}
+              />
+              {webSearch.ownHasKey && !clearSearchKey && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setClearSearchKey(true);
+                    setSearchApiKey("");
+                  }}
+                  className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                >
+                  {t("assistant.settings.searchService.clearKey")}
+                </button>
+              )}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={probeSearch}
+                  disabled={searchBusy || !searchBaseUrl.trim()}
+                >
+                  {searchBusy
+                    ? t("assistant.settings.searchService.testing")
+                    : t("assistant.settings.searchService.test")}
+                </Button>
+                {searchProbe && (
+                  <span
+                    className={`text-xs ${searchProbe.ok ? "text-muted-foreground" : "text-destructive"}`}
+                  >
+                    {searchProbe.text}
+                  </span>
+                )}
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              {webSearch.backendName
+                ? t("assistant.settings.searchService.deploymentBackend", {
+                    name: webSearch.backendName,
+                  })
+                : t("assistant.settings.searchService.deploymentBackendUnknown")}
+              {webSearch.ownBaseUrl && (
+                <>
+                  {" "}
+                  {t("assistant.settings.searchService.storedButUnused", {
+                    url: webSearch.ownBaseUrl,
+                  })}
+                </>
+              )}
+            </p>
+          )}
         </div>
 
         {isAdmin && (

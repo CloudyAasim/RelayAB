@@ -72,11 +72,12 @@ const PutSchema = z.object({
   // what they paste is what gets called — and the key is optional, because a
   // service on their own machine may not want one.
   //
-  // Null clears it, which puts the account back on the deployment's providers.
+  // Null clears the address; the source says which of the two the assistant
+  // searches. `null` for the key is the explicit "delete it", which a blank
+  // password box cannot express.
   searchBaseUrl: z.string().max(500).nullable().optional(),
-  // Blank or omitted keeps the stored key, exactly like the assistant's own
-  // upstream key.
-  searchApiKey: z.string().max(500).optional(),
+  searchSource: z.enum(["deployment", "own"]).nullable().optional(),
+  searchApiKey: z.string().max(500).nullable().optional(),
 });
 
 const ProbeSchema = z.object({
@@ -90,6 +91,22 @@ function unauthorized(): Response {
     { ok: false, error: { code: "unauthenticated", message: "Login required" } },
     { status: 401 },
   );
+}
+
+/**
+ * An address a request can actually be sent to.
+ *
+ * The same rule the search engine applies to a provider's address, and for the
+ * same reason: an address that is not http(s) is not a search service, and
+ * storing it only defers the error to the moment somebody searches.
+ */
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 export async function GET(): Promise<Response> {
@@ -156,6 +173,50 @@ export async function PUT(req: Request): Promise<Response> {
         { status: 400 },
       );
     }
+  }
+
+  /**
+   * The search service's address, checked before it is stored.
+   *
+   * A mistyped address is the one configuration mistake that is invisible
+   * until a search is attempted — and the search then fails every time, with a
+   * message about the *vendor* rather than about the address. So the address is
+   * checked here, where the person who typed it is looking at the message.
+   */
+  const searchUrl = (data.searchBaseUrl ?? "").trim();
+  if (searchUrl && !isHttpUrl(searchUrl)) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: {
+          code: "bad_search_url",
+          message: "搜索接口地址必须是一个 http(s) 地址（要写完整端点，例如 https://example.com/v1/search）。",
+        },
+      },
+      { status: 400 },
+    );
+  }
+
+  /**
+   * Choosing "my own service" without an address would leave the assistant
+   * searching through the deployment's provider instead — silently, and the
+   * opposite of what was asked for. So it is refused here rather than quietly
+   * doing something else.
+   */
+  const searchSource =
+    data.searchSource === undefined ? (existing?.searchSource ?? null) : data.searchSource;
+  const searchUrlStored = (data.searchBaseUrl ?? existing?.searchBaseUrl ?? "").trim();
+  if (searchSource === "own" && !searchUrlStored) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: {
+          code: "no_search_url",
+          message: "选择用自己的搜索服务就需要填它的接口地址。",
+        },
+      },
+      { status: 400 },
+    );
   }
 
   try {

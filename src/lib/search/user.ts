@@ -43,6 +43,29 @@ import { createSearchBackend, type SearchBackend } from "../assistant/web-search
 import { OPENAI_COMPATIBLE_TEMPLATE } from "./templates";
 
 /**
+ * Whether this account's own service is the one to search with.
+ *
+ * Three answers, and the third one is the rule this feature started with:
+ *
+ *  - `own` — the user said so.
+ *  - `deployment` — the user said so, and it wins over an address they have
+ *    stored: their own service is down for a while and they still want the
+ *    assistant to search, and the address should not have to be thrown away to
+ *    get there.
+ *  - `null` — nobody said: the old rule, "own service when there is an
+ *    address, the deployment's otherwise". Every row written before the choice
+ *    existed is in this state, and it keeps working exactly as it did.
+ */
+export function useOwnSearchService(
+  settings: { searchSource?: "deployment" | "own" | null; searchBaseUrl?: string | null } | null,
+): boolean {
+  if (!settings) return false;
+  if (settings.searchSource === "own") return true;
+  if (settings.searchSource === "deployment") return false;
+  return Boolean(settings.searchBaseUrl?.trim());
+}
+
+/**
  * The user's own backend, or null when they have not configured one.
  *
  * Null is the answer for "no own service", not an error: the caller falls
@@ -52,7 +75,9 @@ export async function userSearchBackend(userId: string): Promise<SearchBackend |
   if (!userId) return null;
 
   const settings = await getAssistantSettings(userId);
-  const baseUrl = settings?.searchBaseUrl?.trim();
+  if (!useOwnSearchService(settings)) return null;
+
+  const baseUrl = settings!.searchBaseUrl?.trim();
   if (!baseUrl) return null;
 
   let apiKey: string | undefined;

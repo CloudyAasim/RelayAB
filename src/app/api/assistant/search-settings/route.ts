@@ -20,6 +20,7 @@ import { z } from "zod";
 
 import { getCurrentUser } from "@/lib/auth/session";
 import { createSearchBackend } from "@/lib/assistant/web-search";
+import { executeSearchWithReport } from "@/lib/search/engine";
 import { OPENAI_COMPATIBLE_TEMPLATE } from "@/lib/search/templates";
 
 export const dynamic = "force-dynamic";
@@ -84,11 +85,30 @@ export async function POST(req: Request): Promise<Response> {
 
   const started = Date.now();
   try {
-    const results = await backend.search(parsed.data.query ?? "RelayAB 搜索连通性测试", 3, fetch);
+    /**
+     * The report, not just the hits.
+     *
+     * "The service answered" and "the service answered with something else"
+     * are different diagnoses and an empty list cannot tell them apart: a
+     * vendor whose response nests the hits one level deeper looks exactly like
+     * a vendor that found nothing. So the probe says which one it was, and
+     * says what it actually got.
+     */
+    const report = await executeSearchWithReport(OPENAI_COMPATIBLE_TEMPLATE.spec, parsed.data.baseUrl, {
+      query: parsed.data.query ?? "RelayAB 搜索连通性测试",
+      limit: 3,
+      displayName: "自己的搜索服务",
+      ...(parsed.data.apiKey?.trim() ? { apiKey: parsed.data.apiKey.trim() } : {}),
+    });
+
     return NextResponse.json({
       ok: true,
       data: {
-        results,
+        results: report.results,
+        /** Whether the answer carried a `results` array at all. */
+        shapeOk: report.shapeOk,
+        /** How many hits the answer carried, before the limit cut them. */
+        itemCount: report.itemCount,
         latencyMs: Date.now() - started,
         // The endpoint that was actually called, so a mistyped address is
         // visible without reading the code.

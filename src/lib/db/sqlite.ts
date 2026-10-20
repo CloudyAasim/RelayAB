@@ -630,6 +630,12 @@ const ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; type: string
   // row means, so an upgrade changes nobody's behaviour.
   { table: "assistant_settings", column: "search_base_url", type: "TEXT" },
   { table: "assistant_settings", column: "encrypted_search_api_key", type: "TEXT" },
+  // Which search backend the assistant uses. NULL means "the old rule": the
+  // user's own service when there is an address, the deployment's otherwise.
+  // "deployment" is the explicit "not mine, even though I have one" — the
+  // state a user needs when their own service is down for a while and they
+  // still want the assistant to search.
+  { table: "assistant_settings", column: "search_source", type: "TEXT" },
   { table: "assistant_threads", column: "web_search", type: "INTEGER" },
   // Per-provider search price. Rows created before this existed keep the
   // previous global default of one credit rather than becoming free.
