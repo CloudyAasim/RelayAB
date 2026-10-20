@@ -122,10 +122,11 @@ export interface SearchAuth {
    * Whether the backend cannot answer without a credential.
    *
    * True by default, which is the safe answer: a keyed API that is given no
-   * key answers 401 and the operator sees a rejected credential instead of a
-   * silent "not configured". A self-hosted instance behind a proxy sets this
-   * to false, and then a missing key means no credential is sent at all —
-   * never an empty one.
+   * key cannot be built into a backend at all, so the row is **skipped** and
+   * the operator sees "this configuration cannot work" rather than a stream of
+   * 401s from a request that was never going to be authenticated. A
+   * self-hosted instance behind a proxy sets this to false, and then a missing
+   * key means no credential is sent at all — never an empty one.
    */
   required?: boolean;
 }

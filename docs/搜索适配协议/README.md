@@ -103,7 +103,9 @@ body     = transport.body（POST 才有），序列化成 JSON
   - `header` → 请求头 `<name>: <prefix><密钥>`，`prefix` 默认空。
   - `query` → 查询参数 `<name>=<prefix><密钥>`。
   - `none` → 不带凭据。
-  - **没有密钥就一个都不发**——不会发一个空的请求头。`auth.required` 默认 `true`（没有密钥就是配错了，保存时直接报错）；自建实例不需要密钥就写 `"required": false`。
+  - **没有密钥就一个都不发**——不会发一个空的请求头。`auth.required` 默认 `true`：
+    这种情况下**这一行会被跳过**（于是没有可用的后端，面板会显示这条记录配置不完整），
+    而不是发一个没有凭据的请求去撞 401。自建实例不需要密钥就写 `"required": false`。
 - **POST 的 content-type** 默认 `application/json`，spec 里写了 `headers` 就以 spec 为准。
 
 **结果怎么读出来**：
