@@ -182,10 +182,70 @@ export const BRAVE_TEMPLATE: SearchTemplate = {
   },
 };
 
+/**
+ * The OpenAI-compatible search shape.
+ *
+ * **The address is the whole endpoint** — the path is empty, so nothing is
+ * appended to it. That is the rule the rows written before the protocol
+ * existed are read under, and it is what a user pasting a search service's
+ * documented URL expects: what they type is what gets called.
+ *
+ * The shape itself is the one this gateway already speaks on `/v1/search`:
+ *
+ *   POST <地址>
+ *   Authorization: Bearer <密钥>
+ *   Content-Type: application/json
+ *
+ *   {"query": "搜索词", "limit": 6}
+ *
+ *   → {"object": "search", "results": [{"title", "url", "snippet"}], …}
+ *
+ * So pointing the assistant at another instance of this gateway works with
+ * nothing but its `/v1/search` address and a key, and so does any vendor that
+ * publishes the same shape.
+ *
+ * **The key is optional here** (`auth.required: false`) and nowhere else: a
+ * user may point the assistant at a service on their own machine that asks for
+ * no credential, and a missing key must then mean "no credential is sent" —
+ * never an empty `Authorization` header, which some servers read as a
+ * malformed key rather than as no key.
+ */
+export const OPENAI_COMPATIBLE_TEMPLATE: SearchTemplate = {
+  id: "openai-compatible",
+  name: "OpenAI 兼容搜索",
+  description:
+    "任何说 OpenAI 兼容搜索形状的接口：POST 到你填的地址，Bearer 鉴权，{query, limit} 进，{results:[{title,url,snippet}]} 出",
+  legacyAddressIncludesPath: true,
+  spec: {
+    specVersion: 1,
+    displayName: "OpenAI 兼容搜索",
+    vendor: "openai-compatible",
+    transport: {
+      method: "POST",
+      // Empty on purpose: the address is the endpoint, and nothing is appended.
+      path: "",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: { query: "$.query", limit: "$.limit" },
+    },
+    auth: { type: "bearer", required: false },
+    response: {
+      items: "$.results",
+      fields: {
+        title: "$.title",
+        url: "$.url",
+        // The three names the shape goes by, in the order they are tried.
+        snippet: { $firstPresent: ["$.snippet", "$.content", "$.description"] },
+      },
+    },
+    limits: { timeoutMs: 15_000 },
+  },
+};
+
 export const SEARCH_TEMPLATES: readonly SearchTemplate[] = [
   SEARXNG_TEMPLATE,
   TAVILY_TEMPLATE,
   BRAVE_TEMPLATE,
+  OPENAI_COMPATIBLE_TEMPLATE,
 ];
 
 const BY_ID = new Map(SEARCH_TEMPLATES.map((template) => [template.id, template]));

@@ -68,8 +68,26 @@ function render(overrides: Partial<PanelProps> = {}): string {
   return renderToStaticMarkup(h(I18nProvider, { initialLocale: "zh-CN", children: panel }));
 }
 
-const countPasswordInputs = (html: string): number =>
-  (html.match(/type="password"/g) || []).length;
+/**
+ * The password fields on the page, counted by which field they are.
+ *
+ * The panel has **two** different keys now, and they are not the same
+ * question: the assistant's **upstream** key (the chat model the user brings)
+ * and the user's **own search service** key. Counting every `type="password"`
+ * would make the second one look like the first, so each is counted by the
+ * id its input carries.
+ */
+const inputTags = (html: string): string[] => html.match(/<input[^>]*>/g) ?? [];
+
+const countUpstreamKeyInputs = (html: string): number =>
+  inputTags(html).filter(
+    (tag) => tag.includes('id="assistant-api-key"') && tag.includes('type="password"'),
+  ).length;
+
+const countSearchKeyInputs = (html: string): number =>
+  inputTags(html).filter(
+    (tag) => tag.includes('id="assistant-search-api-key"') && tag.includes('type="password"'),
+  ).length;
 
 beforeEach(() => {
   credential.created = true;
@@ -83,7 +101,7 @@ describe("the account path shows no key field", () => {
     // here reads as a requirement, and a requirement that does not exist is how
     // somebody ends up configuring a key they do not need.
     const html = render({ initial: { baseUrl: "", model: "", accountModel: "gpt-4o", credentialMode: "account", hasApiKey: false } });
-    expect(countPasswordInputs(html), "a password field on the account path").toBe(0);
+    expect(countUpstreamKeyInputs(html), "a password field on the account path").toBe(0);
     expect(html, "the key field is present on the account path").not.toContain('name="apiKey"');
     expect(html, "the address field is present on the account path").not.toContain('name="baseUrl"');
     expect(html, "the account model picker is missing").toContain("用哪个模型");
@@ -91,6 +109,26 @@ describe("the account path shows no key field", () => {
     // it is absent by its *label* — what a person would read.
     expect(html, "the key field is labelled on the account path").not.toContain("上游 API 密钥");
     expect(html, "the address field is labelled on the account path").not.toContain("API 地址");
+  });
+
+  it("— and the user's own search service is offered on both paths", () => {
+    // A **different** key, for a **different** thing: the user's own search
+    // service is theirs on either path, and the account path has no reason to
+    // hide it. Counting every password field would have mistaken this one for
+    // the upstream key — which is why the two are counted by their own ids.
+    for (const mode of ["account", "key"] as const) {
+      const html = render({
+        initial: {
+          baseUrl: mode === "key" ? "https://api.example.com/v1" : "",
+          model: mode === "key" ? "gpt-4o" : "",
+          accountModel: "gpt-4o",
+          credentialMode: mode,
+          hasApiKey: false,
+        },
+      });
+      expect(countSearchKeyInputs(html), `no search-service key on the ${mode} path`).toBe(1);
+      expect(html, `no search endpoint field on the ${mode} path`).toContain('name="searchBaseUrl"');
+    }
   });
 
   it("— even when the person has a key stored from the other path", () => {
@@ -106,7 +144,7 @@ describe("the account path shows no key field", () => {
         hasApiKey: true,
       },
     });
-    expect(countPasswordInputs(html)).toBe(0);
+    expect(countUpstreamKeyInputs(html), "a password field on the account path").toBe(0);
     expect(html).not.toContain('name="apiKey"');
   });
 
@@ -125,7 +163,7 @@ describe("the key path still asks for its own upstream", () => {
     const html = render({
       initial: { baseUrl: "https://api.example.com/v1", model: "gpt-4o", accountModel: null, credentialMode: "key", hasApiKey: false },
     });
-    expect(countPasswordInputs(html), "the key path lost its key field").toBe(1);
+    expect(countUpstreamKeyInputs(html), "the key path lost its key field").toBe(1);
     expect(html).toContain('name="baseUrl"');
     expect(html, "the key path has no key label").toContain("上游 API 密钥");
   });

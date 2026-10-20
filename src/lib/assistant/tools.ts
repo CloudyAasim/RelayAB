@@ -74,7 +74,8 @@ import {
 import { DEPLOYMENT_NOTES } from "./deployment-notes";
 import { WebSearchError, MAX_SEARCH_RESULTS } from "./web-search";
 import { DEFAULT_WEB_SEARCH_LIMIT } from "../search/usage";
-import { searchActive } from "../search/resolve";
+import { resolveSearchBackendForUser } from "../search/resolve";
+import { attributionKeyFor, runSearch } from "../search/billing";
 import { loadSearchConfig } from "../search/config";
 import { fetchPage, WebFetchError } from "./web-fetch";
 import { createDocReader } from "./docs-reader";
@@ -147,6 +148,17 @@ export interface ToolContext {
    * what every non-assistant caller wants.
    */
   webSearchEnabled?: boolean;
+  /**
+   * Why this turn may not search.
+   *
+   * Three reasons and three different remedies, so the model has to be told
+   * which one it is: the user switched it off for this conversation, the
+   * administrator switched the feature off for the deployment, or the
+   * deployment has no search backend at all. Without the reason the model
+   * says "please turn on the switch next to the input box" — and there is no
+   * such switch when the administrator is the one who turned it off.
+   */
+  webSearchDisabledReason?: "user" | "admin" | "no_backend";
   /**
    * How many results the caller asked for, before the per-provider cap.
    *
@@ -1465,8 +1477,14 @@ export async function executeTool(
     case "web_search":
       // Hiding the definition is not enough: a model that has seen the tool in
       // an earlier turn can emit the name anyway, and this turn said no.
+      //
+      // The reason matters, because the three ways of being off call for three
+      // different things from the user: their own switch, the administrator's
+      // switch, and a deployment with no backend at all. Telling somebody to
+      // "turn on the switch next to the input box" when the administrator
+      // turned the feature off is asking them for something that is not there.
       if (ctx.webSearchEnabled === false) {
-        return fail("本轮已关闭网页搜索。需要联网时请让用户在输入框旁边打开开关。");
+        return fail(webSearchOffMessage(ctx.webSearchDisabledReason));
       }
       return webSearchTool(args, ctx);
     case "generate_image":
@@ -4479,6 +4497,34 @@ async function listUsersTool(): Promise<ToolResult> {  const { users } = await l
 }
 
 /**
+ * Why this turn cannot search, in the words the model should say out loud.
+ *
+ * The three reasons are three different requests, and the old single message
+ * asked for the wrong one: "请在输入框旁边打开开关" is a request the user can
+ * only carry out when *they* are the one who turned it off. When the
+ * administrator turned the feature off there is no such switch — the
+ * composer toggle is disabled and the honest answer is "the administrator
+ * switched this off", which the model can say and the user can act on by
+ * asking the administrator.
+ */
+function webSearchOffMessage(reason?: "user" | "admin" | "no_backend"): string {
+  switch (reason) {
+    case "admin":
+      return (
+        "网页搜索已被管理员关闭（管理台 → 搜索）。请直接告诉用户，不要凭记忆补搜索结果。"
+      );
+    case "no_backend":
+      return (
+        "这个部署没有配置任何搜索后端。请告诉用户：请在「AI 助手 → 设置」里配置他自己的" +
+        "OpenAI 兼容搜索服务，或请管理员在「管理台 → 搜索」里添加一个提供商。" +
+        "不要凭记忆补搜索结果。"
+      );
+    default:
+      return "本轮已关闭网页搜索。需要联网时请让用户在输入框旁边打开开关。";
+  }
+}
+
+/**
  * Search the public web.
  *
  * The tool the assistant was missing: `fetch_page` can read a URL it already
@@ -4491,6 +4537,20 @@ async function listUsersTool(): Promise<ToolResult> {  const { users } = await l
  * back as a *result*, not an exception, for the same reason every other tool
  * does: the model can say what happened, and an exception would end the turn
  * along with everything it had established.
+ *
+ * ## What it costs
+ *
+ * **The deployment's provider is charged to the account, exactly like
+ * `/v1/search`.** It used to be charged to nobody: this tool went straight to
+ * `searchWeb()`, so every search was a free ride on the operator's Tavily /
+ * Brave / SearXNG account, invisible in every usage report, and available to
+ * an account whose balance was empty. The three other doors (`/v1/search` and
+ * the panel's two test buttons) all went through the shared settlement; this
+ * one now does too.
+ *
+ * **The user's own search service is not charged.** Their key paid their
+ * vendor; the gateway is a relay there, and charging them for it would be
+ * charging them twice.
  */
 async function webSearchTool(
   args: Record<string, unknown>,
@@ -4514,7 +4574,63 @@ async function webSearchTool(
     if (!config.enabled) {
       return fail("网页搜索已被管理员关闭（管理台 → 搜索）。请直接告诉用户，不要凭记忆补搜索结果。");
     }
-    const outcome = await searchActive(query, { limit });
+    /**
+     * The user's own service first, the deployment's providers after it.
+     *
+     * The order is money: a user who brought their own search service is
+     * paying that vendor, and the deployment's provider is not theirs to
+     * spend.
+     */
+    const backend = await resolveSearchBackendForUser(ctx.user.id);
+    if (!backend) {
+      return fail(
+        "没有可用的搜索后端。请在「AI 助手 → 设置」里配置你自己的搜索服务" +
+          "（OpenAI 兼容的搜索接口），或请管理员在「管理台 → 搜索」里添加一个提供商" +
+          "——网页搜索也可以由管理员用 TAVILY_API_KEY / BRAVE_SEARCH_API_KEY / SEARXNG_URL 配置。" +
+          "没配置之前不要声称自己「搜索过」。",
+      );
+    }
+
+    // The account's own row: the quota and the balance that gets charged live
+    // on the user record, not on the session's copy of it.
+    const account = await getUserById(ctx.user.id);
+    if (!account) return fail("找不到当前账号。");
+
+    /**
+     * Whose bill is it?
+     *
+     * `none` for the user's own service — their key paid their vendor.
+     * `account` for the deployment's providers — the operator paid that
+     * vendor, so the account pays the operator.
+     */
+    const charge = backend.source === "user" ? "none" : "account";
+
+    /**
+     * A spend that cannot be seen in any report is a spend nobody can audit.
+     *
+     * The usage row hangs off a real key, and the usage pages read by key. An
+     * account with no key at all has nowhere to put the row, so the call is
+     * refused — with the two things that would fix it: a key, or a search
+     * service of its own (which is not charged here at all).
+     */
+    const apiKeyId = await attributionKeyFor(account.id);
+    if (charge === "account" && !apiKeyId) {
+      return fail(
+        "这个账号还没有密钥，无法记账 —— 请先在「我的密钥与额度」里创建一把；" +
+          "或者在「AI 助手 → 设置」里配置你自己的搜索服务（那种不经过本中转站计费）。",
+      );
+    }
+
+    const settled = await runSearch({
+      query,
+      limit,
+      user: account,
+      backend,
+      charge,
+      ...(apiKeyId ? { apiKeyId } : {}),
+    });
+
+    const outcome = settled.outcome;
     if (outcome.results.length === 0) {
       return ok({
         backend: outcome.backend,

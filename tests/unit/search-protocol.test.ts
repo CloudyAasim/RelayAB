@@ -168,6 +168,28 @@ describe("a row written before the protocol is read the old way", () => {
   it("a kind that names no template and carries no spec says so instead of guessing", () => {
     expect(effectiveSearchConfig({ kind: "serper", baseUrl: "https://s.example", spec: null })).toBeNull();
   });
+
+  it("and the request it sends is the one the old adapter sent", () => {
+    // The pinning above covers the *template*. The rows written before the
+    // protocol are read differently — their address is the whole endpoint — and
+    // their request was the one that was never pinned. The engine turned the
+    // empty path into a "/" and sent `…/tavily/` instead of `…/tavily`: one
+    // byte different, on every request, to every deployment that had such a
+    // row. The promise in `effective.ts` is "one request does not change", so
+    // the promise is pinned here.
+    const config = effectiveSearchConfig({
+      kind: "tavily",
+      baseUrl: "https://proxy.example.com/tavily",
+      spec: null,
+    });
+    const request = buildSearchRequest(config!.spec, config!.baseUrl, {
+      query: "vendor api",
+      limit: 6,
+      apiKey: "secret",
+    });
+    expect(request.url).toBe("https://proxy.example.com/tavily");
+    expect(request.method).toBe("POST");
+  });
 });
 
 // ---------------------------------------------------------------------------

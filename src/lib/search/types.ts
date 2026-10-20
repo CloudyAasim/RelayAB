@@ -16,7 +16,7 @@ export interface WebSearchResult {
 }
 
 /** The vendors that ship with a built-in template. */
-export const BUILTIN_SEARCH_KINDS = ["tavily", "brave", "searxng"] as const;
+export const BUILTIN_SEARCH_KINDS = ["tavily", "brave", "searxng", "openai-compatible"] as const;
 export type BuiltinSearchKind = (typeof BUILTIN_SEARCH_KINDS)[number];
 
 /**

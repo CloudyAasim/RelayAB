@@ -16,6 +16,7 @@ import { getPublicAssistantSettings } from "@/lib/db/assistant";
 import { cachedBuildModelCatalog } from "@/lib/db/data-cache";
 import { resolveAssistantConfig } from "@/lib/assistant/config";
 import { loadSearchConfig } from "@/lib/search/config";
+import { hasUserSearchBackend } from "@/lib/search/user";
 import { DEFAULT_WEB_SEARCH_LIMIT } from "@/lib/search/usage";
 import { MAX_SEARCH_RESULTS } from "@/lib/assistant/web-search";
 import { getT } from "@/lib/i18n/server";
@@ -37,9 +38,18 @@ export default async function AssistantPage() {
     loadSearchConfig(),
   ]);
   const isAdmin = sessionUser.role === "admin";
-  // Availability is a deployment fact, not a preference: the composer toggle is
-  // disabled (with a reason) when the feature is off or has no backend.
-  const webSearchAvailable = searchConfig.enabled && searchConfig.backendConfigured;
+  /**
+   * Whether **this** account can search.
+   *
+   * The deployment's own backend is one way in and the account's own search
+   * service is the other: a user who configured one of those should not be
+   * told the deployment has no search. The administrator's switch still
+   * governs — the deployment's search being off is a statement about the
+   * deployment, and it is not a user's to overrule.
+   */
+  const ownSearch = await hasUserSearchBackend(sessionUser.id);
+  const webSearchAvailable =
+    searchConfig.enabled && (ownSearch || searchConfig.backendConfigured);
   const webSearchDefault = settings?.webSearchDefault ?? true;
   const webSearchLimit = settings?.webSearchLimit ?? DEFAULT_WEB_SEARCH_LIMIT;
 
@@ -138,8 +148,14 @@ export default async function AssistantPage() {
                 defaultOn: webSearchDefault,
                 limit: webSearchLimit,
                 maxResults: MAX_SEARCH_RESULTS,
-                backendName: searchConfig.backendName,
-                backendSource: searchConfig.backendSource,
+                // The deployment's backend is named by an administrator, for an
+                // administrator. A regular user has no business seeing which
+                // vendor the operator buys search from — so the name is not
+                // sent to them at all, rather than sent and hidden in the UI.
+                backendName: isAdmin ? searchConfig.backendName : null,
+                backendSource: isAdmin ? searchConfig.backendSource : null,
+                ownBaseUrl: settings?.searchBaseUrl ?? null,
+                ownHasKey: settings?.hasSearchApiKey ?? false,
               }}
             />
           }

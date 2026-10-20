@@ -29,8 +29,8 @@
  *   "transport": {
  *     "method": "POST",
  *     "path": "/search",
- *     "query": { "q": "{{query}}" },
- *     "body": { "query": "{{query}}", "max_results": "{{limit}}" }
+ *     "query": { "q": "{{$.query}}" },
+ *     "body": { "query": "{{$.query}}", "max_results": "{{$.limit}}" }
  *   },
  *   "auth": { "type": "bearer" },
  *   "response": {
@@ -44,7 +44,7 @@
  * The syntax is the media protocol's, read from `src/lib/spec/primitives.ts`:
  *
  *   - a **path** (`$.web.results`) reads a value out of the upstream's JSON,
- *   - a **template** (`"{{query}}"`) writes the request's own values into a
+ *   - a **template** (`"{{$.query}}"`) writes the request's own values into a
  *     request field,
  *   - `{"$firstPresent": ["$.content", "$.snippet"]}` takes the first of several
  *     paths that the vendor actually answered.
@@ -73,11 +73,19 @@ export interface SearchTransport {
   /**
    * Appended to the provider's base address.
    *
-   * Always starts with `/`. The **base address** is one concept for every
-   * vendor: the service root, not the full endpoint. That is the difference
-   * this protocol fixes — the old column meant "the whole endpoint" for Tavily
-   * and Brave and "the service root" for SearXNG, which is how a Tavily URL
-   * ended up in a Brave row and was only discovered at request time.
+   * Starts with `/`, and is **appended** to the base rather than replacing
+   * the base's own path: a base of `https://api.example.com/v1` with a path
+   * of `/search` asks for `https://api.example.com/v1/search`. The **base
+   * address** is one concept for every vendor: the service root, not the full
+   * endpoint. That is the difference this protocol fixes — the old column
+   * meant "the whole endpoint" for Tavily and Brave and "the service root" for
+   * SearXNG, which is how a Tavily URL ended up in a Brave row and was only
+   * discovered at request time.
+   *
+   * **An empty path means the address is the whole endpoint.** That is the
+   * rule the rows written before the protocol existed are read under, and it
+   * is how a user points the assistant at a search service that publishes one
+   * exact URL.
    */
   path: string;
   /** Fixed request headers. Never carries the credential — that is `auth`. */
@@ -85,18 +93,19 @@ export interface SearchTransport {
   /**
    * Query-string parameters.
    *
-   * Values are templates or literals. `{{query}}` and `{{limit}}` are the only
-   * two the engine knows; anything else resolves to an empty string, which is
-   * why the engine refuses a spec that asks for an unknown placeholder.
+   * Values are templates or literals. `{{$.query}}` and `{{$.limit}}` are the
+   * only two the engine knows; anything else resolves to an empty string,
+   * which is why the engine refuses a spec that asks for an unknown
+   * placeholder.
    */
   query?: Record<string, string>;
   /**
    * The JSON body, for a POST.
    *
    * Values are templates or literals. A value that is exactly one template
-   * keeps the *type* of what it resolves to — `"{{limit}}"` is the number `6`,
-   * not the string `"6"` — because a vendor that documents a numeric field
-   * rejects the string form.
+   * keeps the *type* of what it resolves to — `"{{$.limit}}"` is the number
+   * `6`, not the string `"6"` — because a vendor that documents a numeric
+   * field rejects the string form.
    */
   body?: Record<string, unknown>;
 }
@@ -313,6 +322,28 @@ function checkField(value: unknown, path: string, errors: string[]): void {
 }
 
 /**
+ * Does this value carry the search term?
+ *
+ * Exactly the two forms the engine can fill: the path `$.query` and the
+ * template `{{$.query}}` (with or without text around it). A value that
+ * merely *contains* the text — `$.queryText`, say — is not one of them, and
+ * counting it as one would let a spec through that sends nothing.
+ *
+ * The whole tree is walked, because the engine resolves nested values too.
+ */
+function carriesQuery(value: unknown): boolean {
+  if (typeof value === "string") {
+    if (value === "$.query") return true;
+    return value.includes("{{$.query}}");
+  }
+  if (Array.isArray(value)) return value.some(carriesQuery);
+  if (value !== null && typeof value === "object") {
+    return Object.values(value as Record<string, unknown>).some(carriesQuery);
+  }
+  return false;
+}
+
+/**
  * Parse and check a spec.
  *
  * The result is either a usable spec or a list of what is wrong with it. There
@@ -346,9 +377,11 @@ export function parseSearchSpec(raw: unknown): SearchSpecParse {
     }
 
     const path = transportRaw.path;
-    if (typeof path !== "string" || !path.trim()) {
-      errors.push('transport.path: is required, e.g. "/search"');
-    } else if (!path.startsWith("/")) {
+    if (typeof path !== "string") {
+      errors.push(
+        'transport.path: is required, e.g. "/search" — or "" when the address is the whole endpoint',
+      );
+    } else if (path.trim() !== "" && !path.startsWith("/")) {
       errors.push(`transport.path: "${path}" must start with "/"`);
     }
 
@@ -477,14 +510,14 @@ export function parseSearchSpec(raw: unknown): SearchSpecParse {
   }
 
   // A spec that sends the query nowhere cannot answer a search.
+  //
+  // The check walks the whole tree, because the engine does: a vendor that
+  // wants the query inside an envelope (`{"opts": {"q": "…"}}`) is a vendor
+  // whose spec says so, and a placeholder nested in there used to pass this
+  // check while reaching the vendor as the literal text `{{$.query}}`.
   const transport = asRecord(root.transport);
   const sendsQuery =
-    Object.values(transport?.query ?? {}).some(
-      (v) => typeof v === "string" && (v.includes("$.query") || v.includes("{{$.query}}")),
-    ) ||
-    Object.values(transport?.body ?? {}).some(
-      (v) => typeof v === "string" && (v.includes("$.query") || v.includes("{{$.query}}")),
-    );
+    carriesQuery(transport?.query) || carriesQuery(transport?.body);
   if (transport && !sendsQuery) {
     errors.push(
       "transport: no parameter carries $.query — the search term has to reach the vendor somewhere",

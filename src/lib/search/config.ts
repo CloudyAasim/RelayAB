@@ -72,7 +72,7 @@ export interface SearchConfig {
    */
   backendUrl: string | null;
   /** Where the active backend came from: the provider table or the environment. */
-  backendSource: "db" | "env" | null;
+  backendSource: "db" | "env" | "user" | null;
   /** The provider's kind. */
   backendKind: SearchProvider | null;
   /** The id written into usage rows for this backend. */

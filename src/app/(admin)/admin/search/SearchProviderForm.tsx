@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { AlertCircle, CheckCircle2, Save } from "lucide-react";
 
 /** The vendors that ship with a template, plus whatever a row names itself. */
-export const BUILTIN_KINDS = ["searxng", "tavily", "brave"] as const;
+export const BUILTIN_KINDS = ["searxng", "tavily", "brave", "openai-compatible"] as const;
 
 export interface SearchTemplateOption {
   id: string;
@@ -97,26 +97,43 @@ export function SearchProviderForm({ provider, templates, onSaved }: Props) {
     }
   })();
 
-  /** The endpoint this row would talk to, as far as the form can tell. */
+  /**
+   * The endpoint this row would talk to, as far as the form can tell.
+   *
+   * **The same rules the server uses** (`effectiveSearchConfig`), because a
+   * preview that shows an address nobody will request is worse than no
+   * preview: the form used to treat every address as a service root, so a
+   * Tavily row written before the protocol — whose address is the *whole
+   * endpoint* — was previewed as `…/search/search`, a URL that is never
+   * requested.
+   *
+   * Three cases, and they are the three the server has:
+   *
+   *  - a row with a spec: the address is the root and the spec's path is
+   *    appended — unless the path is empty, which means the address *is* the
+   *    endpoint;
+   *  - a row without a spec, written before the protocol: Tavily and Brave
+   *    stored the whole endpoint, SearXNG stored the service root;
+   *  - a row with neither: the template's own default, if it has one.
+   */
   function resolvedEndpoint(): string | null {
+    const root = baseUrl.trim();
     if (!hasSpec) {
-      if (kind === "searxng") return baseUrl.trim() ? `${baseUrl.trim().replace(/\/+$/, "")}/search` : null;
-      if (kind === "tavily") {
-        const root = baseUrl.trim() || "https://api.tavily.com";
-        return `${root.replace(/\/+$/, "")}/search`;
-      }
-      if (kind === "brave") {
-        const root = baseUrl.trim() || "https://api.search.brave.com";
-        return `${root.replace(/\/+$/, "")}/res/v1/web/search`;
-      }
+      if (kind === "searxng") return root ? `${root.replace(/\/+$/, "")}/search` : null;
+      if (kind === "tavily") return root || "https://api.tavily.com/search";
+      if (kind === "brave") return root || "https://api.search.brave.com/res/v1/web/search";
+      // The OpenAI-compatible address is the endpoint itself: nothing is
+      // appended to it, so there is no default to show without one.
+      if (kind === "openai-compatible") return root || null;
       return null;
     }
     try {
       const spec = JSON.parse(specText) as { transport?: { path?: string }; baseUrl?: string };
-      const root = baseUrl.trim() || spec.baseUrl?.trim() || "";
-      if (!root) return null;
+      const base = root || spec.baseUrl?.trim() || "";
+      if (!base) return null;
       const path = spec.transport?.path ?? "";
-      return `${root.replace(/\/+$/, "")}${path.startsWith("/") ? path : path ? `/${path}` : ""}`;
+      if (!path) return base;
+      return `${base.replace(/\/+$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
     } catch {
       return null;
     }

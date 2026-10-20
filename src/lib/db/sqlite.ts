@@ -624,6 +624,12 @@ const ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; type: string
   // these existed should mean.
   { table: "assistant_settings", column: "web_search_default", type: "INTEGER" },
   { table: "assistant_settings", column: "web_search_limit", type: "INTEGER" },
+  // The user's own search service: one complete endpoint URL, and the key for
+  // it encrypted with the deployment's master key. Nullable throughout — a
+  // null address means "no service of my own", which is what every existing
+  // row means, so an upgrade changes nobody's behaviour.
+  { table: "assistant_settings", column: "search_base_url", type: "TEXT" },
+  { table: "assistant_settings", column: "encrypted_search_api_key", type: "TEXT" },
   { table: "assistant_threads", column: "web_search", type: "INTEGER" },
   // Per-provider search price. Rows created before this existed keep the
   // previous global default of one credit rather than becoming free.

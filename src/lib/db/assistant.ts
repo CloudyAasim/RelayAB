@@ -97,6 +97,19 @@ export interface SaveAssistantSettingsInput {
   webSearchDefault?: boolean | null;
   /** Results per search. `null` means six. */
   webSearchLimit?: number | null;
+  /**
+   * The user's own search service, as one complete endpoint URL.
+   *
+   * `null` clears it and `undefined` leaves it alone, the same two-way rule
+   * as every other field here. An empty string is the same as `null`: there
+   * is no search service any more, and the deployment's providers answer.
+   */
+  searchBaseUrl?: string | null;
+  /**
+   * The key for that service. Blank or omitted keeps the stored one, exactly
+   * like the assistant's own upstream key.
+   */
+  searchApiKey?: string;
 }
 
 /**
@@ -162,6 +175,16 @@ export async function saveAssistantSettings(
     thinkingType: pick(input.thinkingType, existing?.thinkingType),
     webSearchDefault: pick(input.webSearchDefault, existing?.webSearchDefault ?? null),
     webSearchLimit: pick(input.webSearchLimit, existing?.webSearchLimit ?? null),
+    // The user's own search service. An empty address means "no service of my
+    // own" — the same answer as clearing it — and the key is kept, because
+    // somebody who puts the address back does not want to retype the key.
+    searchBaseUrl:
+      input.searchBaseUrl === undefined || input.searchBaseUrl === null
+        ? (existing?.searchBaseUrl ?? null)
+        : input.searchBaseUrl.trim() || null,    encryptedSearchApiKey:
+      input.searchApiKey && input.searchApiKey.trim()
+        ? encryptSecret(input.searchApiKey.trim())
+        : (existing?.encryptedSearchApiKey ?? null),
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
@@ -171,8 +194,9 @@ export async function saveAssistantSettings(
        (user_id, base_url, encrypted_api_key, model, credential_mode, account_model,
         protocol, extra_headers, context_length, max_output_tokens, temperature, top_p,
         reasoning_effort, thinking_type, web_search_default, web_search_limit,
+        search_base_url, encrypted_search_api_key,
         created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
      ON CONFLICT(user_id) DO UPDATE SET
        base_url = excluded.base_url,
        encrypted_api_key = excluded.encrypted_api_key,
@@ -189,6 +213,8 @@ export async function saveAssistantSettings(
        thinking_type = excluded.thinking_type,
        web_search_default = excluded.web_search_default,
        web_search_limit = excluded.web_search_limit,
+       search_base_url = excluded.search_base_url,
+       encrypted_search_api_key = excluded.encrypted_search_api_key,
        updated_at = excluded.updated_at`,
     [
       row.userId,
@@ -213,6 +239,8 @@ export async function saveAssistantSettings(
           ? 1
           : 0,
       row.webSearchLimit ?? null,
+      row.searchBaseUrl ?? null,
+      row.encryptedSearchApiKey ?? null,
       row.createdAt,
       row.updatedAt,
     ],

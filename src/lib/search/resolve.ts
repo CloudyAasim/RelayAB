@@ -20,6 +20,7 @@
 import { decryptSecret } from "../crypto/secrets";
 import { listSearchProviders, type SearchProviderRecord } from "../db/search-providers";
 import { effectiveSearchConfig } from "./effective";
+import { userSearchBackend } from "./user";
 import {
   createSearchBackend,
   resolveSearchBackend,
@@ -35,7 +36,8 @@ export interface ActiveBackendInfo {
   kind: SearchProvider | null;
   /** Only shown to administrators. */
   baseUrl: string | null;
-  source: "db" | "env" | null;
+  /** Where the backend came from: the provider table, the environment, or a user's own. */
+  source: "db" | "env" | "user" | null;
   usageProviderId: string | null;
   /** The row's own price; null when the environment fallback is in use. */
   creditsPerCall: number | null;
@@ -93,6 +95,26 @@ export async function resolveActiveSearchBackend(
   const rows = await listSearchProviders();
   if (rows.length === 0) return resolveSearchBackend(env);
   return backendFromRows(rows);
+}
+
+/**
+ * The backend that answers for **this** account.
+ *
+ * The user's own search service comes first, and the reason is money: a user
+ * who brought their own service is paying that vendor themselves, and the
+ * deployment's provider is not theirs to spend. With no service of their own,
+ * the deployment's providers answer exactly as they always have.
+ *
+ * The administrator's switch still governs: the deployment's search being off
+ * is a statement about the deployment, and it is not a user's to overrule.
+ */
+export async function resolveSearchBackendForUser(
+  userId: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<SearchBackend | null> {
+  const own = await userSearchBackend(userId);
+  if (own) return own;
+  return resolveActiveSearchBackend(env);
 }
 
 export async function activeSearchBackendInfo(

@@ -75,29 +75,65 @@ export function searchTemplateScope(args: { query: string; limit: number }): Rec
  *   - `"$.limit"` — a path into the request scope. Keeps the **type** of what
  *     it resolves to, which is why a vendor's numeric field gets a number and
  *     not `"6"`.
- *   - `"{{…}}"` — a template, always a string.
+ *   - `"{{…}}"` — a template. A value that is **exactly one** placeholder keeps
+ *     the type of what it points at, for the same reason a path does: a vendor
+ *     that documents a numeric field rejects the string form. A value with text
+ *     around the placeholder is a string, because that is what it is.
  *   - anything else — a literal.
  *
  * The order matters: a string cannot start with both `$` and `{{`.
+ *
+ * **Nested values are resolved too.** A vendor that wants the query inside an
+ * envelope (`{"opts": {"q": "…"}}`) is a vendor whose spec says so, and the
+ * engine used to hand the nested object over untouched — which meant a
+ * placeholder inside it reached the vendor as the literal text `{{$.query}}`.
  */
 function resolveValue(value: unknown, scope: Record<string, unknown>): unknown {
-  if (typeof value !== "string") return value;
-  if (value.startsWith("$")) return getPath(scope, value);
-  if (value.includes("{{")) return resolveTemplate(value, scope);
+  if (typeof value === "string") {
+    if (value.startsWith("$")) return getPath(scope, value);
+    const single = /^\{\{([^}]+)\}\}$/.exec(value);
+    if (single) {
+      const resolved = getPath(scope, single[1].trim());
+      // A placeholder that resolves to nothing becomes an empty string, the
+      // same rule the shared `resolveTemplate` follows.
+      return resolved === undefined || resolved === null ? "" : resolved;
+    }
+    if (value.includes("{{")) return resolveTemplate(value, scope);
+    return value;
+  }
+  if (Array.isArray(value)) return value.map((entry) => resolveValue(entry, scope));
+  if (value !== null && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [name, entry] of Object.entries(value as Record<string, unknown>)) {
+      out[name] = resolveValue(entry, scope);
+    }
+    return out;
+  }
   return value;
 }
 
 /**
  * Build the request a spec describes.
  *
- * The base address and the spec's `transport.path` are joined the way a URL is
- * joined, not the way strings are concatenated: the path is absolute (it
- * starts with `/`), so it replaces whatever the base address had after the
- * host. A base address of `https://api.example.com/v1` with the path `/search`
- * asks for `https://api.example.com/search` — and that is deliberate, because
- * the base address is the *service root*, and the path says where the service
- * keeps its search endpoint. A vendor that hangs its search endpoint under a
- * prefix says so in the path.
+ * The base address and the spec's `transport.path` are joined **by
+ * concatenation**, not the way a URL is joined:
+ *
+ *   <服务根地址，去掉尾部斜杠> + <transport.path>
+ *
+ * So a base of `https://api.example.com/v1` with a path of `/search` asks for
+ * `https://api.example.com/v1/search` — the base keeps its own path, and the
+ * spec's path is appended to it. That is what the protocol document says, and
+ * it is what lets an operator put a prefix in the address (`…/v1`) and have it
+ * survive. A path does **not** replace the base's path.
+ *
+ * **An empty path means the address is the whole endpoint.** That is the rule
+ * the rows written before the protocol existed are read under: a Tavily row's
+ * address was the complete endpoint, and the old code sent it as it stood.
+ * The engine used to turn the empty path into a `/` and sent
+ * `https://api.tavily.com/search/` — one byte different from what the old
+ * adapter sent, on every request, to every deployment that had a row written
+ * before the protocol. It is fixed here, and the test that pins it is
+ * `tests/unit/search-protocol.test.ts`.
  */
 export function buildSearchRequest(
   spec: SearchSpec,
@@ -105,14 +141,32 @@ export function buildSearchRequest(
   args: { query: string; limit: number; apiKey?: string },
 ): BuiltSearchRequest {
   const scope = searchTemplateScope(args);
-  const trimmedBase = baseUrl.trim().replace(/\/+$/, "");
-  const path = spec.transport.path.startsWith("/") ? spec.transport.path : `/${spec.transport.path}`;
+  const rawBase = baseUrl.trim();
+  const rawPath = spec.transport.path ?? "";
+  // The spec's own ceiling applies here, not only to the answer: a request
+  // that asks for more than the vendor accepts is a request the vendor
+  // refuses, and the field is the one place that says what it accepts.
+  const limit = effectiveLimit(spec, args.limit);
+  const scopeWithLimit = { ...scope, limit };
 
   let url: URL;
   try {
-    url = new URL(`${trimmedBase}${path}`);
+    url = new URL(rawBase);
   } catch {
     throw new WebSearchError(`搜索后端的地址不合法：${baseUrl}`, "not_configured");
+  }
+  if (url.search || url.hash) {
+    // `https://host?x=1` + `/search` is `https://host?x=1/search` — the path
+    // lands in the query string and the endpoint is silently lost. Refuse it
+    // here rather than send a request to somewhere the operator did not mean.
+    throw new WebSearchError(
+      `搜索后端的地址不合法：${baseUrl}（地址里不能带 ?query 或 #fragment）`,
+      "not_configured",
+    );
+  }
+  if (rawPath) {
+    const path = rawPath.startsWith("/") ? rawPath : `/${rawPath}`;
+    url = new URL(`${rawBase.replace(/\/+$/, "")}${path}`);
   }
 
   const headers: Record<string, string> = { ...(spec.transport.headers ?? {}) };
@@ -136,14 +190,14 @@ export function buildSearchRequest(
   }
 
   for (const [name, value] of Object.entries(spec.transport.query ?? {})) {
-    url.searchParams.set(name, String(resolveValue(value, scope) ?? ""));
+    url.searchParams.set(name, String(resolveValue(value, scopeWithLimit) ?? ""));
   }
 
   let body: string | undefined;
   if (spec.transport.method === "POST") {
     const resolved: Record<string, unknown> = {};
     for (const [name, value] of Object.entries(spec.transport.body ?? {})) {
-      resolved[name] = resolveValue(value, scope);
+      resolved[name] = resolveValue(value, scopeWithLimit);
     }
     body = JSON.stringify(resolved);
     if (!headers["content-type"] && !headers["Content-Type"]) {
@@ -170,17 +224,41 @@ async function readCapped(res: Response, signal: AbortSignal, cap = MAX_SEARCH_B
   let bytes = 0;
   try {
     for (;;) {
+      let aborted = false;
       const chunk = await Promise.race([
         reader.read(),
         new Promise<{ done: true; value?: Uint8Array }>((resolve) => {
           if (signal.aborted) {
+            aborted = true;
             resolve({ done: true });
             return;
           }
-          signal.addEventListener("abort", () => resolve({ done: true }), { once: true });
+          signal.addEventListener(
+            "abort",
+            () => {
+              aborted = true;
+              resolve({ done: true });
+            },
+            { once: true },
+          );
         }),
       ]);
-      if (chunk.done) break;
+      if (chunk.done) {
+        if (aborted) {
+          /**
+           * The deadline passed while the body was still arriving.
+           *
+           * Truncating here and handing back half a document would have the
+           * caller report "the vendor did not answer with JSON" — blaming the
+           * vendor for our timeout. The name is what `searchWeb` recognises
+           * and turns into a "搜索超时".
+           */
+          const timeout = new Error("搜索超时");
+          timeout.name = "TimeoutError";
+          throw timeout;
+        }
+        break;
+      }
       const value = chunk.value!;
       const room = cap - bytes;
       if (room <= 0) break;
@@ -256,6 +334,21 @@ async function checkedBody(
 }
 
 /**
+ * How many results this call may actually ask for.
+ *
+ * The caller's wish and the vendor's ceiling, and the ceiling wins: a spec
+ * that says `limits.maxResults: 3` is saying "this vendor takes at most
+ * three". Asking for six would have the vendor reject the request — and the
+ * field would be one more thing that validates and then does nothing, which
+ * is the exact failure this protocol exists to end.
+ */
+export function effectiveLimit(spec: SearchSpec, requested: number): number {
+  const want = Number.isFinite(requested) ? Math.max(1, Math.trunc(requested)) : 1;
+  const cap = spec.limits?.maxResults;
+  return typeof cap === "number" && cap > 0 ? Math.min(want, cap) : want;
+}
+
+/**
  * Run one search through a spec.
  *
  * The whole of a vendor's wire behavior is here: build the request, send it,
@@ -267,7 +360,11 @@ export async function executeSearch(
   baseUrl: string,
   args: SearchExecutionArgs,
 ): Promise<WebSearchResult[]> {
-  const request = buildSearchRequest(spec, baseUrl, args);
+  // Clamped before the request is built, not after the answer arrives: the
+  // count the vendor is asked for and the count it is allowed to answer with
+  // have to be the same number.
+  const limit = effectiveLimit(spec, args.limit);
+  const request = buildSearchRequest(spec, baseUrl, { ...args, limit });
   const fetchImpl = args.fetchImpl ?? fetch;
   const timeoutMs = spec.limits?.timeoutMs ?? SEARCH_TIMEOUT_MS;
   const signal = AbortSignal.timeout(timeoutMs);
@@ -292,5 +389,5 @@ export async function executeSearch(
     );
   }
 
-  return parseSearchResults(spec, payload, args.limit);
+  return parseSearchResults(spec, payload, limit);
 }

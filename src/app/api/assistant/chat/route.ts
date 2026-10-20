@@ -40,6 +40,7 @@ import { getSettings } from "@/lib/db/settings";
 import { saveAssistantArtifact, artifactRef } from "@/lib/db/assistant-artifacts";
 import type { MessageAttachment } from "@/lib/assistant/schema";
 import { loadSearchConfig } from "@/lib/search/config";
+import { hasUserSearchBackend } from "@/lib/search/user";
 import { DEFAULT_WEB_SEARCH_LIMIT } from "@/lib/search/usage";
 
 export const dynamic = "force-dynamic";
@@ -417,8 +418,30 @@ export async function POST(req: Request): Promise<Response> {
 
   const webSearchChoice =
     requestedWebSearch ?? thread.webSearch ?? stored?.webSearchDefault ?? true;
-  const webSearchEnabled =
-    webSearchChoice && searchConfig.enabled && searchConfig.backendConfigured;
+  /**
+   * Why this turn may not search — or that it may.
+   *
+   * Three reasons, in the order a reader would ask them: the user switched it
+   * off for this conversation, the administrator switched the feature off for
+   * the deployment, or there is no backend to search with at all.
+   *
+   * **The user's own search service counts as a backend.** It is theirs, it is
+   * the one the assistant uses when they have one, and a user who configured
+   * it should not be told the deployment has no search.
+   *
+   * The administrator's switch still governs: the deployment's search being
+   * off is a statement about the deployment, and it is not a user's to
+   * overrule.
+   */
+  const hasOwnBackend = await hasUserSearchBackend(me.id);
+  const webSearchDisabledReason = !webSearchChoice
+    ? ("user" as const)
+    : !searchConfig.enabled
+      ? ("admin" as const)
+      : !hasOwnBackend && !searchConfig.backendConfigured
+        ? ("no_backend" as const)
+        : undefined;
+  const webSearchEnabled = webSearchDisabledReason === undefined;
   const webSearchLimit = stored?.webSearchLimit ?? DEFAULT_WEB_SEARCH_LIMIT;
 
   /**
@@ -518,6 +541,7 @@ export async function POST(req: Request): Promise<Response> {
           credential,
           gatewayBase,
           webSearchEnabled,
+          ...(webSearchDisabledReason ? { webSearchDisabledReason } : {}),
           webSearchLimit,
           signal: req.signal,
           emit: send,

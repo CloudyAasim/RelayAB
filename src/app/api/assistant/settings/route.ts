@@ -68,6 +68,15 @@ const PutSchema = z.object({
   // default should still reach a user who never touched these.
   webSearchDefault: z.boolean().nullable().optional(),
   webSearchLimit: z.number().int().min(1).max(MAX_SEARCH_RESULTS).nullable().optional(),
+  // The user's own search service. The address is one complete endpoint URL —
+  // what they paste is what gets called — and the key is optional, because a
+  // service on their own machine may not want one.
+  //
+  // Null clears it, which puts the account back on the deployment's providers.
+  searchBaseUrl: z.string().max(500).nullable().optional(),
+  // Blank or omitted keeps the stored key, exactly like the assistant's own
+  // upstream key.
+  searchApiKey: z.string().max(500).optional(),
 });
 
 const ProbeSchema = z.object({

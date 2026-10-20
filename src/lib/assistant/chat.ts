@@ -482,6 +482,14 @@ export interface RunChatOptions {
    * Defaults to on so a caller that says nothing keeps the old behavior.
    */
   webSearchEnabled?: boolean;
+  /**
+   * Why this turn may not search.
+   *
+   * Resolved by the route, because only the route knows all three: the
+   * composer's per-conversation choice, the administrator's switch and
+   * whether this account has a search backend of its own.
+   */
+  webSearchDisabledReason?: "user" | "admin" | "no_backend";
   /** The user's preferred result count, clamped by the tool. */
   webSearchLimit?: number;
   signal?: AbortSignal;
@@ -598,6 +606,7 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
     ...(opts.locale ? { locale: opts.locale } : {}),
     ...(opts.docPages ? { docPages: opts.docPages } : {}),
     webSearchEnabled: webSearch,
+    ...(opts.webSearchDisabledReason ? { webSearchDisabledReason: opts.webSearchDisabledReason } : {}),
     ...(opts.webSearchLimit !== undefined ? { webSearchLimit: opts.webSearchLimit } : {}),
   };
 

@@ -93,6 +93,16 @@ export const AssistantSettingsSchema = z.object({
   webSearchDefault: z.boolean().nullable().optional(),
   /** How many results one search asks for. Null means six. */
   webSearchLimit: z.number().int().min(1).max(MAX_SEARCH_RESULTS).nullable().optional(),
+  /**
+   * The user's **own** search service, as one complete endpoint URL.
+   *
+   * Null or empty means "I have none", and the deployment's providers answer
+   * instead. It is the user's own address and their own bill, so it is on
+   * their own row and never in the deployment's provider table.
+   */
+  searchBaseUrl: z.string().nullable().optional(),
+  /** The key for that service, encrypted with the deployment's master key. */
+  encryptedSearchApiKey: z.string().nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -101,9 +111,12 @@ export type AssistantSettings = z.infer<typeof AssistantSettingsSchema>;
 /** Settings as the API returns them: the key is never echoed back. */
 export const PublicAssistantSettingsSchema = AssistantSettingsSchema.omit({
   encryptedApiKey: true,
+  encryptedSearchApiKey: true,
 }).extend({
   /** Whether a key is stored, so the UI can show "configured" without the value. */
   hasApiKey: z.boolean(),
+  /** The same for the user's own search service's key. */
+  hasSearchApiKey: z.boolean(),
 });
 export type PublicAssistantSettings = z.infer<typeof PublicAssistantSettingsSchema>;
 
@@ -266,15 +279,22 @@ export function rowToAssistantSettings(row: Record<string, unknown>): AssistantS
       row.web_search_limit === null || row.web_search_limit === undefined
         ? null
         : Number(row.web_search_limit),
+    searchBaseUrl: (row.search_base_url as string | null) ?? null,
+    encryptedSearchApiKey: (row.encrypted_search_api_key as string | null) ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
 }
 
 export function toPublicAssistantSettings(s: AssistantSettings): PublicAssistantSettings {
-  const { encryptedApiKey, ...rest } = s;
+  const { encryptedApiKey, encryptedSearchApiKey, ...rest } = s;
   void encryptedApiKey;
-  return { ...rest, hasApiKey: Boolean(s.encryptedApiKey) };
+  void encryptedSearchApiKey;
+  return {
+    ...rest,
+    hasApiKey: Boolean(s.encryptedApiKey),
+    hasSearchApiKey: Boolean(s.encryptedSearchApiKey),
+  };
 }
 
 export function rowToAssistantThread(row: Record<string, unknown>): AssistantThread {

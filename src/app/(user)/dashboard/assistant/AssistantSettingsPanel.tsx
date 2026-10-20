@@ -112,6 +112,15 @@ export interface AssistantSettingsView {
   webSearchDefault?: boolean | null;
   /** Results per search; null means six. */
   webSearchLimit?: number | null;
+  /**
+   * The user's own search service, as one complete endpoint URL.
+   *
+   * Their own address, so it is theirs to see — and it is not the
+   * deployment's business.
+   */
+  searchBaseUrl?: string | null;
+  /** Whether a key is stored for it. The key itself is never echoed back. */
+  hasSearchApiKey?: boolean;
 }
 
 export interface WebSearchSettings {
@@ -120,8 +129,18 @@ export interface WebSearchSettings {
   defaultOn: boolean;
   limit: number;
   maxResults: number;
+  /**
+   * The deployment's backend name.
+   *
+   * Administrators only: it is an operator's own row name, and a regular
+   * user has no business knowing which vendor the operator buys search from.
+   */
   backendName: string | null;
-  backendSource: "db" | "env" | null;
+  backendSource: "db" | "env" | "user" | null;
+  /** The user's own search service, as one complete endpoint URL. */
+  ownBaseUrl: string | null;
+  /** Whether a key is stored for the user's own service. */
+  ownHasKey: boolean;
 }
 
 export function AssistantSettingsPanel({
@@ -137,6 +156,8 @@ export function AssistantSettingsPanel({
     maxResults: 8,
     backendName: null,
     backendSource: null,
+    ownBaseUrl: null,
+    ownHasKey: false,
   },
 }: {
   initial: AssistantSettingsView | null;
@@ -207,6 +228,19 @@ export function AssistantSettingsPanel({
   const [webSearchLimit, setWebSearchLimit] = useState<number>(
     initial?.webSearchLimit ?? webSearch.limit,
   );
+  /**
+   * The user's own search service.
+   *
+   * A separate pair of boxes from the deployment's, because they are two
+   * different things: the deployment's providers are the operator's, and this
+   * one is the user's — their address, their key, their bill.
+   */
+  const [searchBaseUrl, setSearchBaseUrl] = useState<string>(
+    initial?.searchBaseUrl ?? webSearch.ownBaseUrl ?? "",
+  );
+  const [searchApiKey, setSearchApiKey] = useState("");
+  const [searchProbe, setSearchProbe] = useState<{ ok: boolean; text: string } | null>(null);
+  const [searchBusy, setSearchBusy] = useState(false);
   const [busy, setBusy] = useState<"probe" | "save" | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshNote, setRefreshNote] = useState<string | null>(null);
@@ -245,6 +279,7 @@ export function AssistantSettingsPanel({
     setTopP(initial.topP ?? null);
     setWebSearchDefault(initial.webSearchDefault ?? webSearch.defaultOn);
     setWebSearchLimit(initial.webSearchLimit ?? webSearch.limit);
+    setSearchBaseUrl(initial.searchBaseUrl ?? webSearch.ownBaseUrl ?? "");
     // `webSearch` is intentionally not a dependency: it is a server-rendered
     // fact, and re-seeding on every object identity would fight the form.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -273,7 +308,60 @@ export function AssistantSettingsPanel({
       // value", which would make unchecking the box a no-op.
       webSearchDefault,
       webSearchLimit,
+      // The user's own search service. The address is sent explicitly, blank
+      // included, because a cleared box has to mean "I have none" rather than
+      // "leave whatever was there". The key is sent only when it was typed —
+      // a blank box must not overwrite a stored key.
+      searchBaseUrl: searchBaseUrl.trim() || null,
+      ...(searchApiKey.trim() ? { searchApiKey: searchApiKey.trim() } : {}),
     };
+  }
+
+  /**
+   * Try the user's own search service, without saving it.
+   *
+   * The same reason the chat upstream has one: the difference between "this
+   * works" and "this is what I typed" is one click, and finding out after
+   * saving leaves a broken assistant behind.
+   */
+  async function probeSearch() {
+    if (!searchBaseUrl.trim()) {
+      setSearchProbe({ ok: false, text: t("assistant.settings.searchService.needsUrl") });
+      return;
+    }
+    setSearchBusy(true);
+    setSearchProbe(null);
+    try {
+      const res = await fetch("/api/assistant/search-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: searchBaseUrl.trim(),
+          ...(searchApiKey.trim() ? { apiKey: searchApiKey.trim() } : {}),
+        }),
+      });
+      const json = (await res.json().catch(() => null)) as
+        | { ok: boolean; data?: { results?: unknown[]; latencyMs?: number }; error?: { message?: string } }
+        | null;
+      if (json?.ok) {
+        setSearchProbe({
+          ok: true,
+          text: t("assistant.settings.searchService.probeOk", {
+            n: json.data?.results?.length ?? 0,
+            ms: json.data?.latencyMs ?? 0,
+          }),
+        });
+      } else {
+        setSearchProbe({
+          ok: false,
+          text: json?.error?.message ?? t("assistant.settings.searchService.probeFail"),
+        });
+      }
+    } catch (err) {
+      setSearchProbe({ ok: false, text: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setSearchBusy(false);
+    }
   }
 
   async function probe() {
@@ -816,6 +904,65 @@ export function AssistantSettingsPanel({
             }}
             hint={t("assistant.settings.webSearch.limitHint", { max: webSearch.maxResults })}
           />
+        </div>
+
+        {/*
+          The user's own search service.
+
+          A separate block from the deployment's, because it is a different
+          thing: the deployment's providers are the operator's, this one is
+          the user's — their address, their key, their bill. A search through
+          it is not charged to the account, because the account is not the one
+          paying the vendor.
+        */}
+        <div className="space-y-2.5 rounded-md border border-border bg-muted/30 p-2.5">
+          <p className="text-sm font-medium text-foreground">
+            {t("assistant.settings.searchService.title")}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {t("assistant.settings.searchService.hint")}
+          </p>
+          <Input
+            id="assistant-search-base-url"
+            name="searchBaseUrl"
+            label={t("assistant.settings.searchService.url")}
+            type="url"
+            placeholder="https://your-gateway.example.com/v1/search"
+            value={searchBaseUrl}
+            onChange={(e) => setSearchBaseUrl(e.target.value)}
+            hint={t("assistant.settings.searchService.urlHint")}
+          />
+          <Input
+            id="assistant-search-api-key"
+            name="searchApiKey"
+            label={t("assistant.settings.searchService.key")}
+            type="password"
+            autoComplete="off"
+            placeholder={webSearch.ownHasKey ? t("assistant.settings.searchService.keyStored") : ""}
+            value={searchApiKey}
+            onChange={(e) => setSearchApiKey(e.target.value)}
+            hint={t("assistant.settings.searchService.keyHint")}
+          />
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={probeSearch}
+              disabled={searchBusy || !searchBaseUrl.trim()}
+            >
+              {searchBusy
+                ? t("assistant.settings.searchService.testing")
+                : t("assistant.settings.searchService.test")}
+            </Button>
+            {searchProbe && (
+              <span
+                className={`text-xs ${searchProbe.ok ? "text-muted-foreground" : "text-destructive"}`}
+              >
+                {searchProbe.text}
+              </span>
+            )}
+          </div>
         </div>
 
         {isAdmin && (

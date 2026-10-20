@@ -70,22 +70,34 @@
 | 写法 | 含义 |
 | --- | --- |
 | `"$.query"` / `"$.limit"` | 取作用域里的值。**保留类型**：`$.limit` 是数字 `6`，不是字符串 `"6"`。 |
-| `"{{$.query}}"` | 模板替换，结果**永远是字符串**。 |
+| `"{{$.query}}"` | 模板替换。**整个值就是一个占位符时同样保留类型**（`"{{$.limit}}"` 是数字 `6`）；前后还带别的文字时结果是字符串。 |
 | 其它 | 字面量，原样发出去。 |
 
 作用域只有两个值：`$.query`（搜索词，字符串）和 `$.limit`（要几条结果，数字）。
 **只能用这两个**——写了第三个，保存时就报错，不会等到请求时才发出去一个 `{{$.foo}}` 给厂商。
 
+> **嵌套的键也会被替换。** `body` 里的对象和数组会被逐层解析，所以
+> `{"opts": {"q": "{{$.query}}"}}` 里的查询词真的会发出去 —— 而不是把
+> `{{$.query}}` 这七个字符原样寄给厂商。
+
 **请求怎么发出去**：
 
 ```
 URL      = <服务根地址，去掉尾部斜杠> + <transport.path>
+           （transport.path 为空时，URL 就是地址本身，一个字符都不加）
 method   = transport.method
 query    = transport.query 里的每一项，按写下来的顺序拼到 URL 上
 body     = transport.body（POST 才有），序列化成 JSON
 ```
 
 - **服务根地址**只有一个意思：`https://api.tavily.com` 这种「服务根」，不是完整端点。端点路径写在 `transport.path` 里。
+- **路径是「加上去」的，不是「换掉」的**：地址 `https://api.example.com/v1` + 路径 `/search` = `https://api.example.com/v1/search`。
+  地址里带不带前缀都没关系，前缀会留着。
+- **`transport.path` 写空字符串**表示「地址就是完整端点」：你填什么就请求什么，不加任何东西。
+  协议之前写的 Tavily / Brave 记录就是按这个意思读的（它们的地址存的是完整端点），
+  助手设置里的「用自己的搜索服务」也是这个意思。
+- **地址里不能带 `?query` 或 `#fragment`**：`https://host?x=1` 加上 `/search` 会变成
+  `https://host?x=1/search`，端点被吞掉，所以保存时就报错。
 - **鉴权**（`auth`）：
   - `bearer` → 请求头 `authorization: <prefix><密钥>`，`prefix` 默认 `Bearer `（带一个空格）。
   - `header` → 请求头 `<name>: <prefix><密钥>`，`prefix` 默认空。
@@ -114,7 +126,7 @@ items   = response.items 指向的数组
 | `vendor` | string | | 厂商标签，会写进用量统计。 |
 | `baseUrl` | string | | 服务根地址，http(s)。**记录里填的地址优先于这个。** |
 | `transport.method` | `"GET"` \| `"POST"` | ✅ | |
-| `transport.path` | string | ✅ | 相对服务根地址，必须以 `/` 开头。 |
+| `transport.path` | string | ✅ | 相对服务根地址，必须以 `/` 开头；**空字符串**表示地址就是完整端点。 |
 | `transport.headers` | object | | 固定请求头。**不要把密钥写在这里** —— 密钥走 `auth`。 |
 | `transport.query` | object | | 查询参数。值是路径 / 模板 / 字面量。 |
 | `transport.body` | object | | JSON body。**只有 POST 能有。** |
@@ -127,7 +139,7 @@ items   = response.items 指向的数组
 | `response.fields.url` | 路径 或 `$firstPresent` | ✅ | |
 | `response.fields.snippet` | 路径 或 `$firstPresent` | ✅ | |
 | `limits.timeoutMs` | number | | 请求超时，1–600000，默认 15000。 |
-| `limits.maxResults` | number | | 厂商能接受的最大条数，1–100。 |
+| `limits.maxResults` | number | | 厂商能接受的最大条数，1–100。**会真的生效**：请求条数被它压住（发给厂商的条数也是压过之后的那个数）。 |
 
 **路径的写法**：`$` 开头，`.` 分层，`[0]` 这种**只认数字下标**。`$.web.results` 读得到，`$.web.results[0].title` 也读得到；`$.web.*` 读不到。
 
@@ -152,6 +164,10 @@ items   = response.items 指向的数组
 
 后台表单会在地址下面直接显示**最终生效的地址**（根地址 + 路径），不用自己推。
 
+> **唯一的例外**：`transport.path` 写空字符串时，地址就是完整端点，一个字符都不加。
+> 协议之前写的 Tavily / Brave 记录就是这个意思（它们存的地址本来就是完整端点），
+> 助手里「用自己的搜索服务」也是这个意思。
+
 > **老记录怎么办**：协议之前写的记录，地址仍按老规则解释（Tavily / Brave 当作完整端点，SearXNG 当作服务根地址），**一个请求都不会变**。
 > 想换成新规则，在表单里点一次模板名即可 —— 那会把协议和地址一起写成新的语义。
 
@@ -175,6 +191,7 @@ items   = response.items 指向的数组
 | `searxng` | SearXNG | 自建/自托管实例，需要在实例配置里开启 JSON 输出。 |
 | `tavily` | Tavily | 官方 API，结果偏向给大模型用。 |
 | `brave` | Brave Search | 官方搜索 API。 |
+| `openai-compatible` | OpenAI 兼容搜索 | 任何说 OpenAI 兼容搜索形状的接口：**地址就是完整端点**（`path` 是空的），POST + Bearer，`{query, limit}` 进、`{results:[{title,url,snippet}]}` 出。指向另一个 RelayAB 实例的 `/v1/search` 也用这个。 |
 
 模板里的参数就是**以前代码里写死的那些**（中文优先的语言、当前的 `search_depth`、当前的 `safesearch`）—— 升级不会悄悄改变任何一次检索的结果。它们是**可改的**，这才是重点；它们**不是新的**。
 
@@ -183,7 +200,10 @@ items   = response.items 指向的数组
 ## 5. 怎么验一份协议
 
 1. **保存时**：协议校验器会跑一遍，不合法直接拒绝，错误逐条列出。
-2. **后台「测试」按钮**：拿这个后端真发一次查询，不计费、不写用量、停用状态下也能测。
+2. **后台「测试」按钮**：拿这个后端真发一次查询，**按真实价格计费、写用量**（和 `/v1/search` 同一个结算路径），停用状态下也能测。
+   测试是一次真的搜索：厂商照样收钱，所以账号照样付钱 —— 不计费的测试是在白嫖厂商的付费 API，
+   而这笔账只会在厂商的发票上出现。**失败的搜索不扣费**（没拿到东西就没有可计费的东西）。
+   账号余额不够时直接被拒（429），请求**不会**发到厂商。
 3. **判官脚本**：`pnpm search-spec-check <file.json>`，离线跑，不联网。
 
 ## 6. 排查

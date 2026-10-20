@@ -69,8 +69,20 @@ export interface SearchBackend {
    * what rows written before providers existed contain.
    */
   usageProviderId: string;
-  /** Whether this came from the provider table or the environment fallback. */
-  source: "db" | "env";
+  /**
+   * Where this backend came from.
+   *
+   * Three sources, and they are not the same thing:
+   *
+   *   - `db` — a row in the deployment's provider table. The operator pays the
+   *     vendor, so a call through it is charged to the account.
+   *   - `env` — an environment variable, for a deployment that never added a
+   *     row. The same money, the same charge.
+   *   - `user` — **the user's own** search service, configured in the
+   *     assistant's settings. Their key pays their vendor, so a call through
+   *     it is not charged to the account.
+   */
+  source: "db" | "env" | "user";
   /** The internal address, when the kind has one worth showing (SearXNG). */
   baseUrl?: string;
   /**
@@ -119,7 +131,7 @@ export interface CreateSearchBackendInput {
    * served it — but the *vendor* is still what the operator calls the service.
    */
   provider?: string;
-  source?: "db" | "env";
+  source?: "db" | "env" | "user";
   /** Operator-visible name; falls back to the spec's own. */
   describe?: string;
   /** Per-call price, when this backend came from a provider row. */

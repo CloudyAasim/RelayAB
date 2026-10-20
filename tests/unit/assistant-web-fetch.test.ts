@@ -359,7 +359,7 @@ describe("the prompt tells the model what it can and cannot do", () => {
     // unanswerable without the user supplying a link.
     for (const prompt of [ADMIN_SYSTEM_PROMPT, USER_SYSTEM_PROMPT]) {
       expect(prompt).toMatch(/web_search/);
-      expect(prompt).toMatch(/没有配置搜索后端/);
+      expect(prompt).toMatch(/没有可用的搜索后端/);
       // And still: claiming to have searched without calling the tool is the
       // lie the old wording was there to prevent.
       expect(prompt).toMatch(/不要在没有真正调用工具的情况下[\s\S]{0,40}说「我搜索一下」/);

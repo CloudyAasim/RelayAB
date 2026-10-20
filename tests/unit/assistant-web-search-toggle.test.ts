@@ -22,6 +22,7 @@ vi.mock("next/headers", () => ({
 
 import { __resetDbForTest } from "@/lib/db/sqlite";
 import { createUser } from "@/lib/db/users";
+import { createApiKey } from "@/lib/db/keys";
 import type { User } from "@/lib/db/types";
 import { InMemoryCookieStore, getSessionFromStore } from "@/lib/auth/session";
 import { createAssistantThread, getAssistantThread } from "@/lib/db/assistant";
@@ -132,8 +133,25 @@ describe("result-count clamp", () => {
     process.env.BRAVE_SEARCH_API_KEY = "k";
     const fetchMock = braveFetch();
     vi.stubGlobal("fetch", fetchMock);
-    const result = await executeTool("web_search", JSON.stringify(args), ctxFor("u1", ctx));
-    expect(result.ok).toBe(true);
+    /**
+     * A real account, with a pool and a key.
+     *
+     * The tool settles the call against the account's balance and hangs the
+     * usage row on one of its keys — so a context with a made-up user id is
+     * not a search any more, it is a refusal ("找不到当前账号" / "没有密钥，
+     * 无法记账"). Which is the point: the assistant's search is a *paid* call
+     * like every other one, and this test is about the count that reaches the
+     * vendor, so it has to be a call that happens.
+     */
+    const user = await createUser({
+      username: "clamp",
+      password: "correct horse battery",
+      displayName: "clamp",
+      quotaLimit: 100 * 1000,
+    });
+    await createApiKey({ userId: user!.id, label: "test" });
+    const result = await executeTool("web_search", JSON.stringify(args), ctxFor(user!.id, ctx));
+    expect(result.ok, result.content).toBe(true);
     const [url] = fetchMock.mock.calls[0] as unknown as [string];
     return Number(new URL(url).searchParams.get("count"));
   }
