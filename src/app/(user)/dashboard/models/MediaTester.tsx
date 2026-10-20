@@ -205,7 +205,19 @@ export function MediaTester({ models, labels }: Props) {
   const capability = current?.capability ?? "";
 
   useEffect(() => {
-    if (capability !== "audio.tts") return;
+    if (capability !== "audio.tts") {
+      /**
+       * Leaving speech synthesis.
+       *
+       * The request that was in flight is about to be cancelled (the cleanup
+       * below marks it), so the gate is opened again — otherwise coming back
+       * to a speech model would find the gate shut, never ask, and leave the
+       * picker permanently empty. The catalogue is worth asking for again
+       * anyway: a voice cloned in the meantime should be in it.
+       */
+      voiceRequested.current = false;
+      return;
+    }
     if (voices !== null || voicesError !== null || voiceRequested.current) return;
 
     voiceRequested.current = true;

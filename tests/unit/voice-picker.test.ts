@@ -170,6 +170,15 @@ describe("the test panel", () => {
     expect(TESTER_SRC).toContain('capability !== "audio.tts"');
   });
 
+  it("asks again when the person comes back to speech", () => {
+    // The gate that stops a second request has to be opened again when the
+    // capability changes: the request in flight is cancelled on the way out
+    // (the effect's cleanup), so a gate left shut would mean the picker is
+    // empty for good — the second visit to a speech model would never ask.
+    expect(TESTER_SRC).toMatch(/voiceRequested\.current = false/);
+    expect(TESTER_SRC).toMatch(/capability !== "audio\.tts"/);
+  });
+
   it("keeps the pre-filled voice as the fallback, not as the answer", () => {
     // MiniMax rejects a request with no voice at all, so there has to be one
     // when the catalogue cannot be read. It is the fallback now, not the only
