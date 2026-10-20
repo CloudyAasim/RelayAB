@@ -348,6 +348,37 @@ describe("reading the answer", () => {
     expect(parseSearchResults(spec, { results: "nope" })).toEqual([]);
     expect(parseSearchResults(spec, null)).toEqual([]);
   });
+
+  it("caps the hits at the number that was asked for", () => {
+    // A vendor that does not take a count — SearXNG, whose JSON output has no
+    // such parameter — answers with everything it has, and the caller asked
+    // for five. The old adapters sliced the list for exactly this reason.
+    const many = Array.from({ length: 50 }, (_, i) => ({
+      title: `T${i}`,
+      url: `https://e.example/${i}`,
+      content: "c",
+    }));
+    expect(parseSearchResults(SEARXNG_TEMPLATE.spec, { results: many }, 5)).toHaveLength(5);
+    expect(parseSearchResults(SEARXNG_TEMPLATE.spec, { results: many })).toHaveLength(50);
+  });
+
+  it("and the engine caps them too, not just the parser", async () => {
+    const many = Array.from({ length: 50 }, (_, i) => ({
+      title: `T${i}`,
+      url: `https://e.example/${i}`,
+      content: "c",
+    }));
+    const results = await executeSearch(SEARXNG_TEMPLATE.spec, "http://s.example", {
+      query: "q",
+      limit: 3,
+      displayName: "SearXNG",
+      fetchImpl: (async () =>
+        new Response(JSON.stringify({ results: many }), {
+          headers: { "content-type": "application/json" },
+        })) as unknown as typeof fetch,
+    });
+    expect(results).toHaveLength(3);
+  });
 });
 
 // ---------------------------------------------------------------------------

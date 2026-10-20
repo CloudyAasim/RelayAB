@@ -200,8 +200,12 @@ async function readCapped(res: Response, signal: AbortSignal, cap = MAX_SEARCH_B
  *
  * Duplicates go, in the order the vendor listed them: a vendor that repeats a
  * result three ways is not offering the reader a choice.
+ *
+ * The list is **capped at the number that was asked for**. A vendor that does
+ * not take a count — SearXNG, whose JSON output has no such parameter — will
+ * happily answer with everything it has, and the caller asked for five.
  */
-export function parseSearchResults(spec: SearchSpec, payload: unknown): WebSearchResult[] {
+export function parseSearchResults(spec: SearchSpec, payload: unknown, limit?: number): WebSearchResult[] {
   const items = getPath(payload, spec.response.items);
   if (!Array.isArray(items)) return [];
 
@@ -217,6 +221,7 @@ export function parseSearchResults(spec: SearchSpec, payload: unknown): WebSearc
       url,
       snippet: plainText(readSearchField(hit, spec.response.fields.snippet), MAX_SNIPPET_CHARS),
     });
+    if (typeof limit === "number" && out.length >= limit) break;
   }
   return out;
 }
@@ -287,5 +292,5 @@ export async function executeSearch(
     );
   }
 
-  return parseSearchResults(spec, payload);
+  return parseSearchResults(spec, payload, args.limit);
 }
