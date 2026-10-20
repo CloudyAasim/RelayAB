@@ -576,6 +576,9 @@ console.log(resp.choices[0].message.content);`}
             {t("docs.media.voicesNote")}
           </p>
           <p className="rounded-md border border-border bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">
+            {t("docs.media.voicePicker")}
+          </p>
+          <p className="rounded-md border border-border bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">
             {t("docs.media.billing")}
           </p>
         </div>

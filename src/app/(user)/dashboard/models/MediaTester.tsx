@@ -18,7 +18,7 @@
  * here: the point of the page is to find out what happens, so a 404 with a
  * readable reason beats a model that silently does not appear.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -29,6 +29,21 @@ export interface MediaModelOption {
   id: string;
   capability: string;
   provider: string;
+}
+
+/**
+ * One voice from the deployment's catalogue.
+ *
+ * The same entry `/v1/audio/voices` returns and the assistant's `list_voices`
+ * tool reports — `models: null` means **not narrowed** (the voice applies to
+ * every model its provider serves), and `[]` means the voice works with no
+ * model at all. The two are different answers, so the picker keeps them apart.
+ */
+export interface VoiceOption {
+  id: string;
+  name: string | null;
+  provider: string;
+  models: string[] | null;
 }
 
 interface Labels {
@@ -46,6 +61,12 @@ interface Labels {
   ratio: string;
   voice: string;
   voiceHint: string;
+  voiceCustom: string;
+  voiceLoading: string;
+  voiceEmpty: string;
+  voiceListHint: string;
+  voiceUnavailable: string;
+  voiceFailed: string;
   language: string;
   audioFile: string;
   run: string;
@@ -87,8 +108,31 @@ const CAP_LABEL: Record<string, string> = {
  * field is optional in the spec (`$ifPresent`) and the failure only shows up as
  * an upstream 400 phrased as `missing required parameter`. Pre-filling a voice
  * that is known to work turns that into the default path instead of a trap.
+ *
+ * **It is the fallback, not the answer.** The picker offers the voices this
+ * deployment actually has; this value is what the form falls back to when
+ * there is no list to pick from (no vendor answers, or the catalogue could not
+ * be read at all).
  */
 const DEFAULT_TTS_VOICE = "female-shaonv";
+
+/** The picker's "type one in yourself" option. */
+const CUSTOM_VOICE = "__custom_voice__";
+
+/**
+ * The voices that work with the selected model.
+ *
+ * `models: null` means **not narrowed** — the voice applies to every model its
+ * provider serves, which is the answer a vendor that does not narrow gives.
+ * `[]` means the voice works with no model at all, and is a different claim
+ * that must not be shown as if it applied.
+ *
+ * Exported because it is the one piece of the picker with a decision in it,
+ * and a decision is worth a test that does not need a browser.
+ */
+export function applicableVoices(voices: VoiceOption[], model: string): VoiceOption[] {
+  return voices.filter((v) => v.models === null || v.models.includes(model));
+}
 
 /**
  * Video defaults the form must supply.
@@ -128,8 +172,105 @@ export function MediaTester({ models, labels }: Props) {
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
+  /**
+   * The voice catalogue, fetched when a text-to-speech model is selected.
+   *
+   * **Not with the page.** `discoverMedia` runs on the caller's signal and has
+   * no deadline of its own, so a vendor that stops answering would hold the
+   * models page open for everybody who visits it — and most visitors are not
+   * testing speech. Fetched on demand, the same stall only reaches the person
+   * who asked for voices.
+   *
+   * The list is the one `/v1/audio/voices` returns and the assistant's
+   * `list_voices` reports, so the picker, the API and the assistant cannot
+   * list different voices.
+   */
+  const [voices, setVoices] = useState<VoiceOption[] | null>(null);
+  const [voicesLoading, setVoicesLoading] = useState(false);
+  const [voicesError, setVoicesError] = useState<string | null>(null);
+  /** Providers whose listing could not be read — a short list is not "all of them". */
+  const [voicesUnavailable, setVoicesUnavailable] = useState<string[]>([]);
+  /** Whether the person typed a voice instead of picking one. */
+  const [voiceCustom, setVoiceCustom] = useState(false);
+  /**
+   * Whether a request is already on its way.
+   *
+   * A ref rather than state, because the effect that starts the request
+   * depends on the state that starts it — a boolean in state would re-run the
+   * effect, whose cleanup would cancel the request it had just started.
+   */
+  const voiceRequested = useRef(false);
+
   const current = useMemo(() => models.find((m) => m.id === model), [models, model]);
   const capability = current?.capability ?? "";
+
+  useEffect(() => {
+    if (capability !== "audio.tts") return;
+    if (voices !== null || voicesError !== null || voiceRequested.current) return;
+
+    voiceRequested.current = true;
+    let cancelled = false;
+    setVoicesLoading(true);
+
+    (async () => {
+      try {
+        const res = await fetch("/api/assistant/voices");
+        const json = (await res.json().catch(() => null)) as
+          | {
+              ok: boolean;
+              data?: {
+                voices?: VoiceOption[];
+                unavailable?: Array<{ provider: string; reason: string }>;
+              };
+              error?: { message?: string };
+            }
+          | null;
+        if (cancelled) return;
+        if (!json?.ok) {
+          setVoicesError(json?.error?.message ?? "unknown");
+          return;
+        }
+        setVoices(json.data?.voices ?? []);
+        setVoicesUnavailable((json.data?.unavailable ?? []).map((u) => u.provider));
+      } catch (err) {
+        if (!cancelled) setVoicesError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (!cancelled) setVoicesLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [capability, voices, voicesError]);
+
+  /**
+   * The voices that work with the selected model.
+   *
+   * `models: null` means **not narrowed** — the voice applies to every model
+   * its provider serves. `[]` means the voice works with no model at all, which
+   * is a different answer and is not offered.
+   */
+  const applicableVoiceList = useMemo(
+    () => applicableVoices(voices ?? [], model),
+    [voices, model],
+  );
+
+  /**
+   * Keep the selected voice applicable to the selected model.
+   *
+   * Switching from one text-to-speech model to another can leave a voice the
+   * new model does not have. Rather than sending it and reading the vendor's
+   * 400, the first applicable voice is chosen — unless the person picked a
+   * custom one, which is a decision and not an oversight.
+   */
+  useEffect(() => {
+    if (capability !== "audio.tts") return;
+    if (!voices || voiceCustom) return;
+    if (applicableVoiceList.length === 0) return;
+    if (applicableVoiceList.some((v) => v.id === voice)) return;
+    setVoice(applicableVoiceList[0].id);
+  }, [capability, voices, voiceCustom, applicableVoiceList, voice]);
 
   const base = typeof window !== "undefined" ? window.location.origin : "";
   const auth = { "Content-Type": "application/json", Authorization: `Bearer ${relayKey.trim()}` };
@@ -372,13 +513,84 @@ export function MediaTester({ models, labels }: Props) {
             </div>
           )}
           {capability === "audio.tts" && (
-            <Input
-              label={labels.voice}
-              hint={labels.voiceHint}
-              required
-              value={voice}
-              onChange={(e) => setVoice(e.target.value)}
-            />
+            /*
+              The voice picker.
+
+              A voice id is a value that is **really forwarded to the vendor**,
+              so a free-text box that accepts anything is a field that mostly
+              produces 400s — and the list of voices this deployment actually
+              has is the difference between "pick one" and "guess one". The
+              catalogue is the same one `/v1/audio/voices` returns.
+
+              The manual box stays, because a catalogue is not the same thing
+              as completeness: a provider whose listing could not be read
+              contributes nothing, and a vendor voice that was cloned after the
+              last listing is not in it either.
+            */
+            <div className="space-y-1.5 sm:col-span-2">
+              <label htmlFor="media-voice" className="block text-sm font-medium text-foreground">
+                {labels.voice}
+              </label>
+
+              {applicableVoiceList.length > 0 && (
+                <select
+                  id="media-voice"
+                  value={voiceCustom ? CUSTOM_VOICE : voice}
+                  onChange={(e) => {
+                    if (e.target.value === CUSTOM_VOICE) {
+                      setVoiceCustom(true);
+                      return;
+                    }
+                    setVoiceCustom(false);
+                    setVoice(e.target.value);
+                  }}
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  {applicableVoiceList.map((v) => (
+                    <option key={`${v.provider}/${v.id}`} value={v.id}>
+                      {v.name ? `${v.name} · ${v.id}` : v.id}
+                    </option>
+                  ))}
+                  <option value={CUSTOM_VOICE}>{labels.voiceCustom}</option>
+                </select>
+              )}
+
+              {(applicableVoiceList.length === 0 || voiceCustom) && (
+                <Input
+                  id="media-voice-custom"
+                  value={voice}
+                  onChange={(e) => {
+                    // Typing is a decision, and the catalogue must not undo it:
+                    // the list arriving a moment later would otherwise replace
+                    // what was just typed with the first voice it happens to have.
+                    setVoiceCustom(true);
+                    setVoice(e.target.value);
+                  }}
+                  hint={labels.voiceHint}
+                />
+              )}
+
+              {applicableVoiceList.length > 0 && !voiceCustom && (
+                <p className="text-xs text-muted-foreground">{labels.voiceListHint}</p>
+              )}
+              {voicesLoading && (
+                <p className="text-xs text-muted-foreground">{labels.voiceLoading}</p>
+              )}
+              {voicesError && (
+                <p className="text-xs text-destructive">
+                  {labels.voiceFailed.replace("{reason}", voicesError)}
+                </p>
+              )}
+              {voicesUnavailable.length > 0 && (
+                /* A short list must not read as "that is all of them". */
+                <p className="text-xs text-muted-foreground">
+                  {labels.voiceUnavailable.replace("{names}", voicesUnavailable.join("、"))}
+                </p>
+              )}
+              {voices !== null && applicableVoiceList.length === 0 && !voicesError && (
+                <p className="text-xs text-muted-foreground">{labels.voiceEmpty}</p>
+              )}
+            </div>
           )}
           {isStt && (
             /* Language only ever renders for speech recognition, where it is
