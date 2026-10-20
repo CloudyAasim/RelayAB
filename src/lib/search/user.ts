@@ -80,15 +80,3 @@ export async function userSearchBackend(userId: string): Promise<SearchBackend |
     credentialHint: "你自己的搜索服务 API 密钥",
   });
 }
-
-/**
- * Whether this account has a search service of its own.
- *
- * Read on its own when the answer is needed without building the backend —
- * the assistant's page, for instance, which has to say whether search is
- * available before the user presses anything.
- */
-export async function hasUserSearchBackend(userId: string): Promise<boolean> {
-  const settings = await getAssistantSettings(userId);
-  return Boolean(settings?.searchBaseUrl?.trim());
-}

@@ -16,7 +16,6 @@ import { getPublicAssistantSettings } from "@/lib/db/assistant";
 import { cachedBuildModelCatalog } from "@/lib/db/data-cache";
 import { resolveAssistantConfig } from "@/lib/assistant/config";
 import { loadSearchConfig } from "@/lib/search/config";
-import { hasUserSearchBackend } from "@/lib/search/user";
 import { DEFAULT_WEB_SEARCH_LIMIT } from "@/lib/search/usage";
 import { MAX_SEARCH_RESULTS } from "@/lib/assistant/web-search";
 import { getT } from "@/lib/i18n/server";
@@ -47,7 +46,7 @@ export default async function AssistantPage() {
    * governs — the deployment's search being off is a statement about the
    * deployment, and it is not a user's to overrule.
    */
-  const ownSearch = await hasUserSearchBackend(sessionUser.id);
+  const ownSearch = Boolean(settings?.searchBaseUrl?.trim());
   const webSearchAvailable =
     searchConfig.enabled && (ownSearch || searchConfig.backendConfigured);
   const webSearchDefault = settings?.webSearchDefault ?? true;

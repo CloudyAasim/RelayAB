@@ -40,7 +40,6 @@ import { getSettings } from "@/lib/db/settings";
 import { saveAssistantArtifact, artifactRef } from "@/lib/db/assistant-artifacts";
 import type { MessageAttachment } from "@/lib/assistant/schema";
 import { loadSearchConfig } from "@/lib/search/config";
-import { hasUserSearchBackend } from "@/lib/search/user";
 import { DEFAULT_WEB_SEARCH_LIMIT } from "@/lib/search/usage";
 
 export const dynamic = "force-dynamic";
@@ -433,7 +432,7 @@ export async function POST(req: Request): Promise<Response> {
    * off is a statement about the deployment, and it is not a user's to
    * overrule.
    */
-  const hasOwnBackend = await hasUserSearchBackend(me.id);
+  const hasOwnBackend = Boolean(stored?.searchBaseUrl?.trim());
   const webSearchDisabledReason = !webSearchChoice
     ? ("user" as const)
     : !searchConfig.enabled
