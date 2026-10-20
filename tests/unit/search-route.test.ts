@@ -276,8 +276,36 @@ describe("what is refused without charging", () => {
     expect((await getUserById(userId))?.quotaUsed).toBe(0);
   });
 
-  it("a deployment with no search backend", async () => {
-    delete process.env.SEARXNG_URL;
+  it("an account whose balance cannot cover the call", async () => {
+    // The balance has to cover *this* call's price. A search costs a fixed
+    // number of credits, so "a bit left" is not "enough" — and a call that
+    // cannot be paid for must not be free.
+    const { updateUser } = await import("@/lib/db/users");
+    await updateUser(userId, { quotaUsed: 99_500 });
+    const impl = stubSearch([{ title: "T", url: "https://e.example/", content: "c" }]);
+
+    const res = await post({ query: "x" });
+    expect(res.status).toBe(429);
+    const body = (await res.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("quota_exceeded_credits");
+    expect(body.error.message).toMatch(/积分余额不足/);
+    // The vendor was never called, and nothing was charged.
+    expect(impl).not.toHaveBeenCalled();
+    expect((await getUserById(userId))?.quotaUsed).toBe(99_500);
+    expect(await listUsageByKey(keyId)).toHaveLength(0);
+  });
+
+  it("and it goes through when the balance does cover it", async () => {
+    const { updateUser } = await import("@/lib/db/users");
+    await updateUser(userId, { quotaUsed: 99_000 });
+    stubSearch([{ title: "T", url: "https://e.example/", content: "c" }]);
+
+    const res = await post({ query: "x" });
+    expect(res.status).toBe(200);
+    expect((await getUserById(userId))?.quotaUsed).toBe(100_000);
+  });
+
+  it("a deployment with no search backend", async () => {    delete process.env.SEARXNG_URL;
     const res = await post({ query: "x" });
     expect(res.status).toBe(503);
     const body = (await res.json()) as { error: { code: string; message: string } };

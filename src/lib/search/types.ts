@@ -52,7 +52,15 @@ export class WebSearchError extends Error {
       | "bad_key"
       | "rate_limited"
       | "upstream_error"
-      | "unreachable",
+      | "unreachable"
+      /**
+       * The account cannot pay for this call.
+       *
+       * Its own code because it is the one failure that is not the vendor's
+       * fault and not a configuration problem: the request is fine, the
+       * balance is not, and the caller has to top up rather than retry.
+       */
+      | "quota_exceeded",
   ) {
     super(message);
     this.name = "WebSearchError";

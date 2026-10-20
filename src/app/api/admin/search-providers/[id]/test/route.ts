@@ -135,6 +135,14 @@ export async function POST(
       err instanceof WebSearchError
         ? err.message
         : `搜索失败：${err instanceof Error ? err.message : String(err)}`;
+    // A balance that cannot cover the call is a refusal, not a search failure:
+    // 429, and the call never reached the vendor.
+    if (err instanceof WebSearchError && err.code === "quota_exceeded") {
+      return NextResponse.json(
+        { ok: false, error: { code: "quota_exceeded_credits", message } },
+        { status: 429 },
+      );
+    }
     // A row that exists but cannot answer is a bad configuration (400), not a
     // missing backend (503): the question "does this provider work?" has a
     // subject, and the answer is "this configuration cannot work".

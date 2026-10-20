@@ -49,6 +49,10 @@ function searchErrorResponse(err: WebSearchError, headers?: Record<string, strin
     rate_limited: { status: 429, code: "rate_limited" },
     upstream_error: { status: 502, code: "search_upstream_error" },
     unreachable: { status: 502, code: "search_unreachable" },
+    // The account cannot pay for this call. 429, like the proxy's
+    // `quota_exceeded_credits`: the request was fine, the balance was not, and
+    // the client should top up rather than retry.
+    quota_exceeded: { status: 429, code: "quota_exceeded_credits" },
   };
   const mapped = map[err.code];
   return proxyError(mapped.status, mapped.code, err.message, headers);

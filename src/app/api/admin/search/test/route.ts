@@ -124,6 +124,14 @@ export async function POST(req: Request): Promise<Response> {
       err instanceof WebSearchError
         ? err.message
         : `搜索失败：${err instanceof Error ? err.message : String(err)}`;
+    // A balance that cannot cover the call is a refusal, not a search failure:
+    // 429, and the call never reached the vendor.
+    if (err instanceof WebSearchError && err.code === "quota_exceeded") {
+      return NextResponse.json(
+        { ok: false, error: { code: "quota_exceeded_credits", message } },
+        { status: 429 },
+      );
+    }
     return NextResponse.json(
       { ok: false, error: { code: "search_failed", message } },
       { status: err instanceof WebSearchError && err.code === "not_configured" ? 503 : 502 },

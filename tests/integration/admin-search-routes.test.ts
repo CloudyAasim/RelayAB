@@ -36,7 +36,15 @@ async function login(store: InMemoryCookieStore, id: string, role: "admin" | "us
 let adminId = "";
 
 async function asAdmin(): Promise<void> {
-  const admin = await createUser({ username: "admin", password: "pw-123456", role: "admin" });
+  const admin = await createUser({
+    username: "admin",
+    password: "pw-123456",
+    role: "admin",
+    quotaType: "credits",
+    // 100 积分, in 0.001-积分 units. A test is billed like a real search, so
+    // the account has to be able to pay for one.
+    quotaLimit: 100_000,
+  });
   adminId = admin!.id;
   // A key the account can be charged through: a usage row hangs off a key, so
   // an account with no key has nowhere to put the spend.
@@ -219,8 +227,36 @@ describe("POST /api/admin/search/test", () => {
     expect(res.status).toBe(503);
   });
 
-  it("refuses to test an account with no key to charge", async () => {
-    // A usage row hangs off a key, so an account with no key has nowhere to
+  it("refuses to test when the balance cannot cover the call", async () => {
+    // The same rule the public endpoint obeys: a search that cannot be paid
+    // for does not happen. The vendor is never called, and nothing is charged.
+    await asAdmin();
+    const { updateUser } = await import("@/lib/db/users");
+    await updateUser(adminId, { quotaUsed: 99_900 });
+    const impl = vi.fn(async () =>
+      new Response(JSON.stringify({ results: [] }), {
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", impl);
+
+    const { POST } = await import("@/app/api/admin/search/test/route");
+    const res = await POST(
+      new Request("http://localhost/api/admin/search/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: "docs" }),
+      }),
+    );
+    expect(res.status).toBe(429);
+    const body = (await res.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("quota_exceeded_credits");
+    expect(body.error.message).toMatch(/积分余额不足/);
+    expect(impl).not.toHaveBeenCalled();
+    expect((await getUserById(adminId))?.quotaUsed).toBe(99_900);
+  });
+
+  it("refuses to test an account with no key to charge", async () => {    // A usage row hangs off a key, so an account with no key has nowhere to
     // put the spend. Refusing is the honest answer: charging for something no
     // report would ever show is the failure mode this is here to prevent.
     const { __resetDbForTest } = await import("@/lib/db/sqlite");

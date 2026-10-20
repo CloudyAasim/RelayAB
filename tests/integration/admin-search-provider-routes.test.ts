@@ -41,7 +41,15 @@ async function login(store: InMemoryCookieStore, id: string, role: "admin" | "us
 }
 
 async function asAdmin(): Promise<void> {
-  const admin = await createUser({ username: "admin", password: "pw-123456", role: "admin" });
+  const admin = await createUser({
+    username: "admin",
+    password: "pw-123456",
+    role: "admin",
+    quotaType: "credits",
+    // 100 积分, in 0.001-积分 units. A test is billed like a real search, so
+    // the account has to be able to pay for one.
+    quotaLimit: 100_000,
+  });
   adminId = admin!.id;
   // A key the account can be charged through: a usage row hangs off a key, so
   // an account with no key has nowhere to put the spend.

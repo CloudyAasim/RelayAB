@@ -116,16 +116,33 @@ export async function runBilledSearch(args: BilledSearchArgs): Promise<BilledSea
     );
   }
 
+  // The price of the backend that will answer. A row carries its own; the
+  // environment fallback has no row, so it uses the feature-wide price — and
+  // only then is the configuration worth reading.
+  const credits = backend.creditsPerCall ?? (await loadSearchConfig()).creditsPerCall;
+
+  /**
+   * The balance has to cover the call, or the call does not happen.
+   *
+   * Two ways to be unable to pay: the pool is empty (the same refusal the
+   * chat proxy gives), or the pool holds something but not enough for *this*
+   * call's price — a search costs a fixed number of credits, so "a bit left"
+   * is not "enough". Either way the request is refused **before** the vendor is
+   * called: a search that cannot be paid for must not be free, and it must not
+   * cost the operator a call it is not going to be billed for either.
+   *
+   * The check is here, in the shared settlement, so that the public endpoint
+   * and the panel's test buttons cannot drift apart on it — one rule, one
+   * place, and the same answer whichever door the call came through.
+   */
+  assertCanPay(args.user, credits);
+
   const results = await searchWeb(args.query, {
     limit: args.limit,
     fetchImpl: args.fetchImpl,
     backend,
   });
 
-  // The price of the backend that actually answered. A row carries its own; the
-  // environment fallback has no row, so it uses the feature-wide price — and
-  // only then is the configuration worth reading.
-  const credits = backend.creditsPerCall ?? (await loadSearchConfig()).creditsPerCall;
   const creditsUsed = credits * CREDIT_SCALE;
 
   // The repository hands back the fresh row, so the balance the caller reports
@@ -176,6 +193,31 @@ async function backendForProvider(providerId: string) {
   const row = await getSearchProviderById(providerId);
   if (!row) return null;
   return backendForSearchProvider(row);
+}
+
+/**
+ * Refuse a call the account cannot pay for.
+ *
+ * A free call (price 0) is never refused — there is nothing to pay.
+ *
+ * The two sides are in different units on purpose and are converted here: the
+ * price is **whole 积分** (what an operator types into the panel), while the
+ * account's balance is stored in **0.001-积分 units**. Comparing them
+ * directly would read a 0.5-积分 balance as "500 credits left" and let the
+ * call through.
+ */
+function assertCanPay(user: User, credits: number): void {
+  if (!Number.isFinite(credits) || credits <= 0) return;
+
+  const remainingUnits = user.quotaLimit - user.quotaUsed;
+  const priceUnits = credits * CREDIT_SCALE;
+  if (remainingUnits >= priceUnits) return;
+
+  throw new WebSearchError(
+    `积分余额不足：这次搜索需要 ${credits} 积分，账号余额 ${(Math.max(0, remainingUnits) / CREDIT_SCALE).toFixed(3)} 积分。` +
+      "请先在「我的密钥与额度」里充值，或请管理员调整额度。",
+    "quota_exceeded",
+  );
 }
 
 /**
