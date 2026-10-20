@@ -29,6 +29,7 @@ import {
   PARAMETERS_SECTION,
 } from "@/lib/docs/custom";
 import { INTEGRATION_GUIDE, userChapterAnswers } from "@/lib/docs/sections";
+import { DICTS } from "@/lib/i18n/dict";
 import { ASSISTANT_PAGE_READ_LIMIT } from "@/lib/assistant/docs-reader";
 import { renderDocPagesDiff } from "@/lib/assistant/diff";
 import { docPageAdvice } from "@/lib/assistant/tools";
@@ -215,7 +216,17 @@ describe("the integration guide renders what it says it renders", () => {
     // Nothing hits that today because the two non-prose ids are routed away
     // above it, but the type that would have caught it is erased at runtime,
     // and the next chapter added without a branch would land there silently.
-    for (const id of ["start", "endpoints", "openai", "anthropic", "responses", "models", "sdks", "media"]) {
+    for (const id of [
+      "start",
+      "endpoints",
+      "search",
+      "openai",
+      "anthropic",
+      "responses",
+      "models",
+      "sdks",
+      "media",
+    ]) {
       expect(CONTENT, `no branch renders the "${id}" chapter`).toMatch(
         new RegExp(`if \\(section === "${id}"\\) \\{`),
       );
@@ -246,7 +257,17 @@ describe("the integration guide renders what it says it renders", () => {
     // title alone — so the chapter carries its own question, one line, above
     // the prose.
     const answers = userChapterAnswers(t);
-    for (const id of ["start", "endpoints", "openai", "anthropic", "responses", "models", "sdks", "media"]) {
+    for (const id of [
+      "start",
+      "endpoints",
+      "search",
+      "openai",
+      "anthropic",
+      "responses",
+      "models",
+      "sdks",
+      "media",
+    ]) {
       expect(answers[id], `the "${id}" chapter has no question`).toBeTruthy();
     }
     // Keys are literals rather than a template, so the strings stay greppable
@@ -284,6 +305,67 @@ describe("the integration guide renders what it says it renders", () => {
     // Question above the prose, the way on below it.
     expect(answer).toBeLessThan(panel);
     expect(nav).toBeGreaterThan(panel);
+  });
+});
+
+describe("the web-search chapter", () => {
+  it("reads like the OpenAI-shaped chapters: an example, a body, a response", () => {
+    // It used to be eight bullet lines of prose, with no example anywhere. A
+    // reader cannot call an endpoint from a description of it, and this
+    // deployment's other chapters all show a `curl` they can paste. So the
+    // chapter carries the same parts they do.
+    const branch = CONTENT.slice(
+      CONTENT.indexOf('if (section === "search") {'),
+      CONTENT.indexOf('if (section === "openai") {'),
+    );
+    expect(branch, "the search chapter disappeared").toContain('if (section === "search") {');
+    // A runnable example, both ways in.
+    expect(branch).toMatch(/<CodeBlock[\s\S]*openaiBase\}\/search/);
+    expect(branch).toMatch(/query.*limit.*5/);
+    // The request and the response, as bodies a reader can compare against
+    // what their client sends and gets.
+    expect(branch).toContain("docs.search.requestBody");
+    expect(branch).toContain("docs.search.responseBody");
+    expect(branch).toMatch(/"object": "search"/);
+    // And the error envelope, because a client that handles OpenAI's errors
+    // should not need a second parser for this endpoint.
+    expect(branch).toContain("docs.search.errorsShape");
+    expect(branch).toMatch(/insufficient_quota/);
+    // The one thing the endpoint promises that is easy to forget to write
+    // down: the balance rides in the headers.
+    expect(branch).toMatch(/x-ratelimit-/);
+  });
+
+  it("and its keys are all in the dictionary, in both languages", () => {
+    // A key nothing resolves renders as the key itself — a line of
+    // `docs.search.examplePost` in the middle of a chapter.
+    for (const key of [
+      "docs.search.line1",
+      "docs.search.sharesBase",
+      "docs.search.baseUrl",
+      "docs.search.header",
+      "docs.search.examplePost",
+      "docs.search.exampleGet",
+      "docs.search.requestTitle",
+      "docs.search.requestBody",
+      "docs.search.requestHint",
+      "docs.search.responseTitle",
+      "docs.search.responseBody",
+      "docs.search.responseHint",
+      "docs.search.balanceHeader",
+      "docs.search.balanceHint",
+      "docs.search.billing",
+      "docs.search.errorsTitle",
+      "docs.search.errorsBody",
+      "docs.search.errorsShape",
+      "docs.search.errorsTypeHint",
+      "docs.search.errorsQuotaTip",
+      "docs.search.note",
+      "docs.search.assistant",
+    ]) {
+      expect(DICTS["zh-CN"][key], `${key} is missing in zh-CN`).toBeTruthy();
+      expect(DICTS.en[key], `${key} is missing in en`).toBeTruthy();
+    }
   });
 });
 

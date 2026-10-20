@@ -181,6 +181,7 @@ export function userDocSections(t: TFn): Omit<DocSection, "children">[] {
 const CHAPTER_ANSWER_KEYS: Readonly<Record<string, string>> = {
   start: "docs.chapter.answers.start",
   endpoints: "docs.chapter.answers.endpoints",
+  search: "docs.chapter.answers.search",
   openai: "docs.chapter.answers.openai",
   anthropic: "docs.chapter.answers.anthropic",
   responses: "docs.chapter.answers.responses",

@@ -109,27 +109,104 @@ export function DocsContent({
 
   if (section === "search") {
     return (
-      <Card>
-        <CardHeader
-          title={
-            <span className="flex items-center gap-2">
-              <Search className="h-4 w-4 text-muted-foreground" />
-              {t("docs.search.title")}
-            </span>
-          }
-          description={t("docs.search.desc")}
-        />
-        <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
-          <li>{t("docs.search.endpoint")}</li>
-          <li>{t("docs.search.auth")}</li>
-          <li>{t("docs.search.request")}</li>
-          <li>{t("docs.search.response")}</li>
-          <li>{t("docs.search.billing")}</li>
-          <li>{t("docs.search.errors")}</li>
-          <li>{t("docs.search.note")}</li>
-          <li>{t("docs.search.assistant")}</li>
-        </ul>
-      </Card>
+      <div className="space-y-4 sm:space-y-6">
+        <Card>
+          <CardHeader
+            title={
+              <span className="flex items-center gap-2">
+                <Search className="h-4 w-4 text-muted-foreground" />
+                {t("docs.search.title")}
+              </span>
+            }
+            description={t("docs.search.desc")}
+          />
+          <div className="space-y-3 text-xs text-foreground/90 sm:space-y-4 sm:text-sm">
+            <p>{t("docs.search.line1")}</p>
+            <p className="text-xs text-muted-foreground">{t("docs.search.sharesBase")}</p>
+            <CodeBlock label={t("docs.search.baseUrl")} value={`${openaiBase}/search`} />
+            <CodeBlock
+              label={t("docs.search.header")}
+              value="Authorization: Bearer sk-relay-xxxx..."
+            />
+            <CodeBlock
+              label={t("docs.search.examplePost")}
+              value={`curl ${openaiBase}/search \\
+  -H "Authorization: Bearer $RELAYAB_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"query": "智谱 bigmodel 图像生成 API 文档", "limit": 5}'`}
+            />
+            <CodeBlock
+              label={t("docs.search.exampleGet")}
+              value={`curl "${openaiBase}/search?q=智谱%20bigmodel%20图像生成%20API%20文档&limit=5" \\
+  -H "Authorization: Bearer $RELAYAB_KEY"`}
+            />
+
+            <h3 className="text-sm font-semibold">{t("docs.search.requestTitle")}</h3>
+            <CodeBlock
+              label={t("docs.search.requestBody")}
+              value={`{ "query": "智谱 bigmodel 图像生成 API 文档", "limit": 5 }`}
+            />
+            <p className="text-xs text-muted-foreground">{t("docs.search.requestHint")}</p>
+
+            <h3 className="text-sm font-semibold">{t("docs.search.responseTitle")}</h3>
+            <CodeBlock
+              label={t("docs.search.responseBody")}
+              value={`{
+  "object": "search",
+  "query": "智谱 bigmodel 图像生成 API 文档",
+  "provider": "searxng",
+  "results": [
+    {
+      "title": "图像生成API - 平台介绍- 智谱",
+      "url": "https://docs.bigmodel.cn/api-reference/模型-api/图像生成",
+      "snippet": "使用GLM-Image 系列模型从文本提示生成高质量图像……"
+    }
+  ],
+  "credits": 1
+}`}
+            />
+            <p className="text-xs text-muted-foreground">{t("docs.search.responseHint")}</p>
+            <CodeBlock
+              label={t("docs.search.balanceHeader")}
+              value={`x-ratelimit-limit: 20000000
+x-ratelimit-remaining: 13491546
+x-ratelimit-unit: credits`}
+            />
+            <p className="text-xs text-muted-foreground">{t("docs.search.balanceHint")}</p>
+
+            <p className="rounded-md border border-border bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">
+              {t("docs.search.billing")}
+            </p>
+            <p className="rounded-md border border-border bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">
+              {t("docs.search.note")}
+            </p>
+            <p className="rounded-md border border-border bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">
+              {t("docs.search.assistant")}
+            </p>
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title={t("docs.search.errorsTitle")}
+            description={t("docs.search.errorsBody")}
+          />
+          <div className="space-y-3 text-xs text-foreground/90 sm:space-y-4 sm:text-sm">
+            <CodeBlock
+              label={t("docs.search.errorsShape")}
+              value={`{ "error": {
+  "message": "积分 balance exhausted for this account",
+  "type": "insufficient_quota",
+  "code": "quota_exceeded_credits"
+} }`}
+            />
+            <p className="text-xs text-muted-foreground">{t("docs.search.errorsTypeHint")}</p>
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              {t("docs.search.errorsQuotaTip")}
+            </p>
+          </div>
+        </Card>
+      </div>
     );
   }
 
