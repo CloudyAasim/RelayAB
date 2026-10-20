@@ -123,14 +123,17 @@ export async function runBilledSearch(args: BilledSearchArgs): Promise<BilledSea
   });
 
   // The price of the backend that actually answered. A row carries its own; the
-  // environment fallback has no row, so it uses the feature-wide price.
-  const config = await loadSearchConfig();
-  const credits = backend.creditsPerCall ?? config.creditsPerCall;
+  // environment fallback has no row, so it uses the feature-wide price — and
+  // only then is the configuration worth reading.
+  const credits = backend.creditsPerCall ?? (await loadSearchConfig()).creditsPerCall;
   const creditsUsed = credits * CREDIT_SCALE;
 
-  if (creditsUsed > 0) {
-    await incrementUserQuotaUsed(args.user.id, creditsUsed);
-  }
+  // The repository hands back the fresh row, so the balance the caller reports
+  // is the one after the charge and not a second read that might disagree.
+  const updated =
+    creditsUsed > 0
+      ? await incrementUserQuotaUsed(args.user.id, creditsUsed)
+      : await getUserById(args.user.id);
 
   // Touched on every settled call, billed or not: "was this key used?" and
   // "was the user charged?" are different questions. A panel-initiated test
@@ -160,7 +163,7 @@ export async function runBilledSearch(args: BilledSearchArgs): Promise<BilledSea
     results: results.results,
   };
 
-  return { outcome, credits, creditsUsed, user: await getUserById(args.user.id) };
+  return { outcome, credits, creditsUsed, user: updated };
 }
 
 /**
