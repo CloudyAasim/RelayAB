@@ -196,7 +196,9 @@ export default async function SearchAdminPage() {
         {providers.length === 0 && (
           <EnvFallbackPrice
             creditsPerCall={settings.searchCreditsPerCall ?? null}
-            envConfigured={Boolean(process.env.SEARXNG_URL || process.env.TAVILY_API_KEY || process.env.BRAVE_SEARCH_API_KEY)}
+            // The resolver's own answer, not a re-read of the environment: the
+            // fallback is in use exactly when it says so.
+            envConfigured={backend.source === "env"}
           />
         )}
       </SectionPageLayout.Content>
