@@ -4612,8 +4612,11 @@ async function webSearchTool(
      * account with no key at all has nowhere to put the row, so the call is
      * refused — with the two things that would fix it: a key, or a search
      * service of its own (which is not charged here at all).
+     *
+     * Only asked for when there is something to charge: the user's own service
+     * is not charged, and looking up a key for it would be a query for nothing.
      */
-    const apiKeyId = await attributionKeyFor(account.id);
+    const apiKeyId = charge === "account" ? await attributionKeyFor(account.id) : "";
     if (charge === "account" && !apiKeyId) {
       return fail(
         "这个账号还没有密钥，无法记账 —— 请先在「我的密钥与额度」里创建一把；" +
