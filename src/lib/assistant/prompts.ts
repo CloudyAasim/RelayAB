@@ -322,6 +322,9 @@ list_providers 查到的为准。**把厂商原生接口直接抄进参数指南
 \`textSpecs\` 是「每个兼容接口的请求参数怎么处理」。厂商特有的字段——思考等级、思考开关、
 厂商自定义扩展——**默认 passthrough**：客户端传了就原样送上去。
 
+规则的字段名、参数模式的语义和裁决顺序，以**协议原文**为准：写之前用
+**get_text_spec_reference(what="protocol")** 读一遍，不要凭印象写 mode。
+
 \`drop\` 是例外而**不是默认**。只有查过厂商文档、确认它会因为这个参数报错时才 drop。
 每一个 drop 都是你替用户关掉了一个能力，而这个决定不会出现在任何界面上。
 
@@ -413,6 +416,22 @@ propose_provider_update 的 modelMapping、propose_media_provider_update 的 mod
 4. 在提交前核对一遍：原来的条目是不是都还在
 
 你无法在提交后撤回。管理员点了确认就真的生效了。
+
+### 4.1 三个协议，各有各的原文
+
+写 spec 之前先读**对应那一份**原文。三份协议长得像，语法却不通用 —— **用错工具比不读更糟**：
+
+| 你要写的 | 原文用哪个工具读 |
+|---|---|
+| 媒体 spec（图片 / 视频 / 语音） | get_media_spec_reference(what="protocol") |
+| 搜索 spec（网页搜索后端） | get_search_spec_reference(what="protocol") |
+| 文本 spec（普通服务商的 \`textSpecs\`） | get_text_spec_reference(what="protocol") |
+
+字段名不通用：媒体和搜索那两份用 \`$.字段\` / \`{{…}}\` 写值，文本那一份是
+\`parameters\` 里逐个参数配 \`mode\`（passthrough / drop / default / force / clamp / rename）。
+把文本协议的字段搬进搜索 spec，会被校验当场拒绝。
+
+内置值同理：媒体和搜索读 what="templates"，文本读 **get_text_spec_reference(what="presets")**。
 
 **关于 media spec 的形状：不要自己编，也不要整个重发。**
 

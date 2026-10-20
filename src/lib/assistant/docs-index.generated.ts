@@ -76,13 +76,13 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     surface: "user",
     id: "anthropic",
     summary: "Anthropic 兼容用法：/anthropic/v1/messages",
-    keys: ["docs.anthropic.title","docs.anthropic.desc","docs.anthropic.line1","docs.anthropic.baseUrl.official","docs.anthropic.baseUrl.aiSdk","docs.anthropic.baseUrl","docs.anthropic.header","docs.anthropic.baseUrl.tip","docs.anthropic.example","docs.anthropic.sdkHint","docs.anthropic.sdk"],
+    keys: ["docs.anthropic.title","docs.anthropic.desc","docs.anthropic.line1","docs.anthropic.baseUrl.official","docs.anthropic.baseUrl.aiSdk","docs.anthropic.baseUrl","docs.anthropic.header","docs.anthropic.baseUrl.tip","docs.anthropic.example","docs.anthropic.sdkHint","docs.anthropic.sdk","docs.anthropic.modelsTitle","docs.anthropic.modelsDesc","docs.anthropic.modelsExample","docs.anthropic.modelsResponse"],
   },
   {
     surface: "user",
     id: "responses",
     summary: "Responses 接口：什么时候用，和 chat/completions 的区别",
-    keys: ["docs.responses.title","docs.responses.desc","docs.responses.line1","docs.responses.sameAsOpenai","docs.responses.example"],
+    keys: ["docs.responses.title","docs.responses.desc","docs.responses.line1","docs.responses.sameAsOpenai","docs.responses.example","docs.responses.alias"],
   },
   {
     surface: "user",
@@ -130,13 +130,13 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     id: "overview",
     summary: "管理员文档总览",
     keys: ["admin.docs.subtitle","admin.docs.overview.hint"],
-    chrome: ["admin.docs.ops.title","admin.docs.ops.desc","docs.title"],
   },
   {
     surface: "admin",
     id: "providers",
-    summary: "服务商配置：新增、编辑、启用、优先级、格式",
-    keys: ["admin.docs.provider.title","admin.docs.provider.desc","admin.docs.provider.kind","admin.docs.provider.baseUrl","admin.docs.provider.headers","admin.docs.provider.format","admin.docs.provider.formatTrap","admin.docs.provider.modes","admin.docs.provider.specs"],
+    summary: "服务商配置：新增、编辑、启用、优先级、格式，以及文本适配协议全文（普通服务商每个兼容接口的参数规则怎么写）",
+    keys: ["admin.docs.provider.title","admin.docs.provider.desc","admin.docs.provider.kind","admin.docs.provider.baseUrl","admin.docs.provider.headers","admin.docs.provider.format","admin.docs.provider.formatTrap","admin.docs.provider.modes","admin.docs.provider.specs","admin.docs.provider.textProtocol","admin.docs.textProtocol.title","admin.docs.textProtocol.desc"],
+    after: "这一页下半部分的「文本适配协议全文」也是一个仓库文件渲染出来的，read_docs 拿不到它 —— 协议正文用 get_text_spec_reference(what=\"protocol\") 读，分段读，读到 nextOffset 就接着读下一段；可套用的内置预设用 get_text_spec_reference(what=\"presets\") 取。",
   },
   {
     surface: "admin",
@@ -196,9 +196,9 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
   {
     surface: "admin",
     id: "ops",
-    summary: "运维参考件（非文字说明）",
-    note: "这一页不是文字说明，而是两份从仓库文件实时渲染的参考件：媒体适配协议（docs/模型适配协议/README.md）和 spec-check 脚本（scripts/spec-check.ts）。它们是给「写 spec 的 AI」用的原文，不是网关文档。媒体适配协议用 get_media_spec_reference(what=\"protocol\") 读；spec-check 脚本在仓库里，需要时请用户从管理界面复制。",
-    keys: [],
+    summary: "运维命令：建管理员、改密码、换密钥、查用量（命令是页面上的字面量，read_docs 读不到）",
+    note: "这一页是运维命令：建管理员、改密码、换密钥、查用量。命令本身是页面上的字面量，不是词典里的句子，所以 read_docs 只能拿到这一页的标题和说明，命令列表读不到 —— 需要哪条命令，去 /admin/docs/ops 那一页看，或者问管理员。",
+    keys: ["admin.docs.ops.title","admin.docs.ops.desc","docs.title"],
   },
   {
     surface: "admin",

@@ -380,6 +380,29 @@ const client = new Anthropic({ apiKey: process.env.RELAYAB_KEY, baseURL: "${anth
 const msg = await client.messages.create({ model: "YOUR_MODEL_ID", max_tokens: 1024, messages: [{ role: "user", content: "Hello!" }] });
 console.log(msg.content);`}
           />
+          {/*
+            The model list on the Anthropic surface. It is a real endpoint, and
+            it was missing from this chapter entirely — and a missing endpoint
+            in a document is not a missing feature: the route has always been
+            there. What the gap cost was diagnosability. A client that loads
+            its model list before it talks (ONLYOFFICE's built-in Anthropic
+            provider, the Anthropic SDK's `models.list()`) fails with "cannot
+            load models" while the chat endpoint works perfectly, and the one
+            place that says otherwise is the document.
+          */}
+          <h3 className="text-sm font-semibold">{t("docs.anthropic.modelsTitle")}</h3>
+          <p className="text-xs text-muted-foreground">{t("docs.anthropic.modelsDesc")}</p>
+          <CodeBlock
+            label={t("docs.anthropic.modelsExample")}
+            value={`curl ${anthropicBase}/v1/models \\
+  -H "x-api-key: $RELAYAB_KEY"`}
+          />
+          <CodeBlock
+            label={t("docs.anthropic.modelsResponse")}
+            value={`{ "data": [
+  { "type": "model", "id": "YOUR_MODEL_ID", "display_name": "YOUR_MODEL_ID", "created_at": "2026-01-01T00:00:00.000Z" }
+], "has_more": false, "first_id": "YOUR_MODEL_ID", "last_id": "YOUR_MODEL_ID" }`}
+          />
         </div>
       </Card>
     );
@@ -415,6 +438,7 @@ console.log(msg.content);`}
   -H "Content-Type: application/json" \\
   -d '{"model": "YOUR_MODEL_ID","input": "Hello!"}'`}
           />
+          <p className="text-xs text-muted-foreground">{t("docs.responses.alias")}</p>
         </div>
       </Card>
     );

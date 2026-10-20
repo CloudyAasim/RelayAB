@@ -6,28 +6,39 @@
  * in both Markdown and plain text, because this is the block operators paste
  * into an AI assistant to get a spec written or corrected.
  *
- * Two protocols, one component: the media one (`docs/模型适配协议/README.md`)
- * and the search one (`docs/搜索适配协议/README.md`). They are read through the
- * same reader pattern, and the assistant's `get_media_spec_reference` /
- * `get_search_spec_reference` read the same files, so the panel and the model
- * always see the same text.
+ * Three protocols, one component: the media one (`docs/模型适配协议/README.md`),
+ * the search one (`docs/搜索适配协议/README.md`) and the text one
+ * (`docs/文本适配协议/README.md`). They are read through the same reader
+ * pattern, and the assistant's `get_media_spec_reference` /
+ * `get_search_spec_reference` / `get_text_spec_reference` read the same files,
+ * so the panel and the model always see the same text.
  *
  * The files are on disk at runtime — `pnpm start` runs `next start` from the
  * project root — and they are read through `readProtocolDoc` /
- * `readSearchProtocolDoc`. There used to be no way for the assistant to read
- * the media protocol: it lives in a file rather than in the i18n dictionary, so
- * `read_docs` returned the sentence that announces it and none of it.
+ * `readSearchProtocolDoc` / `readTextProtocolDoc`. There used to be no way for
+ * the assistant to read the media protocol: it lives in a file rather than in
+ * the i18n dictionary, so `read_docs` returned the sentence that announces it
+ * and none of it.
  */
 import { getT } from "@/lib/i18n/server";
 import { markdownToHtml, markdownToPlainText } from "@/lib/markdown";
 import { readProtocolDoc } from "@/lib/docs/protocol-doc";
 import { readSearchProtocolDoc } from "@/lib/docs/search-protocol-doc";
+import { readTextProtocolDoc } from "@/lib/docs/text-protocol-doc";
 import { CopyButtons } from "./CopyButtons";
 
-export async function ProtocolReference({ kind = "media" }: { kind?: "media" | "search" }) {
+export async function ProtocolReference({
+  kind = "media",
+}: {
+  kind?: "media" | "search" | "text";
+}) {
   const { t } = await getT();
   const { text: source } =
-    kind === "search" ? await readSearchProtocolDoc() : await readProtocolDoc();
+    kind === "search"
+      ? await readSearchProtocolDoc()
+      : kind === "text"
+        ? await readTextProtocolDoc()
+        : await readProtocolDoc();
 
   const buttons = source
     ? [

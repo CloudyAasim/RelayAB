@@ -50,21 +50,46 @@ export function AdminDocsContent({ section, t }: { section: AdminDocId; t: TFn }
 
   if (section === "providers") {
     return (
-      <Card>
-        <CardHeader
-          title={<CardTitle icon={<Server className="h-4 w-4" />}>{t("admin.docs.provider.title")}</CardTitle>}
-          description={t("admin.docs.provider.desc")}
-        />
-        <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
-          <li>{t("admin.docs.provider.kind")}</li>
-          <li>{t("admin.docs.provider.baseUrl")}</li>
-          <li>{t("admin.docs.provider.headers")}</li>
-          <li>{t("admin.docs.provider.format")}</li>
-          <li>{t("admin.docs.provider.formatTrap")}</li>
-          <li>{t("admin.docs.provider.modes")}</li>
-          <li>{t("admin.docs.provider.specs")}</li>
-        </ul>
-      </Card>
+      <div className="space-y-4 sm:space-y-5">
+        <Card>
+          <CardHeader
+            title={<CardTitle icon={<Server className="h-4 w-4" />}>{t("admin.docs.provider.title")}</CardTitle>}
+            description={t("admin.docs.provider.desc")}
+          />
+          <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
+            <li>{t("admin.docs.provider.kind")}</li>
+            <li>{t("admin.docs.provider.baseUrl")}</li>
+            <li>{t("admin.docs.provider.headers")}</li>
+            <li>{t("admin.docs.provider.format")}</li>
+            <li>{t("admin.docs.provider.formatTrap")}</li>
+            <li>{t("admin.docs.provider.modes")}</li>
+            <li>{t("admin.docs.provider.specs")}</li>
+            <li>{t("admin.docs.provider.textProtocol")}</li>
+          </ul>
+        </Card>
+
+        {/*
+          The text protocol, rendered from the repository file itself.
+
+          It was the one protocol with no way out of the file: the media one and
+          the search one each had a reader and a chapter, and the text one — the
+          protocol an ordinary provider row is actually configured with — was
+          announced in a bullet and then never shown. An operator who wanted to
+          know what `clamp` meant, or which modes existed, had to go and read
+          the repository.
+        */}
+        <Card>
+          <CardHeader
+            title={
+              <CardTitle icon={<FileCode className="h-4 w-4" />}>
+                {t("admin.docs.textProtocol.title")}
+              </CardTitle>
+            }
+            description={t("admin.docs.textProtocol.desc")}
+          />
+          <ProtocolReference kind="text" />
+        </Card>
+      </div>
     );
   }
 
@@ -389,25 +414,37 @@ export function AdminDocsContent({ section, t }: { section: AdminDocId; t: TFn }
   }
 
   // ops
-  return (
-    <Card>
-      <CardHeader
-        title={<CardTitle icon={<Wrench className="h-4 w-4" />}>{t("admin.docs.ops.title")}</CardTitle>}
-        description={t("admin.docs.ops.desc")}
-      />
-      <pre className="overflow-x-auto rounded-md border border-border bg-foreground/[0.03] px-3 py-2.5 font-mono text-xs leading-relaxed text-foreground">
-        {`pnpm bootstrap-admin --username <name> [--password <pw>]
+  //
+  // An explicit branch, not the fallthrough. The fallthrough meant the
+  // generator could not tell which page a key belonged to, so the `ops` page's
+  // own words were filed under `overview` and the index described `ops` as
+  // something it is not — a pair of reference files that live on other pages.
+  if (section === "ops") {
+    return (
+      <Card>
+        <CardHeader
+          title={<CardTitle icon={<Wrench className="h-4 w-4" />}>{t("admin.docs.ops.title")}</CardTitle>}
+          description={t("admin.docs.ops.desc")}
+        />
+        <pre className="overflow-x-auto rounded-md border border-border bg-foreground/[0.03] px-3 py-2.5 font-mono text-xs leading-relaxed text-foreground">
+          {`pnpm bootstrap-admin --username <name> [--password <pw>]
 pnpm reset-password --username <name>
 pnpm rotate-key
 pnpm list-usage [--user <name>] [--days N]`}
-      </pre>
-      <p className="mt-3 text-xs text-muted-foreground">
-        <Link href="/docs" className="underline underline-offset-2">
-          {t("docs.title")}
-        </Link>
-      </p>
-    </Card>
-  );
+        </pre>
+        <p className="mt-3 text-xs text-muted-foreground">
+          <Link href="/docs" className="underline underline-offset-2">
+            {t("docs.title")}
+          </Link>
+        </p>
+      </Card>
+    );
+  }
+
+  // The outline's ids are the only ones that reach this component, and every
+  // one of them has a branch above. A chapter without a branch would render
+  // something plausible rather than nothing, so it renders nothing.
+  return null;
 }
 
 function CardTitle({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {

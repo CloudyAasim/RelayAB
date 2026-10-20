@@ -125,6 +125,10 @@ const AFTER = {
   "admin:media":
     "这一页里的「适配协议全文」是一个仓库文件渲染出来的，read_docs 拿不到它 —— " +
     "协议正文用 get_media_spec_reference(what=\"protocol\") 读，分段读，读到 nextOffset 就接着读下一段。",
+  "admin:providers":
+    "这一页下半部分的「文本适配协议全文」也是一个仓库文件渲染出来的，read_docs 拿不到它 —— " +
+    "协议正文用 get_text_spec_reference(what=\"protocol\") 读，分段读，读到 nextOffset 就接着读下一段；" +
+    "可套用的内置预设用 get_text_spec_reference(what=\"presets\") 取。",
   "user:media":
     "实时模型目录用 list_gateway_models 取，那才是当前这张表的真实内容；" +
     "这一页里内嵌的目录组件是按页面渲染的界面，不是文档正文。",
@@ -181,10 +185,9 @@ for (const [key, list] of [
 // says so rather than returning an empty page the model would read as silence.
 const NOT_PROSE = {
   "admin:ops":
-    "这一页不是文字说明，而是两份从仓库文件实时渲染的参考件：媒体适配协议" +
-    "（docs/模型适配协议/README.md）和 spec-check 脚本（scripts/spec-check.ts）。" +
-    "它们是给「写 spec 的 AI」用的原文，不是网关文档。媒体适配协议用 " +
-    "get_media_spec_reference(what=\"protocol\") 读；spec-check 脚本在仓库里，需要时请用户从管理界面复制。",
+    "这一页是运维命令：建管理员、改密码、换密钥、查用量。命令本身是页面上的字面量，" +
+    "不是词典里的句子，所以 read_docs 只能拿到这一页的标题和说明，命令列表读不到 —— " +
+    "需要哪条命令，去 /admin/docs/ops 那一页看，或者问管理员。",
   // The live catalogue, rendered alone. Its table is data, and the tool that
   // returns data is `list_gateway_models` — a description of a table is worse
   // than the table when both are available.
@@ -292,7 +295,8 @@ const TITLES = {
   "admin:overview": "管理员文档总览",
   "admin:assistant":
     "怎么用 AI 助手：它能体检和批量改配置、能核对厂商文档，以及它做不到什么（改动都要你确认、撤不回已生效的提案、看不到密钥）",
-  "admin:providers": "服务商配置：新增、编辑、启用、优先级、格式",
+  "admin:providers":
+    "服务商配置：新增、编辑、启用、优先级、格式，以及文本适配协议全文（普通服务商每个兼容接口的参数规则怎么写）",
   "admin:faces": "OpenAI 面与 Anthropic 面：分别接哪些模型、为什么要分",
   "admin:routes": "路由规则：一个模型名会走到哪个上游",
   "admin:mapping": "模型映射：客户端模型名 → 上游模型名",
@@ -302,7 +306,7 @@ const TITLES = {
   "admin:spec-check": "spec 自检：怎么验证一份 spec 写对了",
   "admin:usage": "用量与统计",
   "admin:trouble": "排错：常见报错与对应原因",
-  "admin:ops": "运维参考件（非文字说明）",
+  "admin:ops": "运维命令：建管理员、改密码、换密钥、查用量（命令是页面上的字面量，read_docs 读不到）",
 };
 
 const q = (s) => JSON.stringify(s);

@@ -33,6 +33,7 @@ import {
 import { effectiveEndpoint, effectiveSearchConfig } from "../search/effective";
 import { SEARCH_TEMPLATES } from "../search/templates";
 import { readSearchProtocolDoc } from "../docs/search-protocol-doc";
+import { readTextProtocolDoc } from "../docs/text-protocol-doc";
 import { getProviderById, listProviders } from "../db/providers";
 import { collectVoiceCatalogue } from "../media/voices";
 import { listUsers, getUserById } from "../db/users";
@@ -891,8 +892,45 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
       description:
         "列出可配置的文本协议预设和参数策略的六种模式，配使用建议。\n" +
         "配置服务商前如果不确定该选哪个协议、或者不知道某个参数该 passthrough 还是 clamp，先调这个 —— 不要凭印象写 protocol。\n" +
-        "绝大多数 OpenAI 兼容中转选 openai-chat 就够了，什么都不用改。",
+        "绝大多数 OpenAI 兼容中转选 openai-chat 就够了，什么都不用改。\n" +
+        "**规则的确切语义**（模式、裁决顺序、协议字段）在协议原文里，用 get_text_spec_reference(what=\"protocol\") 读。",
       parameters: { type: "object", properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_text_spec_reference",
+      description:
+        "读文本（普通服务商）适配协议的原文，或者当前内置的协议预设。\n" +
+        "写 textSpecs 之前先读它 —— 字段名、参数模式的语义、裁决顺序以这份原文为准，不要凭印象写。\n" +
+        "what=\"protocol\"：协议全文（很长，用 offset/limit 分段读，读到 nextOffset 就接着读下一段）。\n" +
+        "what=\"presets\"：内置预设，一字不差的可套用副本；preset 字段就是可以直接放进 propose_provider_update 的 textSpecs 数组里的那个对象。\n" +
+        "该选哪个协议、用哪种模式，先调 list_text_protocols —— 那是建议；这里是原文和可套用的值。",
+      parameters: {
+        type: "object",
+        properties: {
+          what: {
+            type: "string",
+            enum: ["protocol", "presets"],
+            description: "protocol = 协议原文；presets = 内置预设",
+          },
+          protocol: {
+            type: "string",
+            description:
+              "只取这个协议的预设，例如 openai-chat、anthropic-messages。留空返回全部可配置的协议。",
+          },
+          offset: {
+            type: "integer",
+            description: "what=\"protocol\" 时的起始字符位置，从 0 开始。",
+          },
+          limit: {
+            type: "integer",
+            description: "what=\"protocol\" 时这一次返回多少字符。",
+          },
+        },
+        additionalProperties: false,
+      },
     },
   },
   {
@@ -1455,6 +1493,9 @@ export async function executeTool(
     case "list_text_protocols":
       if (!isAdmin) return fail("这是管理员功能。");
       return listTextProtocolsTool();
+    case "get_text_spec_reference":
+      if (!isAdmin) return fail("这是管理员功能。");
+      return textSpecReferenceTool(args);
     case "probe_provider_host":
       if (!isAdmin) return fail("这是管理员功能。");
       return probeProviderHost(args);
@@ -2472,6 +2513,87 @@ function listTextProtocolsTool(): ToolResult {
       rename: "换个名字或位置送，to 可以是点号路径（如 extra_body.thinking）。",
     },
     order: "裁决顺序固定：drop 最先且不可被后面的规则捡回，然后 default、clamp、force、rename。",
+  });
+}
+
+/**
+ * The text protocol, and the presets that come with it.
+ *
+ * The third of the three, and the one that was missing longest. The media
+ * protocol and the search protocol each had a reader and a chapter; the text
+ * protocol — the one every ordinary provider row is configured with — lived
+ * in a file that nothing could read from outside the repository. So the model
+ * wrote `textSpecs` from memory, and a spec written from memory is a spec
+ * that fails validation for reasons nobody can see.
+ *
+ * **The split with `list_text_protocols` is deliberate.** That tool answers
+ * "which protocol should this vendor be, and which mode should this parameter
+ * get" — advice. This one answers "what does the protocol say, and what does
+ * a finished entry look like" — the source and the artifact. Two tools with
+ * one job each, rather than one tool with two jobs and no way to say which
+ * half you want.
+ */
+async function textSpecReferenceTool(args: Record<string, unknown>): Promise<ToolResult> {
+  const what = args.what === "presets" ? "presets" : "protocol";
+
+  if (what === "presets") {
+    const asked = typeof args.protocol === "string" ? args.protocol.trim() : "";
+    const ids = asked ? [asked] : [...CONFIGURABLE_PROTOCOLS];
+
+    // **Configurable only.** `TEXT_PROTOCOL_PRESETS` also carries
+    // `gemini-generate`, and it is the right answer the day this gateway
+    // serves `v1beta/models/*:generateContent` — but it serves no such route
+    // today, so a rule for it would be saved and never selected. Handing it out
+    // here is the same lie the editor stopped telling, told by the one caller
+    // with no UI to notice.
+    const unusable = ids.filter((id) => !(CONFIGURABLE_PROTOCOLS as readonly string[]).includes(id));
+    if (unusable.length > 0) {
+      return fail(
+        `协议「${unusable.join("、")}」没有可用预设：本部署没有它对应的客户端端点，配了也不会被任何请求选中。` +
+          `可配置的是：${CONFIGURABLE_PROTOCOLS.join("、")}。`,
+      );
+    }
+
+    return ok({
+      presets: ids.map((id) => {
+        const surface = SURFACES.find((s) => s.id === id);
+        return {
+          protocol: id,
+          name: TEXT_PROTOCOL_LABELS[id as keyof typeof TEXT_PROTOCOL_LABELS].zh,
+          // Which client endpoint this rule governs, and which toggle has to be
+          // on for it to ever run. Without both, the model writes a rule for an
+          // interface nothing calls.
+          clientPath: surface?.clientPath ?? null,
+          requiresFace: surface?.face ?? null,
+          /** The object to paste into `propose_provider_update`'s `textSpecs`. */
+          preset: TEXT_PROTOCOL_PRESETS[id as keyof typeof TEXT_PROTOCOL_PRESETS],
+        };
+      }),
+      note:
+        "preset 就是可以直接放进 propose_provider_update 的 textSpecs 数组里的那个对象（一份一个 protocol）。" +
+        "预设只是「起点」，不是「正确答案」：已存的规则可能带着预设里没有的、故意的修正，整份套用会把它们冲掉。" +
+        "该选哪个协议见 list_text_protocols。",
+    });
+  }
+
+  const { text, error } = await readTextProtocolDoc();
+  if (!text) return fail(error ?? "读不到文本适配协议原文。");
+
+  const total = text.length;
+  const offset = Math.max(0, typeof args.offset === "number" ? Math.trunc(args.offset) : 0);
+  const asked = typeof args.limit === "number" ? Math.trunc(args.limit) : PROTOCOL_CHUNK_CHARS;
+  const limit = Math.min(Math.max(asked, 1), MAX_PROTOCOL_CHUNK_CHARS);
+  const slice = text.slice(offset, offset + limit);
+  const end = offset + slice.length;
+
+  return ok({
+    total,
+    offset,
+    returned: slice.length,
+    // Absent rather than `null` on the last window: "there is no next one" and
+    // "the next one is at position zero" should not look alike.
+    ...(end < total ? { nextOffset: end } : {}),
+    text: slice,
   });
 }
 
