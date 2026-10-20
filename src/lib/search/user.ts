@@ -60,8 +60,11 @@ export function useOwnSearchService(
   settings: { searchSource?: "deployment" | "own" | null; searchBaseUrl?: string | null } | null,
 ): boolean {
   if (!settings) return false;
-  if (settings.searchSource === "own") return true;
   if (settings.searchSource === "deployment") return false;
+  // "own" still needs an address to be usable, so a row that says "own" with no
+  // address does not use the own service — the save refuses to create that
+  // state, and this is the second line of defence for a row written by
+  // something else.
   return Boolean(settings.searchBaseUrl?.trim());
 }
 

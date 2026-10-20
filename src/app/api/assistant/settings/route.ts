@@ -202,11 +202,17 @@ export async function PUT(req: Request): Promise<Response> {
    * searching through the deployment's provider instead — silently, and the
    * opposite of what was asked for. So it is refused here rather than quietly
    * doing something else.
+   *
+   * The address checked is the one that will be **in effect after this save**,
+   * not the one already stored: clearing the address while asking for "my own"
+   * is exactly the state that must not be saved.
    */
   const searchSource =
     data.searchSource === undefined ? (existing?.searchSource ?? null) : data.searchSource;
-  const searchUrlStored = (data.searchBaseUrl ?? existing?.searchBaseUrl ?? "").trim();
-  if (searchSource === "own" && !searchUrlStored) {
+  const searchUrlEffective = (
+    data.searchBaseUrl === undefined ? (existing?.searchBaseUrl ?? "") : (data.searchBaseUrl ?? "")
+  ).trim();
+  if (searchSource === "own" && !searchUrlEffective) {
     return NextResponse.json(
       {
         ok: false,

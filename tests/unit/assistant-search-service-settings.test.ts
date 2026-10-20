@@ -98,6 +98,14 @@ describe("which backend the assistant searches with", () => {
     expect(useOwnSearchService({ searchSource: null, searchBaseUrl: null })).toBe(false);
     expect(useOwnSearchService(null)).toBe(false);
   });
+
+  it("and 'my own' with no address is not the own service either", () => {
+    // The second line of defence. The save refuses to create this state, and
+    // the runtime does not act on it either: a row that says "own" with no
+    // address falls back to the deployment's provider rather than pretending.
+    expect(useOwnSearchService({ searchSource: "own", searchBaseUrl: null })).toBe(false);
+    expect(useOwnSearchService({ searchSource: "own", searchBaseUrl: "  " })).toBe(false);
+  });
 });
 
 describe("saving the search service", () => {
@@ -135,6 +143,45 @@ describe("saving the search service", () => {
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: { code: string } };
     expect(body.error.code).toBe("no_search_url");
+  });
+
+  it("refuses it too when the address is being cleared while the source says 'own'", async () => {
+    // The address checked has to be the one that will be **in effect after the
+    // save**. Checking the stored one would let through exactly the state that
+    // must not exist: "my own service" with no address, which the assistant
+    // would answer with the deployment's provider instead.
+    await signIn();
+    await PUT_SETTINGS(
+      settingsRequest({
+        baseUrl: "",
+        model: "",
+        accountModel: "m",
+        credentialMode: "account",
+        searchSource: "own",
+        searchBaseUrl: "https://my-gateway.test/v1/search",
+      }),
+    );
+    expect((await getAssistantSettings(user.id))?.searchBaseUrl).toBe(
+      "https://my-gateway.test/v1/search",
+    );
+
+    const res = await PUT_SETTINGS(
+      settingsRequest({
+        baseUrl: "",
+        model: "",
+        accountModel: "m",
+        credentialMode: "account",
+        searchSource: "own",
+        searchBaseUrl: null,
+      }),
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("no_search_url");
+    // And the stored address is still there — the refused save changed nothing.
+    expect((await getAssistantSettings(user.id))?.searchBaseUrl).toBe(
+      "https://my-gateway.test/v1/search",
+    );
   });
 
   it("stores the address, the source and the key", async () => {
