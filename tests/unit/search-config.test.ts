@@ -37,11 +37,20 @@ afterEach(() => {
 });
 
 describe("stored settings", () => {
-  it("round-trips the switch and the price", async () => {
-    await updateSettings({ searchEnabled: false, searchCreditsPerCall: 4 });
+  it("round-trips the environment fallback's price", async () => {
+    await updateSettings({ searchCreditsPerCall: 4 });
     const settings = await getSettings();
-    expect(settings.searchEnabled).toBe(false);
     expect(settings.searchCreditsPerCall).toBe(4);
+  });
+
+  it("keeps the old feature-wide switch readable, but it no longer decides anything", async () => {
+    // The column is still there, so a deployment that had switched search off
+    // keeps a readable record of it. What decides now is the provider rows —
+    // see "the effective configuration" below.
+    await updateSettings({ searchEnabled: false });
+    expect((await getSettings()).searchEnabled).toBe(false);
+    const config = await loadSearchConfig();
+    expect(config.enabled).toBe(true);
   });
 
   it("distinguishes absent from false", async () => {
@@ -176,6 +185,26 @@ describe("the effective configuration", () => {
     expect(config.backendConfigured).toBe(false);
     expect(config.backendSource).toBeNull();
     expect(config.backendProviderId).toBeNull();
+  });
+
+  it("is off when every provider is disabled — the rows are the switch", async () => {
+    const row = await createSearchProvider({ name: "Only", kind: "searxng", baseUrl: "https://db.example" });
+    await updateSearchProvider(row.id, { enabled: false });
+
+    // There is no second switch beside the list any more: a deployment with
+    // every provider disabled is a deployment that turned search off.
+    const config = await loadSearchConfig();
+    expect(config.enabled).toBe(false);
+  });
+
+  it("is on again as soon as one provider is enabled", async () => {
+    const off = await createSearchProvider({ name: "Off", kind: "searxng", baseUrl: "https://off.example" });
+    const on = await createSearchProvider({ name: "On", kind: "searxng", baseUrl: "https://on.example" });
+    await updateSearchProvider(off.id, { enabled: false });
+
+    expect((await loadSearchConfig()).enabled).toBe(true);
+    await updateSearchProvider(on.id, { enabled: false });
+    expect((await loadSearchConfig()).enabled).toBe(false);
   });
 
   it("does not expose a backend URL for a keyed provider", async () => {

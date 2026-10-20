@@ -120,12 +120,16 @@ export default async function ModelsPage() {
                     query: t("admin.search.test.query"),
                     placeholder: t("admin.search.test.placeholder"),
                     run: t("admin.search.test.run"),
-                    unbilled: t("admin.search.test.unbilled"),
+                    billed: t("admin.search.test.billed"),
                     // The numbers are only known after the probe runs, so the
                     // placeholders are kept as tokens and filled in the client.
                     latency: t("admin.search.test.latency", {
                       ms: "{ms}",
                       backend: "{backend}",
+                    }),
+                    charged: t("admin.search.test.charged", {
+                      credits: "{credits}",
+                      remaining: "{remaining}",
                     }),
                     empty: t("admin.search.test.empty"),
                     unavailable: t("admin.search.status.backendMissing"),

@@ -11,10 +11,18 @@ interface TestResult {
   backend: string;
   results: Array<{ title: string; url: string; snippet: string }>;
   latencyMs: number;
+  /** Whole 积分 this call cost. */
+  credits: number;
+  /** The account's remaining balance after the call. */
+  remaining: number | null;
 }
 
 /**
- * One query, through one provider, not billed.
+ * One query, through one provider — **billed**.
+ *
+ * The test goes through the same settlement as a real search, at this row's
+ * price: the operator pays the vendor either way, so a free test is a free
+ * ride on a paid API, and the only place that shows up is the invoice.
  *
  * A modal rather than a fixed diagnostic query: "does this vendor answer *my*
  * kinds of searches" is the question, and a hardcoded one answers a different
@@ -84,7 +92,7 @@ export function SearchProviderTestModal({
             {t("admin.searchProviders.test")}
           </Button>
           <span className="text-xs text-muted-foreground">
-            {t("admin.searchProviders.testUnbilled")}
+            {t("admin.searchProviders.testBilled")}
           </span>
         </div>
       </form>
@@ -94,6 +102,12 @@ export function SearchProviderTestModal({
         <div className="mt-4 space-y-2">
           <p className="text-sm text-muted-foreground">
             {t("admin.search.test.latency", { ms: result.latencyMs, backend: result.backend })}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            {t("admin.search.test.charged", {
+              credits: result.credits,
+              remaining: result.remaining ?? 0,
+            })}
           </p>
           {result.results.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t("admin.search.test.empty")}</p>

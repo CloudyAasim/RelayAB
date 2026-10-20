@@ -1,12 +1,24 @@
 /**
  * app/api/admin/search/route.ts
  *
- *   GET /api/admin/search  → current configuration + usage
- *   PUT /api/admin/search  → enable/disable and set the per-call price
+ *   GET /api/admin/search  → current configuration
+ *   PUT /api/admin/search  → set the environment fallback's price
  *
- * The panel needs three things in one read: whether the feature is on, what it
- * costs, and whether there is a backend behind it. Reading them separately is
- * how a page comes to say "enabled" while `/v1/search` is returning 503.
+ * ## There is no on/off switch here any more
+ *
+ * There used to be one, and it sat beside the provider list as a second
+ * source of truth for a fact the rows already carry: whether the operator
+ * wants search right now. The two could disagree — the panel said "on" while
+ * `/v1/search` was refusing — and the fix was to give the state one home: the
+ * rows.
+ *
+ * A deployment that had switched search off keeps that meaning: the
+ * migration in `src/lib/db/sqlite.ts` folded the switch's "off" into the rows
+ * it governed, so the state the operator set is still the state they see.
+ *
+ * What is left here is the one number that is not on a row: the price of the
+ * **environment fallback**, which is the path a deployment uses before it has
+ * any provider row at all.
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -31,13 +43,12 @@ async function requireAdmin(): Promise<NextResponse | null> {
 
 const UpdateSchema = z
   .object({
-    enabled: z.boolean().optional(),
     // Whole credits. The ceiling is a sanity bound, not a pricing opinion: a
     // typo that adds three zeros should be refused rather than billed.
     creditsPerCall: z.number().int().min(0).max(100_000).optional(),
   })
   .strict()
-  .refine((v) => v.enabled !== undefined || v.creditsPerCall !== undefined, {
+  .refine((v) => v.creditsPerCall !== undefined, {
     message: "nothing to update",
   });
 
@@ -54,7 +65,6 @@ export async function GET(): Promise<Response> {
     data: {
       config,
       stored: {
-        enabled: settings.searchEnabled ?? null,
         creditsPerCall: settings.searchCreditsPerCall ?? null,
       },
       maxResults: MAX_SEARCH_RESULTS,
@@ -90,7 +100,6 @@ export async function PUT(req: Request): Promise<Response> {
   }
 
   const settings = await updateSettings({
-    ...(parsed.data.enabled !== undefined ? { searchEnabled: parsed.data.enabled } : {}),
     ...(parsed.data.creditsPerCall !== undefined
       ? { searchCreditsPerCall: parsed.data.creditsPerCall }
       : {}),
@@ -100,7 +109,6 @@ export async function PUT(req: Request): Promise<Response> {
     data: {
       config: await loadSearchConfig(settings),
       stored: {
-        enabled: settings.searchEnabled ?? null,
         creditsPerCall: settings.searchCreditsPerCall ?? null,
       },
     },

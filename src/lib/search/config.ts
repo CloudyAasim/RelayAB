@@ -6,13 +6,27 @@
  *
  * Three callers need the same answers: the public `/v1/search` route, the
  * assistant's `web_search` tool, and the admin panel. Reading them separately
- * is how a panel comes to say "enabled" while the endpoint is refusing, or a
+ * is how a page comes to say "enabled" while the endpoint is refusing, or a
  * price edit reaches one door and not the other. The provider table is the
  * authority for *which* backend answers; the environment is only the fallback
  * for a deployment that has never added a provider row.
+ *
+ * ## There is no separate on/off switch
+ *
+ * The state belongs to the provider rows: a search is on when at least one
+ * enabled row can answer, and off when the operator disabled them all. A
+ * feature-wide switch beside the list was a second source of truth for the
+ * same fact, and the two could disagree — the panel said "on" while the
+ * endpoint refused, or the panel said "off" while a request went through.
+ *
+ * A deployment that had deliberately switched the feature off keeps that
+ * meaning: the switch's "off" was folded into the rows when this landed (see
+ * the migration in `src/lib/db/sqlite.ts`), so the state the operator set is
+ * still the state they see.
  */
 import { getSettings, type AppSettings } from "@/lib/db/settings";
 import { activeSearchBackendInfo } from "./resolve";
+import { listSearchProviders } from "@/lib/db/search-providers";
 import type { SearchProvider } from "@/lib/assistant/web-search";
 
 /** Used when neither the settings row nor the environment names a price. */
@@ -27,7 +41,13 @@ export function envSearchCredits(env: NodeJS.ProcessEnv = process.env): number |
 }
 
 export interface SearchConfig {
-  /** False means both `/v1/search` and the assistant's tool refuse. */
+  /**
+   * False means both `/v1/search` and the assistant's tool refuse.
+   *
+   * Read off the provider rows: on when at least one enabled row can answer,
+   * off when the operator disabled them all. There is no second switch beside
+   * the list — see the note at the top of this file.
+   */
   enabled: boolean;
   /** Whole 积分 charged per call. 0 is a deliberate "free". */
   creditsPerCall: number;
@@ -65,12 +85,25 @@ export interface SearchConfig {
  */
 export async function loadSearchConfig(settings?: AppSettings): Promise<SearchConfig> {
   const stored = settings ?? (await getSettings());
-  const backend = await activeSearchBackendInfo();
+  // The rows are read once and used twice: the backend that answers comes from
+  // them, and so does the on/off state. This runs on every search.
+  const rows = await listSearchProviders();
+  const backend = await activeSearchBackendInfo(process.env, rows);
   const providerPrice = backend.source === "db" ? backend.creditsPerCall : null;
+
+  /**
+   * Whether the feature is switched on, read off the provider rows.
+   *
+   * With rows, the state is the rows: one of them enabled means the operator
+   * wants search, all of them disabled means the operator turned it off. With
+   * no rows the environment fallback decides — and if that is not configured
+   * either, the endpoint says "not configured", which is a different thing
+   * from "off" and says so.
+   */
+  const enabled = rows.length === 0 ? true : rows.some((row) => row.enabled);
+
   return {
-    // Absent means on. The feature predates the switch, so an upgrade must not
-    // silently turn it off; only an explicit `false` does.
-    enabled: stored.searchEnabled !== false,
+    enabled,
     creditsPerCall:
       providerPrice ?? stored.searchCreditsPerCall ?? envSearchCredits() ?? DEFAULT_SEARCH_CREDITS,
     creditsFromProvider: providerPrice !== null,

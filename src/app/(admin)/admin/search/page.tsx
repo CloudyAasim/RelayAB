@@ -1,17 +1,24 @@
 /**
  * app/(admin)/admin/search/page.tsx
  *
- * Search providers, listed the same way as chat and media providers: one row
- * each, with edit/disable/delete/test behind the row actions. Each row carries
- * its own price, because a paid API and a self-hosted instance do not have the
- * same economics. The feature-wide switch sits below the list; the environment
- * fallback's price is edited there too, since it has no row to hold one.
+ * The search backends, one row each.
  *
- * Usage statistics are not here any more. They live on `/admin/usage`, where
- * every other kind of spend is reported, so the two cannot disagree.
+ * ## The list is the whole page
  *
- * The "test the active backend" box is not here either: it moved to the single
- * testing page (`/dashboard/models`), next to the model testers.
+ * There used to be a "运行状态" card below it: whether search was on, which
+ * backend served it, what it cost, and a feature-wide switch. Every one of
+ * those facts is already in the list — the row that is serving says so, the
+ * row says what it costs, and a row that is switched off is not serving — and
+ * the switch beside the list was a second source of truth for the same fact.
+ * Two sources of truth for one state is how a panel comes to say "on" while
+ * the endpoint refuses.
+ *
+ * So: **the rows are the switch.** Search is on when at least one enabled row
+ * can answer, and off when they are all disabled. The only thing that is not
+ * a row is the environment fallback — the `SEARXNG_URL` / `TAVILY_API_KEY` /
+ * `BRAVE_SEARCH_API_KEY` path a deployment uses before it has any row — and
+ * its price is editable in the empty state, because that is the only moment
+ * the fallback is the thing being used.
  */
 import { redirect } from "next/navigation";
 import { Search } from "lucide-react";
@@ -23,7 +30,7 @@ import {
   type PublicSearchProvider,
 } from "@/lib/db/search-providers";
 import { getSettings } from "@/lib/db/settings";
-import { loadSearchConfig } from "@/lib/search/config";
+import { activeSearchBackendInfo } from "@/lib/search/resolve";
 import { SEARCH_TEMPLATES } from "@/lib/search/templates";
 import { specDrift, type SpecDrift } from "@/lib/search/drift";
 import { Card } from "@/components/ui/Card";
@@ -33,7 +40,7 @@ import { SectionPageLayout } from "@/components/layouts";
 import { getT } from "@/lib/i18n/server";
 import { CreateSearchProviderButton } from "./CreateSearchProviderButton";
 import { SearchProviderActions } from "./SearchProviderActions";
-import { SearchPanel } from "./SearchPanel";
+import { EnvFallbackPrice } from "./EnvFallbackPrice";
 
 export const dynamic = "force-dynamic";
 
@@ -89,13 +96,16 @@ export default async function SearchAdminPage() {
   if (user.role !== "admin") redirect("/dashboard");
 
   const { t } = await getT();
-  const [settings, config, records] = await Promise.all([
+  const [settings, records, backend] = await Promise.all([
     getSettings(),
-    loadSearchConfig(),
     listSearchProviders(),
+    activeSearchBackendInfo(),
   ]);
   const providers = records.map(toPublicSearchProvider);
-  const activeId = config.backendSource === "db" ? config.backendProviderId : null;
+  // The row that will actually serve the next search: the resolver's own
+  // answer, not "the first one in the list" — a row can be enabled and still
+  // be unable to answer (no key, an unreadable spec).
+  const activeId = backend.source === "db" ? backend.usageProviderId : null;
 
   return (
     <SectionPageLayout>
@@ -183,18 +193,12 @@ export default async function SearchAdminPage() {
           )}
         </Card>
 
-        <SearchPanel
-          enabled={config.enabled}
-          storedEnabled={settings.searchEnabled ?? null}
-          creditsPerCall={config.creditsPerCall}
-          creditsFromProvider={config.creditsFromProvider}
-          storedCredits={settings.searchCreditsPerCall ?? null}
-          backendConfigured={config.backendConfigured}
-          backendName={config.backendName}
-          backendUrl={config.backendUrl}
-          backendSource={config.backendSource}
-          providerCount={providers.length}
-        />
+        {providers.length === 0 && (
+          <EnvFallbackPrice
+            creditsPerCall={settings.searchCreditsPerCall ?? null}
+            envConfigured={Boolean(process.env.SEARXNG_URL || process.env.TAVILY_API_KEY || process.env.BRAVE_SEARCH_API_KEY)}
+          />
+        )}
       </SectionPageLayout.Content>
     </SectionPageLayout>
   );

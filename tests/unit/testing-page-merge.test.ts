@@ -8,6 +8,12 @@
  *  - the search probe is rendered on the testing page, for administrators,
  *  - it is not rendered for regular users (the route behind it is admin-only),
  *  - and the search settings page no longer carries a second copy of the box.
+ *
+ * The second half changed shape: the search settings page used to end in a
+ * "运行状态" card that showed the state, held a feature-wide switch and a
+ * global price, and had its own test box. The card is gone — the provider
+ * rows are the state and the switch — so what this file guards is now
+ * "the settings page is the list, and nothing else".
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
@@ -21,7 +27,7 @@ const read = (...parts: string[]) => readFileSync(join(SRC, ...parts), "utf-8");
 const WORKSPACE = read("app", "(user)", "dashboard", "models", "ModelsWorkspace.tsx");
 const PAGE = read("app", "(user)", "dashboard", "models", "page.tsx");
 const SEARCH_TESTER = read("app", "(user)", "dashboard", "models", "SearchTester.tsx");
-const SEARCH_PANEL = read("app", "(admin)", "admin", "search", "SearchPanel.tsx");
+const SEARCH_PAGE = read("app", "(admin)", "admin", "search", "page.tsx");
 
 describe("one testing page", () => {
   it("is labelled '测试', not '模型测试'", () => {
@@ -45,28 +51,51 @@ describe("one testing page", () => {
 
   it("talks to the admin search test route, not a new one", () => {
     expect(SEARCH_TESTER).toContain("/api/admin/search/test");
-    // The "not billed" promise is still shown to the operator.
-    expect(SEARCH_TESTER).toContain("labels.unbilled");
   });
 
-  it("removes the duplicate box from the search settings page", () => {
-    expect(SEARCH_PANEL).not.toContain("/api/admin/search/test");
-    expect(SEARCH_PANEL).not.toMatch(/admin\.search\.test\./);
+  it("says the test is billed, because it is", () => {
+    // The old promise was "this path charges nothing". It is not true any
+    // more — the test goes through the same settlement as a real search — and
+    // a label that says otherwise would be a lie in the operator's face.
+    expect(SEARCH_TESTER).toContain("labels.billed");
+    expect(SEARCH_TESTER).not.toContain("labels.unbilled");
+    expect(translate("zh-CN", "admin.search.test.billed")).toMatch(/计费/);
+  });
+});
+
+describe("the search settings page is the list, and nothing else", () => {
+  it("no longer carries a status card", () => {
+    // The card showed a second copy of facts the list already carries (which
+    // backend serves, what it costs) and a feature-wide switch beside the
+    // rows' own switches.
+    expect(SEARCH_PAGE).not.toContain("SearchPanel");
+    expect(SEARCH_PAGE).not.toContain("admin.search.status.");
+  });
+
+  it("no longer carries a second test box", () => {
+    expect(SEARCH_PAGE).not.toContain("/api/admin/search/test");
+  });
+
+  it("takes its state from the provider rows", () => {
+    expect(SEARCH_PAGE).toContain("admin.searchProviders.spec");
+    expect(SEARCH_PAGE).toContain("admin.searchProviders.legacy");
   });
 });
 
 describe("price lives on the provider", () => {
   const FORM = read("app", "(admin)", "admin", "search", "SearchProviderForm.tsx");
-  const SEARCH_PAGE = read("app", "(admin)", "admin", "search", "page.tsx");
+  const FALLBACK = read("app", "(admin)", "admin", "search", "EnvFallbackPrice.tsx");
 
   it("is edited on the provider form and shown in the list", () => {
     expect(FORM).toContain("creditsPerCall");
     expect(SEARCH_PAGE).toContain('t("admin.searchProviders.creditsPerCall")');
   });
 
-  it("keeps the global price only as the environment fallback", () => {
-    // The global input is rendered when the active backend has no row.
-    expect(SEARCH_PANEL).toMatch(/\{!props\.creditsFromProvider && \(/);
-    expect(SEARCH_PANEL).toMatch(/priceFromProvider/);
+  it("keeps the environment fallback's price for the case it is the one in use", () => {
+    // The fallback is the path a deployment uses before it has any provider
+    // row, so its price is editable exactly while there are no rows.
+    expect(SEARCH_PAGE).toContain("EnvFallbackPrice");
+    expect(SEARCH_PAGE).toMatch(/providers\.length === 0 && \(/);
+    expect(FALLBACK).toContain("creditsPerCall");
   });
 });

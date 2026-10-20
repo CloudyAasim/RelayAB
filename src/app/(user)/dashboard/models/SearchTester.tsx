@@ -7,9 +7,15 @@
  * and "test a search" were two pages for the same question. It now sits next
  * to the model testers, where the answer belongs.
  *
- * The route behind it is admin-only and unbilled, and it always runs through
- * whichever backend currently serves `/v1/search` — not a provider the operator
- * typed in here — so what the box reports is what a real call would get.
+ * The route behind it is admin-only and **billed**: it goes through the same
+ * settlement as `POST /v1/search`, so the account that presses the button
+ * pays the price and the call shows up in the usage tables. A test that ran a
+ * paid API for free was a free ride, and the only place that showed up was the
+ * vendor's invoice.
+ *
+ * It always runs through whichever backend currently serves `/v1/search` — not
+ * a provider the operator typed in here — so what the box reports is what a
+ * real call would get.
  */
 import { useState } from "react";
 
@@ -23,7 +29,8 @@ export interface SearchTestLabels {
   query: string;
   placeholder: string;
   run: string;
-  unbilled: string;
+  billed: string;
+  charged: string;
   latency: string;
   empty: string;
   unavailable: string;
@@ -35,6 +42,8 @@ interface TestResult {
   backend: string;
   results: Array<{ title: string; url: string; snippet: string }>;
   latencyMs: number;
+  credits: number;
+  remaining: number | null;
 }
 
 export function SearchTester({
@@ -99,13 +108,18 @@ export function SearchTester({
               {labels.run}
             </Button>
           </form>
-          <p className="mt-2 text-xs text-muted-foreground">{labels.unbilled}</p>
+          <p className="mt-2 text-xs text-muted-foreground">{labels.billed}</p>
 
           {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
           {test && (
             <div className="mt-4 space-y-2">
               <p className="text-sm text-muted-foreground">
                 {labels.latency.replace("{ms}", String(test.latencyMs)).replace("{backend}", test.backend)}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {labels.charged
+                  .replace("{credits}", String(test.credits))
+                  .replace("{remaining}", String(test.remaining ?? 0))}
               </p>
               {test.results.length === 0 ? (
                 <p className="text-sm text-muted-foreground">{labels.empty}</p>

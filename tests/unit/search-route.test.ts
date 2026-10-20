@@ -22,7 +22,7 @@ import { createUser, getUserById } from "@/lib/db/users";
 import { createApiKey } from "@/lib/db/keys";
 import { listUsageByKey } from "@/lib/db/usage";
 import { updateSettings } from "@/lib/db/settings";
-import { createSearchProvider } from "@/lib/db/search-providers";
+import { createSearchProvider, updateSearchProvider } from "@/lib/db/search-providers";
 
 let userId = "";
 let plainKey = "";
@@ -258,10 +258,15 @@ describe("what is refused without charging", () => {
     expect((await getUserById(userId))?.quotaUsed).toBe(0);
   });
 
-  it("a deployment where an administrator turned search off", async () => {
-    // The switch in the panel has to reach both doors. A disabled search that
-    // still answers here is a button that lies.
-    await updateSettings({ searchEnabled: false });
+  it("a deployment where every search provider is disabled", async () => {
+    // The rows are the switch. A disabled search that still answers here is a
+    // button that lies.
+    const row = await createSearchProvider({
+      name: "Off",
+      kind: "searxng",
+      baseUrl: "https://off.example",
+    });
+    await updateSearchProvider(row.id, { enabled: false });
     const impl = stubSearch([]);
     const res = await post({ query: "x" });
     expect(res.status).toBe(503);

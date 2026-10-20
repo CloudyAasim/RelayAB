@@ -97,9 +97,10 @@ export async function resolveActiveSearchBackend(
 
 export async function activeSearchBackendInfo(
   env: NodeJS.ProcessEnv = process.env,
+  rows?: readonly SearchProviderRecord[],
 ): Promise<ActiveBackendInfo> {
-  const rows = await listSearchProviders();
-  const backend = rows.length === 0 ? resolveSearchBackend(env) : backendFromRows(rows);
+  const list = rows ?? (await listSearchProviders());
+  const backend = list.length === 0 ? resolveSearchBackend(env) : backendFromRows(list);
   if (!backend) {
     return {
       configured: false,

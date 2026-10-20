@@ -22,19 +22,15 @@
 import { NextResponse } from "next/server";
 
 import { authenticateBearer, reasonToHttp, resolveAuthHeader } from "@/lib/auth/apikey";
-import { getUserById, incrementUserQuotaUsed } from "@/lib/db/users";
-import { touchApiKeyLastUsed } from "@/lib/db/keys";
-import { recordUsage } from "@/lib/db/usage";
+import { getUserById } from "@/lib/db/users";
 import { proxyError, quotaHeaders } from "@/lib/proxy/errors";
-import { CREDIT_SCALE } from "@/lib/quota/credits";
 import {
   MAX_QUERY_CHARS,
   MAX_SEARCH_RESULTS,
   WebSearchError,
 } from "@/lib/assistant/web-search";
-import { searchActive } from "@/lib/search/resolve";
+import { runBilledSearch } from "@/lib/search/billing";
 import { loadSearchConfig } from "@/lib/search/config";
-import { WEB_SEARCH_CAPABILITY, WEB_SEARCH_MODEL } from "@/lib/search/usage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -107,9 +103,18 @@ async function handle(req: Request, body: SearchBody): Promise<Response> {
   }
   const limit = parseLimit(body.limit);
 
-  let outcome;
+  /**
+   * One call to the shared settlement, so the public endpoint and the panel's
+   * test buttons price a search the same way and charge it the same way.
+   */
+  let settled;
   try {
-    outcome = await searchActive(query, { limit });
+    settled = await runBilledSearch({
+      query,
+      limit,
+      user: owner,
+      apiKeyId: auth.key.id,
+    });
   } catch (err) {
     if (err instanceof WebSearchError) return searchErrorResponse(err, quotaHeaders(owner));
     return proxyError(
@@ -120,32 +125,7 @@ async function handle(req: Request, body: SearchBody): Promise<Response> {
     );
   }
 
-  const price = config.creditsPerCall;
-  const creditsUsed = price * CREDIT_SCALE;
-
-  // Read-modify-write is not needed: the repository increments in one SQL
-  // statement and hands back the row, which is what the quota headers report.
-  const updated = creditsUsed > 0
-    ? await incrementUserQuotaUsed(auth.key.userId, creditsUsed)
-    : owner;
-
-  await touchApiKeyLastUsed(auth.key.id);
-  await recordUsage({
-    apiKeyId: auth.key.id,
-    userId: auth.key.userId,
-    // A database provider records its row id; an environment backend records
-    // its kind. Either way the usage row names the thing that actually
-    // answered, and `model` remains the stable marker the statistics use.
-    providerId: outcome.providerId,
-    model: WEB_SEARCH_MODEL,
-    upstreamModel: outcome.provider,
-    promptTokens: 0,
-    completionTokens: 0,
-    creditsUsed,
-    capability: WEB_SEARCH_CAPABILITY,
-    status: "success",
-    errorMessage: null,
-  });
+  const { outcome, credits, user } = settled;
 
   return NextResponse.json(
     {
@@ -154,9 +134,9 @@ async function handle(req: Request, body: SearchBody): Promise<Response> {
       provider: outcome.provider,
       results: outcome.results,
       // Whole 积分, the same unit an operator types into the panel.
-      credits: price,
+      credits,
     },
-    { headers: updated ? quotaHeaders(updated) : quotaHeaders(owner) },
+    { headers: quotaHeaders(user ?? owner) },
   );
 }
 

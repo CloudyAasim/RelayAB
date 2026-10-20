@@ -14,7 +14,8 @@ vi.mock("next/headers", () => ({
 
 import { __resetDbForTest, getOne } from "@/lib/db/sqlite";
 import { InMemoryCookieStore, getSessionFromStore } from "@/lib/auth/session";
-import { createUser } from "@/lib/db/users";
+import { createUser, getUserById } from "@/lib/db/users";
+import { createApiKey } from "@/lib/db/keys";
 import {
   createSearchProvider,
   getSearchProviderById,
@@ -29,6 +30,8 @@ import {
 } from "@/app/api/admin/search-providers/[id]/route";
 import { POST as testPOST } from "@/app/api/admin/search-providers/[id]/test/route";
 
+let adminId = "";
+
 async function login(store: InMemoryCookieStore, id: string, role: "admin" | "user"): Promise<void> {
   const s = await getSessionFromStore(store);
   s.userId = id;
@@ -39,6 +42,10 @@ async function login(store: InMemoryCookieStore, id: string, role: "admin" | "us
 
 async function asAdmin(): Promise<void> {
   const admin = await createUser({ username: "admin", password: "pw-123456", role: "admin" });
+  adminId = admin!.id;
+  // A key the account can be charged through: a usage row hangs off a key, so
+  // an account with no key has nowhere to put the spend.
+  await createApiKey({ userId: adminId, label: "panel" });
   currentStore = new InMemoryCookieStore();
   await login(currentStore, admin.id, "admin");
 }
@@ -216,7 +223,7 @@ describe("GET/PATCH/DELETE /api/admin/search-providers/[id]", () => {
 });
 
 describe("POST /api/admin/search-providers/[id]/test", () => {
-  it("queries exactly that provider, even when it is disabled, and bills nothing", async () => {
+  it("queries exactly that provider, even when it is disabled, and bills the account", async () => {
     await asAdmin();
     const row = await createSearchProvider({
       name: "Off",
@@ -238,19 +245,23 @@ describe("POST /api/admin/search-providers/[id]/test", () => {
     const res = await testPOST(json({ query: "docs", limit: 3 }), ctx(row.id));
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      data: { providerId: string; results: unknown[]; billed: boolean };
+      data: { providerId: string; results: unknown[]; billed: boolean; credits: number };
     };
     expect(body.data.providerId).toBe(row.id);
     expect(body.data.results).toHaveLength(1);
-    expect(body.data.billed).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     // The provider's own address, not some other configured backend.
     expect(String((fetchMock.mock.calls[0] as unknown as [string])[0])).toContain("off.example");
 
+    // A test is not a free ride on a paid API: the operator pays the vendor
+    // either way, so the account pays too.
+    expect(body.data.billed).toBe(true);
+    expect(body.data.credits).toBe(1);
     const usage = getOne<{ n: number }>(
       "SELECT COUNT(*) AS n FROM usage_logs WHERE capability = 'web.search'",
     );
-    expect(usage?.n).toBe(0);
+    expect(usage?.n).toBe(1);
+    expect((await getUserById(adminId))?.quotaUsed).toBe(1000);
   });
 
   it("says the row cannot be used instead of guessing", async () => {

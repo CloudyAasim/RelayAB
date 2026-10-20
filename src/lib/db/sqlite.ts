@@ -497,10 +497,60 @@ export function getDb(): Database {
   for (const col of ADDED_COLUMNS) addColumnIfMissing(conn, col);
   // Recorded for the first migration that needs it; harmless while unused.
   conn.prepare("INSERT OR IGNORE INTO schema_version (version) VALUES (1)").run();
+  applyDataMigrations(conn);
 
   db = conn;
   g[DB_GLOBAL_KEY] = conn;
   return conn;
+}
+
+/**
+ * Data migrations, in version order.
+ *
+ * `schema_version` holds the version the database is **at**; a version that is
+ * missing means the migration that introduced it has not run yet. Each one runs
+ * exactly once, and is written so that running it twice would be harmless —
+ * a migration that is not idempotent is a migration that can half-run.
+ */
+const DATA_MIGRATIONS: ReadonlyArray<{ version: number; apply: (conn: Database) => void }> = [
+  {
+    /**
+     * v2 — the feature-wide search switch becomes the provider rows.
+     *
+     * There used to be a switch beside the provider list that turned web
+     * search off for the whole deployment. It was a second source of truth for
+     * a fact the rows already carry: "is this backend wanted right now?".
+     *
+     * The switch is gone, and the state it held is moved into the rows it
+     * governed — a deployment that had switched search off gets all of its
+     * provider rows disabled, which is what "off" meant to it, and what the
+     * operator sees afterwards. Without this, such a deployment would have
+     * woken up with search on.
+     */
+    version: 2,
+    apply: (conn) => {
+      conn.exec(`
+        UPDATE search_providers
+           SET enabled = 0
+         WHERE enabled = 1
+           AND EXISTS (
+             SELECT 1 FROM settings WHERE key = 'searchEnabled' AND value = 'false'
+           )
+      `);
+    },
+  },
+];
+
+function applyDataMigrations(conn: Database): void {
+  const current = conn.prepare("SELECT MAX(version) AS version FROM schema_version").get() as
+    | { version: number | null }
+    | undefined;
+  const from = Number(current?.version ?? 0);
+  for (const migration of DATA_MIGRATIONS) {
+    if (migration.version <= from) continue;
+    migration.apply(conn);
+    conn.prepare("INSERT OR IGNORE INTO schema_version (version) VALUES (?)").run(migration.version);
+  }
 }
 
 /**
