@@ -148,6 +148,7 @@ export default async function ModelsPage() {
                     failed: t("common.failed"),
                     whichService: t("admin.search.test.whichService"),
                     whichServiceNone: t("admin.search.test.whichServiceNone"),
+                    whichServiceNoneOne: t("admin.search.test.whichServiceNoneOne"),
                   },
                   backendName: searchConfig.backendConfigured ? searchConfig.backendName : null,
                   // The services on offer, so the operator can pick the one to

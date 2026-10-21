@@ -39,6 +39,8 @@ export interface SearchTestLabels {
   whichService: string;
   /** The picker's "nobody chose" entry. */
   whichServiceNone: string;
+  /** The picker's entry when the deployment has exactly one service. */
+  whichServiceNoneOne: string;
 }
 
 interface TestResult {
@@ -109,7 +111,13 @@ export function SearchTester({
       ) : (
         <>
           <form onSubmit={run} className="flex flex-wrap items-end gap-2">
-            {services.length > 1 && (
+            {/*
+              Which service to test — shown whenever there is one, not only when
+              there are several. The tester names the service it used in its
+              result, but naming the choice *before* the call is what makes
+              the answer the one you asked for.
+            */}
+            {services.length > 0 && (
               <div className="min-w-[200px]">
                 <label className="mb-1.5 block text-sm font-medium" htmlFor="search-test-service">
                   {labels.whichService}
@@ -120,7 +128,11 @@ export function SearchTester({
                   onChange={(e) => setService(e.target.value)}
                   className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                 >
-                  <option value="">{labels.whichServiceNone}</option>
+                  <option value="">
+                    {services.length === 1
+                      ? labels.whichServiceNoneOne
+                      : labels.whichServiceNone}
+                  </option>
                   {services.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name}
