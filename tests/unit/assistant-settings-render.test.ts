@@ -36,8 +36,13 @@ vi.mock("next/navigation", () => ({
  * change when the switch changes, and it cannot if the state is not in play.
  */
 const credential = { created: true, enabled: true };
+/**
+ * Whether the credential state has arrived yet. Mutable for the same reason —
+ * the two notices have to read the same way while it is still being read.
+ */
+const credentialStore = { loaded: true };
 vi.mock("@/lib/assistant/credential-store", () => ({
-  useCredentialStore: () => ({ data: credential, loaded: true }),
+  useCredentialStore: () => ({ data: credential, loaded: credentialStore.loaded }),
 }));
 
 const { AssistantSettingsPanel } = await import(
@@ -79,6 +84,23 @@ function render(overrides: Partial<PanelProps> = {}): string {
  */
 const inputTags = (html: string): string[] => html.match(/<input[^>]*>/g) ?? [];
 
+/**
+ * The amber notice boxes on the page.
+ *
+ * Counted by the class rather than by their words, because the words are prose
+ * and prose is edited: a phrase that names the warning can also appear in the
+ * description of a setting, and a test that looks for the phrase then fails
+ * for a reason nobody would guess. The box is the thing being asserted.
+ */
+const noticeBoxes = (html: string): string[] =>
+  html.match(/<p class="[^"]*border-amber-500\/40[^"]*">[\s\S]*?<\/p>/g) ?? [];
+
+/** The class list of each amber notice box, in the order they appear. */
+const noticeClasses = (html: string): string[] =>
+  (html.match(/<p class="([^"]*border-amber-500\/40[^"]*)"/g) ?? []).map(
+    (tag) => tag.slice(tag.indexOf('"') + 1, tag.lastIndexOf('"')),
+  );
+
 const countUpstreamKeyInputs = (html: string): number =>
   inputTags(html).filter(
     (tag) => tag.includes('id="assistant-api-key"') && tag.includes('type="password"'),
@@ -92,6 +114,7 @@ const countSearchKeyInputs = (html: string): number =>
 beforeEach(() => {
   credential.created = true;
   credential.enabled = true;
+  credentialStore.loaded = true;
 });
 
 describe("the account path shows no key field", () => {
@@ -337,8 +360,96 @@ describe("the account path says what it needs when the switch is off", () => {
 
   it("— and says nothing alarming when the switch is on", () => {
     const html = render({ initial: { baseUrl: "", model: "", accountModel: "gpt-4o", credentialMode: "account", hasApiKey: false } });
-    expect(html, "a warning on a working account credential").not.toContain(
-      "需要先在设置里创建并打开",
+    // The warning is a box, not a phrase. The phrase also appears in the
+    // description of the deployment's search option, which is on the page
+    // always and is not a warning — so a phrase-matching assertion here
+    // failed for a reason nobody would guess.
+    expect(noticeBoxes(html).length, "a warning on a working account credential").toBe(0);
+  });
+});
+
+describe("the two credential notices are one notice", () => {
+  /**
+   * The same fact, in two costumes.
+   *
+   * The call mode at the top of the panel raised it as a bordered amber box
+   * with a link to the place that fixes it. The deployment's search service,
+   * further down, raised it as a line of amber text with no box, no link, and
+   * a pointer to a block that does not exist — it said "below, in the assistant
+   * credentials", but the credential is created on the *settings* page, under
+   * "AI 助手权限", and the call-mode block is **above** the search block, not
+   * below it.
+   *
+   * So the second one read as a different problem, and as a dead end: it named
+   * a place to go and the place was wrong, and it gave the reader no way to get
+   * there at all.
+   */
+  it("— one box in both places, not a box and a line", () => {
+    credential.created = false;
+    const html = render({
+      initial: {
+        baseUrl: "",
+        model: "",
+        accountModel: "gpt-4o",
+        credentialMode: "account",
+        hasApiKey: false,
+        searchSource: "deployment",
+      },
+    });
+
+    // Two notices are on the page: the call mode's and the search service's.
+    expect(noticeBoxes(html).length, "the two notices are not both boxes").toBe(2);
+    // And they are the same box: the search one used to be a bare line of
+    // amber text, which is why it did not match. The class list is compared
+    // rather than the whole paragraph, because the two say different things.
+    const classes = noticeClasses(html);
+    expect(new Set(classes).size, `two different styles: ${classes.join(" | ")}`).toBe(1);
+
+    // Both send the reader where it is fixed. The search one used to have no
+    // link at all.
+    const links = html.match(/href="\/dashboard\/settings"/g) ?? [];
+    expect(links.length, "one of the notices has nowhere to send the reader").toBe(2);
+  });
+
+  it("— and they read the same way while the state is still being read", () => {
+    credential.created = false;
+    credentialStore.loaded = false;
+    const html = render({
+      initial: {
+        baseUrl: "",
+        model: "",
+        accountModel: "gpt-4o",
+        credentialMode: "account",
+        hasApiKey: false,
+        searchSource: "deployment",
+      },
+    });
+
+    // Two different sentences used to sit here ("checking your account
+    // credential" and "reading the assistant credential's state"), for one
+    // request. The reader sees one thing being read, so it says one thing.
+    const loading = html.match(/正在[^<]*/g) ?? [];
+    expect(new Set(loading).size, `two ways of saying the same wait: ${loading.join(" | ")}`).toBe(1);
+  });
+
+  it("— and the search notice points at the settings page, which is where it is", () => {
+    credential.created = false;
+    const html = render({
+      initial: {
+        baseUrl: "",
+        model: "",
+        accountModel: "gpt-4o",
+        credentialMode: "account",
+        hasApiKey: false,
+        searchSource: "deployment",
+      },
+    });
+
+    expect(html, "the search notice names a block that does not exist").not.toContain(
+      "「助手凭据」",
+    );
+    expect(html, "the search notice says nothing about where to go").toContain(
+      "站点的搜索服务也要「用我的账号身份」",
     );
   });
 });

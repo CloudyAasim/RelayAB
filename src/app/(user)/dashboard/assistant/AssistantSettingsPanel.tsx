@@ -159,6 +159,35 @@ export interface WebSearchSettings {
   ownInUse: boolean;
 }
 
+/**
+ * The notice that says "this needs the account identity, and here is where you
+ * turn it on".
+ *
+ * Two places raise it — the call mode at the top of this panel, and the
+ * deployment's search service further down — and they used to look like two
+ * different things. One was a bordered amber box with a link to the place that
+ * fixes it; the other was a line of amber text with no box and no link, and it
+ * pointed at a block that does not exist ("below, in the assistant
+ * credentials" — the credential is created on the *settings* page, under
+ * "AI 助手权限").
+ *
+ * The same fact in two costumes reads as two different problems, and the one
+ * without a link reads as a dead end. So it is one component now, and the two
+ * call sites cannot drift apart again.
+ */
+function CredentialNotice({ text, loading }: { text: string; loading: boolean }) {
+  const t = useT();
+  return (
+    <p className="mt-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-300">
+      {loading ? t("assistant.settings.wayAccountLoading") : text}
+      {" "}
+      <Link href="/dashboard/settings" className="underline underline-offset-2">
+        {t("assistant.settings.wayAccountGo")}
+      </Link>
+    </p>
+  );
+}
+
 export function AssistantSettingsPanel({
   initial,
   suggestedModels = [],
@@ -649,15 +678,10 @@ export function AssistantSettingsPanel({
           loud, with the place that changes it.
         */}
         {mode === "account" && !accountUsable && (
-          <p className="mt-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-300">
-            {credentialLoaded
-              ? t("assistant.settings.wayAccountOff")
-              : t("assistant.settings.wayAccountLoading")}
-            {" "}
-            <a href="/dashboard/settings" className="underline underline-offset-2">
-              {t("assistant.settings.wayAccountGo")}
-            </a>
-          </p>
+          <CredentialNotice
+            loading={!credentialLoaded}
+            text={t("assistant.settings.wayAccountOff")}
+          />
         )}
       </fieldset>
 
@@ -1114,11 +1138,10 @@ export function AssistantSettingsPanel({
             model calls are.
           */}
           {searchSource === "deployment" && !accountUsable && (
-            <p className="text-xs text-amber-600 dark:text-amber-400">
-              {credentialLoaded
-                ? t("assistant.settings.searchService.needsCredential")
-                : t("assistant.settings.searchService.credentialLoading")}
-            </p>
+            <CredentialNotice
+              loading={!credentialLoaded}
+              text={t("assistant.settings.searchService.needsCredential")}
+            />
           )}
         </div>
 
