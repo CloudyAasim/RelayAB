@@ -116,4 +116,19 @@ describe("neither document still promises an 'active' provider", () => {
       );
     }
   });
+
+  it("and neither says that an unnamed request gets the default one", () => {
+    // This one is the trap: a document can say "there is no default" in one
+    // paragraph and "leave it out and the default answers" in the next, and a
+    // reader takes whichever one they read second. The word "default" and the
+    // idea of a default cannot both be in the same document.
+    for (const locale of ["zh-CN", "en"] as const) {
+      expect(userDoc(locale), `${locale}: promises a default service`).not.toMatch(
+        /站点默认|默认的那个|默认服务|the deployment's default|default service answers/i,
+      );
+      expect(adminDoc(locale), `${locale}: promises a default service`).not.toMatch(
+        /默认服务|the default service|default one answers/i,
+      );
+    }
+  });
 });

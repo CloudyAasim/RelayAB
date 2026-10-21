@@ -360,7 +360,7 @@ const zhCN: Dict = {
   "docs.search.errorsQuotaTip": "先看响应头里的 x-ratelimit-remaining：那是这次调用之后账户的余额。",
   "docs.search.note": "返回的是搜索摘要，不是文档正文。要核对字段名或参数取值，请再打开原始页面。",
   "docs.search.serviceHint":
-    "service 是可选的：填了就用那个搜索服务（名字见 GET /v1/search/services），不填就用站点默认的那个。**点名了就只用它**：那个服务没开或不能用时，请求会直接报错，不会悄悄换成别的服务去搜。响应里的 service 字段是实际服务的那个。",
+    "service 是可选的：填了就用那个搜索服务（名字见 GET /v1/search/services）。**不填不会有人替你选**：站点只有一个能用的就用它；有多个而你不填，请求会直接失败，并把可选的那几个列出来。**点名了就只用它**：那个服务没开或不能用时，请求会直接报错，不会悄悄换成别的服务去搜。响应里的 service 字段是实际服务的那个。",
   "docs.search.servicesTitle": "搜索服务列表",
   "docs.search.servicesDesc":
     "GET /v1/search/services，返回本部署配置的搜索服务（和 GET /v1/models 是一个道理）。可以用 id 字段在搜索请求里点名要哪一个。",
@@ -1735,7 +1735,7 @@ const en: Dict = {
   "docs.search.errorsQuotaTip": "Look at x-ratelimit-remaining in the response headers first: that is the account's balance after the call.",
   "docs.search.note": "These are search snippets, not the document. Open the original page before relying on a field name or parameter value.",
   "docs.search.serviceHint":
-    "service is optional: give it and that search service answers (the names are listed by GET /v1/search/services), leave it out and the deployment's default service answers. **Naming one means that one only**: if it is switched off or cannot answer, the request fails by name — it is never quietly answered by a different service. The service field in the response names the one that answered.",
+    "service is optional: give it and that search service answers (the names are listed by GET /v1/search/services). **Naming none does not mean somebody picks for you**: with one service on offer it answers, and with several the request fails and lists the ones you could choose. **Naming one means that one only**: if it is switched off or cannot answer, the request fails by name — it is never quietly answered by a different service. The service field in the response names the one that answered.",
   "docs.search.servicesTitle": "Search services",
   "docs.search.servicesDesc":
     "GET /v1/search/services lists the search services this deployment offers — the same idea as GET /v1/models. The id field is what you name in a search request.",
