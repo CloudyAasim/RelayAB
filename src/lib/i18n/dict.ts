@@ -1274,12 +1274,13 @@ const zhCN: Dict = {
     "助手用你自己的搜索服务，费用由你的服务商收，不经过本中转站计费。",
   "assistant.settings.searchService.whichService": "用站点的哪一个",
   "assistant.settings.searchService.notChosen": "还没选",
+  "assistant.settings.searchService.notChosenOne": "不特别指定（就用站点的这一个）",
   "assistant.settings.searchService.needsChoice":
     "站点的搜索服务有多个，还没选 —— 选一个之后助手才会用站点的搜索。",
   "assistant.settings.searchService.chosenGone":
     "你选的搜索服务「{id}」已经不在了，请重新选一个。",
   "assistant.settings.searchService.whichServiceHint":
-    "站点的搜索服务可以有多个（像模型一样，每个有一个客户端可见的名字）。选定了哪一个，助手的搜索就走它；那个服务坏了会直接报错，不会悄悄换成别的服务去搜。",
+    "这里列的是站点的搜索服务（像模型一样，每个有一个客户端可见的名字）。选了哪一个，助手的搜索就走它；那个服务坏了会直接报错，不会悄悄换成别的服务去搜。站点只有一个服务时不选也一样会用它；有多个而不选，助手就不联网搜索，会让你来选。",
   "assistant.settings.searchService.deploymentBackend": "现在生效：站点的搜索服务（{name}）。",
   "assistant.settings.searchService.deploymentBackendUnknown": "现在生效：站点的搜索服务。",
   "assistant.settings.searchService.storedButUnused":
@@ -2675,12 +2676,13 @@ const en: Dict = {
     "The assistant uses your own search service. Your vendor bills you; nothing is charged here.",
   "assistant.settings.searchService.whichService": "Which one of the deployment's",
   "assistant.settings.searchService.notChosen": "Not chosen yet",
+  "assistant.settings.searchService.notChosenOne": "Not specific (use the deployment's only one)",
   "assistant.settings.searchService.needsChoice":
     "The deployment offers several search services and none is chosen — pick one and the assistant will use the deployment's search.",
   "assistant.settings.searchService.chosenGone":
     "The search service you chose, “{id}”, is no longer there. Please choose another one.",
   "assistant.settings.searchService.whichServiceHint":
-    "A deployment can offer several search services — each with a client-visible name, like a model. Whichever you pick is the one the assistant searches with; if that service cannot answer, the search fails by name rather than quietly going to a different one.",
+    "These are the deployment's search services (each has a client-visible name, like a model). Whichever you pick is the one the assistant searches with; if that service cannot answer, the search fails by name rather than quietly going to a different one. With one service, leaving it unpicked uses it anyway; with several and nothing picked, the assistant will not search and asks you to choose.",
   "assistant.settings.searchService.deploymentBackend": "In effect: the deployment's search service ({name}).",
   "assistant.settings.searchService.deploymentBackendUnknown": "In effect: the deployment's search service.",
   "assistant.settings.searchService.storedButUnused":

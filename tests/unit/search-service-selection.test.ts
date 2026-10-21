@@ -24,10 +24,12 @@ import { GET as servicesGET } from "@/app/api/v1/search/services/route";
 import { __resetDbForTest, run } from "@/lib/db/sqlite";
 import { createUser } from "@/lib/db/users";
 import { createApiKey } from "@/lib/db/keys";
+import { getAssistantSettings, saveAssistantSettings } from "@/lib/db/assistant";
 import {
   createSearchProvider,
   updateSearchProvider,
 } from "@/lib/db/search-providers";
+import { resolveSearchBackendForAccount } from "@/lib/search/resolve";
 
 let plainKey = "";
 
@@ -227,5 +229,59 @@ describe("naming a service", () => {
     // The other service was right there and was not used: that is the whole
     // point of naming one.
     expect(impl.mock.calls.length, "it searched through another service").toBe(0);
+  });
+});
+
+describe("the account's own choice of service", () => {
+  it("is what the assistant searches with", async () => {
+    // The round trip the settings form depends on: the account picks a service
+    // by name, it is stored on their row, and the assistant searches with that
+    // one — not with whichever row happens to be first.
+    await twoServices();
+    const user = await createUser({
+      username: "picky",
+      password: "pw-123456",
+      role: "user",
+      quotaType: "credits",
+      quotaLimit: 100_000,
+    });
+    await saveAssistantSettings(user.id, {
+      baseUrl: "",
+      model: "",
+      accountModel: "gpt-4o",
+      credentialMode: "account",
+      searchSource: "deployment",
+      searchServiceId: "beta",
+    });
+
+    // It was stored…
+    expect((await getAssistantSettings(user.id))?.searchServiceId).toBe("beta");
+    // …and it is the one the assistant reaches for.
+    const backend = await resolveSearchBackendForAccount(user.id);
+    expect(backend?.serviceId).toBe("beta");
+  });
+
+  it("that cannot be honoured is refused by name, not swapped for another", async () => {
+    await twoServices();
+    const user = await createUser({
+      username: "stale",
+      password: "pw-123456",
+      role: "user",
+      quotaType: "credits",
+      quotaLimit: 100_000,
+    });
+    await saveAssistantSettings(user.id, {
+      baseUrl: "",
+      model: "",
+      accountModel: "gpt-4o",
+      credentialMode: "account",
+      searchSource: "deployment",
+      searchServiceId: "gone",
+    });
+
+    // The row the account chose is not there any more. The other one is, and it
+    // is not used: the choice was made knowingly, so it is either honoured or
+    // reported.
+    await expect(resolveSearchBackendForAccount(user.id)).rejects.toThrow(/gone/);
   });
 });

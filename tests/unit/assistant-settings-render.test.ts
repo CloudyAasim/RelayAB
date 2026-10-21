@@ -111,10 +111,104 @@ const countSearchKeyInputs = (html: string): number =>
     (tag) => tag.includes('id="assistant-search-api-key"') && tag.includes('type="password"'),
   ).length;
 
+/**
+ * The search-service picker: the select, and the services it offers.
+ */
+const servicePicker = (html: string): string | null =>
+  html.match(/<select[^>]*id="assistant-search-service"[\s\S]*?<\/select>/)?.[0] ?? null;
+
+const pickerOptions = (html: string): string[] => {
+  const picker = servicePicker(html);
+  if (!picker) return [];
+  return (picker.match(/<option[^>]*>/g) ?? []).map((tag) => {
+    const value = tag.match(/value="([^"]*)"/)?.[1] ?? "";
+    return value;
+  });
+};
+
+/** A webSearch block with the given services on offer. */
+function webSearchWith(services: Array<{ id: string; name: string; kind: string }>) {
+  return {
+    available: true,
+    defaultOn: true,
+    limit: 6,
+    maxResults: 8,
+    backendName: null,
+    backendSource: null,
+    ownBaseUrl: null,
+    ownHasKey: false,
+    ownInUse: false,
+    services,
+  };
+}
+
 beforeEach(() => {
   credential.created = true;
   credential.enabled = true;
   credentialStore.loaded = true;
+});
+
+describe("the search service can be named, even when there is only one", () => {
+  it("— one service is still a choice, and the choice is on the page", () => {
+    // The picker used to appear only when the deployment had **several**
+    // services, on the reasoning that a one-option picker is a question nobody
+    // asked. That made the service unnameable on a deployment with one — which
+    // is the deployment almost every reader is on, and the one this bug was
+    // reported from. The name is what makes the choice informed: a person who
+    // can see "自建 SearXNG" next to the switch knows whose bill is involved.
+    const html = render({
+      initial: {
+        baseUrl: "",
+        model: "",
+        accountModel: "gpt-4o",
+        credentialMode: "account",
+        hasApiKey: false,
+        searchSource: "deployment",
+      },
+      webSearch: webSearchWith([{ id: "searxng", name: "自建 SearXNG", kind: "searxng" }]),
+    });
+
+    expect(servicePicker(html), "the search service cannot be picked").toBeTruthy();
+    expect(pickerOptions(html)).toContain("searxng");
+    // And the name is on the page, not only the id.
+    expect(html).toContain("自建 SearXNG");
+  });
+
+  it("— and with several, every one of them is on offer", () => {
+    const html = render({
+      initial: {
+        baseUrl: "",
+        model: "",
+        accountModel: "gpt-4o",
+        credentialMode: "account",
+        hasApiKey: false,
+        searchSource: "deployment",
+      },
+      webSearch: webSearchWith([
+        { id: "searxng", name: "自建 SearXNG", kind: "searxng" },
+        { id: "tavily", name: "Tavily", kind: "tavily" },
+      ]),
+    });
+    expect(pickerOptions(html)).toContain("searxng");
+    expect(pickerOptions(html)).toContain("tavily");
+  });
+
+  it("— but not when the source is the user's own service", () => {
+    // The own service is one address, not a list: there is nothing to pick.
+    const html = render({
+      initial: {
+        baseUrl: "",
+        model: "",
+        accountModel: "gpt-4o",
+        credentialMode: "account",
+        hasApiKey: false,
+        searchSource: "own",
+        searchBaseUrl: "https://my-gateway.example.com/v1/search",
+      },
+      webSearch: webSearchWith([{ id: "searxng", name: "自建 SearXNG", kind: "searxng" }]),
+    });
+    expect(servicePicker(html), "the picker is offered for the user's own service").toBeNull();
+  });
 });
 
 describe("the account path shows no key field", () => {

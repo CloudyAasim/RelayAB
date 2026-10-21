@@ -1089,15 +1089,20 @@ export function AssistantSettingsPanel({
             </p>
 
             {/*
-              Which of the deployment's services, when there is more than one.
+              Which of the deployment's services.
+
+              **Always shown, even when there is only one.** It used to appear
+              only when there were several, on the reasoning that a one-option
+              picker is a question nobody asked — and that made the service
+              *unnameable* on a deployment that has one, which is exactly the
+              deployment almost every reader is on. The name is the thing that
+              makes the choice informed: a person who can see "自建 SearXNG"
+              next to the switch knows whose bill and whose data are involved.
 
               There is no "the deployment's default" to fall back on — that is
               the point: the service that answers is the one somebody chose.
-              With one service there is nothing to choose, so the picker is
-              hidden; with several, the user picks, and the choice is theirs to
-              see.
             */}
-            {searchSource === "deployment" && webSearch.services.length > 1 && (
+            {searchSource === "deployment" && webSearch.services.length > 0 && (
               <div className="space-y-1.5">
                 <label
                   htmlFor="assistant-search-service"
@@ -1113,7 +1118,9 @@ export function AssistantSettingsPanel({
                   className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                 >
                   <option value="">
-                    {t("assistant.settings.searchService.notChosen")}
+                    {webSearch.services.length === 1
+                      ? t("assistant.settings.searchService.notChosenOne")
+                      : t("assistant.settings.searchService.notChosen")}
                   </option>
                   {webSearch.services.map((service) => (
                     <option key={service.id} value={service.id}>
