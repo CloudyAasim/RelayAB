@@ -220,8 +220,7 @@ x-ratelimit-unit: credits`}
       "id": "searxng",
       "object": "search_service",
       "name": "自建 SearXNG",
-      "kind": "searxng",
-      "default": true
+      "kind": "searxng"
     }
   ]
 }`}

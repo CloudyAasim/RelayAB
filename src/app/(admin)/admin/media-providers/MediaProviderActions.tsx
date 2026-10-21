@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/Button";
 import { LegacyModal as Modal } from "@/components/ui/Modal";
 import { useT } from "@/components/i18n/I18nProvider";
-import { Pencil, Power, Trash2 } from "lucide-react";
+import { Pencil, Power, PowerOff, Trash2 } from "lucide-react";
 import { MediaProviderForm, type MediaProviderRow } from "./MediaProviderForm";
 
 /**
@@ -72,6 +72,11 @@ export function MediaProviderActions({
         >
           <Pencil className="h-4 w-4" />
         </Button>
+        {/*
+          Two different icons for one button: the icon shows the **action**, and
+          the title spells it out. One icon for two opposite actions is a
+          button nobody can read.
+        */}
         <Button
           size="icon"
           variant="ghost"
@@ -82,8 +87,16 @@ export function MediaProviderActions({
               ? t("admin.mediaProviders.disable")
               : t("admin.mediaProviders.enable")
           }
+          aria-label={
+            provider.enabled
+              ? t("admin.mediaProviders.disable")
+              : t("admin.mediaProviders.enable")
+          }
+          className={
+            provider.enabled ? "text-muted-foreground hover:text-destructive" : "text-foreground"
+          }
         >
-          <Power className="h-4 w-4" />
+          {provider.enabled ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
         </Button>
         <Button
           size="icon"

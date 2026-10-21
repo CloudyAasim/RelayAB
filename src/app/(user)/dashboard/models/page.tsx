@@ -4,6 +4,8 @@ import { getUserById } from "@/lib/db/users";
 import { cachedBuildModelCatalog } from "@/lib/db/data-cache";
 import { getSettings } from "@/lib/db/settings";
 import { loadSearchConfig } from "@/lib/search/config";
+import { searchServices } from "@/lib/search/resolve";
+import { listSearchProviders } from "@/lib/db/search-providers";
 import { getT } from "@/lib/i18n/server";
 import { SectionPageLayout } from "@/components/layouts";
 import { ModelsWorkspace } from "./ModelsWorkspace";
@@ -30,6 +32,10 @@ export default async function ModelsPage() {
   // and the card is not rendered at all for anyone else.
   const searchConfig =
     sessionUser.role === "admin" ? await loadSearchConfig(settings) : null;
+  // The services on offer, for the tester to pick from. There is no default
+  // one, so the operator says which to test.
+  const searchServicesOnOffer =
+    sessionUser.role === "admin" ? searchServices(await listSearchProviders()) : [];
 
   // One catalogue feeds both the docs page and this tester, so the two can
   // never list different models.
@@ -140,8 +146,16 @@ export default async function ModelsPage() {
                     empty: t("admin.search.test.empty"),
                     unavailable: t("admin.search.status.backendMissing"),
                     failed: t("common.failed"),
+                    whichService: t("admin.search.test.whichService"),
+                    whichServiceNone: t("admin.search.test.whichServiceNone"),
                   },
                   backendName: searchConfig.backendConfigured ? searchConfig.backendName : null,
+                  // The services on offer, so the operator can pick the one to
+                  // test: there is no default one to test.
+                  services: searchServicesOnOffer.map((service) => ({
+                    id: service.id,
+                    name: service.name,
+                  })),
                 }
               : undefined
           }

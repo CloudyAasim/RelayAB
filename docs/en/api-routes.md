@@ -710,7 +710,7 @@ at its `/api/...` path.
 | `GET /v1/search/services` | The catalogue of the deployment's search services (the same idea as `GET /v1/models`); `id` is the name a search request's `service` field takes |
 | `GET/PUT /api/admin/search` | Read / save the **environment fallback price** (the feature-wide switch was folded into each provider row's `enabled`) |
 | `GET/POST /api/admin/search-providers` | List / create search backends (SearXNG, Tavily, Brave), each with its own per-call price and **client-visible name** |
-| `GET/PATCH/DELETE /api/admin/search-providers/[id]` | View / update / delete one backend; a blank `apiKey` keeps the stored key; `isDefault: true` makes it the deployment's default service |
+| `GET/PATCH/DELETE /api/admin/search-providers/[id]` | View / update / delete one backend; a blank `apiKey` keeps the stored key. **There is no "default service"**: the caller names the one it wants |
 | `POST /api/admin/search-providers/[id]/test` | Run one query through that backend; **billed as usual** (the panel's test button goes through the same settlement), and it works while the backend is disabled |
 
 ---

@@ -688,12 +688,6 @@ const ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; type: string
   // before this existed: they are still the deployment's service, they just
   // cannot be named yet.
   { table: "search_providers", column: "service_id", type: "TEXT NOT NULL DEFAULT ''" },
-  // The one service a caller gets when they do not name one.
-  //
-  // At most one row carries it. Zero rows carrying it is not an error: the
-  // first enabled row by priority is then the one, which is what every
-  // deployment had before this column existed.
-  { table: "search_providers", column: "is_default", type: "INTEGER NOT NULL DEFAULT 0" },
 ];
 
 function addColumnIfMissing(

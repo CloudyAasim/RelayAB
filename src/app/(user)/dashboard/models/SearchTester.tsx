@@ -35,6 +35,10 @@ export interface SearchTestLabels {
   empty: string;
   unavailable: string;
   failed: string;
+  /** The label of the service picker, when there is more than one. */
+  whichService: string;
+  /** The picker's "nobody chose" entry. */
+  whichServiceNone: string;
 }
 
 interface TestResult {
@@ -49,12 +53,21 @@ interface TestResult {
 export function SearchTester({
   labels,
   backendName,
+  services = [],
 }: {
   labels: SearchTestLabels;
   /** The backend `/v1/search` is using, or null when none is configured. */
   backendName: string | null;
+  /**
+   * The deployment's search services, by their client-visible names.
+   *
+   * There is no default one, so with several of them the operator has to say
+   * which to test — the same choice a client makes.
+   */
+  services?: Array<{ id: string; name: string }>;
 }) {
   const [query, setQuery] = useState("");
+  const [service, setService] = useState("");
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [test, setTest] = useState<TestResult | null>(null);
@@ -68,7 +81,7 @@ export function SearchTester({
       const res = await fetch("/api/admin/search/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, limit: 5 }),
+        body: JSON.stringify({ query, limit: 5, ...(service ? { service } : {}) }),
       });
       const data = (await res.json().catch(() => null)) as
         | { ok: boolean; data?: TestResult; error?: { message?: string } }
@@ -96,6 +109,26 @@ export function SearchTester({
       ) : (
         <>
           <form onSubmit={run} className="flex flex-wrap items-end gap-2">
+            {services.length > 1 && (
+              <div className="min-w-[200px]">
+                <label className="mb-1.5 block text-sm font-medium" htmlFor="search-test-service">
+                  {labels.whichService}
+                </label>
+                <select
+                  id="search-test-service"
+                  value={service}
+                  onChange={(e) => setService(e.target.value)}
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="">{labels.whichServiceNone}</option>
+                  {services.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="min-w-[240px] flex-1">
               <Input
                 label={labels.query}

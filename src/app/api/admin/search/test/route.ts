@@ -36,6 +36,14 @@ const BodySchema = z
   .object({
     query: z.string().trim().min(1).max(MAX_QUERY_CHARS),
     limit: z.number().int().min(1).max(MAX_SEARCH_RESULTS).optional(),
+    /**
+     * Which of the deployment's search services to test, by its client-visible
+     * name.
+     *
+     * There is no default service, so with several of them the operator says
+     * which to test — the same choice a client makes.
+     */
+    service: z.string().trim().max(64).optional(),
   })
   .strict();
 
@@ -101,6 +109,7 @@ export async function POST(req: Request): Promise<Response> {
       apiKeyId,
       // No key was used — a person pressed a button — so no key is marked used.
       touchKey: false,
+      ...(parsed.data.service ? { serviceId: parsed.data.service } : {}),
     });
     return NextResponse.json({
       ok: true,

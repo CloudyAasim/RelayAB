@@ -14,7 +14,6 @@ import {
   getSearchProviderById,
   listSearchProviders,
   SearchProviderValidationError,
-  setDefaultSearchProvider,
   toPublicSearchProvider,
   updateSearchProvider,
 } from "@/lib/db/search-providers";
@@ -103,17 +102,15 @@ describe("list", () => {
     expect(rows.map((r) => r.name)).toEqual(["A", "B", "C"]);
   });
 
-  it("a marked default is a marker, not a place in the order", async () => {
-    // The list is the order the services are considered in, and the one that
-    // answers is marked with a badge — so the list and the badge are never two
-    // different answers to the same question.
+  it("a row has no default marker — there is no such thing", async () => {
+    // There is no "the service that serves when nobody names one": the one that
+    // answers is the one somebody chose. A row therefore carries no such flag,
+    // and the list is ordered by priority and then by name.
     await createSearchProvider({ name: "A", kind: "searxng", baseUrl: "https://a.example", priority: 1 });
-    const b = await createSearchProvider({ name: "B", kind: "searxng", baseUrl: "https://b.example", priority: 9 });
-    await setDefaultSearchProvider(b.id);
+    await createSearchProvider({ name: "B", kind: "searxng", baseUrl: "https://b.example", priority: 9 });
     const rows = await listSearchProviders();
     expect(rows.map((r) => r.name)).toEqual(["A", "B"]);
-    // And exactly one row carries the mark.
-    expect(rows.filter((r) => r.isDefault).map((r) => r.name)).toEqual(["B"]);
+    expect(rows.some((r) => "isDefault" in r)).toBe(false);
   });
 
   it("enabledOnly filters disabled rows", async () => {

@@ -26,7 +26,6 @@ import { createUser } from "@/lib/db/users";
 import { createApiKey } from "@/lib/db/keys";
 import {
   createSearchProvider,
-  setDefaultSearchProvider,
   updateSearchProvider,
 } from "@/lib/db/search-providers";
 
@@ -115,22 +114,42 @@ describe("the catalogue of search services", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       object: string;
-      data: Array<{ id: string; object: string; name: string; kind: string; default: boolean }>;
+      data: Array<{ id: string; object: string; name: string; kind: string }>;
     };
     expect(body.object).toBe("list");
     expect(body.data.map((s) => s.id).sort()).toEqual(["alpha", "beta"]);
     expect(body.data[0].object).toBe("search_service");
+    // There is no "default" in the catalogue: there is no default.
+    expect("default" in body.data[0]).toBe(false);
   });
 
-  it("marks the one that answers when the caller does not name one", async () => {
-    const { b } = await twoServices();
-    await setDefaultSearchProvider(b.id);
+  it("refuses a request that names nobody, when there is more than one", async () => {
+    // No default means no guessing: with two services on offer, a request that
+    // names neither is refused, and the refusal lists the ones there are.
+    await twoServices();
+    const impl = stubSearch([]);
 
-    const body = (await (await catalogue()).json()) as {
-      data: Array<{ id: string; default: boolean }>;
-    };
-    expect(body.data.find((s) => s.id === "beta")?.default).toBe(true);
-    expect(body.data.find((s) => s.id === "alpha")?.default).toBe(false);
+    const res = await post({ query: "q" });
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { error: { message: string } };
+    expect(body.error.message).toMatch(/alpha/);
+    expect(body.error.message).toMatch(/beta/);
+    expect(impl.mock.calls.length, "it searched with one of them anyway").toBe(0);
+  });
+
+  it("answers when there is only one, because there was no choice to make", async () => {
+    await createSearchProvider({
+      name: "Only",
+      kind: "searxng",
+      baseUrl: "https://only.example",
+      serviceId: "only",
+    });
+    stubSearch([]);
+
+    const res = await post({ query: "q" });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { service?: string };
+    expect(body.service).toBe("only");
   });
 
   it("lists only the services that can answer", async () => {

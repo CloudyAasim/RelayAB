@@ -48,6 +48,7 @@ import {
   createSearchBackend,
   resolveSearchBackend,
   searchWeb,
+  WebSearchError,
   type SearchBackend,
   type SearchOutcome,
   type SearchProvider,
@@ -152,22 +153,6 @@ export function backendForSearchProvider(row: SearchProviderRecord): SearchBacke
 }
 
 /**
- * The service that answers when the caller does not name one.
- *
- * The row somebody marked as the default, or — when nobody has — the first
- * enabled row by priority. A **disabled** row is not a candidate: turning a
- * service off is a deliberate act, and the next one takes over.
- */
-export function defaultSearchProvider(
-  rows: readonly SearchProviderRecord[],
-): SearchProviderRecord | null {
-  const enabled = rows.filter((row) => row.enabled);
-  const marked = enabled.find((row) => row.isDefault);
-  if (marked) return marked;
-  return enabled[0] ?? null;
-}
-
-/**
  * The service a caller named, and whether it can answer.
  *
  * Two refusals, and they are different: a name nobody has is a mistake in the
@@ -189,19 +174,31 @@ export function namedSearchProvider(
  * The backend of the service that answers, or null with a reason.
  *
  * The reason is what makes the failure legible: "the service you asked for is
- * not usable because it has no key" and "there is no service at all" are
- * different problems with different fixes.
+ * not usable because it has no key", "there is no service at all" and "there
+ * are several and nobody chose" are different problems with different fixes.
  */
 export function backendForRows(
   rows: readonly SearchProviderRecord[],
 ): { backend: SearchBackend | null; row: SearchProviderRecord | null; reason: string | null } {
-  const row = defaultSearchProvider(rows);
-  if (!row) {
+  const usable = searchServices(rows);
+  if (usable.length === 0) {
+    // Nothing can answer. The reason is the most specific one available: a row
+    // that is enabled but broken says which one and what is wrong with it.
+    const enabled = rows.filter((row) => row.enabled);
+    for (const row of enabled) {
+      const usability = searchServiceUsability(row);
+      if (!usability.usable) {
+        return { backend: null, row, reason: usability.reason };
+      }
+    }
     return { backend: null, row: null, reason: "没有启用任何搜索服务" };
   }
-  const usability = searchServiceUsability(row);
-  if (!usability.usable) {
-    return { backend: null, row, reason: usability.reason };
+  if (usable.length > 1) {
+    return { backend: null, row: null, reason: unnamedSearchProvider(rows).problem };
+  }
+  const row = rows.find((candidate) => candidate.serviceId === usable[0].id) ?? null;
+  if (!row) {
+    return { backend: null, row: null, reason: "没有可用的搜索服务" };
   }
   const backend = backendForSearchProvider(row);
   if (!backend) {
@@ -211,21 +208,16 @@ export function backendForRows(
 }
 
 /**
- * The services a client can ask for, by their client-visible names.
+ * The services that can answer, by their client-visible names.
  *
  * Only the ones that **can** answer: a service that is switched off, or
  * missing its key, is not offered — offering it would be a promise the
  * deployment cannot keep, and the whole point of the catalogue is that
  * everything in it can be named and will work.
- *
- * The `default` flag says which of them answers when the caller does not name
- * one. It is absent when the service that would answer cannot: in that case
- * the search fails with the reason, and the panel says which one and why.
  */
 export function searchServices(
   rows: readonly SearchProviderRecord[],
-): Array<{ id: string; name: string; kind: string; default: boolean }> {
-  const fallback = defaultSearchProvider(rows);
+): Array<{ id: string; name: string; kind: string }> {
   return rows
     .filter((row) => row.enabled)
     .map((row) => ({ row, usability: searchServiceUsability(row) }))
@@ -234,8 +226,43 @@ export function searchServices(
       id: row.serviceId,
       name: row.name,
       kind: row.kind,
-      default: fallback?.id === row.id,
     }));
+}
+
+/**
+ * The service that answers when the caller did not name one.
+ *
+ * **There is no default.** A deployment may offer several, and the one that
+ * answers is the one somebody chose — the client by name, the person in their
+ * own settings. A hidden default would be precisely the invisible choice this
+ * is here to remove: the account would be charged to one vendor's price and
+ * served by another without anybody having said so.
+ *
+ * So there are only two answers here:
+ *
+ *  - **exactly one** service can answer → it answers. There was no choice to
+ *    make, and the response says which one it was.
+ *  - **more than one** can answer → nobody chose, so nobody is searched with.
+ *    The request is refused, and the refusal names the services on offer.
+ */
+export function unnamedSearchProvider(
+  rows: readonly SearchProviderRecord[],
+): { row: SearchProviderRecord | null; problem: string | null } {
+  const usable = searchServices(rows);
+  if (usable.length === 0) {
+    return { row: null, problem: null };
+  }
+  if (usable.length === 1) {
+    const row = rows.find((candidate) => candidate.serviceId === usable[0].id) ?? null;
+    return { row, problem: null };
+  }
+  const names = usable.map((service) => `「${service.id}」`).join("、");
+  return {
+    row: null,
+    problem:
+      `这个部署有多个搜索服务（${names}），请指定用哪一个` +
+      "（GET /v1/search/services 可以看到全部）。",
+  };
 }
 
 export async function resolveActiveSearchBackend(
@@ -301,8 +328,12 @@ export async function resolveSearchBackendByServiceId(
  *
  * The user's own search service comes first, and the reason is money: a user
  * who brought their own service is paying that vendor themselves, and the
- * deployment's provider is not theirs to spend. With no service of their own,
- * the deployment's providers answer exactly as they always have.
+ * deployment's provider is not theirs to spend.
+ *
+ * Then the service **the user chose** out of the deployment's. If that choice
+ * cannot be honoured — the row is gone, switched off, or broken — the answer
+ * is a refusal that names it, not a different vendor: the user picked this one
+ * knowingly, and quietly serving a different one would undo that.
  *
  * The administrator's switch still governs: the deployment's search being off
  * is a statement about the deployment, and it is not a user's to overrule.
@@ -315,14 +346,16 @@ export async function resolveSearchBackendForUser(
   const own = await userSearchBackend(userId);
   if (own) return own;
 
-  // A service the user named. If it is gone, the deployment's default answers
-  // — the user's choice cannot outlive the row it names, and the settings
-  // panel says so rather than letting the assistant quietly search somewhere
-  // else.
   const wanted = opts.serviceId?.trim();
   if (wanted) {
     const named = await resolveSearchBackendByServiceId(wanted);
     if (named.backend) return named.backend;
+    // The choice cannot be honoured. Say so, by name.
+    throw new WebSearchError(
+      `你选的搜索服务「${wanted}」现在用不了：${named.problem ?? "配置不完整"}。` +
+        "请到「AI 助手 → 设置」里重新选一个。",
+      "not_configured",
+    );
   }
 
   return resolveActiveSearchBackend(env);
@@ -333,7 +366,8 @@ export async function resolveSearchBackendForUser(
  * settings.
  *
  * The one place that knows all three: the user's own service (their bill), the
- * service they picked out of the deployment's, and the deployment's default.
+ * service they picked out of the deployment's, and — when they picked none and
+ * the deployment has only one — that one.
  */
 export async function resolveSearchBackendForAccount(
   userId: string,

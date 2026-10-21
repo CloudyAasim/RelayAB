@@ -23,8 +23,6 @@ export interface SearchProviderRow {
   name: string;
   /** The name a client uses to ask for this service. */
   serviceId?: string;
-  /** Whether this is the service a caller gets when they do not name one. */
-  isDefault?: boolean;
   kind: string;
   baseUrl: string;
   enabled: boolean;

@@ -46,7 +46,12 @@ export function ModelsWorkspace({
    * Present only for administrators: the search test route is admin-only, and
    * its results name the backend, which a regular user has no reason to see.
    */
-  searchTest?: { labels: SearchTestLabels; backendName: string | null };
+  searchTest?: {
+    labels: SearchTestLabels;
+    backendName: string | null;
+    /** The deployment's search services, so the operator can pick one to test. */
+    services: Array<{ id: string; name: string }>;
+  };
 }) {
   /**
    * Models a vendor listed through the probe, for this page view only.
@@ -80,7 +85,11 @@ export function ModelsWorkspace({
       <CustomModelProbe labels={probeLabels} onFetched={onFetched} />
 
       {searchTest && (
-        <SearchTester labels={searchTest.labels} backendName={searchTest.backendName} />
+        <SearchTester
+        labels={searchTest.labels}
+        backendName={searchTest.backendName}
+        services={searchTest.services}
+      />
       )}
     </div>
   );

@@ -174,7 +174,7 @@ export interface WebSearchSettings {
    * so this is not the operator's setup being shown to a stranger, it is the
    * catalogue being read from the form.
    */
-  services: Array<{ id: string; name: string; kind: string; default: boolean }>;
+  services: Array<{ id: string; name: string; kind: string }>;
 }
 
 /**
@@ -329,6 +329,17 @@ export function AssistantSettingsPanel({
   const [searchServiceId, setSearchServiceId] = useState<string>(
     initial?.searchServiceId ?? "",
   );
+  /**
+   * The service this account's assistant will search with: the one they chose,
+   * or the only one the deployment offers.
+   *
+   * Null when there are several and none is chosen — and then the assistant
+   * will not search with the deployment's services until they pick one, which
+   * is what the panel has to say rather than gloss over.
+   */
+  const effectiveService =
+    webSearch.services.find((service) => service.id === searchServiceId) ??
+    (webSearch.services.length === 1 ? webSearch.services[0] : null);
   const [searchProbe, setSearchProbe] = useState<{ ok: boolean; text: string } | null>(null);
   const [searchBusy, setSearchBusy] = useState(false);
   const [busy, setBusy] = useState<"probe" | "save" | null>(null);
@@ -1080,11 +1091,11 @@ export function AssistantSettingsPanel({
             {/*
               Which of the deployment's services, when there is more than one.
 
-              Only shown then: a deployment with a single service has nothing
-              to choose between, and a picker with one entry is a question
-              nobody asked. The first entry is "whichever one the deployment
-              serves by default", which is what every account was on before
-              the services could be named.
+              There is no "the deployment's default" to fall back on — that is
+              the point: the service that answers is the one somebody chose.
+              With one service there is nothing to choose, so the picker is
+              hidden; with several, the user picks, and the choice is theirs to
+              see.
             */}
             {searchSource === "deployment" && webSearch.services.length > 1 && (
               <div className="space-y-1.5">
@@ -1102,18 +1113,25 @@ export function AssistantSettingsPanel({
                   className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                 >
                   <option value="">
-                    {t("assistant.settings.searchService.followDefault")}
+                    {t("assistant.settings.searchService.notChosen")}
                   </option>
                   {webSearch.services.map((service) => (
                     <option key={service.id} value={service.id}>
                       {service.name}
-                      {service.default ? ` · ${t("assistant.settings.searchService.isDefault")}` : ""}
                     </option>
                   ))}
                 </select>
                 <p className="text-xs text-muted-foreground">
                   {t("assistant.settings.searchService.whichServiceHint")}
                 </p>
+                {searchServiceId &&
+                  !webSearch.services.some((service) => service.id === searchServiceId) && (
+                    <p className="text-xs text-destructive">
+                      {t("assistant.settings.searchService.chosenGone", {
+                        id: searchServiceId,
+                      })}
+                    </p>
+                  )}
               </div>
             )}
           </fieldset>
@@ -1185,11 +1203,24 @@ export function AssistantSettingsPanel({
             </>
           ) : (
             <p className="text-xs text-muted-foreground">
-              {webSearch.backendName
+              {/*
+                The service this account's assistant will actually search
+                with: the one they chose, or the only one there is. There is
+                no "the deployment's default" to fall back on — that is the
+                point — so when there are several and none is chosen, the
+                panel says so instead of implying one is in use.
+              */}
+              {effectiveService
                 ? t("assistant.settings.searchService.deploymentBackend", {
-                    name: webSearch.backendName,
+                    name: effectiveService.name,
                   })
-                : t("assistant.settings.searchService.deploymentBackendUnknown")}
+                : webSearch.services.length > 1
+                  ? t("assistant.settings.searchService.needsChoice")
+                  : webSearch.backendName
+                    ? t("assistant.settings.searchService.deploymentBackend", {
+                        name: webSearch.backendName,
+                      })
+                    : t("assistant.settings.searchService.deploymentBackendUnknown")}
               {webSearch.ownBaseUrl && (
                 <>
                   {" "}

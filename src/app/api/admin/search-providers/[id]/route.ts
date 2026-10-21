@@ -51,8 +51,6 @@ const PatchSchema = z
     spec: z.unknown().optional(),
     /** The name clients use to ask for this service. */
     serviceId: z.string().trim().min(1).max(64).optional(),
-    /** Make this the service callers get when they do not name one. */
-    isDefault: z.boolean().optional(),
   })
   .strict();
 

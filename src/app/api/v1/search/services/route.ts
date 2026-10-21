@@ -51,8 +51,6 @@ export async function GET(req: Request): Promise<Response> {
     name: service.name,
     /** The vendor it talks to. */
     kind: service.kind,
-    /** Whether this is the one a caller gets when it does not name one. */
-    default: service.default,
   }));
 
   return NextResponse.json({ object: "list", data });

@@ -30,7 +30,7 @@ import {
   type PublicSearchProvider,
 } from "@/lib/db/search-providers";
 import { getSettings } from "@/lib/db/settings";
-import { activeSearchBackendInfo, searchServiceUsability } from "@/lib/search/resolve";
+import { activeSearchBackendInfo, searchServiceUsability, searchServices } from "@/lib/search/resolve";
 import { SEARCH_TEMPLATES } from "@/lib/search/templates";
 import { specDrift, type SpecDrift } from "@/lib/search/drift";
 import { Card } from "@/components/ui/Card";
@@ -117,6 +117,8 @@ export default async function SearchAdminPage() {
       .map((p) => [p.id, usability.get(p.id)?.reason ?? null] as const)
       .filter(([, reason]) => Boolean(reason)),
   );
+  /** The services that can answer, which is what a client can ask for. */
+  const services = searchServices(records);
 
   return (
     <SectionPageLayout>
@@ -130,6 +132,18 @@ export default async function SearchAdminPage() {
         </p>
 
         {/*
+          The rule, said where the operator reads it.
+
+          There is no default service — that is the point. A deployment may
+          offer several, and the one that answers is the one somebody chose:
+          the client by name, the person in their own settings. So the panel
+          does not mark one as "the one that serves"; it says who chooses.
+        */}
+        <p className="mb-4 rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+          {t("admin.searchProviders.noDefault")}
+        </p>
+
+        {/*
           The one thing the table cannot say on its own.
 
           A deployment whose service cannot answer looks, in the list, like a
@@ -137,7 +151,7 @@ export default async function SearchAdminPage() {
           them marked as the one that answers. And the requests are failing.
           So the failure is said out loud, here, above the list.
         */}
-        {backend.unusableReason && (
+        {backend.unusableReason && services.length === 0 && (
           <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
             {t("admin.searchProviders.notWorking", { reason: backend.unusableReason })}
           </div>
@@ -209,9 +223,6 @@ export default async function SearchAdminPage() {
                             ? t("dashboard.status.enabled")
                             : t("dashboard.status.disabled")}
                         </Badge>
-                        {p.id === backend.providerId && (
-                          <Badge tone="info">{t("admin.searchProviders.active")}</Badge>
-                        )}
                         {unusable.get(p.id) && (
                           <span
                             className="text-xs text-destructive"

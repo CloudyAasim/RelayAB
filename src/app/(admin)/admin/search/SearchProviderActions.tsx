@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Pencil, Power, Search, Star, Trash2 } from "lucide-react";
+import { Pencil, Power, PowerOff, Search, Trash2 } from "lucide-react";
 
 import { useT } from "@/components/i18n/I18nProvider";
 import { Button } from "@/components/ui/Button";
@@ -20,29 +20,6 @@ export function SearchProviderActions({
   const [editOpen, setEditOpen] = useState(false);
   const [testOpen, setTestOpen] = useState(false);
   const [pending, startTransition] = useTransition();
-
-  /**
-   * Make this the service a caller gets when they do not name one.
-   *
-   * One click, because "which one serves" is the question the whole panel
-   * exists to answer, and before this it could only be answered by editing a
-   * priority number and hoping the tie-breaks fell the right way.
-   */
-  async function makeDefault(): Promise<void> {
-    const res = await fetch(`/api/admin/search-providers/${provider.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ isDefault: true }),
-    });
-    const data = (await res.json().catch(() => null)) as
-      | { ok: boolean; error?: { message?: string } }
-      | null;
-    if (!data?.ok) {
-      alert(data?.error?.message ?? t("common.failed"));
-      return;
-    }
-    startTransition(() => window.location.reload());
-  }
 
   async function toggle(): Promise<void> {
     const res = await fetch(`/api/admin/search-providers/${provider.id}`, {
@@ -84,17 +61,23 @@ export function SearchProviderActions({
       >
         <Search className="h-4 w-4" />
       </Button>
-      {!provider.isDefault && (
-        <Button
-          size="icon"
-          variant="ghost"
-          title={t("admin.searchProviders.makeDefault")}
-          onClick={makeDefault}
-          disabled={pending}
-        >
-          <Star className="h-4 w-4" />
-        </Button>
-      )}
+      {/*
+        Two different icons for the same button, because one icon for two
+        opposite actions is a button nobody can read: the icon shows the
+        **action**, and the title spells it out. A row that is on offers "turn
+        it off" (a plug being pulled); a row that is off offers "turn it on".
+      */}
+      <Button
+        size="icon"
+        variant="ghost"
+        title={provider.enabled ? t("admin.searchProviders.disable") : t("admin.searchProviders.enable")}
+        aria-label={provider.enabled ? t("admin.searchProviders.disable") : t("admin.searchProviders.enable")}
+        onClick={toggle}
+        disabled={pending}
+        className={provider.enabled ? "text-muted-foreground hover:text-destructive" : "text-foreground"}
+      >
+        {provider.enabled ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
+      </Button>
       <Button
         size="icon"
         variant="ghost"
@@ -103,15 +86,6 @@ export function SearchProviderActions({
         disabled={pending}
       >
         <Pencil className="h-4 w-4" />
-      </Button>
-      <Button
-        size="icon"
-        variant="ghost"
-        title={provider.enabled ? t("admin.searchProviders.disable") : t("admin.searchProviders.enable")}
-        onClick={toggle}
-        disabled={pending}
-      >
-        <Power className="h-4 w-4" />
       </Button>
       <Button
         size="icon"
