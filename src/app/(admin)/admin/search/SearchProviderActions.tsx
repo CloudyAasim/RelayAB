@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Pencil, Power, Search, Trash2 } from "lucide-react";
+import { Pencil, Power, Search, Star, Trash2 } from "lucide-react";
 
 import { useT } from "@/components/i18n/I18nProvider";
 import { Button } from "@/components/ui/Button";
@@ -20,6 +20,29 @@ export function SearchProviderActions({
   const [editOpen, setEditOpen] = useState(false);
   const [testOpen, setTestOpen] = useState(false);
   const [pending, startTransition] = useTransition();
+
+  /**
+   * Make this the service a caller gets when they do not name one.
+   *
+   * One click, because "which one serves" is the question the whole panel
+   * exists to answer, and before this it could only be answered by editing a
+   * priority number and hoping the tie-breaks fell the right way.
+   */
+  async function makeDefault(): Promise<void> {
+    const res = await fetch(`/api/admin/search-providers/${provider.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isDefault: true }),
+    });
+    const data = (await res.json().catch(() => null)) as
+      | { ok: boolean; error?: { message?: string } }
+      | null;
+    if (!data?.ok) {
+      alert(data?.error?.message ?? t("common.failed"));
+      return;
+    }
+    startTransition(() => window.location.reload());
+  }
 
   async function toggle(): Promise<void> {
     const res = await fetch(`/api/admin/search-providers/${provider.id}`, {
@@ -61,6 +84,17 @@ export function SearchProviderActions({
       >
         <Search className="h-4 w-4" />
       </Button>
+      {!provider.isDefault && (
+        <Button
+          size="icon"
+          variant="ghost"
+          title={t("admin.searchProviders.makeDefault")}
+          onClick={makeDefault}
+          disabled={pending}
+        >
+          <Star className="h-4 w-4" />
+        </Button>
+      )}
       <Button
         size="icon"
         variant="ghost"

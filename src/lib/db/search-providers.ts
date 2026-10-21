@@ -33,6 +33,11 @@ import { generateId } from "../crypto/hashing";
 import { getAll, getOne, run, toDbBool, fromDbBool } from "./sqlite";
 import { parseSearchSpec, type SearchSpec } from "../search/spec";
 import { searchTemplateByKind } from "../search/templates";
+import {
+  SERVICE_ID_PATTERN as SERVICE_ID_RULES,
+  slugifyServiceId,
+  uniqueServiceId as uniqueServiceIdAmong,
+} from "../search/service-id";
 
 /**
  * The vendors that ship with a built-in template.
@@ -51,6 +56,24 @@ export function isSearchProviderKind(value: unknown): value is SearchProviderKin
 export interface SearchProviderRecord {
   id: string;
   name: string;
+  /**
+   * The name a **client** uses to ask for this service.
+   *
+   * The same idea as a chat model's client-visible name: the deployment
+   * publishes a catalogue, the caller names one of the entries, and the gateway
+   * routes to it. Empty for a row written before this existed — such a row is
+   * still the deployment's service, it just cannot be named yet.
+   */
+  serviceId: string;
+  /**
+   * Whether this is the service a caller gets when they do not name one.
+   *
+   * At most one row carries it. The column exists so that "the one that serves"
+   * is a thing somebody **chose**, not a thing that fell out of an ordering:
+   * with only a priority number, the row that serves is whichever row happens
+   * to have the smallest one, and a tie is broken by a name and then by an id.
+   */
+  isDefault: boolean;
   /**
    * Which template this row uses when it carries no spec of its own, and a
    * label for it in the panel and in usage rows.
@@ -88,6 +111,13 @@ export interface CreateSearchProviderInput {
   creditsPerCall?: number;
   /** The row's own spec, when it describes a vendor this build has no template for. */
   spec?: unknown;
+  /**
+   * The name clients use to ask for this service. Derived from the display
+   * name when it is not given, so a row is always nameable.
+   */
+  serviceId?: string;
+  /** Make this the service callers get when they do not name one. */
+  isDefault?: boolean;
 }
 
 export interface UpdateSearchProviderInput {
@@ -100,6 +130,10 @@ export interface UpdateSearchProviderInput {
   creditsPerCall?: number;
   /** The row's own spec. `null` clears it and returns the row to its template. */
   spec?: unknown;
+  /** The name clients use to ask for this service. */
+  serviceId?: string;
+  /** Make this the service callers get when they do not name one. */
+  isDefault?: boolean;
 }
 
 /** A sanity ceiling, not an economic statement. */
@@ -117,6 +151,8 @@ function rowToSearchProvider(row: Record<string, unknown>): SearchProviderRecord
   return {
     id: String(row.id),
     name: String(row.name),
+    serviceId: String(row.service_id ?? ""),
+    isDefault: fromDbBool(row.is_default),
     kind,
     baseUrl: String(row.base_url ?? ""),
     encryptedApiKey: String(row.encrypted_api_key ?? ""),
@@ -127,6 +163,27 @@ function rowToSearchProvider(row: Record<string, unknown>): SearchProviderRecord
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };
+}
+
+/**
+ * What a client-visible service name may look like.
+ *
+ * The rules of a model name, because it is the same job: it goes in a JSON
+ * body, in a URL, and in a client's configuration, so it has to survive being
+ * copied around. Letters, digits, dot, dash and underscore; nothing else.
+ */
+const SERVICE_ID_PATTERN = SERVICE_ID_RULES;
+
+/**
+ * A service name that is not taken yet.
+ *
+ * The suffix is a number rather than a random string, so an operator reading
+ * the list can tell "tavily-2" from "tavily-2k3j9" — the second one is a
+ * collision and the first one is a second instance of the same vendor.
+ */
+async function uniqueServiceId(base: string): Promise<string> {
+  const taken = (await listSearchProviders()).map((row) => row.serviceId);
+  return uniqueServiceIdAmong(base, taken);
 }
 
 /**
@@ -262,11 +319,14 @@ export async function createSearchProvider(
   });
   if (issues.length) throw new SearchProviderValidationError(issues);
 
+  const serviceId = await resolveServiceId(input.serviceId, input.name, input.kind);
   const parsedSpec = input.spec === undefined || input.spec === null ? null : parseStoredSpec(input.spec);
   const now = new Date().toISOString();
   const record: SearchProviderRecord = {
     id: generateId(),
     name: input.name.trim(),
+    serviceId,
+    isDefault: false,
     kind: input.kind.trim(),
     baseUrl,
     encryptedApiKey: key ? encryptSecret(key) : "",
@@ -281,8 +341,8 @@ export async function createSearchProvider(
   run(
     `INSERT INTO search_providers
        (id, name, kind, base_url, encrypted_api_key, enabled, priority,
-        credits_per_call, spec, created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+        credits_per_call, spec, service_id, is_default, created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       record.id,
       record.name,
@@ -293,18 +353,100 @@ export async function createSearchProvider(
       record.priority,
       record.creditsPerCall,
       record.spec ? JSON.stringify(record.spec) : "",
+      record.serviceId,
+      toDbBool(record.isDefault),
       record.createdAt,
       record.updatedAt,
     ],
   );
+
+  /**
+   * The default is **not** set here.
+   *
+   * A deployment that has never said which service serves keeps the rule it
+   * had — the first enabled row by priority — and the marker is the way to
+   * *override* that rule, not a way to restate it. Making the first row the
+   * default on creation would have quietly retired the priority column: the
+   * row that happened to be created first would answer for ever, and the
+   * number the operator had been setting would do nothing.
+   */
+  if (input.isDefault) {
+    await setDefaultSearchProvider(record.id);
+    return (await getSearchProviderById(record.id)) ?? record;
+  }
   return record;
+}
+
+/**
+ * The service name a row will carry.
+ *
+ * The operator's name when they gave one, a slug of the display name when they
+ * did not, and always unique — two rows cannot answer to the same name, or a
+ * client asking for one of them would get the other.
+ */
+async function resolveServiceId(
+  requested: string | undefined,
+  name: string,
+  kind: string,
+): Promise<string> {
+  const trimmed = requested?.trim() ?? "";
+  if (!trimmed) return uniqueServiceId(slugifyServiceId(name, kind));
+  if (!SERVICE_ID_PATTERN.test(trimmed)) {
+    throw new SearchProviderValidationError([
+      "service id 只能包含字母、数字、点、下划线和短横线，且必须以字母或数字开头",
+    ]);
+  }
+  const taken = (await listSearchProviders()).some((row) => row.serviceId === trimmed);
+  if (taken) {
+    throw new SearchProviderValidationError([`service id "${trimmed}" 已经被别的搜索服务用了`]);
+  }
+  return trimmed;
+}
+
+/**
+ * Make one row the service callers get when they do not name one.
+ *
+ * Exactly one row carries it, so the question "which one is the default" has
+ * one answer and not a pile of them.
+ */
+export async function setDefaultSearchProvider(id: string): Promise<SearchProviderRecord | null> {
+  const row = await getSearchProviderById(id);
+  if (!row) return null;
+  run("UPDATE search_providers SET is_default = 0 WHERE id != ?", [id]);
+  run("UPDATE search_providers SET is_default = 1, updated_at = ? WHERE id = ?", [
+    new Date().toISOString(),
+    id,
+  ]);
+  return getSearchProviderById(id);
+}
+
+/** The row a client names, by its client-visible name. */
+export async function findSearchProviderByServiceId(
+  serviceId: string,
+): Promise<SearchProviderRecord | null> {
+  const trimmed = serviceId.trim();
+  if (!trimmed) return null;
+  return getOne("SELECT * FROM search_providers WHERE service_id = ?", [trimmed], rowToSearchProvider);
 }
 
 export async function getSearchProviderById(id: string): Promise<SearchProviderRecord | null> {
   return getOne("SELECT * FROM search_providers WHERE id = ?", [id], rowToSearchProvider);
 }
 
-/** Priority first, then name — the same order the runtime resolver uses. */
+/**
+ * Priority first, then name — the same order the runtime resolver falls back
+ * through.
+ *
+ * The marked default is **not** moved to the front of the list: the list is the
+ * order the services are considered in, and the one that answers is marked
+ * with a badge rather than by its position. Moving it would make the order
+ * and the badge two different answers to "which one is it".
+ *
+ * The name is compared the way SQLite compares it (byte order), the same as
+ * the chat providers' table does — the two used to disagree, and the media
+ * providers' list is the odd one out. `priority` decides what actually serves
+ * either way.
+ */
 export async function listSearchProviders(
   opts: { enabledOnly?: boolean } = {},
 ): Promise<SearchProviderRecord[]> {
@@ -362,10 +504,33 @@ export async function updateSearchProvider(
     updatedAt: new Date().toISOString(),
   };
 
+  /**
+   * The client-visible name.
+   *
+   * A blank one is not a request to erase it: the row keeps the name it has,
+   * because a service that cannot be named is still the deployment's service.
+   */
+  if (patch.serviceId !== undefined && patch.serviceId.trim()) {
+    const wanted = patch.serviceId.trim();
+    if (!SERVICE_ID_PATTERN.test(wanted)) {
+      throw new SearchProviderValidationError([
+        "service id 只能包含字母、数字、点、下划线和短横线，且必须以字母或数字开头",
+      ]);
+    }
+    const clash = (await listSearchProviders()).some(
+      (row) => row.serviceId === wanted && row.id !== id,
+    );
+    if (clash) {
+      throw new SearchProviderValidationError([`service id "${wanted}" 已经被别的搜索服务用了`]);
+    }
+    merged.serviceId = wanted;
+  }
+
   run(
     `UPDATE search_providers
         SET name = ?, kind = ?, base_url = ?, encrypted_api_key = ?,
-            enabled = ?, priority = ?, credits_per_call = ?, spec = ?, updated_at = ?
+            enabled = ?, priority = ?, credits_per_call = ?, spec = ?,
+            service_id = ?, updated_at = ?
       WHERE id = ?`,
     [
       merged.name,
@@ -376,13 +541,31 @@ export async function updateSearchProvider(
       merged.priority,
       merged.creditsPerCall,
       merged.spec ? JSON.stringify(merged.spec) : "",
+      merged.serviceId,
       merged.updatedAt,
       id,
     ],
   );
-  return merged;
+
+  if (patch.isDefault) {
+    await setDefaultSearchProvider(id);
+  }
+  return getSearchProviderById(id);
 }
 
 export async function deleteSearchProvider(id: string): Promise<boolean> {
-  return run("DELETE FROM search_providers WHERE id = ?", [id]) > 0;
+  const deleted = run("DELETE FROM search_providers WHERE id = ?", [id]) > 0;
+
+  /**
+   * Deleting the marked default leaves the question "which one serves" to the
+   * priority order again — which is what it was before anybody marked it.
+   *
+   * Promoting another row would be a different thing: it would make a service
+   * the operator never chose into the one that answers, for ever, because
+   * somebody deleted a row. The mark dies with the row it was on.
+   */
+  if (deleted) {
+    run("UPDATE search_providers SET is_default = 0 WHERE is_default = 1 AND id != ?", [id]);
+  }
+  return deleted;
 }

@@ -3,22 +3,45 @@
  *
  * Which search backend serves a request.
  *
- * The rule is one sentence: **the provider table wins once it has a row.**
+ * The rule is now one sentence: **exactly one service answers.**
  *
- *  - Zero rows: the environment path (Tavily → Brave → SearXNG), unchanged
- *    from before providers existed. An upgrade must not silently turn search
- *    off.
- *  - One or more rows: the first enabled, usable row by `priority ASC,
- *    name ASC, id ASC`. Invalid rows are skipped. If rows exist but none is
- *    usable, the answer is "unconfigured" — **not** a fallback to the
- *    environment. Otherwise disabling every provider would not actually
- *    disable anything.
+ * ## The three cases
+ *
+ *  - **No rows at all**: the environment path (Tavily → Brave → SearXNG),
+ *    unchanged from before providers existed. An upgrade must not silently turn
+ *    search off.
+ *  - **Rows exist**: the **default** row answers. The default is the row
+ *    somebody marked as such, or — when nobody has — the first enabled row by
+ *    `priority ASC, name ASC, id ASC`.
+ *  - **A caller names a service**: that row answers, if it is enabled.
+ *
+ * ## What does *not* happen
+ *
+ * **A service that cannot answer is never quietly replaced by another one.**
+ *
+ * It used to be: the resolver walked the rows, skipped the ones that could not
+ * work, and served from the first one that could. That is a silent substitution
+ * of one vendor for another — and these rows carry **their own price**
+ * (`creditsPerCall`), so the substitution changed not only which vendor
+ * answered but what the account was charged. An operator reading "自建 SearXNG
+ * is enabled" had no way to know that a row which could not answer was being
+ * passed over, and the panel showed the skipped row as a perfectly healthy
+ * green one.
+ *
+ * So: the service that was chosen is the service that answers. When it cannot,
+ * the request fails with the reason, and the panel says so where the operator
+ * can act on it. A disabled row is different — that is a deliberate "off", and
+ * the next enabled row takes over.
  *
  * Kept out of `web-search.ts` so the HTTP layer stays free of database
  * imports and can be unit-tested with an injected environment.
  */
 import { decryptSecret } from "../crypto/secrets";
-import { listSearchProviders, type SearchProviderRecord } from "../db/search-providers";
+import {
+  listSearchProviders,
+  type SearchProviderRecord,
+} from "../db/search-providers";
+import { getAssistantSettings } from "../db/assistant";
 import { effectiveSearchConfig } from "./effective";
 import { userSearchBackend } from "./user";
 import {
@@ -41,6 +64,52 @@ export interface ActiveBackendInfo {
   usageProviderId: string | null;
   /** The row's own price; null when the environment fallback is in use. */
   creditsPerCall: number | null;
+  /** The client-visible name of the service that answered. */
+  serviceId: string | null;
+  /**
+   * Why the chosen service cannot answer, when it cannot.
+   *
+   * The reason a request will fail with, said where the operator can act on
+   * it. Null when the service is fine.
+   */
+  unusableReason: string | null;
+  /** The id of the row that was chosen, whether or not it can answer. */
+  providerId: string | null;
+}
+
+/**
+ * Whether a row can answer, and why not when it cannot.
+ *
+ * The reasons are the three things an operator can act on: no address, no
+ * credential for a vendor that needs one, and a credential that no longer
+ * decrypts.
+ */
+export function searchServiceUsability(
+  row: SearchProviderRecord,
+): { usable: boolean; reason: string | null } {
+  const config = effectiveSearchConfig(row);
+  if (!config) {
+    return { usable: false, reason: "这个搜索服务没有可用的地址（也没有对应的内置模板）" };
+  }
+
+  const auth = config.spec.auth;
+  const needsKey = Boolean(auth && auth.type !== "none" && auth.required !== false);
+  if (needsKey && !row.encryptedApiKey) {
+    return { usable: false, reason: "这个搜索服务需要 API 密钥，但没有填" };
+  }
+
+  if (row.encryptedApiKey) {
+    try {
+      decryptSecret(row.encryptedApiKey);
+    } catch {
+      // A key encrypted under a rotated master key cannot be used, and the
+      // row is not "a little broken": it can never answer again until the
+      // key is typed in again.
+      return { usable: false, reason: "这个搜索服务的密钥无法解密（可能换过主密钥），请重新填写" };
+    }
+  }
+
+  return { usable: true, reason: null };
 }
 
 /**
@@ -72,6 +141,8 @@ export function backendForSearchProvider(row: SearchProviderRecord): SearchBacke
     apiKey: apiKey || undefined,
     // The row id, so a usage row points at the exact provider that served it.
     usageProviderId: row.id,
+    // The name a client uses to ask for this service.
+    ...(row.serviceId ? { serviceId: row.serviceId } : {}),
     provider: config.spec.vendor ?? row.kind,
     source: "db",
     describe: row.name,
@@ -80,21 +151,149 @@ export function backendForSearchProvider(row: SearchProviderRecord): SearchBacke
   });
 }
 
-function backendFromRows(rows: readonly SearchProviderRecord[]): SearchBackend | null {
-  for (const row of rows) {
-    if (!row.enabled) continue;
-    const backend = backendForSearchProvider(row);
-    if (backend) return backend;
+/**
+ * The service that answers when the caller does not name one.
+ *
+ * The row somebody marked as the default, or — when nobody has — the first
+ * enabled row by priority. A **disabled** row is not a candidate: turning a
+ * service off is a deliberate act, and the next one takes over.
+ */
+export function defaultSearchProvider(
+  rows: readonly SearchProviderRecord[],
+): SearchProviderRecord | null {
+  const enabled = rows.filter((row) => row.enabled);
+  const marked = enabled.find((row) => row.isDefault);
+  if (marked) return marked;
+  return enabled[0] ?? null;
+}
+
+/**
+ * The service a caller named, and whether it can answer.
+ *
+ * Two refusals, and they are different: a name nobody has is a mistake in the
+ * request, and a name that is switched off is a service that is deliberately
+ * not in use. Neither is answered by serving something else.
+ */
+export function namedSearchProvider(
+  rows: readonly SearchProviderRecord[],
+  serviceId: string,
+): { row: SearchProviderRecord | null; problem: "unknown" | "disabled" | null } {
+  const wanted = serviceId.trim();
+  const row = rows.find((candidate) => candidate.serviceId === wanted);
+  if (!row) return { row: null, problem: "unknown" };
+  if (!row.enabled) return { row, problem: "disabled" };
+  return { row, problem: null };
+}
+
+/**
+ * The backend of the service that answers, or null with a reason.
+ *
+ * The reason is what makes the failure legible: "the service you asked for is
+ * not usable because it has no key" and "there is no service at all" are
+ * different problems with different fixes.
+ */
+export function backendForRows(
+  rows: readonly SearchProviderRecord[],
+): { backend: SearchBackend | null; row: SearchProviderRecord | null; reason: string | null } {
+  const row = defaultSearchProvider(rows);
+  if (!row) {
+    return { backend: null, row: null, reason: "没有启用任何搜索服务" };
   }
-  return null;
+  const usability = searchServiceUsability(row);
+  if (!usability.usable) {
+    return { backend: null, row, reason: usability.reason };
+  }
+  const backend = backendForSearchProvider(row);
+  if (!backend) {
+    return { backend: null, row, reason: "这个搜索服务的配置不完整" };
+  }
+  return { backend, row, reason: null };
+}
+
+/**
+ * The services a client can ask for, by their client-visible names.
+ *
+ * Only the ones that **can** answer: a service that is switched off, or
+ * missing its key, is not offered — offering it would be a promise the
+ * deployment cannot keep, and the whole point of the catalogue is that
+ * everything in it can be named and will work.
+ *
+ * The `default` flag says which of them answers when the caller does not name
+ * one. It is absent when the service that would answer cannot: in that case
+ * the search fails with the reason, and the panel says which one and why.
+ */
+export function searchServices(
+  rows: readonly SearchProviderRecord[],
+): Array<{ id: string; name: string; kind: string; default: boolean }> {
+  const fallback = defaultSearchProvider(rows);
+  return rows
+    .filter((row) => row.enabled)
+    .map((row) => ({ row, usability: searchServiceUsability(row) }))
+    .filter((entry) => entry.usability.usable)
+    .map(({ row }) => ({
+      id: row.serviceId,
+      name: row.name,
+      kind: row.kind,
+      default: fallback?.id === row.id,
+    }));
 }
 
 export async function resolveActiveSearchBackend(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<SearchBackend | null> {
+  return (await resolveActiveSearchBackendWithReason(env)).backend;
+}
+
+/**
+ * The same answer, with the reason attached.
+ *
+ * The reason is what a caller can be told when the answer is "no": "there is
+ * no service" and "the service you have is missing its key" are different
+ * problems, and the second one names the fix.
+ */
+export async function resolveActiveSearchBackendWithReason(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<{ backend: SearchBackend | null; row: SearchProviderRecord | null; reason: string | null }> {
   const rows = await listSearchProviders();
-  if (rows.length === 0) return resolveSearchBackend(env);
-  return backendFromRows(rows);
+  if (rows.length === 0) {
+    const backend = resolveSearchBackend(env);
+    return {
+      backend,
+      row: null,
+      // No rows and no environment: there is nothing specific to say, and the
+      // caller has an actionable message of its own for exactly this case.
+      reason: null,
+    };
+  }
+  return backendForRows(rows);
+}
+
+/**
+ * The backend of one **named** service.
+ *
+ * The point of naming: a client that asks for `tavily` gets `tavily`, or an
+ * answer saying why it cannot. It never gets a different vendor.
+ */
+export async function resolveSearchBackendByServiceId(
+  serviceId: string,
+): Promise<{ backend: SearchBackend | null; row: SearchProviderRecord | null; problem: string | null }> {
+  const rows = await listSearchProviders();
+  const { row, problem } = namedSearchProvider(rows, serviceId);
+  if (!row) {
+    return { backend: null, row: null, problem: `没有叫「${serviceId}」的搜索服务` };
+  }
+  if (problem === "disabled") {
+    return { backend: null, row, problem: `搜索服务「${row.serviceId}」已经停用` };
+  }
+  const usability = searchServiceUsability(row);
+  if (!usability.usable) {
+    return { backend: null, row, problem: usability.reason };
+  }
+  const backend = backendForSearchProvider(row);
+  if (!backend) {
+    return { backend: null, row, problem: "这个搜索服务的配置不完整" };
+  }
+  return { backend, row, problem: null };
 }
 
 /**
@@ -111,10 +310,39 @@ export async function resolveActiveSearchBackend(
 export async function resolveSearchBackendForUser(
   userId: string,
   env: NodeJS.ProcessEnv = process.env,
+  opts: { serviceId?: string | null } = {},
 ): Promise<SearchBackend | null> {
   const own = await userSearchBackend(userId);
   if (own) return own;
+
+  // A service the user named. If it is gone, the deployment's default answers
+  // — the user's choice cannot outlive the row it names, and the settings
+  // panel says so rather than letting the assistant quietly search somewhere
+  // else.
+  const wanted = opts.serviceId?.trim();
+  if (wanted) {
+    const named = await resolveSearchBackendByServiceId(wanted);
+    if (named.backend) return named.backend;
+  }
+
   return resolveActiveSearchBackend(env);
+}
+
+/**
+ * The backend that answers for **this** account, read from the account's own
+ * settings.
+ *
+ * The one place that knows all three: the user's own service (their bill), the
+ * service they picked out of the deployment's, and the deployment's default.
+ */
+export async function resolveSearchBackendForAccount(
+  userId: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<SearchBackend | null> {
+  const settings = await getAssistantSettings(userId);
+  return resolveSearchBackendForUser(userId, env, {
+    serviceId: settings?.searchServiceId ?? null,
+  });
 }
 
 export async function activeSearchBackendInfo(
@@ -122,16 +350,53 @@ export async function activeSearchBackendInfo(
   rows?: readonly SearchProviderRecord[],
 ): Promise<ActiveBackendInfo> {
   const list = rows ?? (await listSearchProviders());
-  const backend = list.length === 0 ? resolveSearchBackend(env) : backendFromRows(list);
+  if (list.length === 0) {
+    const backend = resolveSearchBackend(env);
+    if (!backend) {
+      return {
+        configured: false,
+        name: null,
+        kind: null,
+        baseUrl: null,
+        source: null,
+        usageProviderId: null,
+        creditsPerCall: null,
+        serviceId: null,
+        unusableReason: null,
+        providerId: null,
+      };
+    }
+    return {
+      configured: true,
+      name: backend.describe,
+      kind: backend.provider,
+      baseUrl: backend.baseUrl ?? null,
+      source: backend.source,
+      usageProviderId: backend.usageProviderId,
+      creditsPerCall: backend.creditsPerCall ?? null,
+      serviceId: null,
+      unusableReason: null,
+      providerId: null,
+    };
+  }
+
+  const { backend, row, reason } = backendForRows(list);
   if (!backend) {
     return {
+      // No backend answered, so there is no backend to attribute one to. The
+      // reason is what says why — "the service you have is missing its key" is
+      // a different problem from "there is no service", and only one of them
+      // is the operator's to fix.
       configured: false,
-      name: null,
+      name: row?.name ?? null,
       kind: null,
       baseUrl: null,
       source: null,
       usageProviderId: null,
       creditsPerCall: null,
+      serviceId: row?.serviceId ?? null,
+      unusableReason: reason,
+      providerId: row?.id ?? null,
     };
   }
   return {
@@ -142,6 +407,9 @@ export async function activeSearchBackendInfo(
     source: backend.source,
     usageProviderId: backend.usageProviderId,
     creditsPerCall: backend.creditsPerCall ?? null,
+    serviceId: row?.serviceId ?? null,
+    unusableReason: null,
+    providerId: row?.id ?? null,
   };
 }
 

@@ -224,11 +224,11 @@ describe("the user's own search service", () => {
       model: "",
       accountModel: "m",
       credentialMode: "account",
-      searchBaseUrl: "https://my-gateway.example.com/v1/search",
+      searchBaseUrl: "https://93.184.216.34/v1/search",
       searchApiKey: "sk-mine",
     });
     const stored = await getAssistantSettings(user.id);
-    expect(stored?.searchBaseUrl).toBe("https://my-gateway.example.com/v1/search");
+    expect(stored?.searchBaseUrl).toBe("https://93.184.216.34/v1/search");
     // The key is encrypted, never in the clear.
     expect(stored?.encryptedSearchApiKey).toBeTruthy();
     expect(stored?.encryptedSearchApiKey).not.toContain("sk-mine");
@@ -241,7 +241,7 @@ describe("the user's own search service", () => {
       model: "",
       accountModel: "m",
       credentialMode: "account",
-      searchBaseUrl: "https://my-gateway.example.com/v1/search",
+      searchBaseUrl: "https://93.184.216.34/v1/search",
       searchApiKey: "sk-mine",
     });
     const backend = await userSearchBackend(user.id);
@@ -253,7 +253,7 @@ describe("the user's own search service", () => {
       limit: 3,
       apiKey: backend!.apiKey,
     });
-    expect(request.url).toBe("https://my-gateway.example.com/v1/search");
+    expect(request.url).toBe("https://93.184.216.34/v1/search");
     expect(request.method).toBe("POST");
     expect(request.headers.authorization).toBe("Bearer sk-mine");
     expect(JSON.parse(String(request.body))).toEqual({ query: "q", limit: 3 });
@@ -278,7 +278,7 @@ describe("the user's own search service", () => {
       model: "",
       accountModel: "m",
       credentialMode: "account",
-      searchBaseUrl: "https://my-gateway.example.com/v1/search",
+      searchBaseUrl: "https://93.184.216.34/v1/search",
       searchApiKey: "sk-mine",
     });
     const fetchMock = vi.fn(async () => okResponse());
@@ -296,7 +296,7 @@ describe("the user's own search service", () => {
     expect(await listUsageByKey(key.id)).toHaveLength(0);
     // And the call went to the user's own address.
     const [url] = fetchMock.mock.calls[0] as unknown as [string];
-    expect(url).toBe("https://my-gateway.example.com/v1/search");
+    expect(url).toBe("https://93.184.216.34/v1/search");
   });
 
   it("while the deployment's own provider is charged", async () => {

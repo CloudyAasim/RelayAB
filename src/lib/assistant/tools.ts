@@ -75,7 +75,7 @@ import {
 import { DEPLOYMENT_NOTES } from "./deployment-notes";
 import { WebSearchError, MAX_SEARCH_RESULTS, type SearchBackend } from "./web-search";
 import { DEFAULT_WEB_SEARCH_LIMIT } from "../search/usage";
-import { resolveSearchBackendForUser } from "../search/resolve";
+import { resolveSearchBackendForAccount } from "../search/resolve";
 import { attributionKeyFor, runSearch } from "../search/billing";
 import { loadSearchConfig } from "../search/config";
 import { fetchPage, WebFetchError } from "./web-fetch";
@@ -4588,7 +4588,7 @@ async function webSearchTool(
      * paying that vendor, and the deployment's provider is not theirs to
      * spend.
      */
-    backend = await resolveSearchBackendForUser(ctx.user.id);
+    backend = await resolveSearchBackendForAccount(ctx.user.id);
     if (!backend) {
       return fail(
         "没有可用的搜索后端。请在「AI 助手 → 设置」里配置你自己的搜索服务" +

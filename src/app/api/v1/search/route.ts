@@ -62,6 +62,18 @@ interface SearchBody {
   query?: unknown;
   q?: unknown;
   limit?: unknown;
+  /**
+   * The **client-visible name** of the search service to use, the way a chat
+   * request names a model.
+   *
+   * Omitted means "the deployment's default service". A name that does not
+   * exist, or that names a service which is switched off or cannot answer, is
+   * refused **by name** — the request is never answered by searching through
+   * some other service, because those carry their own price and a quiet
+   * substitution would change what the account is charged as well as which
+   * vendor answered.
+   */
+  service?: unknown;
 }
 
 function parseLimit(raw: unknown): number {
@@ -108,6 +120,15 @@ async function handle(req: Request, body: SearchBody): Promise<Response> {
   const limit = parseLimit(body.limit);
 
   /**
+   * The service to search with.
+   *
+   * Blank means the deployment's default. Anything else is a name the caller
+   * chose, and the resolver refuses a name it cannot honour rather than
+   * quietly using another service.
+   */
+  const serviceId = typeof body.service === "string" ? body.service.trim() : "";
+
+  /**
    * One call to the shared settlement, so the public endpoint and the panel's
    * test buttons price a search the same way and charge it the same way.
    */
@@ -118,6 +139,7 @@ async function handle(req: Request, body: SearchBody): Promise<Response> {
       limit,
       user: owner,
       apiKeyId: auth.key.id,
+      ...(serviceId ? { serviceId } : {}),
     });
   } catch (err) {
     if (err instanceof WebSearchError) return searchErrorResponse(err, quotaHeaders(owner));
@@ -136,6 +158,9 @@ async function handle(req: Request, body: SearchBody): Promise<Response> {
       object: "search",
       query: outcome.query,
       provider: outcome.provider,
+      // The service that answered, so a caller that named one can see that it
+      // got the one it asked for.
+      ...(outcome.serviceId ? { service: outcome.serviceId } : {}),
       results: outcome.results,
       // Whole 积分, the same unit an operator types into the panel.
       credits,
@@ -166,5 +191,6 @@ export async function GET(req: Request): Promise<Response> {
   return handle(req, {
     query: url.searchParams.get("q") ?? url.searchParams.get("query"),
     limit: url.searchParams.get("limit"),
+    service: url.searchParams.get("service") ?? undefined,
   });
 }

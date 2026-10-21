@@ -17,6 +17,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth/session";
+import { listSearchProviders } from "@/lib/db/search-providers";
 import {
   getPublicAssistantSettings,
   getAssistantSettings,
@@ -25,6 +26,7 @@ import {
   AssistantSettingsError,
 } from "@/lib/db/assistant";
 import { probeUpstream } from "@/lib/assistant/client";
+import { isPrivateSearchAddress } from "@/lib/search/user";
 import { MAX_SEARCH_RESULTS } from "@/lib/assistant/web-search";
 
 export const dynamic = "force-dynamic";
@@ -77,6 +79,15 @@ const PutSchema = z.object({
   // password box cannot express.
   searchBaseUrl: z.string().max(500).nullable().optional(),
   searchSource: z.enum(["deployment", "own"]).nullable().optional(),
+  /**
+   * Which of the deployment's search services the assistant searches with.
+   *
+   * Null is "the one the deployment serves by default". A name that does not
+   * exist is refused at save time, where the person who picked it is looking
+   * at the message — a stored name nobody can use is a setting that fails
+   * later, in the middle of a conversation.
+   */
+  searchServiceId: z.string().trim().max(64).nullable().optional(),
   searchApiKey: z.string().max(500).nullable().optional(),
 });
 
@@ -198,6 +209,34 @@ export async function PUT(req: Request): Promise<Response> {
   }
 
   /**
+   * An address on the deployment's own network is not the user's service.
+   *
+   * The request is made by the gateway, so `127.0.0.1` here is the gateway's
+   * own port and `169.254.169.254` is the cloud metadata endpoint — the
+   * deployment's insides, reachable by whoever typed the address. A user's
+   * service has to be somewhere the gateway can reach over the internet.
+   *
+   * Refused here, where the person who typed it is looking at the message.
+   * The names that resolve to a private address are caught when the request is
+   * made, because that is the check that sees the address the request really
+   * goes to.
+   */
+  if (searchUrl && isPrivateSearchAddress(searchUrl)) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: {
+          code: "private_search_url",
+          message:
+            "这个地址指向内网。请求是由本中转站发出的，所以它只能填公网上能访问到的地址" +
+            "（本机、局域网、云厂商的元数据地址都不行）。",
+        },
+      },
+      { status: 400 },
+    );
+  }
+
+  /**
    * Choosing "my own service" without an address would leave the assistant
    * searching through the deployment's provider instead — silently, and the
    * opposite of what was asked for. So it is refused here rather than quietly
@@ -223,6 +262,33 @@ export async function PUT(req: Request): Promise<Response> {
       },
       { status: 400 },
     );
+  }
+
+  /**
+   * The named service has to be one of the deployment's.
+   *
+   * Checked here rather than at search time: a name that does not exist is a
+   * mistake in the form, and the form is where somebody can still do
+   * something about it. And a name that exists but cannot answer is a
+   * different thing — that one is the administrator's to fix, and the panel
+   * says so.
+   */
+  const wantedService = (data.searchServiceId ?? "").trim();
+  if (wantedService) {
+    const services = await listSearchProviders();
+    const known = services.some((row) => row.serviceId === wantedService);
+    if (!known) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: {
+            code: "unknown_search_service",
+            message: `没有叫「${wantedService}」的搜索服务，请重新选一个。`,
+          },
+        },
+        { status: 400 },
+      );
+    }
   }
 
   try {

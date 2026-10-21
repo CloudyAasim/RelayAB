@@ -113,6 +113,16 @@ export interface SaveAssistantSettingsInput {
    */
   searchSource?: "deployment" | "own" | null;
   /**
+   * Which of the **deployment's** search services the assistant searches with,
+   * by its client-visible name.
+   *
+   * `null` means "the one the deployment serves by default", which is what
+   * every account had before the services could be named. Only meaningful
+   * when the source is the deployment's — the user's own service has no name
+   * here, because it is not one of the deployment's.
+   */
+  searchServiceId?: string | null;
+  /**
    * The key for that service. Blank or omitted keeps the stored one, exactly
    * like the assistant's own upstream key.
    *
@@ -195,6 +205,12 @@ export async function saveAssistantSettings(
         : input.searchBaseUrl.trim() || null,
     // Which of the two the assistant searches. `null` is the automatic rule.
     searchSource: pick(input.searchSource, existing?.searchSource ?? null),
+    searchServiceId: pick(
+      input.searchServiceId === undefined || input.searchServiceId === null
+        ? (existing?.searchServiceId ?? null)
+        : input.searchServiceId.trim() || null,
+      existing?.searchServiceId ?? null,
+    ),
     // `null` is the explicit "delete it"; blank means "I did not type one" and
     // keeps whatever is stored.
     encryptedSearchApiKey:
@@ -212,9 +228,9 @@ export async function saveAssistantSettings(
        (user_id, base_url, encrypted_api_key, model, credential_mode, account_model,
         protocol, extra_headers, context_length, max_output_tokens, temperature, top_p,
         reasoning_effort, thinking_type, web_search_default, web_search_limit,
-        search_base_url, encrypted_search_api_key, search_source,
+        search_base_url, encrypted_search_api_key, search_source, search_service_id,
         created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
      ON CONFLICT(user_id) DO UPDATE SET
        base_url = excluded.base_url,
        encrypted_api_key = excluded.encrypted_api_key,
@@ -234,6 +250,7 @@ export async function saveAssistantSettings(
        search_base_url = excluded.search_base_url,
        encrypted_search_api_key = excluded.encrypted_search_api_key,
        search_source = excluded.search_source,
+       search_service_id = excluded.search_service_id,
        updated_at = excluded.updated_at`,
     [
       row.userId,
@@ -261,6 +278,7 @@ export async function saveAssistantSettings(
       row.searchBaseUrl ?? null,
       row.encryptedSearchApiKey ?? null,
       row.searchSource ?? null,
+      row.searchServiceId ?? null,
       row.createdAt,
       row.updatedAt,
     ],

@@ -21,6 +21,10 @@ export interface SearchTemplateOption {
 export interface SearchProviderRow {
   id: string;
   name: string;
+  /** The name a client uses to ask for this service. */
+  serviceId?: string;
+  /** Whether this is the service a caller gets when they do not name one. */
+  isDefault?: boolean;
   kind: string;
   baseUrl: string;
   enabled: boolean;
@@ -64,6 +68,7 @@ export function SearchProviderForm({ provider, templates, onSaved }: Props) {
   const editing = Boolean(provider);
 
   const [name, setName] = useState(provider?.name ?? "");
+  const [serviceId, setServiceId] = useState(provider?.serviceId ?? "");
   const [kind, setKind] = useState<string>(provider?.kind ?? "searxng");
   const [baseUrl, setBaseUrl] = useState(provider?.baseUrl ?? "");
   const [apiKey, setApiKey] = useState("");
@@ -161,6 +166,24 @@ export function SearchProviderForm({ provider, templates, onSaved }: Props) {
         setError(t("admin.searchProviders.creditsInvalid"));
         return;
       }
+      /**
+       * The priority, read as a number **or left alone**.
+       *
+       * It used to be `Number(priority) || 0`, which turned an empty box into
+       * zero — the highest priority in the deployment — and did it silently,
+       * on every save, including the ones where the operator had come to
+       * change the name. A blank field now means "do not touch it".
+       */
+      const trimmedPriority = priority.trim();
+      let parsedPriority: number | undefined;
+      if (trimmedPriority !== "") {
+        const n = Number(trimmedPriority);
+        if (!Number.isInteger(n) || n < 0) {
+          setError(t("admin.searchProviders.priorityInvalid"));
+          return;
+        }
+        parsedPriority = n;
+      }
       const payload: Record<string, unknown> = {
         name: name.trim(),
         // The spec names the vendor; the dropdown only matters for a row that
@@ -168,9 +191,12 @@ export function SearchProviderForm({ provider, templates, onSaved }: Props) {
         kind: specVendor ?? kind,
         baseUrl: baseUrl.trim(),
         enabled,
-        priority: Number(priority) || 0,
         creditsPerCall: parsedCredits,
       };
+      if (parsedPriority !== undefined) payload.priority = parsedPriority;
+      // A blank client name means "keep the one this row already has" — a
+      // service that cannot be named is still the deployment's service.
+      if (serviceId.trim()) payload.serviceId = serviceId.trim();
       if (hasSpec) {
         payload.spec = JSON.parse(specText);
       }
@@ -215,6 +241,16 @@ export function SearchProviderForm({ provider, templates, onSaved }: Props) {
           onChange={(e) => setName(e.target.value)}
           required
         />
+        <Input
+          label={t("admin.searchProviders.serviceId")}
+          value={serviceId}
+          onChange={(e) => setServiceId(e.target.value)}
+          placeholder="searxng"
+          hint={t("admin.searchProviders.serviceIdHint")}
+        />
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label className="mb-1.5 block text-sm font-medium">
             {t("admin.searchProviders.kind")}
@@ -273,6 +309,7 @@ export function SearchProviderForm({ provider, templates, onSaved }: Props) {
           min={0}
           value={priority}
           onChange={(e) => setPriority(e.target.value)}
+          hint={t("admin.searchProviders.priorityHint")}
         />
         <Input
           label={t("admin.searchProviders.creditsPerCall")}

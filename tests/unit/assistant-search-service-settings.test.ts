@@ -158,11 +158,11 @@ describe("saving the search service", () => {
         accountModel: "m",
         credentialMode: "account",
         searchSource: "own",
-        searchBaseUrl: "https://my-gateway.test/v1/search",
+        searchBaseUrl: "https://93.184.216.34/v1/search",
       }),
     );
     expect((await getAssistantSettings(user.id))?.searchBaseUrl).toBe(
-      "https://my-gateway.test/v1/search",
+      "https://93.184.216.34/v1/search",
     );
 
     const res = await PUT_SETTINGS(
@@ -180,7 +180,7 @@ describe("saving the search service", () => {
     expect(body.error.code).toBe("no_search_url");
     // And the stored address is still there — the refused save changed nothing.
     expect((await getAssistantSettings(user.id))?.searchBaseUrl).toBe(
-      "https://my-gateway.test/v1/search",
+      "https://93.184.216.34/v1/search",
     );
   });
 
@@ -193,13 +193,13 @@ describe("saving the search service", () => {
         accountModel: "m",
         credentialMode: "account",
         searchSource: "own",
-        searchBaseUrl: "https://my-gateway.test/v1/search",
+        searchBaseUrl: "https://93.184.216.34/v1/search",
         searchApiKey: "sk-mine",
       }),
     );
     expect(res.status).toBe(200);
     const stored = await getAssistantSettings(user.id);
-    expect(stored?.searchBaseUrl).toBe("https://my-gateway.test/v1/search");
+    expect(stored?.searchBaseUrl).toBe("https://93.184.216.34/v1/search");
     expect(stored?.searchSource).toBe("own");
     // The key is encrypted, never in the clear.
     expect(stored?.encryptedSearchApiKey).toBeTruthy();
@@ -213,7 +213,7 @@ describe("saving the search service", () => {
       accountModel: "m",
       credentialMode: "account",
       searchSource: "own",
-      searchBaseUrl: "https://my-gateway.test/v1/search",
+      searchBaseUrl: "https://93.184.216.34/v1/search",
       searchApiKey: "sk-mine",
     });
     expect((await getAssistantSettings(user.id))?.encryptedSearchApiKey).toBeTruthy();
@@ -245,7 +245,7 @@ describe("probing the search service", () => {
     return new Request("https://relay.test/api/assistant/search-settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ baseUrl: "https://my-gateway.test/v1/search" }),
+      body: JSON.stringify({ baseUrl: "https://93.184.216.34/v1/search" }),
     });
   }
 
@@ -310,7 +310,7 @@ describe("the engine's own report", () => {
       "fetch",
       vi.fn(async () => Response.json({ results: [{ title: "A", url: "https://a.test/" }] })),
     );
-    const report = await executeSearchWithReport(spec, "https://my-gateway.test/v1/search", {
+    const report = await executeSearchWithReport(spec, "https://93.184.216.34/v1/search", {
       query: "q",
       limit: 5,
       displayName: "自己的搜索服务",

@@ -359,6 +359,15 @@ const zhCN: Dict = {
   "docs.search.errorsTypeHint": "type 取 OpenAI 的那套分类。额度用尽是 insufficient_quota，不是 rate_limit_error —— 客户端遇到它应当停止调用并提示充值，而不是退避后重试。",
   "docs.search.errorsQuotaTip": "先看响应头里的 x-ratelimit-remaining：那是这次调用之后账户的余额。",
   "docs.search.note": "返回的是搜索摘要，不是文档正文。要核对字段名或参数取值，请再打开原始页面。",
+  "docs.search.serviceHint":
+    "service 是可选的：填了就用那个搜索服务（名字见 GET /v1/search/services），不填就用站点默认的那个。**点名了就只用它**：那个服务没开或不能用时，请求会直接报错，不会悄悄换成别的服务去搜。响应里的 service 字段是实际服务的那个。",
+  "docs.search.servicesTitle": "搜索服务列表",
+  "docs.search.servicesDesc":
+    "GET /v1/search/services，返回本部署配置的搜索服务（和 GET /v1/models 是一个道理）。可以用 id 字段在搜索请求里点名要哪一个。",
+  "docs.search.servicesExample": "curl 示例",
+  "docs.search.servicesResponse": "响应体",
+  "docs.search.servicesHint":
+    "列表里只列**现在能用**的服务：停用的、缺密钥的都不在里面。列表里的 id 都可以直接填进搜索请求的 service 字段；点了名却不认识、或者那个服务不能用了，会按名字报错，而不是换成别的服务。",
   "docs.search.assistant": "在 AI 助手页面，输入框旁边的地球图标控制当前对话是否联网；助手设置里可以设新对话的默认开关和每次返回多少条结果。也可以在同一个设置里选**用站点的搜索还是你自己的搜索服务**（OpenAI 兼容的搜索接口，地址就是完整端点）：用自己的服务时，助手的搜索走它，费用由你的服务商收，不经过本中转站计费；用站点的搜索时，这次搜索按站点的价格扣你的积分。",
   "docs.basics.title": "基本概念",
   "docs.basics.desc": "本服务提供兼容 OpenAI Chat Completions / Responses 与 Anthropic Messages 的接口。",
@@ -706,12 +715,21 @@ const zhCN: Dict = {
   // Admin settings
   "admin.settings.title": "系统设置",
   "admin.searchProviders.title": "搜索提供商",
-  "admin.searchProviders.description": "网页搜索的后端。按优先级从上到下选择第一条启用的提供商；没有配置任何提供商时，回退到环境变量里的搜索后端。",
+  "admin.searchProviders.description":
+    "网页搜索的后端。标着「当前生效」的那一个负责回答所有请求；没有指定的话，按优先级数字最小的启用行来。客户端可以用「客户端名称」点名要哪一个（GET /v1/search/services 能看到有哪些）。没有配置任何提供商时，回退到环境变量里的搜索后端。",
   "admin.searchProviders.new": "新增搜索提供商",
   "admin.searchProviders.formDesc": "填写后端类型、地址和密钥。SearXNG 只需要地址；Tavily 和 Brave 需要 API 密钥。",
   "admin.searchProviders.empty": "还没有搜索提供商",
   "admin.searchProviders.emptyHint": "添加一个后端后，助手和 /v1/search 才可以使用网页搜索。",
   "admin.searchProviders.name": "名称",
+  "admin.searchProviders.serviceId": "客户端名称",
+  "admin.searchProviders.serviceIdHint":
+    "客户端点名要用这个搜索服务时写的名字，像模型名一样（例如 searxng）。只能用字母、数字、点、下划线和短横线，每个搜索服务都要不一样。留空就按名称自动生成。",
+  "admin.searchProviders.makeDefault": "设为默认（客户端不点名时用它）",
+  "admin.searchProviders.unusable": "不可用",
+  "admin.searchProviders.notWorking": "现在没有可用的搜索服务：{reason}。请求会直接失败，不会悄悄换成别的服务。",
+  "admin.searchProviders.priorityHint": "数字越小越优先；只在没有指定默认服务时用来排序。",
+  "admin.searchProviders.priorityInvalid": "优先级要是一个 0 或更大的整数。",
   "admin.searchProviders.kind": "类型",
   "admin.searchProviders.kinds.searxng": "SearXNG",
   "admin.searchProviders.kinds.tavily": "Tavily",
@@ -887,9 +905,9 @@ const zhCN: Dict = {
   "admin.docs.media.rule2": "先填 baseUrl（不要带 /v1，spec 的 path 已含版本段），再填 models（客户端模型名 → 上游模型名 + 每件积分）与 specs。",
   "admin.docs.media.rule3": "图片模型会出现在 OpenAI 的 /v1/models（带 relay 元数据），但不会出现在 Anthropic 的模型列表。",
   "admin.docs.search.title": "网页搜索",
-  "admin.docs.search.desc": "助手的 web_search 和对外接口 /v1/search 共用同一个搜索后端。后端在「搜索提供商」里像聊天/媒体提供商一样管理，环境变量只在没有任何提供商记录时回退。",
-  "admin.docs.search.arch": "两边都调用同一个 resolver：按优先级取第一条启用的搜索提供商，解密密钥后建立后端；没有提供商时回退到 SEARXNG_URL / TAVILY_API_KEY / BRAVE_SEARCH_API_KEY。SearXNG 会并发查询上游搜索引擎、去重排序后返回 JSON，全程不调用大模型。",
-  "admin.docs.search.config": "提供商（SearXNG / Tavily / Brave，或任何用协议描述的厂商）、密钥、启用状态、优先级和每次调用积分都存在数据库里。**没有总开关：启用/停用就是开关** —— 至少有一条启用时搜索可用，全部停用时两个入口都拒绝。改完立即生效，不需要重新部署。价格属于每个提供商；只有环境回退（没有任何提供商记录）时才用面板上的回退价格。",
+  "admin.docs.search.desc": "助手的 web_search 和对外接口 /v1/search 默认走站点的同一个搜索后端（用户也可以在助手设置里改用自己的搜索服务，那条路不经过本中转站计费）。后端在「搜索提供商」里像聊天/媒体提供商一样管理，环境变量只在没有任何提供商记录时回退。",
+  "admin.docs.search.arch": "两边都调用同一个 resolver：取**站点默认的那一条**（标了「默认」的那行；没标就是启用状态里优先级数字最小的那行），解密密钥后建立后端。**不会偷偷换人**：选中的那一条不能用时，请求直接失败并说清原因，而不是悄悄用下一条 —— 每一行都有自己的价格，悄悄换一条等于换了收费。客户端还可以用 `service` 字段点名要某一条，目录在 `GET /v1/search/services`。没有提供商行时回退到 SEARXNG_URL / TAVILY_API_KEY / BRAVE_SEARCH_API_KEY。SearXNG 会并发查询上游搜索引擎、去重排序后返回 JSON，全程不调用大模型。",
+  "admin.docs.search.config": "提供商（SearXNG / Tavily / Brave，或任何用协议描述的厂商）、密钥、启用状态、优先级和每次调用积分都存在数据库里。每行还有一个**客户端可见名称**（像模型名一样，客户端用 `service` 字段点名它）和一个**默认**标记。**没有总开关：启用/停用就是开关** —— 至少有一条启用时搜索可用，全部停用时两个入口都拒绝。改完立即生效，不需要重新部署。价格属于每个提供商；只有环境回退（没有任何提供商记录）时才用面板上的回退价格。",
   "admin.docs.search.panel": "「管理 → 搜索提供商」可以新增/编辑/删除/启停/排序、设置单次价格、给没有内置模板的厂商写一份协议（spec），并对单个提供商跑一次测试。**测试是计费的**：按该提供商的单次价格扣你的积分、写进用量 —— 厂商照样收钱，测试不该白嫖。停用状态下也能测，这正是排查它的时候；账号余额不够这一次的价格时会先被拒绝。测试当前生效后端的输入框在「测试」页，与模型测试合并。用量统计在「用量」页，与聊天、媒体共用同一份报告。",
   "admin.docs.search.security": "SearXNG 不暴露公网：Dokku 代理已禁用，只有 relay-ab 通过 relay-net 访问。若要公开，至少要在网关层加每密钥限流。",
   "admin.docs.search.trouble": "测试失败时看错误原文：search_unavailable 是没有配置后端；search_unreachable 是容器网络或 SearXNG 没起来；quota_exceeded_credits 是账号余额不够这一次的价格（429，客户端应当停止调用而不是退避重试）；上游引擎被限流时结果可能变少，但不会报错。",
@@ -1250,6 +1268,11 @@ const zhCN: Dict = {
     "站点的搜索服务也要「用我的账号身份」，它不需要任何密钥。或者改用你自己的搜索服务。",
   "assistant.settings.searchService.sourceOwnHint":
     "助手用你自己的搜索服务，费用由你的服务商收，不经过本中转站计费。",
+  "assistant.settings.searchService.whichService": "用站点的哪一个",
+  "assistant.settings.searchService.followDefault": "跟着站点的默认",
+  "assistant.settings.searchService.isDefault": "默认",
+  "assistant.settings.searchService.whichServiceHint":
+    "站点的搜索服务可以有多个（像模型一样，每个有一个客户端可见的名字）。选定了哪一个，助手的搜索就走它；那个服务坏了会直接报错，不会悄悄换成别的服务去搜。",
   "assistant.settings.searchService.deploymentBackend": "现在生效：站点的搜索服务（{name}）。",
   "assistant.settings.searchService.deploymentBackendUnknown": "现在生效：站点的搜索服务。",
   "assistant.settings.searchService.storedButUnused":
@@ -1704,6 +1727,15 @@ const en: Dict = {
   "docs.search.errorsTypeHint": "The type comes from OpenAI's taxonomy. An exhausted balance is insufficient_quota, not rate_limit_error — a client that sees it should stop calling and ask for a top-up, not back off and retry.",
   "docs.search.errorsQuotaTip": "Look at x-ratelimit-remaining in the response headers first: that is the account's balance after the call.",
   "docs.search.note": "These are search snippets, not the document. Open the original page before relying on a field name or parameter value.",
+  "docs.search.serviceHint":
+    "service is optional: give it and that search service answers (the names are listed by GET /v1/search/services), leave it out and the deployment's default service answers. **Naming one means that one only**: if it is switched off or cannot answer, the request fails by name — it is never quietly answered by a different service. The service field in the response names the one that answered.",
+  "docs.search.servicesTitle": "Search services",
+  "docs.search.servicesDesc":
+    "GET /v1/search/services lists the search services this deployment offers — the same idea as GET /v1/models. The id field is what you name in a search request.",
+  "docs.search.servicesExample": "curl example",
+  "docs.search.servicesResponse": "Response body",
+  "docs.search.servicesHint":
+    "Only the services that **can answer right now** are listed: a switched-off one and one without a key are not in it. Every id in the list can be put straight into the service field of a search request; naming one that does not exist, or that cannot answer, is refused by name rather than answered by another service.",
   "docs.search.assistant": "On the AI assistant page, the globe button beside the input controls whether that conversation searches; the assistant settings set the default for new conversations and how many results each search returns. The same settings let you choose **the deployment's search or a search service of your own** (an OpenAI-compatible search endpoint, where the address is the whole endpoint): with your own service the assistant searches through it, your vendor bills you, and nothing is charged here; with the deployment's, the search costs the deployment's price on your balance.",
   "docs.basics.title": "Basics",
   "docs.basics.desc": "RelayAB exposes spec-compatible OpenAI Chat Completions / Responses and Anthropic Messages endpoints.",
@@ -2054,12 +2086,23 @@ const en: Dict = {
   // Admin settings
   "admin.settings.title": "Settings",
   "admin.searchProviders.title": "Search providers",
-  "admin.searchProviders.description": "Backends for web search. The first enabled provider in priority order is used; with no providers configured, the environment backend is the fallback.",
+  "admin.searchProviders.description":
+    "Backends for web search. The one marked “Active” answers every request; with none marked, the enabled row with the smallest priority number does. A client can name one with its client name (GET /v1/search/services lists them). With no providers configured, the environment backend is the fallback.",
   "admin.searchProviders.new": "Add search provider",
   "admin.searchProviders.formDesc": "Pick the backend type, address and key. SearXNG needs only an address; Tavily and Brave need an API key.",
   "admin.searchProviders.empty": "No search providers yet",
   "admin.searchProviders.emptyHint": "Add a backend before the assistant and /v1/search can search.",
   "admin.searchProviders.name": "Name",
+  "admin.searchProviders.serviceId": "Client name",
+  "admin.searchProviders.serviceIdHint":
+    "The name a client uses to ask for this search service, the way a model name does (e.g. searxng). Letters, digits, dot, underscore and dash only, and it has to be unique. Left blank, one is derived from the name.",
+  "admin.searchProviders.makeDefault": "Make this the default (used when a client does not name one)",
+  "admin.searchProviders.unusable": "Cannot answer",
+  "admin.searchProviders.notWorking":
+    "There is no working search service right now: {reason}. Requests fail rather than quietly going to a different service.",
+  "admin.searchProviders.priorityHint":
+    "Smaller numbers come first; it only orders the services when no default is marked.",
+  "admin.searchProviders.priorityInvalid": "The priority must be a whole number of 0 or more.",
   "admin.searchProviders.kind": "Kind",
   "admin.searchProviders.kinds.searxng": "SearXNG",
   "admin.searchProviders.kinds.tavily": "Tavily",
@@ -2236,9 +2279,9 @@ const en: Dict = {
   "admin.docs.media.rule2": "Set baseUrl first (no trailing /v1 — the spec path already carries the version), then models (client id -> upstream id + credits per item) and specs.",
   "admin.docs.media.rule3": "Image models show up on the OpenAI /v1/models (with relay metadata) but never on the Anthropic model list.",
   "admin.docs.search.title": "Web search",
-  "admin.docs.search.desc": "The assistant's web_search and the public /v1/search endpoint share one search backend. Providers are managed like chat and media providers under Search providers; the environment is only a fallback when no provider rows exist.",
-  "admin.docs.search.arch": "Both call the same resolver: it takes the first enabled provider by priority, decrypts its key and builds a backend. With no providers it falls back to SEARXNG_URL / TAVILY_API_KEY / BRAVE_SEARCH_API_KEY. SearXNG queries the upstream engines in parallel and returns JSON; no language model is involved.",
-  "admin.docs.search.config": "Providers (SearXNG / Tavily / Brave, or any vendor described by a spec), keys, enablement, priority and per-call price live in the database. **There is no feature switch: enable/disable is the switch** — search works while at least one row is enabled, and both entry points refuse once they are all disabled. Changes take effect immediately with no redeploy. Price belongs to each provider; the fallback price on the panel applies only to the environment backend, which has no row.",
+  "admin.docs.search.desc": "The assistant's web_search and the public /v1/search endpoint default to the same search backend (a user can also point the assistant at a search service of their own, which is not billed here). Providers are managed like chat and media providers under Search providers; the environment is only a fallback when no provider rows exist.",
+  "admin.docs.search.arch": "Both call the same resolver: it takes **the deployment's default service** (the row marked as the default; with no mark, the enabled row with the smallest priority number), decrypts its key and builds a backend. **It never quietly swaps vendors**: when the chosen service cannot answer, the request fails and says why, rather than falling through to the next one — each row carries its own price, so a quiet substitution would change the price too. A client can also name one with the `service` field; the catalogue is at `GET /v1/search/services`. With no provider rows it falls back to SEARXNG_URL / TAVILY_API_KEY / BRAVE_SEARCH_API_KEY. SearXNG queries the upstream engines in parallel and returns JSON; no language model is involved.",
+  "admin.docs.search.config": "Providers (SearXNG / Tavily / Brave, or any vendor described by a spec), keys, enablement, priority and per-call price live in the database. Each row also has a **client-visible name** (like a model name, which a client passes in the `service` field) and a **default** marker. **There is no feature switch: enable/disable is the switch** — search works while at least one row is enabled, and both entry points refuse once they are all disabled. Changes take effect immediately with no redeploy. Price belongs to each provider; the fallback price on the panel applies only to the environment backend, which has no row.",
   "admin.docs.search.panel": "Admin -> Search providers can add, edit, delete, disable and reorder providers, set each one's per-call price, write a spec for a vendor that has no built-in template, and run one test against a provider. **The test is billed**: it costs that provider's per-call price from your credits and is recorded in usage — the vendor charges either way, so a test should not be a free ride. A disabled provider can still be tested, which is exactly when it is needed; an account whose balance cannot cover the call is refused first. The box that tests the active backend is on the Testing page, together with the model testers. Usage statistics live on the Usage page, in the same report as chat and media.",
   "admin.docs.search.security": "SearXNG is not public: the Dokku proxy is disabled and only relay-ab reaches it over relay-net. If it is ever exposed, add per-key rate limiting at the gateway first.",
   "admin.docs.search.trouble": "Read the error text from the test: search_unavailable means no backend is configured; search_unreachable means the container network or SearXNG is down; quota_exceeded_credits means the balance cannot cover this call (429 — a client should stop calling rather than back off and retry); when an upstream engine throttles, results may shrink but the call does not error.",
@@ -2620,6 +2663,11 @@ const en: Dict = {
     "The deployment's search service needs the account identity too, and it needs no key. Or use a search service of your own instead.",
   "assistant.settings.searchService.sourceOwnHint":
     "The assistant uses your own search service. Your vendor bills you; nothing is charged here.",
+  "assistant.settings.searchService.whichService": "Which one of the deployment's",
+  "assistant.settings.searchService.followDefault": "Whichever the deployment serves by default",
+  "assistant.settings.searchService.isDefault": "default",
+  "assistant.settings.searchService.whichServiceHint":
+    "A deployment can offer several search services — each with a client-visible name, like a model. Whichever you pick is the one the assistant searches with; if that service cannot answer, the search fails by name rather than quietly going to a different one.",
   "assistant.settings.searchService.deploymentBackend": "In effect: the deployment's search service ({name}).",
   "assistant.settings.searchService.deploymentBackendUnknown": "In effect: the deployment's search service.",
   "assistant.settings.searchService.storedButUnused":

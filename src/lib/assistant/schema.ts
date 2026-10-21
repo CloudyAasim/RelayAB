@@ -111,6 +111,16 @@ export const AssistantSettingsSchema = z.object({
    * typed should not have to be thrown away to get there.
    */
   searchSource: z.enum(["deployment", "own"]).nullable().optional(),
+  /**
+   * Which of the **deployment's** search services the assistant searches with,
+   * by its client-visible name.
+   *
+   * Null is "the one the deployment serves by default" — what every account
+   * had before the services could be named. It only says anything when the
+   * source is the deployment's: the user's own service is not one of the
+   * deployment's services and has no name here.
+   */
+  searchServiceId: z.string().nullable().optional(),
   /** The key for that service, encrypted with the deployment's master key. */
   encryptedSearchApiKey: z.string().nullable().optional(),
   createdAt: z.string(),
@@ -292,6 +302,7 @@ export function rowToAssistantSettings(row: Record<string, unknown>): AssistantS
     searchBaseUrl: (row.search_base_url as string | null) ?? null,
     searchSource:
       (row.search_source as "deployment" | "own" | null | undefined) ?? null,
+    searchServiceId: (row.search_service_id as string | null) ?? null,
     encryptedSearchApiKey: (row.encrypted_search_api_key as string | null) ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

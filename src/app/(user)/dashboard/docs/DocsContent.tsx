@@ -144,9 +144,10 @@ export function DocsContent({
             <h3 className="text-sm font-semibold">{t("docs.search.requestTitle")}</h3>
             <CodeBlock
               label={t("docs.search.requestBody")}
-              value={`{ "query": "智谱 bigmodel 图像生成 API 文档", "limit": 5 }`}
+              value={`{ "query": "智谱 bigmodel 图像生成 API 文档", "limit": 5, "service": "searxng" }`}
             />
             <p className="text-xs text-muted-foreground">{t("docs.search.requestHint")}</p>
+            <p className="text-xs text-muted-foreground">{t("docs.search.serviceHint")}</p>
 
             <h3 className="text-sm font-semibold">{t("docs.search.responseTitle")}</h3>
             <CodeBlock
@@ -155,6 +156,7 @@ export function DocsContent({
   "object": "search",
   "query": "智谱 bigmodel 图像生成 API 文档",
   "provider": "searxng",
+  "service": "searxng",
   "results": [
     {
       "title": "图像生成API - 平台介绍- 智谱",
@@ -183,6 +185,48 @@ x-ratelimit-unit: credits`}
             <p className="rounded-md border border-border bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">
               {t("docs.search.assistant")}
             </p>
+          </div>
+        </Card>
+
+        {/*
+          The catalogue of search services, in its own card.
+
+          It is a public endpoint like the others, and the guard that checks
+          the public surface is written down in both languages — so it has to
+          be here, and not only in the repository's own API reference.
+        */}
+        <Card>
+          <CardHeader
+            title={
+              <span className="flex items-center gap-2">
+                <Search className="h-4 w-4 text-muted-foreground" />
+                {t("docs.search.servicesTitle")}
+              </span>
+            }
+            description={t("docs.search.servicesDesc")}
+          />
+          <div className="space-y-3 text-xs text-foreground/90 sm:space-y-4 sm:text-sm">
+            <CodeBlock
+              label={t("docs.search.servicesExample")}
+              value={`curl ${openaiBase}/search/services \\
+  -H "Authorization: Bearer $RELAYAB_KEY"`}
+            />
+            <CodeBlock
+              label={t("docs.search.servicesResponse")}
+              value={`{
+  "object": "list",
+  "data": [
+    {
+      "id": "searxng",
+      "object": "search_service",
+      "name": "自建 SearXNG",
+      "kind": "searxng",
+      "default": true
+    }
+  ]
+}`}
+            />
+            <p className="text-xs text-muted-foreground">{t("docs.search.servicesHint")}</p>
           </div>
         </Card>
 

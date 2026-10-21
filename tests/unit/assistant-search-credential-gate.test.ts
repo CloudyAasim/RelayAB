@@ -155,14 +155,18 @@ describe("the user's own search service", () => {
       accountModel: "m",
       credentialMode: "account",
       searchSource: "own",
-      searchBaseUrl: "https://my-gateway.test/v1/search",
+      // A **literal public address**, not a hostname: a user's own service is
+      // held to the public-address rule (the request is made by the gateway),
+      // and a hostname would have to resolve for the check to pass. The
+      // literal is judged without a lookup, so the test needs no network.
+      searchBaseUrl: "https://93.184.216.34/v1/search",
     });
 
     const result = await executeTool("web_search", JSON.stringify({ query: "q" }), ctx());
     expect(result.ok, result.content).toBe(true);
     // The call went to their own address, and it was not charged.
     const [url] = fetchMock.mock.calls[0] as unknown as [string];
-    expect(url).toBe("https://my-gateway.test/v1/search");
+    expect(url).toBe("https://93.184.216.34/v1/search");
     expect((await getUserById(user.id))?.quotaUsed).toBe(0);
     expect(await usageRowsFor(user.id)).toHaveLength(0);
   });

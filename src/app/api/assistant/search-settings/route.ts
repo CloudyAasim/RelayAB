@@ -67,6 +67,15 @@ export async function POST(req: Request): Promise<Response> {
     baseUrl: parsed.data.baseUrl,
     ...(parsed.data.apiKey?.trim() ? { apiKey: parsed.data.apiKey.trim() } : {}),
     source: "user",
+    /**
+     * The same rule the real call is held to.
+     *
+     * The test button is a request the gateway makes on somebody else's
+     * instructions, so it is exactly as much of a probe as the search itself
+     * — and a test that works while the search is refused would be a way to
+     * read an internal answer without the answer ever being a search result.
+     */
+    publicOnly: true,
     usageProviderId: `user:${me.id}`,
     describe: "自己的搜索服务",
   });
@@ -99,6 +108,7 @@ export async function POST(req: Request): Promise<Response> {
       limit: 3,
       displayName: "自己的搜索服务",
       ...(parsed.data.apiKey?.trim() ? { apiKey: parsed.data.apiKey.trim() } : {}),
+      publicOnly: true,
     });
 
     return NextResponse.json({

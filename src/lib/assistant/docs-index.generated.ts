@@ -64,7 +64,7 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     surface: "user",
     id: "search",
     summary: "网页搜索接口 /v1/search：怎么调、按次计费、失败不扣费",
-    keys: ["docs.search.title","docs.search.desc","docs.search.line1","docs.search.sharesBase","docs.search.baseUrl","docs.search.header","docs.search.examplePost","docs.search.exampleGet","docs.search.requestTitle","docs.search.requestBody","docs.search.requestHint","docs.search.responseTitle","docs.search.responseBody","docs.search.responseHint","docs.search.balanceHeader","docs.search.balanceHint","docs.search.billing","docs.search.note","docs.search.assistant","docs.search.errorsTitle","docs.search.errorsBody","docs.search.errorsShape","docs.search.errorsTypeHint","docs.search.errorsQuotaTip"],
+    keys: ["docs.search.title","docs.search.desc","docs.search.line1","docs.search.sharesBase","docs.search.baseUrl","docs.search.header","docs.search.examplePost","docs.search.exampleGet","docs.search.requestTitle","docs.search.requestBody","docs.search.requestHint","docs.search.serviceHint","docs.search.responseTitle","docs.search.responseBody","docs.search.responseHint","docs.search.balanceHeader","docs.search.balanceHint","docs.search.billing","docs.search.note","docs.search.assistant","docs.search.servicesTitle","docs.search.servicesDesc","docs.search.servicesExample","docs.search.servicesResponse","docs.search.servicesHint","docs.search.errorsTitle","docs.search.errorsBody","docs.search.errorsShape","docs.search.errorsTypeHint","docs.search.errorsQuotaTip"],
   },
   {
     surface: "user",

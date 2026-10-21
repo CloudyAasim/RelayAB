@@ -706,11 +706,12 @@ at its `/api/...` path.
 | `GET /api/admin/users/[id]/delete-form` | Confirmation form before deleting a user |
 | `GET /api/user/keys` · `GET/PATCH/DELETE /api/user/keys/[id]` | The user's own key management |
 | `GET /api/user/profile` | The signed-in user's own profile |
-| `POST/GET /v1/search` | Paid web search (Bearer `sk-relay-…`); billed at a fixed price per call |
-| `GET/PUT /api/admin/search` | Read / save the global search switch and the environment fallback price |
-| `GET/POST /api/admin/search-providers` | List / create search backends (SearXNG, Tavily, Brave), each with its own per-call price |
-| `GET/PATCH/DELETE /api/admin/search-providers/[id]` | View / update / delete one backend; a blank `apiKey` keeps the stored key |
-| `POST /api/admin/search-providers/[id]/test` | Run one query through that backend; never billed, and works while it is disabled |
+| `POST/GET /v1/search` | Paid web search (Bearer `sk-relay-…`); billed at a fixed price per call. The `service` field names which of the deployment's search services to use |
+| `GET /v1/search/services` | The catalogue of the deployment's search services (the same idea as `GET /v1/models`); `id` is the name a search request's `service` field takes |
+| `GET/PUT /api/admin/search` | Read / save the **environment fallback price** (the feature-wide switch was folded into each provider row's `enabled`) |
+| `GET/POST /api/admin/search-providers` | List / create search backends (SearXNG, Tavily, Brave), each with its own per-call price and **client-visible name** |
+| `GET/PATCH/DELETE /api/admin/search-providers/[id]` | View / update / delete one backend; a blank `apiKey` keeps the stored key; `isDefault: true` makes it the deployment's default service |
+| `POST /api/admin/search-providers/[id]/test` | Run one query through that backend; **billed as usual** (the panel's test button goes through the same settlement), and it works while the backend is disabled |
 
 ---
 

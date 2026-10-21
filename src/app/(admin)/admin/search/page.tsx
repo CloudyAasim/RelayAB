@@ -30,7 +30,7 @@ import {
   type PublicSearchProvider,
 } from "@/lib/db/search-providers";
 import { getSettings } from "@/lib/db/settings";
-import { activeSearchBackendInfo } from "@/lib/search/resolve";
+import { activeSearchBackendInfo, searchServiceUsability } from "@/lib/search/resolve";
 import { SEARCH_TEMPLATES } from "@/lib/search/templates";
 import { specDrift, type SpecDrift } from "@/lib/search/drift";
 import { Card } from "@/components/ui/Card";
@@ -96,16 +96,27 @@ export default async function SearchAdminPage() {
   if (user.role !== "admin") redirect("/dashboard");
 
   const { t } = await getT();
-  const [settings, records, backend] = await Promise.all([
-    getSettings(),
-    listSearchProviders(),
-    activeSearchBackendInfo(),
-  ]);
+  const [settings, records] = await Promise.all([getSettings(), listSearchProviders()]);
+  // The resolver's own answer, computed from the rows this page already read:
+  // two reads of the same table can disagree, and a badge that points at a
+  // different row than the one in the list is worse than no badge.
+  const backend = await activeSearchBackendInfo(process.env, records);
   const providers = records.map(toPublicSearchProvider);
-  // The row that will actually serve the next search: the resolver's own
-  // answer, not "the first one in the list" — a row can be enabled and still
-  // be unable to answer (no key, an unreadable spec).
-  const activeId = backend.source === "db" ? backend.usageProviderId : null;
+
+  /**
+   * Why each row cannot answer, when it cannot.
+   *
+   * The panel used to show every enabled row in green, including the ones
+   * that could never answer — a row with no key, or one whose key no longer
+   * decrypts. They were skipped in silence, so the row the operator was
+   * looking at was not the row that served, and nothing on the page said so.
+   */
+  const usability = new Map(providers.map((p) => [p.id, searchServiceUsability(records.find((r) => r.id === p.id)!)]));
+  const unusable = new Map(
+    providers
+      .map((p) => [p.id, usability.get(p.id)?.reason ?? null] as const)
+      .filter(([, reason]) => Boolean(reason)),
+  );
 
   return (
     <SectionPageLayout>
@@ -117,6 +128,20 @@ export default async function SearchAdminPage() {
         <p className="mb-4 text-sm text-muted-foreground">
           {t("admin.searchProviders.description")}
         </p>
+
+        {/*
+          The one thing the table cannot say on its own.
+
+          A deployment whose service cannot answer looks, in the list, like a
+          deployment with several healthy services — every row green, one of
+          them marked as the one that answers. And the requests are failing.
+          So the failure is said out loud, here, above the list.
+        */}
+        {backend.unusableReason && (
+          <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            {t("admin.searchProviders.notWorking", { reason: backend.unusableReason })}
+          </div>
+        )}
 
         <Card className="mb-6">
           {providers.length === 0 ? (
@@ -131,6 +156,7 @@ export default async function SearchAdminPage() {
               <THead>
                 <TR>
                   <TH>{t("admin.searchProviders.name")}</TH>
+                  <TH>{t("admin.searchProviders.serviceId")}</TH>
                   <TH>{t("admin.searchProviders.kind")}</TH>
                   <TH>{t("admin.searchProviders.baseUrl")}</TH>
                   <TH>{t("admin.searchProviders.priority")}</TH>
@@ -146,6 +172,11 @@ export default async function SearchAdminPage() {
                     <TD>
                       <div className="font-medium text-foreground">{p.name}</div>
                       <div className="font-mono text-xs text-muted-foreground">{p.id}</div>
+                    </TD>
+                    <TD>
+                      {/* The name a client asks for. The one that answers is
+                          marked below, so the two can be told apart. */}
+                      <code className="text-xs">{p.serviceId || "—"}</code>
                     </TD>
                     <TD>
                       <Badge tone="primary">{kindLabel(t, p.kind)}</Badge>
@@ -178,10 +209,23 @@ export default async function SearchAdminPage() {
                             ? t("dashboard.status.enabled")
                             : t("dashboard.status.disabled")}
                         </Badge>
-                        {p.id === activeId && (
+                        {p.id === backend.providerId && (
                           <Badge tone="info">{t("admin.searchProviders.active")}</Badge>
                         )}
+                        {unusable.get(p.id) && (
+                          <span
+                            className="text-xs text-destructive"
+                            title={unusable.get(p.id) ?? ""}
+                          >
+                            {t("admin.searchProviders.unusable")}
+                          </span>
+                        )}
                       </div>
+                      {unusable.get(p.id) && (
+                        <div className="mt-1 max-w-[16rem] text-xs text-destructive">
+                          {unusable.get(p.id)}
+                        </div>
+                      )}
                     </TD>
                     <TD className="text-right">
                       <SearchProviderActions provider={p} templates={TEMPLATE_OPTIONS} />

@@ -14,6 +14,7 @@ import {
   getSearchProviderById,
   listSearchProviders,
   SearchProviderValidationError,
+  setDefaultSearchProvider,
   toPublicSearchProvider,
   updateSearchProvider,
 } from "@/lib/db/search-providers";
@@ -100,6 +101,19 @@ describe("list", () => {
     await createSearchProvider({ name: "C", kind: "searxng", baseUrl: "https://c.example", priority: 2 });
     const rows = await listSearchProviders();
     expect(rows.map((r) => r.name)).toEqual(["A", "B", "C"]);
+  });
+
+  it("a marked default is a marker, not a place in the order", async () => {
+    // The list is the order the services are considered in, and the one that
+    // answers is marked with a badge — so the list and the badge are never two
+    // different answers to the same question.
+    await createSearchProvider({ name: "A", kind: "searxng", baseUrl: "https://a.example", priority: 1 });
+    const b = await createSearchProvider({ name: "B", kind: "searxng", baseUrl: "https://b.example", priority: 9 });
+    await setDefaultSearchProvider(b.id);
+    const rows = await listSearchProviders();
+    expect(rows.map((r) => r.name)).toEqual(["A", "B"]);
+    // And exactly one row carries the mark.
+    expect(rows.filter((r) => r.isDefault).map((r) => r.name)).toEqual(["B"]);
   });
 
   it("enabledOnly filters disabled rows", async () => {

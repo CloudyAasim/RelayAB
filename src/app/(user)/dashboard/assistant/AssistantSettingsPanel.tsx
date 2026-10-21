@@ -127,6 +127,12 @@ export interface AssistantSettingsView {
    * that state.
    */
   searchSource?: "deployment" | "own" | null;
+  /**
+   * Which of the deployment's search services, by its client-visible name.
+   *
+   * Null is "the one the deployment serves by default".
+   */
+  searchServiceId?: string | null;
   /** Whether a key is stored for it. The key itself is never echoed back. */
   hasSearchApiKey?: boolean;
 }
@@ -157,6 +163,18 @@ export interface WebSearchSettings {
    * could disagree with the assistant about which one is live.
    */
   ownInUse: boolean;
+  /**
+   * The deployment's search services, by their client-visible name.
+   *
+   * Empty for a deployment that has only one: there is nothing to choose
+   * between, and a picker with one entry is a question nobody asked.
+   *
+   * The names are public — they are in the published catalogue at
+   * `GET /v1/search/services`, the way the model names are in `/v1/models` —
+   * so this is not the operator's setup being shown to a stranger, it is the
+   * catalogue being read from the form.
+   */
+  services: Array<{ id: string; name: string; kind: string; default: boolean }>;
 }
 
 /**
@@ -204,6 +222,7 @@ export function AssistantSettingsPanel({
     ownBaseUrl: null,
     ownHasKey: false,
     ownInUse: false,
+    services: [],
   },
 }: {
   initial: AssistantSettingsView | null;
@@ -300,6 +319,16 @@ export function AssistantSettingsPanel({
   const [searchSource, setSearchSource] = useState<"deployment" | "own">(
     initial?.searchSource ?? (webSearch.ownInUse ? "own" : "deployment"),
   );
+  /**
+   * Which of the deployment's search services, when there is more than one.
+   *
+   * Empty means "the one the deployment serves by default" — the state every
+   * account was in before the services could be named, and the one that
+   * keeps working when the administrator changes which one is the default.
+   */
+  const [searchServiceId, setSearchServiceId] = useState<string>(
+    initial?.searchServiceId ?? "",
+  );
   const [searchProbe, setSearchProbe] = useState<{ ok: boolean; text: string } | null>(null);
   const [searchBusy, setSearchBusy] = useState(false);
   const [busy, setBusy] = useState<"probe" | "save" | null>(null);
@@ -376,6 +405,11 @@ export function AssistantSettingsPanel({
       // explicit "delete it", which a blank box cannot express.
       searchBaseUrl: searchBaseUrl.trim() || null,
       searchSource,
+      // Which of the deployment's services, when the user picked one. Empty
+      // means the deployment's default, so it is sent as null rather than
+      // omitted — an omitted field means "leave the stored one", and clearing
+      // the choice has to actually clear it.
+      searchServiceId: searchServiceId.trim() || null,
       ...(searchApiKey.trim() ? { searchApiKey: searchApiKey.trim() } : {}),
       ...(clearSearchKey ? { searchApiKey: null } : {}),
     };
@@ -1042,6 +1076,46 @@ export function AssistantSettingsPanel({
                 ? t("assistant.settings.searchService.sourceDeploymentHint")
                 : t("assistant.settings.searchService.sourceOwnHint")}
             </p>
+
+            {/*
+              Which of the deployment's services, when there is more than one.
+
+              Only shown then: a deployment with a single service has nothing
+              to choose between, and a picker with one entry is a question
+              nobody asked. The first entry is "whichever one the deployment
+              serves by default", which is what every account was on before
+              the services could be named.
+            */}
+            {searchSource === "deployment" && webSearch.services.length > 1 && (
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="assistant-search-service"
+                  className="block text-sm font-medium text-foreground"
+                >
+                  {t("assistant.settings.searchService.whichService")}
+                </label>
+                <select
+                  id="assistant-search-service"
+                  name="searchServiceId"
+                  value={searchServiceId}
+                  onChange={(e) => setSearchServiceId(e.target.value)}
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="">
+                    {t("assistant.settings.searchService.followDefault")}
+                  </option>
+                  {webSearch.services.map((service) => (
+                    <option key={service.id} value={service.id}>
+                      {service.name}
+                      {service.default ? ` · ${t("assistant.settings.searchService.isDefault")}` : ""}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  {t("assistant.settings.searchService.whichServiceHint")}
+                </p>
+              </div>
+            )}
           </fieldset>
 
           {searchSource === "own" ? (

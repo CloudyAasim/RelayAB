@@ -20,6 +20,7 @@
 import { getPath, resolveTemplate } from "../spec/primitives";
 import { plainText, usableUrl } from "./normalize";
 import { readSearchField, type SearchSpec } from "./spec";
+import { assertPublicHost } from "../assistant/web-fetch";
 import {
   MAX_SEARCH_BYTES,
   MAX_SNIPPET_CHARS,
@@ -53,6 +54,27 @@ export interface SearchExecutionArgs {
    */
   credentialHint?: string;
   fetchImpl?: typeof fetch;
+  /**
+   * Whether the address has to be a public one.
+   *
+   * The operator's own providers may point at a private network on purpose.
+   * A **user's** own search service may not: that address is a stranger's
+   * text and the gateway is the thing that would make the request, so it is
+   * held to the rule `fetch_page` already applies — the host must resolve to
+   * public addresses, and a redirect is not followed off the public internet.
+   */
+  publicOnly?: boolean;
+}
+
+/**
+ * The host a request URL names, or null when it names none.
+ */
+function hostOf(url: string): string | null {
+  try {
+    return new URL(url).hostname || null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -399,14 +421,80 @@ export async function executeSearchWithReport(
   const signal = AbortSignal.timeout(timeoutMs);
   const hint = args.credentialHint ?? "该提供商的 API 密钥";
 
+  /**
+   * The address has to be a public one, when the address is a user's.
+   *
+   * Checked **before** the request goes out, because the request is the
+   * exposure: a `POST` to a cloud metadata endpoint is a credential handed to
+   * whoever answers it, and no amount of looking at the response afterwards
+   * takes it back.
+   */
+  if (args.publicOnly) {
+    const host = hostOf(request.url);
+    if (!host) {
+      throw new WebSearchError("这个搜索服务的地址不完整，没法检查它指向哪里。", "not_configured");
+    }
+    try {
+      await assertPublicHost(host);
+    } catch (err) {
+      throw new WebSearchError(
+        err instanceof Error ? err.message : "这个搜索服务指向了不能访问的地址。",
+        "not_configured",
+      );
+    }
+  }
+
   const res = await fetchImpl(request.url, {
     method: request.method,
     signal,
     headers: request.headers,
     ...(request.body !== undefined ? { body: request.body } : {}),
+    /**
+     * Redirects are not followed for a user's own service.
+     *
+     * The check above is about the address that was written down; a redirect
+     * answers a different question, and the answer can be an internal address.
+     * So the redirect is handed back rather than followed, and refused by name.
+     * The operator's own providers keep following redirects, because a
+     * self-hosted instance behind a proxy may well answer with one.
+     */
+    ...(args.publicOnly ? { redirect: "manual" } : {}),
   });
 
+  if (args.publicOnly && res.status >= 300 && res.status < 400) {
+    throw new WebSearchError(
+      "你自己的搜索服务返回了重定向，网关不会跟随指向别处的重定向。" +
+        "请把它的地址填成最终那个端点。",
+      "upstream_error",
+    );
+  }
+
   const body = await checkedBody(res, args.displayName, hint, signal);
+
+  /**
+   * One more look at the host, now that the answer is here.
+   *
+   * The check before the request resolved the name; `fetch` resolved it again.
+   * A name served with a zero TTL can answer the first question with a public
+   * address and the second with a private one, milliseconds apart, and nothing
+   * binds the connection to the address that was checked. The request has
+   * already happened — that cannot be undone — but the **body** can still be
+   * refused, and the body is what ends up in the search results and in the
+   * model's hands.
+   */
+  if (args.publicOnly) {
+    const host = hostOf(request.url);
+    if (host) {
+      try {
+        await assertPublicHost(host);
+      } catch {
+        throw new WebSearchError(
+          "这个搜索服务的域名在校验之后解析到了内网地址，答案没有采用。",
+          "not_configured",
+        );
+      }
+    }
+  }
 
   let payload: unknown;
   try {

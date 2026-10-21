@@ -16,6 +16,8 @@ import { getPublicAssistantSettings } from "@/lib/db/assistant";
 import { cachedBuildModelCatalog } from "@/lib/db/data-cache";
 import { resolveAssistantConfig } from "@/lib/assistant/config";
 import { loadSearchConfig } from "@/lib/search/config";
+import { searchServices } from "@/lib/search/resolve";
+import { listSearchProviders } from "@/lib/db/search-providers";
 import { useOwnSearchService } from "@/lib/search/user";
 import { getAssistantCredential } from "@/lib/db/assistant-keys";
 import { DEFAULT_WEB_SEARCH_LIMIT } from "@/lib/search/usage";
@@ -32,11 +34,12 @@ export default async function AssistantPage() {
   const sessionUser = await getCurrentUser();
   if (!sessionUser) redirect("/login");
 
-  const [{ t }, settings, catalog, searchConfig] = await Promise.all([
+  const [{ t }, settings, catalog, searchConfig, searchRows] = await Promise.all([
     getT(),
     getPublicAssistantSettings(sessionUser.id),
     cachedBuildModelCatalog(),
     loadSearchConfig(),
+    listSearchProviders(),
   ]);
   const isAdmin = sessionUser.role === "admin";
   /**
@@ -168,6 +171,8 @@ export default async function AssistantPage() {
                 // The server's own answer about which backend is live, so the
                 // form and the assistant cannot disagree about it.
                 ownInUse: useOwnSearchService(settings),
+                // The services the deployment offers, for the picker.
+                services: searchServices(searchRows),
               }}
             />
           }

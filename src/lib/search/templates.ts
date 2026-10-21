@@ -205,10 +205,16 @@ export const BRAVE_TEMPLATE: SearchTemplate = {
  * publishes the same shape.
  *
  * **The key is optional here** (`auth.required: false`) and nowhere else: a
- * user may point the assistant at a service on their own machine that asks for
- * no credential, and a missing key must then mean "no credential is sent" —
- * never an empty `Authorization` header, which some servers read as a
- * malformed key rather than as no key.
+ * user may point the assistant at a service that asks for no credential, and a
+ * missing key must then mean "no credential is sent" — never an empty
+ * `Authorization` header, which some servers read as a malformed key rather
+ * than as no key.
+ *
+ * **The address still has to be a public one.** "A service on their own
+ * machine" means a machine *the gateway can reach over the internet* — the
+ * request is made by the gateway, so an address on the gateway's own network
+ * is not the user's machine, it is the inside of the deployment. The engine
+ * refuses those, and the refusal says so.
  */
 export const OPENAI_COMPATIBLE_TEMPLATE: SearchTemplate = {
   id: "openai-compatible",

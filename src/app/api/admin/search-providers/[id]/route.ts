@@ -49,6 +49,10 @@ const PatchSchema = z
     creditsPerCall: z.number().int().min(0).max(MAX_CREDITS_PER_CALL).optional(),
     /** The row's own search spec. `null` returns the row to its template. */
     spec: z.unknown().optional(),
+    /** The name clients use to ask for this service. */
+    serviceId: z.string().trim().min(1).max(64).optional(),
+    /** Make this the service callers get when they do not name one. */
+    isDefault: z.boolean().optional(),
   })
   .strict();
 

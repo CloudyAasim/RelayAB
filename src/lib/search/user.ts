@@ -40,7 +40,39 @@
 import { decryptSecret } from "../crypto/secrets";
 import { getAssistantSettings } from "../db/assistant";
 import { createSearchBackend, type SearchBackend } from "../assistant/web-search";
+import { isPrivateAddress } from "../assistant/web-fetch";
+import { isIP } from "node:net";
 import { OPENAI_COMPATIBLE_TEMPLATE } from "./templates";
+
+/**
+ * Whether an address points inside the deployment — checked **without** a DNS
+ * round trip.
+ *
+ * Only the literal cases, on purpose. An address written as `127.0.0.1` or
+ * `localhost` is refused where the person who typed it is looking at the
+ * message, which is the cheapest place to refuse it. A name that resolves to a
+ * private address is caught when the request is actually made, because that is
+ * the check that cannot be side-stepped by a rebind and the only one that
+ * sees the address the request really goes to.
+ */
+export function isPrivateSearchAddress(baseUrl: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    return false;
+  }
+  const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (!host) return false;
+  if (host === "localhost" || host.endsWith(".localhost")) return true;
+  // The two names a container network and an office DNS hand out.
+  if (host.endsWith(".local") || host.endsWith(".internal")) return true;
+  // Only a literal address can be judged without a lookup. A name is left
+  // alone here and judged when the request is made, where the check sees the
+  // address the request really goes to.
+  if (isIP(host) === 0) return false;
+  return isPrivateAddress(host);
+}
 
 /**
  * Whether this account's own service is the one to search with.
@@ -100,6 +132,20 @@ export async function userSearchBackend(userId: string): Promise<SearchBackend |
     baseUrl,
     ...(apiKey ? { apiKey } : {}),
     source: "user",
+    /**
+     * The address is a stranger's text, and the gateway is the thing that would
+     * make the request.
+     *
+     * So it is held to the rule `fetch_page` already applies: the host has to
+     * resolve to public addresses, and a redirect is not followed off the
+     * public internet. Without this, any logged-in account could point the
+     * gateway at the cloud metadata endpoint or at the gateway's own port and
+     * read the answer back out of the search results.
+     *
+     * The operator's own provider rows are not held to it — a self-hosted
+     * SearXNG on a private network is a normal thing to run.
+     */
+    publicOnly: true,
     // The user's own service has no row in the deployment's provider table,
     // so there is no provider id to point a usage row at. Nothing is written
     // for a call through it anyway — their key paid their vendor.

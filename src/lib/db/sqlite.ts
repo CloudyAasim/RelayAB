@@ -41,6 +41,7 @@ import {
   type UsageLog,
 } from "./types";
 import type { MediaProvider } from "../media/spec";
+import { slugifyServiceId, uniqueServiceId } from "../search/service-id";
 
 /**
  * `node:sqlite` is a Node builtin (>= 22.5), but the bundlers in this project
@@ -539,6 +540,40 @@ const DATA_MIGRATIONS: ReadonlyArray<{ version: number; apply: (conn: Database) 
       `);
     },
   },
+  {
+    /**
+     * v3 — every search service gets a name a client can ask for.
+     *
+     * The rows that existed before the name was a thing have none, and a
+     * service nobody can name is a service nobody can choose: the catalogue
+     * would list it with an empty id and a client asking for it would be
+     * told there is no such service.
+     *
+     * So each of them is given one, derived from its display name — "自建
+     * SearXNG" becomes `searxng` — and the derivation happens **here**, once,
+     * so the name is stored and stays put when the display name is later
+     * edited. A name that is computed on every read would change under the
+     * clients that had already learned it.
+     */
+    version: 3,
+    apply: (conn) => {
+      const rows = conn
+        .prepare("SELECT id, name, kind, service_id FROM search_providers")
+        .all() as Array<{ id: string; name: string; kind: string; service_id: string }>;
+      const taken = new Set<string>();
+      for (const row of rows) {
+        if (row.service_id) {
+          taken.add(row.service_id);
+        }
+      }
+      for (const row of rows) {
+        if (row.service_id) continue;
+        const serviceId = uniqueServiceId(slugifyServiceId(row.name, row.kind), taken);
+        taken.add(serviceId);
+        conn.prepare("UPDATE search_providers SET service_id = ? WHERE id = ?").run(serviceId, row.id);
+      }
+    },
+  },
 ];
 
 function applyDataMigrations(conn: Database): void {
@@ -636,6 +671,10 @@ const ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; type: string
   // state a user needs when their own service is down for a while and they
   // still want the assistant to search.
   { table: "assistant_settings", column: "search_source", type: "TEXT" },
+  // Which of the deployment's search services the assistant searches with, by
+  // its client-visible name. NULL means "the deployment's default one", which
+  // is what every account had before the services could be named at all.
+  { table: "assistant_settings", column: "search_service_id", type: "TEXT" },
   { table: "assistant_threads", column: "web_search", type: "INTEGER" },
   // Per-provider search price. Rows created before this existed keep the
   // previous global default of one credit rather than becoming free.
@@ -644,6 +683,17 @@ const ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; type: string
   // "use the built-in template this row's kind names" — so an upgrade cannot
   // change what a single request looks like.
   { table: "search_providers", column: "spec", type: "TEXT NOT NULL DEFAULT ''" },
+  // The name a **client** uses to ask for this search service, the way a model
+  // name is what a client uses to ask for a chat model. Empty for rows written
+  // before this existed: they are still the deployment's service, they just
+  // cannot be named yet.
+  { table: "search_providers", column: "service_id", type: "TEXT NOT NULL DEFAULT ''" },
+  // The one service a caller gets when they do not name one.
+  //
+  // At most one row carries it. Zero rows carrying it is not an error: the
+  // first enabled row by priority is then the one, which is what every
+  // deployment had before this column existed.
+  { table: "search_providers", column: "is_default", type: "INTEGER NOT NULL DEFAULT 0" },
 ];
 
 function addColumnIfMissing(

@@ -102,6 +102,28 @@ export interface SearchBackend {
   apiKey?: string;
   /** What to tell an operator to check when the vendor refuses the credential. */
   credentialHint?: string;
+  /**
+   * The name a client uses to ask for this service.
+   *
+   * Set for a row in the deployment's provider table, so a caller that named
+   * a service can be told that the service it named is the one that answered.
+   */
+  serviceId?: string;
+  /**
+   * Whether the address has to be a **public** one.
+   *
+   * The operator's own providers may point anywhere: a self-hosted SearXNG on a
+   * private network is a normal thing to run, and the address is typed by
+   * somebody who already runs the box.
+   *
+   * A **user's** own search service is a different thing. That address is text
+   * a stranger typed, and the gateway is the thing that would make the request
+   * — so the address has to answer the same question `fetch_page` already asks:
+   * does this point somewhere a request must never reach? Without it, any
+   * logged-in account could point the gateway at `169.254.169.254`, or at the
+   * gateway's own port, and read the answer back out of the search results.
+   */
+  publicOnly?: boolean;
   search(query: string, limit: number, fetchImpl: typeof fetch): Promise<WebSearchResult[]>;
 }
 
@@ -138,6 +160,18 @@ export interface CreateSearchBackendInput {
   creditsPerCall?: number;
   /** What to check when the vendor refuses the credential. */
   credentialHint?: string;
+  /**
+   * The name clients use to ask for this service, when there is one.
+   */
+  serviceId?: string;
+  /**
+   * Whether the address has to resolve to public addresses only.
+   *
+   * Set for a **user's** own search service, and only for that one: the
+   * operator's rows may point at a private network on purpose, and a user's
+   * address is a stranger's text.
+   */
+  publicOnly?: boolean;
 }
 
 /**
@@ -176,6 +210,8 @@ export function createSearchBackend(input: CreateSearchBackendInput): SearchBack
     source,
     ...(operatorAddress ? { baseUrl: operatorAddress } : {}),
     ...(input.creditsPerCall !== undefined ? { creditsPerCall: input.creditsPerCall } : {}),
+    ...(input.serviceId ? { serviceId: input.serviceId } : {}),
+    ...(input.publicOnly ? { publicOnly: true } : {}),
     describe,
     spec,
     endpointBase,
@@ -188,6 +224,7 @@ export function createSearchBackend(input: CreateSearchBackendInput): SearchBack
         apiKey,
         displayName: describe,
         ...(input.credentialHint ? { credentialHint: input.credentialHint } : {}),
+        ...(input.publicOnly ? { publicOnly: true } : {}),
         fetchImpl,
       });
     },
@@ -257,6 +294,14 @@ export interface SearchOutcome {
   provider: SearchProvider;
   /** What the usage row should attribute this call to. */
   providerId: string;
+  /**
+   * The client-visible name of the service that answered, when it came from
+   * the deployment's provider table.
+   *
+   * So a caller that named a service can see that the service it named is the
+   * one that answered — the same way a chat response names the model it used.
+   */
+  serviceId?: string;
   /** Human-readable backend name, safe to show. */
   backend: string;
   query: string;
@@ -324,6 +369,7 @@ export async function searchWeb(
   return {
     provider: backend.provider,
     providerId: backend.usageProviderId,
+    ...(backend.serviceId ? { serviceId: backend.serviceId } : {}),
     backend: backend.describe,
     query,
     results,

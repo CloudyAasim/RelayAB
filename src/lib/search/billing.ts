@@ -32,7 +32,11 @@ import { recordUsage } from "@/lib/db/usage";
 import { CREDIT_SCALE } from "@/lib/quota/credits";
 import type { User } from "@/lib/db/types";
 import { WebSearchError, searchWeb, type SearchBackend, type SearchOutcome } from "@/lib/assistant/web-search";
-import { backendForSearchProvider, resolveActiveSearchBackend } from "@/lib/search/resolve";
+import {
+  backendForSearchProvider,
+  resolveActiveSearchBackendWithReason,
+  resolveSearchBackendByServiceId,
+} from "@/lib/search/resolve";
 import { getSearchProviderById } from "@/lib/db/search-providers";
 import { loadSearchConfig } from "@/lib/search/config";
 import { WEB_SEARCH_CAPABILITY, WEB_SEARCH_MODEL } from "@/lib/search/usage";
@@ -67,6 +71,17 @@ export interface BilledSearchArgs {
    * from "what would a client get right now?".
    */
   providerId?: string;
+  /**
+   * The **client-visible name** of the service to search with.
+   *
+   * The way a chat request names a model: the caller says which one it wants
+   * and the gateway routes to it. A name that does not exist, or that names a
+   * service which is switched off or cannot answer, is refused **by name** —
+   * never answered by searching somewhere else, because these rows carry their
+   * own price and a quiet substitution would change what the account is
+   * charged as well as which vendor answered.
+   */
+  serviceId?: string;
   fetchImpl?: typeof fetch;
   env?: NodeJS.ProcessEnv;
 }
@@ -132,13 +147,28 @@ const PROVIDER_INCOMPLETE_MESSAGE =
  * provider's own error, and none of them charges.
  */
 export async function runBilledSearch(args: BilledSearchArgs): Promise<BilledSearchResult> {
-  const backend = args.providerId
-    ? await backendForProvider(args.providerId)
-    : await resolveActiveSearchBackend(args.env);
+  let backend: SearchBackend | null = null;
+  /** Why there is no backend, when there is none. */
+  let problem: string | null = null;
+
+  if (args.providerId) {
+    backend = await backendForProvider(args.providerId);
+    problem = backend ? null : PROVIDER_INCOMPLETE_MESSAGE;
+  } else if (args.serviceId?.trim()) {
+    const named = await resolveSearchBackendByServiceId(args.serviceId);
+    backend = named.backend;
+    problem = named.problem;
+  } else {
+    const active = await resolveActiveSearchBackendWithReason(args.env);
+    backend = active.backend;
+    problem = active.reason;
+  }
 
   if (!backend) {
     throw new WebSearchError(
-      args.providerId ? PROVIDER_INCOMPLETE_MESSAGE : NO_BACKEND_MESSAGE,
+      args.providerId
+        ? PROVIDER_INCOMPLETE_MESSAGE
+        : problem ?? NO_BACKEND_MESSAGE,
       "not_configured",
     );
   }
@@ -195,6 +225,7 @@ export async function runSearch(args: SearchRunArgs): Promise<BilledSearchResult
       outcome: {
         provider: backend.provider,
         providerId: backend.usageProviderId,
+        ...(backend.serviceId ? { serviceId: backend.serviceId } : {}),
         backend: backend.describe,
         query: results.query,
         results: results.results,
@@ -259,6 +290,7 @@ export async function runSearch(args: SearchRunArgs): Promise<BilledSearchResult
   const outcome: SearchOutcome = {
     provider: backend.provider,
     providerId: backend.usageProviderId,
+    ...(backend.serviceId ? { serviceId: backend.serviceId } : {}),
     backend: backend.describe,
     query: results.query,
     results: results.results,
