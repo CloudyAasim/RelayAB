@@ -440,11 +440,18 @@ describe("credential UI: one form, and a model on both paths", () => {
   });
 
   it("the model on that path is checked, not trusted", () => {
-    // The list is a policy decision — the key's whitelist and which providers
-    // are enabled — and neither a request body nor a form is where that is
-    // enforced. A model that has since been withdrawn is a setting to fix, said
-    // as such, rather than quietly replaced.
-    expect(CHAT_ROUTE).toMatch(/listClientModelIds\(credential\.account\.apiKey\)/);
+    // The list is a policy decision — the account owner's whitelist, the key's
+    // own whitelist, and which providers are enabled — and neither a request
+    // body nor a form is where that is enforced. A model that has since been
+    // withdrawn is a setting to fix, said as such, rather than quietly
+    // replaced.
+    //
+    // The owner is part of the check for the same reason it is part of the
+    // proxy's: a model the account may not call must be refused here, by
+    // name, instead of passing the pre-flight and dying upstream.
+    expect(CHAT_ROUTE).toMatch(
+      /listClientModelIds\(credential\.account\.apiKey, credential\.account\.user\)/,
+    );
     expect(CHAT_ROUTE).toMatch(/allowed\.includes\(config\.model\)/);
     expect(CHAT_ROUTE).toMatch(/code: "model_not_allowed"/);
   });

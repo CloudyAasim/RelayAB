@@ -15,9 +15,10 @@
  * `/anthropic/v1/models`; a 404 there shows up in the editor as "no model
  * could be loaded", not as a visible HTTP error.
  */
-import { providerFaces, type ApiKey, type Provider } from "@/lib/db/types";
+import { providerFaces, type ApiKey, type Provider, type User } from "@/lib/db/types";
 import { listProviders } from "@/lib/db/providers";
 import { listMediaProviders } from "@/lib/db/media-providers";
+import { modelAllowedFor } from "@/lib/auth/model-access";
 import type { MediaProvider, MediaSpec } from "@/lib/media/spec";
 
 export interface OpenAIModelEntry {
@@ -44,9 +45,19 @@ export interface AnthropicModelEntry {
  * Provider-facing client model ids visible to one key.
  *
  * A key sees the union of every enabled provider's client-facing model names,
- * narrowed by the key's own whitelist (an empty whitelist means "all").
+ * narrowed by the account owner's whitelist and then by the key's own. An
+ * empty whitelist at either level means "no additional restriction here".
+ *
+ * The owner is part of the answer because the proxy enforces it: a client that
+ * is shown a model the owner may not call picks it, calls it, and is refused
+ * with `403 model_not_allowed`. Advertising exactly what can be called is the
+ * only way the list and the enforcement agree.
  */
-export function intersectClientModels(providers: Provider[], key: ApiKey): string[] {
+export function intersectClientModels(
+  providers: Provider[],
+  key: ApiKey,
+  owner?: User | null,
+): string[] {
   const ids = new Set<string>();
   for (const provider of providers) {
     // A provider with both protocol faces switched off serves nothing, so its
@@ -54,7 +65,7 @@ export function intersectClientModels(providers: Provider[], key: ApiKey): strin
     const faces = providerFaces(provider);
     if (!faces.openai && !faces.anthropic) continue;
     for (const clientModel of Object.keys(provider.modelMapping)) {
-      if (key.allowedModels.length === 0 || key.allowedModels.includes(clientModel)) {
+      if (modelAllowedFor(clientModel, key, owner)) {
         ids.add(clientModel);
       }
     }
@@ -63,9 +74,12 @@ export function intersectClientModels(providers: Provider[], key: ApiKey): strin
 }
 
 /** Same as `intersectClientModels`, but loads the enabled providers itself. */
-export async function listClientModelIds(key: ApiKey): Promise<string[]> {
+export async function listClientModelIds(
+  key: ApiKey,
+  owner?: User | null,
+): Promise<string[]> {
   const providers = await listProviders({ enabledOnly: true });
-  return intersectClientModels(providers, key);
+  return intersectClientModels(providers, key, owner);
 }
 
 export function openAIModelList(ids: string[], createdAt: number): OpenAIModelEntry[] {
@@ -106,13 +120,14 @@ function specServingModel(provider: MediaProvider, clientModel: string): MediaSp
 export async function listClientMediaModelEntries(
   key: ApiKey,
   createdAt: number,
+  owner?: User | null,
 ): Promise<OpenAIModelEntry[]> {
-  const providers = await listMediaProviders({ enabledOnly: true });
+  const mediaProviders = await listMediaProviders({ enabledOnly: true });
   const out: OpenAIModelEntry[] = [];
-  for (const provider of providers) {
+  for (const provider of mediaProviders) {
     for (const [clientModel, model] of Object.entries(provider.models)) {
       if (!model.enabled) continue;
-      if (key.allowedModels.length > 0 && !key.allowedModels.includes(clientModel)) continue;
+      if (!modelAllowedFor(clientModel, key, owner)) continue;
       const spec = specServingModel(provider, clientModel);
       out.push({
         id: clientModel,
@@ -132,15 +147,18 @@ export async function listClientMediaModelEntries(
 }
 
 /** Everything a key may call on the OpenAI surface: chat + media. */
-export async function listClientModelEntries(key: ApiKey): Promise<OpenAIModelEntry[]> {
+export async function listClientModelEntries(
+  key: ApiKey,
+  owner?: User | null,
+): Promise<OpenAIModelEntry[]> {
   const created = Math.floor(Date.now() / 1000);
   // Tag chat models too, so `relay.kind` is a reliable discriminator rather
   // than "has no relay block, therefore chat".
-  const chat = openAIModelList(await listClientModelIds(key), created).map((entry) => ({
+  const chat = openAIModelList(await listClientModelIds(key, owner), created).map((entry) => ({
     ...entry,
     relay: { kind: "chat" },
   }));
-  const media = await listClientMediaModelEntries(key, created);
+  const media = await listClientMediaModelEntries(key, created, owner);
   return [...chat, ...media];
 }
 

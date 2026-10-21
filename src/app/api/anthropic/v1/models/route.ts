@@ -29,7 +29,7 @@ export async function GET(req: Request): Promise<Response> {
     );
   }
 
-  const ids = await listClientModelIds(auth.key);
+  const ids = await listClientModelIds(auth.key, auth.user);
   const data = anthropicModelList(ids, new Date());
 
   return NextResponse.json({

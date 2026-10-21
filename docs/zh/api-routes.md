@@ -257,6 +257,10 @@ Content-Type: application/json
 
 **用途**：返回该 API Key 可访问的模型列表。
 
+**列表内容** = 管理员启用的提供商所暴露的模型 **∩ 账号白名单 ∩ Key 白名单**（见
+[architecture §6.3](architecture.md)）。也就是说：**列出来的模型一定能调**；没列出来的模型
+调了会被 `403 model_not_allowed` 拒绝。`GET /anthropic/v1/models` 是同一套规则，只是不列媒体模型。
+
 **响应**：
 ```json
 {

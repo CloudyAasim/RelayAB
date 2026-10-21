@@ -275,6 +275,13 @@ internally as `promptTokens` / `completionTokens`.
 
 **Purpose**: returns the list of models this API key can reach.
 
+**What is in the list** = the models exposed by the admin's enabled providers
+**∩ the account's whitelist ∩ the key's whitelist** (see
+[architecture §6.3](architecture.md)). In other words: **every model in the list
+can be called**; a model that is not in it is refused with
+`403 model_not_allowed`. `GET /anthropic/v1/models` is the same rule, minus the
+media models.
+
 **Response**:
 ```json
 {

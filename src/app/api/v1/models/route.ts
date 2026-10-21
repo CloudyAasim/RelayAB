@@ -22,7 +22,7 @@ export async function GET(req: Request): Promise<Response> {
     return proxyError(http.status, http.code, http.message);
   }
 
-  const entries = await listClientModelEntries(auth.key);
+  const entries = await listClientModelEntries(auth.key, auth.user);
   // The owner comes back with the validation result, so the balance is available
   // here without a second lookup — a client polling the catalogue gets its
   // remaining quota from the same call.

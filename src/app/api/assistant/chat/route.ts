@@ -369,22 +369,29 @@ export async function POST(req: Request): Promise<Response> {
    * may actually call.
    *
    * Validated rather than trusted because the list is a policy decision — the
-   * key's own whitelist and which providers are enabled — and a request body is
-   * not where that is enforced. A model outside it would otherwise be a way to
-   * spend against something the user was not offered. A stored model that has
-   * since been withdrawn from that list is a configuration to fix, said as
-   * such, rather than silently replaced by one they did not pick.
+   * account owner's whitelist, the key's own whitelist, and which providers
+   * are enabled — and a request body is not where that is enforced. A model
+   * outside it would otherwise be a way to spend against something the user
+   * was not offered. A stored model that has since been withdrawn from that
+   * list is a configuration to fix, said as such, rather than silently
+   * replaced by one they did not pick.
    */
   if (onAccount) {
-    const allowed = await listClientModelIds(credential.account.apiKey);
+    const allowed = await listClientModelIds(credential.account.apiKey, credential.account.user);
     if (!allowed.includes(config.model)) {
       return Response.json(
         {
           ok: false,
           error: {
             code: "model_not_allowed",
+            // Two reasons lead to the same refusal, so the message has to
+            // cover both: the model may be gone from the deployment, or the
+            // account may not be allowed to use it. Only the first is "your
+            // setting is stale" — telling somebody that a model which is
+            // right there on the provider list "is no longer available" is
+            // telling them the wrong thing about somebody else's allocation.
             message: allowed.length
-              ? `你选的模型现在不可用了：${config.model}。请到助手设置里换一个。`
+              ? `你选的模型现在不可用了：${config.model}。可能是这个模型已经下线，也可能是你的账号没有它的权限。请到助手设置里换一个。`
               : "当前没有可用模型，请先让管理员配置提供商。",
           },
         },

@@ -20,6 +20,7 @@ import { sha256Hex } from "../crypto/hashing";
 import { getApiKeyByPlaintext } from "../db/keys";
 import { getUserById } from "../db/users";
 import { ensureBootstrapped } from "../db/bootstrap";
+import { modelAllowedFor } from "./model-access";
 import {
   ApiKeySchema,
   UserSchema,
@@ -195,13 +196,10 @@ export function checkKeyStatus(args: {
     // The owner's whitelist is the outer bound; a key may narrow it further
     // but can never widen it. An empty list at either level means "no
     // additional restriction here".
-    const ownerAllows =
-      !user ||
-      user.allowedModels.length === 0 ||
-      user.allowedModels.includes(requestedModel);
-    const keyAllows =
-      key.allowedModels.length === 0 || key.allowedModels.includes(requestedModel);
-    if (!ownerAllows || !keyAllows) {
+    //
+    // The rule lives in one place so that the catalogue, which advertises
+    // what this key may call, cannot drift away from what is enforced here.
+    if (!modelAllowedFor(requestedModel, key, user)) {
       return { ok: false, reason: "model_not_allowed", key, user };
     }
   }
