@@ -1245,7 +1245,10 @@ const zhCN: Dict = {
   "assistant.settings.searchService.sourceDeployment": "站点的搜索",
   "assistant.settings.searchService.sourceOwn": "我自己的",
   "assistant.settings.searchService.sourceDeploymentHint":
-    "助手用站点的搜索提供商（管理员配置的），按站点的价格扣你的积分。",
+    "助手用站点的搜索提供商（管理员配置的），按站点的价格扣你的积分。这需要先在下面「助手凭据」里创建并打开「用我的账号身份调用」——不需要填任何密钥。",
+  "assistant.settings.searchService.needsCredential":
+    "站点的搜索服务需要「用我的账号身份」：请在下面「助手凭据」里创建并打开它（不需要填任何密钥，系统签发、你看不到明文）。或者改用你自己的搜索服务。",
+  "assistant.settings.searchService.credentialLoading": "正在读取助手凭据的状态…",
   "assistant.settings.searchService.sourceOwnHint":
     "助手用你自己的搜索服务，费用由你的服务商收，不经过本中转站计费。",
   "assistant.settings.searchService.deploymentBackend": "现在生效：站点的搜索服务（{name}）。",
@@ -2613,7 +2616,10 @@ const en: Dict = {
   "assistant.settings.searchService.sourceDeployment": "The deployment's",
   "assistant.settings.searchService.sourceOwn": "My own",
   "assistant.settings.searchService.sourceDeploymentHint":
-    "The assistant uses the deployment's search providers, at the deployment's price on your balance.",
+    "The assistant uses the deployment's search providers, at the deployment's price on your balance. That needs the assistant credential created and switched on below ('use my account identity') — it needs no key of yours.",
+  "assistant.settings.searchService.needsCredential":
+    "The deployment's search service needs the account identity: create the assistant credential and switch it on below (no key needed — the system issues it and you never see the plaintext). Or use a search service of your own instead.",
+  "assistant.settings.searchService.credentialLoading": "Reading the assistant credential's state…",
   "assistant.settings.searchService.sourceOwnHint":
     "The assistant uses your own search service. Your vendor bills you; nothing is charged here.",
   "assistant.settings.searchService.deploymentBackend": "In effect: the deployment's search service ({name}).",

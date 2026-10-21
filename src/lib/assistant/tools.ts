@@ -37,6 +37,7 @@ import { readTextProtocolDoc } from "../docs/text-protocol-doc";
 import { getProviderById, listProviders } from "../db/providers";
 import { collectVoiceCatalogue } from "../media/voices";
 import { listUsers, getUserById } from "../db/users";
+import { getAssistantCredential } from "../db/assistant-keys";
 import { listApiKeysByUser, listApiKeyIdsForUsage } from "../db/keys";
 import { aggregateByKeyMany, listRecentUsage } from "../db/usage";
 import {
@@ -4595,6 +4596,32 @@ async function webSearchTool(
           "——网页搜索也可以由管理员用 TAVILY_API_KEY / BRAVE_SEARCH_API_KEY / SEARXNG_URL 配置。" +
           "没配置之前不要声称自己「搜索过」。",
       );
+    }
+
+    /**
+     * The deployment's providers are the **deployment's** money, spent on the
+     * account's behalf — so they need the account identity, exactly like the
+     * model calls do.
+     *
+     * It used to be the other way round: the search was the one path that
+     * worked without the assistant credential, so a user who had explicitly
+     * switched their credential off could still spend the deployment's search
+     * budget through the assistant. The credential is the account's agreement
+     * to spend the deployment's resources; a service that skips it is not
+     * respecting the switch.
+     *
+     * The user's **own** search service needs no credential at all: their key
+     * pays their vendor, and the deployment spends nothing.
+     */
+    if (backend.source !== "user") {
+      const credential = await getAssistantCredential(ctx.user.id);
+      if (!credential?.enabled) {
+        return fail(
+          "站点的搜索服务需要「用我的账号身份」：请先在「AI 助手 → 设置」里创建并打开助手凭据" +
+            "（不需要填任何密钥，系统签发、你看不到明文）；" +
+            "或者改用你自己的搜索服务（用自己的密钥，不经过本中转站计费）。",
+        );
+      }
     }
 
     // The account's own row: the quota and the balance that gets charged live

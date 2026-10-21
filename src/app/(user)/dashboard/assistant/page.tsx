@@ -17,6 +17,7 @@ import { cachedBuildModelCatalog } from "@/lib/db/data-cache";
 import { resolveAssistantConfig } from "@/lib/assistant/config";
 import { loadSearchConfig } from "@/lib/search/config";
 import { useOwnSearchService } from "@/lib/search/user";
+import { getAssistantCredential } from "@/lib/db/assistant-keys";
 import { DEFAULT_WEB_SEARCH_LIMIT } from "@/lib/search/usage";
 import { MAX_SEARCH_RESULTS } from "@/lib/assistant/web-search";
 import { getT } from "@/lib/i18n/server";
@@ -46,10 +47,18 @@ export default async function AssistantPage() {
    * told the deployment has no search. The administrator's switch still
    * governs — the deployment's search being off is a statement about the
    * deployment, and it is not a user's to overrule.
+   *
+   * The deployment's side additionally needs the **account identity**: the
+   * assistant credential the user created and switched on. It is what makes
+   * the deployment's resources spendable on their behalf, and the search goes
+   * through the same gate as the model calls do.
    */
-  const ownSearch = Boolean(settings?.searchBaseUrl?.trim());
+  const ownSearch = useOwnSearchService(settings);
+  const credential = await getAssistantCredential(sessionUser.id);
+  const accountSearchAvailable = Boolean(credential?.enabled);
   const webSearchAvailable =
-    searchConfig.enabled && (ownSearch || searchConfig.backendConfigured);
+    searchConfig.enabled &&
+    (ownSearch || (searchConfig.backendConfigured && accountSearchAvailable));
   const webSearchDefault = settings?.webSearchDefault ?? true;
   const webSearchLimit = settings?.webSearchLimit ?? DEFAULT_WEB_SEARCH_LIMIT;
 

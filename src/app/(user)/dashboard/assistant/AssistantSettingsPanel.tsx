@@ -1102,6 +1102,24 @@ export function AssistantSettingsPanel({
               )}
             </p>
           )}
+
+          {/*
+            The one thing that makes the deployment's search unavailable, said
+            where it is fixed.
+
+            The deployment's providers are the deployment's money, spent on the
+            account's behalf, so they need the account identity — the assistant
+            credential, which the system issues and which the user never sees
+            the plaintext of. Without it the search is refused, exactly as the
+            model calls are.
+          */}
+          {searchSource === "deployment" && !accountUsable && (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              {credentialLoaded
+                ? t("assistant.settings.searchService.needsCredential")
+                : t("assistant.settings.searchService.credentialLoading")}
+            </p>
+          )}
         </div>
 
         {isAdmin && (

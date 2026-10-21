@@ -27,10 +27,11 @@ vi.mock("next/headers", () => ({
 
 import { __resetDbForTest } from "@/lib/db/sqlite";
 import { createUser, getUserById } from "@/lib/db/users";
-import { createApiKey } from "@/lib/db/keys";
+import { createApiKey, listApiKeyIdsForUsage } from "@/lib/db/keys";
 import { listUsageByKey } from "@/lib/db/usage";
 import { getAssistantSettings, saveAssistantSettings } from "@/lib/db/assistant";
 import { createSearchProvider } from "@/lib/db/search-providers";
+import { createAssistantCredential, setAssistantCredentialEnabled } from "@/lib/db/assistant-keys";
 import { executeTool } from "@/lib/assistant/tools";
 import {
   buildSearchRequest,
@@ -193,6 +194,19 @@ describe("the user's own search service", () => {
     } as never;
   }
 
+  /**
+   * The account identity: the assistant credential, created and switched on.
+   *
+   * The deployment's search service needs it — it is the deployment's money
+   * spent on the account's behalf — and it needs no key of the user's: the
+   * system issues it. A test that exercises the deployment's provider has to
+   * grant it, or it is testing the refusal.
+   */
+  async function grantAccountIdentity(userId: string): Promise<void> {
+    await createAssistantCredential(userId);
+    await setAssistantCredentialEnabled(userId, true);
+  }
+
   function okResponse() {
     return new Response(
       JSON.stringify({
@@ -291,6 +305,7 @@ describe("the user's own search service", () => {
     // at all, which made every assistant search a free ride on the
     // operator's account and invisible in every report.
     const user = await makeUser("dep");
+    await grantAccountIdentity(user.id);
     const { key } = await createApiKey({ userId: user.id, label: "k" });
     await createSearchProvider({
       name: "dep",
@@ -316,11 +331,18 @@ describe("the user's own search service", () => {
     );
     expect(result.ok, result.content).toBe(true);
     expect((await getUserById(user.id))?.quotaUsed).toBe(1000);
-    expect(await listUsageByKey(key.id)).toHaveLength(1);
+    // The row hangs off one of the account's keys — which one is the
+    // repository's business, so the assertion is over all of them.
+    const rows = [];
+    for (const id of await listApiKeyIdsForUsage(user.id)) {
+      rows.push(...(await listUsageByKey(id)));
+    }
+    expect(rows).toHaveLength(1);
   });
 
   it("and an account that cannot pay is refused before the vendor is called", async () => {
     const user = await makeUser("broke", 0);
+    await grantAccountIdentity(user.id);
     await createApiKey({ userId: user.id, label: "k" });
     await createSearchProvider({
       name: "dep",
@@ -352,6 +374,7 @@ describe("the user's own search service", () => {
       quotaType: "tokens",
       quotaLimit: 1_000_000,
     });
+    await grantAccountIdentity(user!.id);
     await createApiKey({ userId: user!.id, label: "k" });
     await createSearchProvider({
       name: "dep",

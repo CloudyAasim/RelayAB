@@ -40,6 +40,7 @@ import { getSettings } from "@/lib/db/settings";
 import { saveAssistantArtifact, artifactRef } from "@/lib/db/assistant-artifacts";
 import type { MessageAttachment } from "@/lib/assistant/schema";
 import { loadSearchConfig } from "@/lib/search/config";
+import { useOwnSearchService } from "@/lib/search/user";
 import { DEFAULT_WEB_SEARCH_LIMIT } from "@/lib/search/usage";
 
 export const dynamic = "force-dynamic";
@@ -431,8 +432,15 @@ export async function POST(req: Request): Promise<Response> {
    * The administrator's switch still governs: the deployment's search being
    * off is a statement about the deployment, and it is not a user's to
    * overrule.
+   *
+   * **The account identity is the tool's business, not this one's.** The
+   * deployment's providers need the assistant credential, and the tool answers
+   * with that reason. Deciding it here would remove the tool from the
+   * definitions, and a model that cannot see the tool cannot tell the user
+   * what is missing — it can only report that search is off, which is a
+   * different (and wrong) thing to say.
    */
-  const hasOwnBackend = Boolean(stored?.searchBaseUrl?.trim());
+  const hasOwnBackend = useOwnSearchService(stored);
   const webSearchDisabledReason = !webSearchChoice
     ? ("user" as const)
     : !searchConfig.enabled

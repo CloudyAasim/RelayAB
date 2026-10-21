@@ -22,6 +22,7 @@ vi.mock("next/headers", () => ({
 
 import { __resetDbForTest } from "@/lib/db/sqlite";
 import { createUser } from "@/lib/db/users";
+import { createAssistantCredential, setAssistantCredentialEnabled } from "@/lib/db/assistant-keys";
 import { createApiKey } from "@/lib/db/keys";
 import type { User } from "@/lib/db/types";
 import { InMemoryCookieStore, getSessionFromStore } from "@/lib/auth/session";
@@ -134,7 +135,7 @@ describe("result-count clamp", () => {
     const fetchMock = braveFetch();
     vi.stubGlobal("fetch", fetchMock);
     /**
-     * A real account, with a pool and a key.
+     * A real account, with a pool and a key — and the account identity.
      *
      * The tool settles the call against the account's balance and hangs the
      * usage row on one of its keys — so a context with a made-up user id is
@@ -142,6 +143,11 @@ describe("result-count clamp", () => {
      * 无法记账"). Which is the point: the assistant's search is a *paid* call
      * like every other one, and this test is about the count that reaches the
      * vendor, so it has to be a call that happens.
+     *
+     * The identity is the third thing: the deployment's search service is the
+     * deployment's money, so it needs the assistant credential — the account
+     * identity — created and switched on. It needs no key of the user's: the
+     * system issues it.
      */
     const user = await createUser({
       username: "clamp",
@@ -149,6 +155,8 @@ describe("result-count clamp", () => {
       displayName: "clamp",
       quotaLimit: 100 * 1000,
     });
+    await createAssistantCredential(user!.id);
+    await setAssistantCredentialEnabled(user!.id, true);
     await createApiKey({ userId: user!.id, label: "test" });
     const result = await executeTool("web_search", JSON.stringify(args), ctxFor(user!.id, ctx));
     expect(result.ok, result.content).toBe(true);
