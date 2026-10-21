@@ -185,6 +185,14 @@ x-ratelimit-unit: credits`}
             <p className="rounded-md border border-border bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">
               {t("docs.search.assistant")}
             </p>
+            {/*
+              The rule that will bite a user who configures their own service
+              on a private network, and it belongs where the choice is
+              described — not only in the error they get later.
+            */}
+            <p className="rounded-md border border-border bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">
+              {t("docs.search.ownServiceNote")}
+            </p>
           </div>
         </Card>
 
