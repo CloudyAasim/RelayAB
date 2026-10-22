@@ -5,6 +5,8 @@ import { LogOut, Menu, Settings, ChevronDown, LayoutDashboard, Palette } from "l
 import { useState, type ReactNode } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover";
+import { cn } from "@/lib/utils";
 import { logoutAction } from "@/app/(auth)/logout-action";
 import { useSidebar } from "./sidebar";
 import { useT } from "@/components/i18n/I18nProvider";
@@ -72,38 +74,64 @@ export function UserMenu({
   username,
   displayName,
   role,
+  compact = false,
 }: {
   username: string;
   displayName?: string;
   role: "admin" | "user";
+  /**
+   * The icon-only rail is 88px wide. A name, a role badge and a chevron do
+   * not fit in it, so the trigger shrinks to the avatar alone. The menu
+   * behind it stays exactly the same, because the way out must never be out
+   * of reach.
+   */
+  compact?: boolean;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const name = displayName?.trim() || username;
   return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        aria-label={t("nav.user.menu")}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-      >
-        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-          {username.slice(0, 1).toUpperCase()}
-        </span>
-        <span className="hidden sm:inline">{username}</span>
-        <Badge tone={role === "admin" ? "primary" : "neutral"} className="hidden md:inline-flex">
-          {role}
-        </Badge>
-        <ChevronDown className="h-4 w-4 text-muted-foreground" />
-      </button>
+    /*
+     * A Radix popover, not an absolutely positioned div.
+     *
+     * The panel clips its own overflow (`overflow-hidden`), so a menu drawn
+     * inside it would be cut off at the panel's edge — and in the 88px rail
+     * there is no room for it at all. The popover renders through a portal,
+     * which is the only reason the account menu works from the narrow rail.
+     */
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={t("nav.user.menu")}
+          className={cn(
+            "rounded-lg border border-border bg-card text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
+            compact
+              ? "flex h-8 w-8 items-center justify-center"
+              : "inline-flex items-center gap-2 px-2.5 py-1.5",
+          )}
+        >
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+            {username.slice(0, 1).toUpperCase()}
+          </span>
+          {!compact && (
+            <>
+              <span className="hidden sm:inline">{username}</span>
+              <Badge tone={role === "admin" ? "primary" : "neutral"} className="hidden md:inline-flex">
+                {role}
+              </Badge>
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            </>
+          )}
+        </button>
+      </PopoverTrigger>
 
-      {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />
-          <div className="absolute right-0 top-full z-50 mt-2 w-56 rounded-lg border border-border bg-popover text-popover-foreground shadow-float animate-slide-down">
+      <PopoverContent
+        side={compact ? "top" : "bottom"}
+        align={compact ? "start" : "end"}
+        sideOffset={8}
+        className="w-56 p-0"
+      >
             <div className="border-b border-border px-4 py-3">
               <p className="truncate text-sm font-medium">{name}</p>
               <p className="truncate text-xs text-muted-foreground">
@@ -155,9 +183,7 @@ export function UserMenu({
                 {t("nav.logout")}
               </button>
             </form>
-          </div>
-        </>
-      )}
-    </div>
+      </PopoverContent>
+    </Popover>
   );
 }

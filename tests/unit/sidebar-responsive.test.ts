@@ -32,7 +32,7 @@ describe("sidebarStateForViewport", () => {
 /**
  * Regression guard for the collapsed rail and its expand/collapse motion.
  *
- * The icon-only rail is 56px wide with 32px of usable interior after `px-3`.
+ * The icon-only rail is 88px wide with 64px of usable interior after `px-3`.
  * Two problems previously showed up here and must not come back:
  *   1. the footer kept the status label and the toggle in one `justify-between`
  *      row, so the toggle overflowed the rail (measured scrollWidth 62 >
@@ -96,5 +96,35 @@ describe("sidebar: collapsed rail layout & motion", () => {
 
   it("does not render the pending indicator in the icon-only rail", () => {
     expect(sidebar).toContain("{href && !collapsed && <LinkPendingIndicator />}");
+  });
+});
+
+/**
+ * The account menu has to work from the 88px rail, where the panel's own
+ * `overflow-hidden` is an active obstacle: a menu drawn inside the panel is
+ * cut off at the panel's edge, and the trigger itself — avatar, name, role
+ * badge, chevron — is far wider than the rail.
+ */
+describe("sidebar: the account menu in the icon-only rail", () => {
+  const layout = read("components/layouts/AuthenticatedLayout.tsx");
+  const header = read("components/layouts/AppHeader.tsx");
+
+  it("shrinks the trigger to the avatar and hides the name and badge", () => {
+    expect(header).toContain("compact = false");
+    expect(header).toContain("!compact && (");
+    expect(header).toContain('"flex h-8 w-8 items-center justify-center"');
+  });
+
+  it("is handed the compact flag only where the rail is narrow", () => {
+    expect(layout).toContain(
+      "<UserMenu username={username} displayName={displayName} role={role} compact />",
+    );
+  });
+
+  it("leaves the panel so the panel cannot clip it", () => {
+    // A portal, not an absolutely positioned child: the panel clips its own
+    // overflow, so a menu inside it dies at the panel's edge.
+    expect(header).toContain("<PopoverContent");
+    expect(header).not.toContain("absolute right-0 top-full");
   });
 });

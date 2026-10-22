@@ -252,9 +252,10 @@ function SidebarShell({ role, username, displayName, children }: AuthenticatedLa
               <span className="truncate">{t("nav.sidebar.statusOnline")}</span>
             </div>
             {/* In the icon-only rail the account comes down here, in the place
-                the status just vacated. */}
+                the status just vacated — and shrinks to the bare avatar,
+                because 88px has no room for a name and a role badge. */}
             {collapsed && (
-              <UserMenu username={username} displayName={displayName} role={role} />
+              <UserMenu username={username} displayName={displayName} role={role} compact />
             )}
             <SidebarToggle />
           </div>
