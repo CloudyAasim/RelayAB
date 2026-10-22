@@ -285,3 +285,60 @@ describe("the account's own choice of service", () => {
     await expect(resolveSearchBackendForAccount(user.id)).rejects.toThrow(/gone/);
   });
 });
+
+describe("clearing the choice", () => {
+  async function anAccount() {
+    return createUser({
+      username: "clearer",
+      password: "pw-123456",
+      role: "user",
+      quotaType: "credits",
+      quotaLimit: 100_000,
+    });
+  }
+
+  const base = {
+    baseUrl: "",
+    model: "",
+    accountModel: "gpt-4o",
+    credentialMode: "account" as const,
+    searchSource: "deployment" as const,
+  };
+
+  it("is a clear and not a keep", async () => {
+    await twoServices();
+    const user = await anAccount();
+    await saveAssistantSettings(user.id, { ...base, searchServiceId: "beta" });
+    expect((await getAssistantSettings(user.id))?.searchServiceId).toBe("beta");
+
+    // `null` is the picker's own "not chosen" entry. It used to be read as
+    // "leave the stored one", so the choice could not be taken back.
+    await saveAssistantSettings(user.id, { ...base, searchServiceId: null });
+    expect((await getAssistantSettings(user.id))?.searchServiceId).toBeNull();
+  });
+
+  it("and a field nobody mentions keeps what was stored", async () => {
+    await twoServices();
+    const user = await anAccount();
+    await saveAssistantSettings(user.id, { ...base, searchServiceId: "beta" });
+
+    // No `searchServiceId` at all: that is "leave it", and it has to be a
+    // different answer from "clear it".
+    await saveAssistantSettings(user.id, { ...base });
+    expect((await getAssistantSettings(user.id))?.searchServiceId).toBe("beta");
+  });
+
+  it("and the same is true of the user's own address", async () => {
+    const user = await anAccount();
+    await saveAssistantSettings(user.id, {
+      ...base,
+      searchBaseUrl: "https://mine.example/v1/search",
+    });
+    expect((await getAssistantSettings(user.id))?.searchBaseUrl).toBe(
+      "https://mine.example/v1/search",
+    );
+
+    await saveAssistantSettings(user.id, { ...base, searchBaseUrl: null });
+    expect((await getAssistantSettings(user.id))?.searchBaseUrl).toBeNull();
+  });
+});

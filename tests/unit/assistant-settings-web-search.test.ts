@@ -30,6 +30,7 @@ import {
   getAssistantSettings,
   getPublicAssistantSettings,
 } from "@/lib/db/assistant";
+import { createSearchProvider } from "@/lib/db/search-providers";
 import { GET, PUT } from "@/app/api/assistant/settings/route";
 import { MAX_SEARCH_RESULTS } from "@/lib/assistant/web-search";
 
@@ -143,6 +144,64 @@ describe("saving", () => {
 
     await put(baseSettings({ webSearchLimit: null }));
     expect((await getAssistantSettings(user.id))?.webSearchLimit).toBeNull();
+  });
+});
+
+describe("the search service choice", () => {
+  it("goes back to 'not chosen' when the picker is cleared", async () => {
+    const user = await loginAsNewUser();
+    await createSearchProvider({
+      name: "自建 SearXNG",
+      kind: "searxng",
+      baseUrl: "https://search.example",
+      serviceId: "searxng",
+      priority: 1,
+    });
+
+    await put(baseSettings({ searchSource: "deployment", searchServiceId: "searxng" }));
+    expect((await getAssistantSettings(user.id))?.searchServiceId).toBe("searxng");
+
+    // The picker has an explicit "not chosen" entry, and it sends `null`.
+    // That has to stick: a form that saves and then shows the old answer again
+    // is worse than a form that does not have the entry at all.
+    const res = await put(baseSettings({ searchSource: "deployment", searchServiceId: null }));
+    expect(res.status).toBe(200);
+    expect((await getAssistantSettings(user.id))?.searchServiceId).toBeNull();
+  });
+
+  it("keeps the choice when the form does not mention it", async () => {
+    const user = await loginAsNewUser();
+    await createSearchProvider({
+      name: "自建 SearXNG",
+      kind: "searxng",
+      baseUrl: "https://search.example",
+      serviceId: "searxng",
+      priority: 1,
+    });
+
+    await put(baseSettings({ searchSource: "deployment", searchServiceId: "searxng" }));
+
+    // No `searchServiceId` in this body at all: "leave it" is not "clear it".
+    await put(baseSettings({ searchSource: "deployment" }));
+    expect((await getAssistantSettings(user.id))?.searchServiceId).toBe("searxng");
+  });
+
+  it("lets the user's own address be cleared", async () => {
+    const user = await loginAsNewUser();
+    await put(
+      baseSettings({
+        searchSource: "own",
+        searchBaseUrl: "https://mine.example/v1/search",
+      }),
+    );
+    expect((await getAssistantSettings(user.id))?.searchBaseUrl).toBe(
+      "https://mine.example/v1/search",
+    );
+
+    // Switching back to the deployment's services and leaving the box empty
+    // means "I have no service of my own" — the address has to go away.
+    await put(baseSettings({ searchSource: "deployment", searchBaseUrl: null }));
+    expect((await getAssistantSettings(user.id))?.searchBaseUrl).toBeNull();
   });
 });
 

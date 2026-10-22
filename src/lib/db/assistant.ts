@@ -199,18 +199,32 @@ export async function saveAssistantSettings(
     // The user's own search service. An empty address means "no service of my
     // own" — the same answer as clearing it — and the key is kept, because
     // somebody who puts the address back does not want to retype the key.
+    //
+    // `undefined` is "leave it" and `null` is "clear it", the contract `pick`
+    // states. Collapsing the two here is what made a cleared box come back
+    // after a reload: the form said "saved" and the address was still there.
+    // The route has always read `null` as "cleared" — it validates the address
+    // that will be in effect *after* the save — so the two halves disagreed
+    // about the same request.
     searchBaseUrl:
-      input.searchBaseUrl === undefined || input.searchBaseUrl === null
+      input.searchBaseUrl === undefined
         ? (existing?.searchBaseUrl ?? null)
-        : input.searchBaseUrl.trim() || null,
+        : input.searchBaseUrl === null
+          ? null
+          : input.searchBaseUrl.trim() || null,
     // Which of the two the assistant searches. `null` is the automatic rule.
     searchSource: pick(input.searchSource, existing?.searchSource ?? null),
-    searchServiceId: pick(
-      input.searchServiceId === undefined || input.searchServiceId === null
+    // Which of the deployment's services, by its client-visible name.
+    //
+    // `null` clears the choice: the picker has an explicit "not chosen" entry
+    // and picking it has to stick, or the form saves and then shows the old
+    // answer again. `undefined` leaves the stored one alone.
+    searchServiceId:
+      input.searchServiceId === undefined
         ? (existing?.searchServiceId ?? null)
-        : input.searchServiceId.trim() || null,
-      existing?.searchServiceId ?? null,
-    ),
+        : input.searchServiceId === null
+          ? null
+          : input.searchServiceId.trim() || null,
     // `null` is the explicit "delete it"; blank means "I did not type one" and
     // keeps whatever is stored.
     encryptedSearchApiKey:
