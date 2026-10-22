@@ -46,7 +46,7 @@ export function Sidebar({ children }: { children: ReactNode }) {
           // drawer — which is what the mobile branch below already does.
           "lg:my-2 lg:ml-2 lg:h-[calc(100vh-1rem)] lg:rounded-lg lg:border lg:border-sidebar-border lg:shadow-float",
           isMobile ? (open ? "translate-x-0 shadow-float" : "-translate-x-full") : "",
-          collapsed && "lg:w-14",
+          collapsed && "lg:w-[88px]",
         )}
       >
         {children}

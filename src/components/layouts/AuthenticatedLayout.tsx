@@ -25,7 +25,7 @@ import {
   SidebarInset,
   useSidebar,
 } from "./sidebar";
-import { AppHeader } from "./AppHeader";
+import { AppHeader, UserMenu } from "./AppHeader";
 import { useT } from "@/components/i18n/I18nProvider";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
@@ -157,6 +157,15 @@ function SidebarShell({ role, username, displayName, children }: AuthenticatedLa
 
   return (
     <div className="flex min-h-screen w-full flex-1">
+      {/*
+        One panel, not a bar and a rail.
+
+        The top bar used to span the full width above a floating side panel,
+        and the two never quite agreed: the bar was a different shape, a
+        different surface and a different edge. Everything the bar carried —
+        the brand, the page's name, the language, the theme and the account —
+        now lives in the panel, so the layout is one object instead of two.
+      */}
       <Sidebar>
         <SidebarHeader className={cn(collapsed && "px-3")}>
           <Link href="/" className="flex min-w-0 items-center gap-2">
@@ -181,9 +190,28 @@ function SidebarShell({ role, username, displayName, children }: AuthenticatedLa
               RelayAB
             </span>
           </Link>
+          {/*
+            The account, in the panel's top corner.
+
+            In the icon-only rail there is no room for it here, so it moves
+            down to the bottom of the panel — it must never be out of reach,
+            because it holds the way out (sign out).
+          */}
+          {!collapsed && (
+            <div className="ml-auto">
+              <UserMenu username={username} displayName={displayName} role={role} />
+            </div>
+          )}
         </SidebarHeader>
 
         <SidebarContent>
+          {/* Where you are. The panel is the only chrome now, so this is
+              where the page's name belongs. */}
+          {pageTitle && !collapsed && (
+            <div className="px-3 pb-2 pt-1 text-sm font-semibold text-foreground">
+              {pageTitle}
+            </div>
+          )}
           {sections.map((section, idx) => (
             <SidebarGroup key={`${section.labelKey}-${idx}`} label={t(section.labelKey)}>
               <SidebarMenu>
@@ -211,7 +239,7 @@ function SidebarShell({ role, username, displayName, children }: AuthenticatedLa
            * One row in both states. The status block collapses its own width
            * and opacity while the rail narrows, so the toggle stays pinned to
            * the right edge the whole time and simply ends up centred in the
-           * 56px rail — no mid-animation layout switch.
+           * icon-only rail — no mid-animation layout switch.
            */}
           <div className={cn("flex items-center justify-between", collapsed ? "gap-0" : "gap-2")}>
             <div
@@ -223,13 +251,17 @@ function SidebarShell({ role, username, displayName, children }: AuthenticatedLa
               <Activity className="h-3.5 w-3.5 shrink-0 text-success" />
               <span className="truncate">{t("nav.sidebar.statusOnline")}</span>
             </div>
+            {/* In the icon-only rail the account comes down here, in the place
+                the status just vacated. */}
+            {collapsed && (
+              <UserMenu username={username} displayName={displayName} role={role} />
+            )}
             <SidebarToggle />
           </div>
-        </SidebarFooter>
-      </Sidebar>
+        </SidebarFooter>      </Sidebar>
 
       <SidebarInset>
-        <AppHeader username={username} displayName={displayName} role={role} pageTitle={pageTitle} />
+        <AppHeader username={username} displayName={displayName} role={role} />
         {/*
           The assistant owns the whole viewport, and the padding has to go on
           *this* element rather than be cancelled by the chat with negative

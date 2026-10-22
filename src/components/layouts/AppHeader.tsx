@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { LogOut, Menu, Settings, ChevronDown, LayoutDashboard } from "lucide-react";
+import { LogOut, Menu, Settings, ChevronDown, LayoutDashboard, Palette } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -15,32 +15,27 @@ interface AppHeaderProps {
   username: string;
   displayName?: string;
   role: "admin" | "user";
-  pageTitle?: ReactNode;
 }
 
 /**
- * AppHeader — top navigation bar
- * Responsive: compact on mobile, spacious on desktop
+ * AppHeader — the bar for **narrow screens only**.
+ *
+ * On a wide screen there is no bar any more: the top bar's contents (the
+ * brand, the page's name, the language, the theme and the account) live in the
+ * floating side panel, which is the one piece of chrome the layout has. A
+ * full-width bar above a floating panel was the thing that made the two look
+ * like two different applications.
+ *
+ * On a narrow screen the panel is a drawer, so the page needs its own way
+ * back to it — that is all this bar is: the drawer button, the name, and the
+ * account menu.
  */
-export function AppHeader({ username, displayName, role, pageTitle }: AppHeaderProps) {
+export function AppHeader({ username, displayName, role }: AppHeaderProps) {
   const t = useT();
-  const { toggleSidebar, open, setOpen, isMobile } = useSidebar();
-  const [menuOpen, setMenuOpen] = useState(false);
+  const { open, setOpen, isMobile } = useSidebar();
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-background/85 px-4 backdrop-blur sm:px-6 lg:px-8">
-      {/* Mobile menu trigger */}
-      <Button
-        size="icon"
-        variant="ghost"
-        className="hidden rounded-lg lg:flex"
-        onClick={() => toggleSidebar()}
-        aria-label={t("nav.toggleSidebar")}
-      >
-        <Menu className="h-5 w-5" />
-      </Button>
-
-      {/* Mobile sidebar trigger */}
+    <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-background/85 px-4 backdrop-blur sm:px-6 lg:hidden">
       {isMobile && (
         <Button
           size="icon"
@@ -53,47 +48,37 @@ export function AppHeader({ username, displayName, role, pageTitle }: AppHeaderP
         </Button>
       )}
 
-      {/* Brand on mobile */}
-      <Link href="/" className="font-semibold tracking-tight text-foreground lg:hidden">
+      <Link href="/" className="font-semibold tracking-tight text-foreground">
         RelayAB
       </Link>
 
-      {/* Page title on larger screens */}
-      {pageTitle && (
-        <div className="ml-2 hidden truncate text-sm font-medium text-foreground xl:block">
-          {pageTitle}
-        </div>
-      )}
-
-      <div className="ml-auto flex items-center gap-1 sm:gap-2">
-        <LocaleSwitcher />
-        <ThemeToggle />
-        <UserMenu
-          username={username}
-          displayName={displayName}
-          role={role}
-          open={menuOpen}
-          setOpen={setMenuOpen}
-        />
+      <div className="ml-auto flex items-center gap-1">
+        <UserMenu username={username} displayName={displayName} role={role} />
       </div>
     </header>
   );
 }
 
-function UserMenu({
+/**
+ * The account menu: who you are, how the deployment looks, and the way out.
+ *
+ * **Appearance lives in here** — the theme and the language are settings of
+ * *this* person, not of the deployment, and the panel that holds them is the
+ * floating one, so the menu is where they belong. The menu owns its own open
+ * state, which is what lets the same component sit in the panel and in the
+ * narrow-screen bar without the two fighting over one flag.
+ */
+export function UserMenu({
   username,
   displayName,
   role,
-  open,
-  setOpen,
 }: {
   username: string;
   displayName?: string;
   role: "admin" | "user";
-  open: boolean;
-  setOpen: (v: boolean) => void;
 }) {
   const t = useT();
+  const [open, setOpen] = useState(false);
   const name = displayName?.trim() || username;
   return (
     <div className="relative">
@@ -125,6 +110,24 @@ function UserMenu({
                 @{username} · {role === "admin" ? t("nav.user.adminBadge") : t("nav.user.userBadge")}
               </p>
             </div>
+
+            {/*
+              How this deployment looks. Two settings, both about *this*
+              browser, so they ride along with the account rather than with
+              the page.
+            */}
+            <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+              <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Palette className="h-4 w-4" />
+                {t("theme.toggle")}
+              </span>
+              <ThemeToggle />
+            </div>
+            <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+              <span className="text-sm text-muted-foreground">{t("footer.language")}</span>
+              <LocaleSwitcher />
+            </div>
+
             {role === "admin" && (
               <Link
                 href="/admin"

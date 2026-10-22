@@ -1166,7 +1166,7 @@ export function AssistantChat({
      * phone in landscape is shorter than 384px - and honouring it means the
      * composer falls below the fold on exactly the devices with least room.
      */
-    <div className="flex h-[calc(100vh-3.5rem)] h-[calc(100dvh-3.5rem)] flex-col">
+    <div className="flex h-[calc(100vh-3.5rem)] h-[calc(100dvh-3.5rem)] flex-col lg:h-[100vh] lg:h-[100dvh]">
       {/* ---- top bar: a new chat on the left, what is answering on the right ---- */}
       <div className="mx-auto flex w-full max-w-4xl shrink-0 items-center gap-2 border-b pb-2">
         <Button
