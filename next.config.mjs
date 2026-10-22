@@ -49,6 +49,27 @@ const baseConfig = {
   poweredByHeader: false,
 
   /**
+   * The type check is a CI gate, not a step of the build.
+   *
+   * `next build` type-checks in the same process that compiles, and on the
+   * production host that step does not fit in the machine: the build compiles
+   * in 44 seconds and then spends *eleven minutes* in "Linting and checking
+   * validity of types", at which point the kernel's OOM killer reaps sshd and
+   * nginx and the site stops answering. That has happened three times in one
+   * day. The build was never the problem; the duplicate type check was.
+   *
+   * So the check moved to the `verify` job in `.github/workflows/deploy.yml`,
+   * which runs on a GitHub runner with memory to spare, and the deploy waits
+   * for it. A commit that does not type-check never reaches the host.
+   *
+   * `next build` therefore skips the type check — but nothing is lost:
+   * `pnpm type-check` is the same command, and it runs on every push.
+   */
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+
+  /**
    * `node:sqlite` is a Node builtin (>= 22.5), but the webpack bundled with
    * this Next.js major predates it and tries to resolve it from npm, which
    * fails the production build. Externalising the specifier hands it to

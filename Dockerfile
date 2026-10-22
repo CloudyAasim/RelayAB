@@ -46,6 +46,28 @@ ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN corepack enable
 
+# A ceiling on the build's heap.
+#
+# The production host has 3.8 GiB of RAM and no swap, and a build on it has
+# taken the whole box down three times in one day: the kernel's OOM killer
+# reaps sshd and nginx, and the symptom is a site that accepts TCP
+# connections and then never answers — not a build that fails.
+#
+# The build is not supposed to need that much. Measured on this repository
+# (Next 15.5.25, 22 routes) the peak resident memory across the whole build
+# is 1.65–1.74 GiB with the worker count capped at 2. The cap here is well
+# above that, so the build still succeeds — but it puts a ceiling on the part
+# that is not predictable (the type-check and the bundler both run inside this
+# one process), so a spike becomes a build that fails loudly instead of a box
+# that stops answering for the next hour.
+#
+# 2560 MiB, not 2048: the measured peak is the *whole* build, and this limit
+# applies to the main process alone.
+#
+# The other half of the fix is not in this file: a swap file on the host.
+# A ceiling stops the spike; swap keeps the spike from being fatal.
+ENV NODE_OPTIONS="--max-old-space-size=2560"
+
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN pnpm build

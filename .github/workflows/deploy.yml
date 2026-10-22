@@ -24,7 +24,38 @@ permissions:
   contents: read
 
 jobs:
+  # The gate.
+  #
+  # The type check used to happen inside the production build, on the host,
+  # where it took eleven minutes and took the whole box down with it: the
+  # kernel's OOM killer reaps sshd and nginx, and the symptom is a site that
+  # accepts connections and never answers. The build itself compiles in 44
+  # seconds — it is the type check that does not fit in that machine.
+  #
+  # So the type check moved here, to a runner with memory to spare, and the
+  # host is left to do what it is good at: compile. The build still happens on
+  # the host; only the *checking* moved.
+  #
+  # The deploy waits for this job, so a commit that does not type-check or
+  # does not pass its tests never reaches the host at all.
+  verify:
+    name: 类型检查与测试
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm run type-check
+
+      - name: Test
+        run: pnpm run test
+
   deploy:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
