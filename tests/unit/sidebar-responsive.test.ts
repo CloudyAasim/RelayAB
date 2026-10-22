@@ -32,19 +32,22 @@ describe("sidebarStateForViewport", () => {
 /**
  * Regression guard for the collapsed rail and its expand/collapse motion.
  *
- * The icon-only rail is 88px wide with 64px of usable interior after `px-3`.
+ * The icon-only rail is 64px wide with 32px of usable interior after `px-4`,
+ * and everything in the panel sits on that one axis: the brand mark, the nav
+ * items, the account button and the collapse toggle.
+ *
  * Two problems previously showed up here and must not come back:
  *   1. the footer kept the status label and the toggle in one `justify-between`
  *      row, so the toggle overflowed the rail (measured scrollWidth 62 >
  *      clientWidth 55);
- *   2. the width snapped / labels popped and the footer switched its layout
- *      mid-animation, which made the collapse feel jumpy.
+ *   2. elements changed **place** between the two states — the nav icons
+ *      shifted sideways, the brand mark changed size, and the account button
+ *      lived in the panel's top-right corner when it was open and at the
+ *      bottom when it was shut.
  *
- * The rail now eases its width and keeps labels mounted and clipped. The
- * footer's layout does switch — the rail is one column of icons from top to
- * bottom, and the two buttons at its foot were the one place where that
- * column broke, so they now stack — but nothing is unmounted to make it
- * switch: the status block shrinks its own width *and* height and fades.
+ * The rail now eases its width, keeps labels mounted and clips them, and
+ * **nothing in it moves**: the same elements sit at the same coordinates
+ * whether the panel is open or shut.
  */
 describe("sidebar: collapsed rail layout & motion", () => {
   const layout = read("components/layouts/AuthenticatedLayout.tsx");
@@ -65,8 +68,10 @@ describe("sidebar: collapsed rail layout & motion", () => {
     expect(sidebar).not.toContain("collapsed && \"hidden\"");
   });
 
-  it("nudges the nav icon inward instead of jumping it to the centre", () => {
-    expect(sidebar).toContain('collapsed && "gap-0 pl-[7.5px] pr-[7.5px]"');
+  it("keeps the nav icon where it is when the rail narrows", () => {
+    // The rail narrows and the label is clipped — the icon does not move.
+    expect(sidebar).toContain('collapsed && "gap-0"');
+    expect(sidebar).not.toContain("pl-[7.5px]");
     expect(sidebar).not.toContain('collapsed && "justify-center px-2"');
   });
 
@@ -76,30 +81,18 @@ describe("sidebar: collapsed rail layout & motion", () => {
     );
   });
 
-  it("stacks the two bottom buttons in the icon-only rail", () => {
-    // The rail is one column of icons from top to bottom. The account button
-    // and the collapse toggle used to sit side by side at the foot of it —
-    // the one place where that column broke.
+  it("keeps the brand mark 32x32 in both states", () => {
     expect(layout).toContain(
-      'collapsed ? "flex-col items-start gap-1" : "items-center justify-between gap-2"',
+      '"flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground"',
     );
-    expect(layout).toContain("justify-between");
+    expect(layout).not.toContain('collapsed ? "h-8 w-8" : "h-7 w-7"');
   });
 
-  it("shrinks the status block out of the column instead of unmounting it", () => {
-    expect(layout).toContain(
-      'collapsed ? "max-h-0 max-w-0 opacity-0" : "max-h-4 max-w-[180px] opacity-100 delay-150"',
+  it("gives the toggle a 32px hit target in both states", () => {
+    expect(sidebar).toContain(
+      '"flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70',
     );
-    expect(layout).not.toContain('collapsed && "hidden"');
-  });
-
-  it("aligns the collapsed brand mark with the 32px nav icons", () => {
-    expect(layout).toContain('collapsed ? "h-8 w-8" : "h-7 w-7"');
-    expect(layout).toContain('collapsed && "px-3"');
-  });
-
-  it("gives the toggle a 32px hit target when collapsed", () => {
-    expect(sidebar).toContain('collapsed ? "h-8 w-8" : "h-7 w-7"');
+    expect(sidebar).not.toContain('collapsed ? "h-8 w-8" : "h-7 w-7"');
   });
 
   it("crossfades the toggle glyph instead of hard-swapping it", () => {
@@ -110,10 +103,30 @@ describe("sidebar: collapsed rail layout & motion", () => {
   it("does not render the pending indicator in the icon-only rail", () => {
     expect(sidebar).toContain("{href && !collapsed && <LinkPendingIndicator />}");
   });
+
+  it("fits its content: 240px open, 64px shut", () => {
+    expect(sidebar).toContain("lg:w-[240px]");
+    expect(sidebar).toContain('collapsed && "lg:w-[64px]"');
+  });
+
+  it("keeps the footer one column in both states", () => {
+    // Three lines: the status, the account, the collapse toggle. The status
+    // shrinks its own width and height and fades; nothing is unmounted.
+    expect(layout).toContain('"flex flex-col items-start gap-1"');
+    expect(layout).not.toContain("justify-between");
+    expect(layout).toContain(
+      'collapsed ? "max-h-0 max-w-0 opacity-0" : "max-h-4 max-w-[180px] opacity-100 delay-150"',
+    );
+  });
+
+  it("gives the account one home, in the footer, in both states", () => {
+    expect(layout.match(/<UserMenu/g)?.length).toBe(1);
+    expect(layout).toContain('variant={collapsed ? "mini" : "panel"}');
+  });
 });
 
 /**
- * The account menu has to work from the 88px rail, where the panel's own
+ * The account menu has to work from the 64px rail, where the panel's own
  * `overflow-hidden` is an active obstacle: a menu drawn inside the panel is
  * cut off at the panel's edge, and the trigger itself — avatar, name, role
  * badge, chevron — is far wider than the rail.
@@ -128,19 +141,12 @@ describe("sidebar: the account menu in the icon-only rail", () => {
     expect(header).toContain('"flex h-8 w-8 items-center justify-center"');
   });
 
-  it("gives the panel header the tight variant, so the wordmark is not cut", () => {
-    // The brand wordmark and the trigger share the panel's 288px. Spelling
-    // the name out there cut the wordmark down to "R…".
-    expect(layout).toContain(
-      '<UserMenu username={username} displayName={displayName} role={role} variant="panel" />',
-    );
+  it("gives the open panel the panel variant (name, no role badge)", () => {
+    // The name and the role badge side by side read as "admin admin", and the
+    // badge is what pushed the wordmark out of the panel's header.
     expect(header).toContain('variant === "full" && (');
-  });
-
-  it("hands the mini variant to the icon-only rail", () => {
-    expect(layout).toContain(
-      '<UserMenu username={username} displayName={displayName} role={role} variant="mini" />',
-    );
+    expect(header).toContain('variant === "panel"');
+    expect(layout).toContain('variant={collapsed ? "mini" : "panel"}');
   });
 
   it("leaves the panel so the panel cannot clip it", () => {

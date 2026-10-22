@@ -16,9 +16,15 @@ import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/comp
  * - Desktop (≥ 1024px): persistent rail, collapsible
  *
  * Width:
- * - Mobile drawer: 72 (288px)
- * - Desktop expanded: 64 (256px)
- * - Desktop collapsed: 14 (56px)
+ * - Mobile drawer: 288 (288px)
+ * - Desktop expanded: 240 (240px)
+ * - Desktop collapsed: 64 (64px)
+ *
+ * The two desktop widths are **not** two arbitrary numbers: the collapsed rail
+ * is exactly what the expanded panel's left edge needs — 16px of margin, the
+ * 32px control column, 16px of margin — so that every icon in the rail (the
+ * brand mark, the nav items, the account and the collapse toggle) sits on the
+ * same vertical axis whether the panel is open or shut.
  */
 export function Sidebar({ children }: { children: ReactNode }) {
   const { collapsed, open, setOpen, isMobile } = useSidebar();
@@ -38,7 +44,7 @@ export function Sidebar({ children }: { children: ReactNode }) {
         aria-label="Sidebar navigation"
         data-state={collapsed ? "collapsed" : "expanded"}
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-[288px] flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width,transform] duration-300 ease-sidebar motion-reduce:transition-none lg:sticky lg:top-0 lg:h-screen lg:translate-x-0",
+          "fixed inset-y-0 left-0 z-50 flex w-[288px] flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width,transform] duration-300 ease-sidebar motion-reduce:transition-none lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 lg:w-[240px]",
           // Plasma 6's floating panel: on a wide screen the rail lifts off the
           // edge, rounds its corners and casts one soft shadow, so it reads as a
           // panel *above* the page rather than a wall beside it. On a narrow
@@ -46,7 +52,7 @@ export function Sidebar({ children }: { children: ReactNode }) {
           // drawer — which is what the mobile branch below already does.
           "lg:my-2 lg:ml-2 lg:h-[calc(100vh-1rem)] lg:rounded-lg lg:border lg:border-sidebar-border lg:shadow-float",
           isMobile ? (open ? "translate-x-0 shadow-float" : "-translate-x-full") : "",
-          collapsed && "lg:w-[88px]",
+          collapsed && "lg:w-[64px]",
         )}
       >
         {children}
@@ -74,7 +80,7 @@ export function SidebarContent({ children, className }: { children: ReactNode; c
 
 export function SidebarFooter({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn("border-t border-sidebar-border px-3 py-3", className)}>
+    <div className={cn("border-t border-sidebar-border px-4 py-3", className)}>
       {children}
     </div>
   );
@@ -107,8 +113,9 @@ export function SidebarToggle({ className }: { className?: string }) {
       aria-expanded={!collapsed}
       title={t("nav.toggleSidebar")}
       className={cn(
-        "flex shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-[width,height,background-color,color] duration-300 ease-sidebar hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring motion-reduce:transition-none",
-        collapsed ? "h-8 w-8" : "h-7 w-7",
+        // 32×32 in **both** states: the toggle never changes size when the
+        // panel opens or shuts, so the footer keeps its rhythm.
+        "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-[width,height,background-color,color] duration-300 ease-sidebar hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring motion-reduce:transition-none",
         className,
       )}
     >
@@ -192,10 +199,10 @@ export function SidebarMenuButton({
     // colour, and it holds it on hover as well - otherwise the row changes
     // colour the moment the pointer lands on it.
     isActive && "bg-primary/10 text-primary hover:bg-primary/10 hover:text-primary",
-    // Keep the icon next to the rail edge and let the closing rail settle
-    // around it, instead of switching to `justify-center` and making the icon
-    // jump to the middle of the still-wide button at the start of the collapse.
-    collapsed && "gap-0 pl-[7.5px] pr-[7.5px]",
+    // The icon stays exactly where it is when the rail narrows: the panel
+    // shrinks, the label is clipped, the icon does not move. Only the gap
+    // behind the clipped label goes away.
+    collapsed && "gap-0",
   );
 
   const content = (

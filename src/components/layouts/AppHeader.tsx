@@ -84,11 +84,11 @@ export function UserMenu({
    *
    * - `full`  — avatar, name, role badge, chevron. The narrow-screen bar,
    *              which is as wide as the screen.
-   * - `panel` — avatar and chevron. The floating panel's header: the brand
-   *              wordmark lives there too, and the two together need more
-   *              than 288px once the name is spelled out.
-   * - `mini`  — the avatar alone. The 88px icon-only rail has room for
-   *              nothing else.
+   * - `panel` — avatar, name, chevron. The floating panel's footer: the
+   *              panel is 240px, and spelling the name out next to the role
+   *              badge is what used to cut the wordmark down to "R…".
+   * - `mini`  — the avatar alone. The 64px icon rail has room for nothing
+   *              else.
    */
   variant?: "full" | "panel" | "mini";
 }) {
@@ -100,7 +100,7 @@ export function UserMenu({
      * A Radix popover, not an absolutely positioned div.
      *
      * The panel clips its own overflow (`overflow-hidden`), so a menu drawn
-     * inside it would be cut off at the panel's edge — and in the 88px rail
+     * inside it would be cut off at the panel's edge — and in the 64px rail
      * there is no room for it at all. The popover renders through a portal,
      * which is the only reason the account menu works from the narrow rail.
      */
@@ -114,20 +114,23 @@ export function UserMenu({
             variant === "mini"
               ? "flex h-8 w-8 items-center justify-center"
               : variant === "panel"
-                ? "flex h-8 items-center gap-1 px-2"
+                // `pl-1`, not `px-2.5`: the avatar has to land on the same
+                // pixel as the bare avatar in the icon rail, so the panel's
+                // footer and its narrow form share one axis.
+                ? "flex h-8 items-center gap-1.5 pl-1 pr-2.5"
                 : "inline-flex items-center gap-2 px-2.5 py-1.5",
           )}
         >
           <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
             {username.slice(0, 1).toUpperCase()}
           </span>
+          {variant !== "mini" && (
+            <span className={variant === "panel" ? "truncate" : "hidden sm:inline"}>{username}</span>
+          )}
           {variant === "full" && (
-            <>
-              <span className="hidden sm:inline">{username}</span>
-              <Badge tone={role === "admin" ? "primary" : "neutral"} className="hidden md:inline-flex">
-                {role}
-              </Badge>
-            </>
+            <Badge tone={role === "admin" ? "primary" : "neutral"} className="hidden md:inline-flex">
+              {role}
+            </Badge>
           )}
           {variant !== "mini" && (
             <ChevronDown className="h-4 w-4 text-muted-foreground" />

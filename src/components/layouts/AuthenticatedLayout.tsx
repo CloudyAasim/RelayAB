@@ -167,16 +167,11 @@ function SidebarShell({ role, username, displayName, children }: AuthenticatedLa
         now lives in the panel, so the layout is one object instead of two.
       */}
       <Sidebar>
-        <SidebarHeader className={cn(collapsed && "px-3")}>
+        <SidebarHeader>
           <Link href="/" className="flex min-w-0 items-center gap-2">
-            <span
-              className={cn(
-                "flex shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-[height,width] duration-300 ease-sidebar motion-reduce:transition-none",
-                // Icon-only rail: match the 32px footprint of the nav items so
-                // the brand mark and the menu icons share one vertical axis.
-                collapsed ? "h-8 w-8" : "h-7 w-7",
-              )}
-            >
+            {/* 32×32 in both states: the brand mark never changes size or
+                position when the panel opens or shuts. */}
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <Server className="h-4 w-4" />
             </span>
             {/* Kept mounted and clipped instead of unmounting, so the wordmark
@@ -191,22 +186,11 @@ function SidebarShell({ role, username, displayName, children }: AuthenticatedLa
             </span>
           </Link>
           {/*
-            The account, in the panel's top corner.
-
-            In the icon-only rail there is no room for it here, so it moves
-            down to the bottom of the panel — it must never be out of reach,
-            because it holds the way out (sign out).
+            The account used to sit in this corner — and move down to the
+            bottom only once the rail shut, which was the one place where the
+            two states disagreed. It now lives in the footer in **both** of
+            them, so the top of the panel is only the brand.
           */}
-          {!collapsed && (
-            <div className="ml-auto">
-              {/*
-                The `panel` variant: the brand wordmark is next door, and the
-                two together need more than 288px once the name is spelled
-                out — the wordmark was being cut to "R…".
-              */}
-              <UserMenu username={username} displayName={displayName} role={role} variant="panel" />
-            </div>
-          )}
         </SidebarHeader>
 
         <SidebarContent>
@@ -241,23 +225,19 @@ function SidebarShell({ role, username, displayName, children }: AuthenticatedLa
 
         <SidebarFooter>
           {/*
-           * A row when the panel is open, a column when it is the icon rail.
+           * One column, always — open panel or icon rail.
            *
-           * The rail is one column of icons from top to bottom, and the two
-           * buttons at its foot used to sit side by side — the one place
-           * where that column broke. Stacked, they line up with the nav
-           * icons above them instead.
+           * Three lines: the status, the account, the collapse toggle. The
+           * account is the line that used to move: it lived in the panel's
+           * top-right corner and dropped to the bottom only when the rail
+           * shut. Now it has one home, next to the other two, and nothing
+           * in the panel changes place between the two states.
            *
-           * The status block still shrinks its own width *and* height
-           * instead of being unmounted, so it fades out of the column
-           * rather than popping out of it.
+           * The status block shrinks its own width *and* height instead of
+           * being unmounted, so it fades out of the column rather than
+           * popping out of it.
            */}
-          <div
-            className={cn(
-              "flex",
-              collapsed ? "flex-col items-start gap-1" : "items-center justify-between gap-2",
-            )}
-          >
+          <div className="flex flex-col items-start gap-1">
             <div
               className={cn(
                 "flex items-center gap-2 overflow-hidden text-xs text-muted-foreground transition-[max-width,max-height,opacity] duration-300 ease-sidebar motion-reduce:transition-none",
@@ -267,12 +247,14 @@ function SidebarShell({ role, username, displayName, children }: AuthenticatedLa
               <Activity className="h-3.5 w-3.5 shrink-0 text-success" />
               <span className="truncate">{t("nav.sidebar.statusOnline")}</span>
             </div>
-            {/* In the icon-only rail the account comes down here, in the place
-                the status just vacated — and shrinks to the bare avatar,
-                because 88px has no room for a name and a role badge. */}
-            {collapsed && (
-              <UserMenu username={username} displayName={displayName} role={role} variant="mini" />
-            )}
+            {/* The account, in its permanent home. In the icon rail it shrinks
+                to the bare avatar, because 64px has no room for a name. */}
+            <UserMenu
+              username={username}
+              displayName={displayName}
+              role={role}
+              variant={collapsed ? "mini" : "panel"}
+            />
             <SidebarToggle />
           </div>
         </SidebarFooter>
