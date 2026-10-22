@@ -55,7 +55,7 @@ export default function LoginPage() {
      *     `overflow-y-auto` only as a safety net, but normally the content
      *     fits well below the header on every viewport >= 360px.
      */
-    <div className="fixed inset-0 flex flex-col bg-secondary/60">
+    <div className="fixed inset-0 flex flex-col bg-background">
       {/* Header */}
       <header className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4 sm:px-6">
         <Link

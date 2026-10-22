@@ -1,9 +1,11 @@
 /**
  * tests/unit/theme-palette.test.ts
  *
- * The interface was restyled on the "Ocean Breeze" palette (shadcn.io's
- * Ocean Breeze theme) with Breeze's structural language. Two things about
- * that are worth keeping true, and both are cheap to check:
+ * The interface is styled after the **KDE Breeze** theme and its colour
+ * schemes: the page is the *Window* colour, the content is the *View* colour,
+ * the accent is Plasma Blue, and the neutrals are blue-grey rather than flat
+ * grey. Two things about that are worth keeping true, and both are cheap to
+ * check:
  *
  *   1. **Every role is defined, in both modes.** A missing `--warning` does
  *      not fail the build — it fails on a screen, as an invisible warning
@@ -13,10 +15,12 @@
  *      class at a time, and it is invisible in review because the class is
  *      "just a colour". The theme variables are the only source of colour.
  *
- * The values checked here are the theme's own published anchors: the sea blue
- * at oklch(0.72 0.10 230), the sand at oklch(0.88 0.04 80) and the morning
- * mist at oklch(0.75 0.05 240). Pinning them means a later change to the
- * look is a deliberate act with a diff, not an accident.
+ * The values checked here are KDE's own numbers, from the Breeze colour
+ * schemes (`colors/BreezeLight.colors`, `colors/BreezeDark.colors`). The one
+ * deliberate departure is pinned too: Plasma Blue with white text is 2.49:1,
+ * so the *light* theme's accent is the same hue one step down, and the dark
+ * theme keeps the bright Plasma Blue with a dark label. Pinning them means a
+ * later change to the look is a deliberate act with a diff, not an accident.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -126,29 +130,78 @@ describe("the theme defines every colour role", () => {
   });
 });
 
-describe("the palette is the Ocean Breeze one", () => {
-  it("the primary is the sea blue the theme publishes", () => {
-    // Dark mode uses the theme's own value; light mode is the same hue one
-    // step down the shore, dark enough for white text on top of it.
-    expect(darkBlock()).toContain("--primary: oklch(0.72 0.1 230)");
-    const lightPrimary = /--primary:\s*([^;]+);/.exec(lightBlock())?.[1] ?? "";
-    expect(lightPrimary).toMatch(/oklch\(0\.5\d*\s+0\.10\d*\s+23\d\)/);
+/** Parse an `oklch(L C H)` value into its three numbers. */
+function oklch(value: string): { l: number; c: number; h: number } | null {
+  const m = /oklch\(\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\)/.exec(value);
+  if (!m) return null;
+  return { l: Number(m[1]), c: Number(m[2]), h: Number(m[3]) };
+}
+
+function role(block: string, name: string): string {
+  return new RegExp(`--${name}:\\s*([^;]+);`).exec(block)?.[1] ?? "";
+}
+
+describe("the palette is the KDE Breeze one", () => {
+  it("the dark theme uses Plasma Blue exactly as Breeze publishes it", () => {
+    // #3daee9 — the accent of the Breeze colour schemes, unchanged.
+    expect(darkBlock()).toContain("--primary: oklch(0.713 0.131 236)");
   });
 
-  it("the neutrals come from the sand and the mist, not from grey", () => {
-    // oklch(0.88 0.04 80) is the theme's sand; oklch(0.75 0.05 240) is its
-    // morning mist. A neutral with no chroma at all is the old look.
-    const light = lightBlock();
-    for (const role of ["secondary", "muted", "accent", "border"]) {
-      const value = new RegExp(`--${role}:\\s*([^;]+);`).exec(light)?.[1] ?? "";
-      const chroma = /oklch\([^)]*?[\s/]([\d.]+)\s+[\d.]+\)/.exec(value)?.[1];
-      expect(chroma, `--${role} is a flat grey: ${value}`).toBeTruthy();
-      expect(Number(chroma), `--${role} has no colour of its own`).toBeGreaterThan(0);
+  it("the light theme is the same hue, deep enough for a button label", () => {
+    // Plasma Blue with white text is 2.49:1 — fine for a large selection
+    // area, not for a 14px label. The light theme uses the same hue one step
+    // down (5.50:1 with white).
+    const primary = oklch(role(lightBlock(), "primary"));
+    expect(primary).not.toBeNull();
+    expect(primary!.h).toBeGreaterThan(235);
+    expect(primary!.h).toBeLessThan(250);
+    expect(primary!.c).toBeGreaterThan(0.09);
+    expect(primary!.l).toBeLessThan(0.56);
+  });
+
+  it("the neutrals are blue-grey, not flat grey", () => {
+    // Breeze's neutrals are #eff0f1 / #dee0e2 / #707d8a — almost neutral,
+    // but on the cool side. A neutral with no chroma at all is the old look.
+    for (const name of ["background", "secondary", "muted", "border", "muted-foreground"]) {
+      const value = role(lightBlock(), name);
+      const parsed = oklch(value);
+      expect(parsed, `--${name} is not an oklch value: ${value}`).not.toBeNull();
+      expect(parsed!.c, `--${name} has no colour of its own: ${value}`).toBeGreaterThan(0);
+      expect(parsed!.h, `--${name} is not on the cool side: ${value}`).toBeGreaterThan(230);
+      expect(parsed!.h, `--${name} is not on the cool side: ${value}`).toBeLessThan(260);
     }
   });
 
+  it("the accent is the pastel selection tint", () => {
+    // #eaf3fb — the light blue a selected row gets, used as a hover surface.
+    const accent = oklch(role(lightBlock(), "accent"))!;
+    expect(accent.c).toBeGreaterThan(0.01);
+    expect(accent.l).toBeGreaterThan(0.94);
+    // In the dark theme the same role is the deep ocean selection colour.
+    const darkAccent = oklch(role(darkBlock(), "accent"))!;
+    expect(darkAccent.l).toBeLessThan(0.5);
+    expect(darkAccent.c).toBeGreaterThan(0.05);
+  });
+
+  it("in the dark theme the content sits *inside* the frame, as Plasma 6 does", () => {
+    // Breeze Dark: the View (#141618) is darker than the Window (#202326).
+    // That inversion is the whole reason the dark theme reads as a dark theme
+    // rather than as a grey one.
+    const page = oklch(role(darkBlock(), "background"))!;
+    const card = oklch(role(darkBlock(), "card"))!;
+    expect(card.l).toBeLessThan(page.l);
+    // And in the light theme it is the other way round: the view is white.
+    const lightPage = oklch(role(lightBlock(), "background"))!;
+    const lightCard = oklch(role(lightBlock(), "card"))!;
+    expect(lightCard.l).toBeGreaterThan(lightPage.l);
+  });
+
   it("the radius is one step, not a pile of them", () => {
-    expect(CSS).toContain("--radius: 0.5rem");
+    expect(CSS).toContain("--radius: 0.625rem");
+  });
+
+  it("the icons are thin monochrome lines, as Breeze draws them", () => {
+    expect(CSS).toMatch(/\.lucide\s*\{[^}]*stroke-width:\s*1\.75/);
   });
 });
 

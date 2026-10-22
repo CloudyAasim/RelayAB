@@ -3,34 +3,45 @@
 @tailwind utilities;
 
 /*
- * Design tokens — the "Ocean Breeze" palette on a Breeze-shaped skeleton.
+ * Design tokens — the KDE Breeze palette, read for the web.
  *
- * **Where the colours come from.** The palette is the published *Ocean Breeze*
- * theme (shadcn.io/theme/ocean-breeze): a temperate coast, not a tropical one —
- * "gentle sea blues at oklch(0.72 0.10 230) that calm without cooling, sandy
- * warm neutrals at oklch(0.88 0.04 80) that feel like beach at dawn, and the
- * soft blue-gray of morning mist at oklch(0.75 0.05 240)". Those three anchors
- * are the theme's own numbers; the rest of the scale below is built around them
- * so that every role (surface, text, hairline, status) comes from the same
- * coast instead of from four unrelated neutrals.
+ * **Where the colours come from.** They are KDE's own numbers, taken from the
+ * colour schemes in the Breeze repository (`colors/BreezeLight.colors` and
+ * `colors/BreezeDark.colors`):
  *
- * **How the shapes come from Breeze.** Breeze's look is structural, not
- * decorative: white surfaces, hairline borders, one soft shadow, generous
- * padding, and a single accent that carries every action. The tokens below
- * keep that discipline — the accent is the sea blue, the neutrals are sand and
- * mist, and nothing is louder than the thing you are meant to click.
+ *   - the page is the *Window* colour and the content is the *View* colour
+ *     (white on #eff0f1 in the light scheme, #141618 on #202326 in the dark
+ *     one — Plasma 6 made the dark theme darker on purpose, so the content
+ *     sits *in* the frame);
+ *   - the accent is **Plasma Blue** `#3daee9`;
+ *   - the pastels are the *Selection alternate* (`#a3d4fa` light, `#1e5774`
+ *     dark);
+ *   - the status colours are the *Negative* / *Positive* / *Neutral* roles.
+ *
+ * **One deliberate departure.** Plasma Blue with white text is 2.49:1 — the
+ * Breeze scheme accepts that for large selection areas, but a 14px button
+ * label is not a large selection area. So the light theme's accent is the same
+ * hue one step down (`#1c6ea4`, 5.50:1 with white) and the dark theme keeps
+ * the bright Plasma Blue with a *dark* label (6.34:1) — which is how the
+ * accent reads in Plasma 6 anyway. Every pair this app actually renders was
+ * measured; the numbers are in `tests/unit/theme-palette.test.ts`.
+ *
+ * **The shape of it.** Breeze is geometric minimalism: flat controls, hairline
+ * borders, one soft shadow, and a single accent that carries every action.
+ * The radius is one value (`--radius`), so a card, a button and a floating
+ * panel are all the same family of curve.
  *
  * Two themes:
  *   - `.light` (default — used when html has no `.dark` class)
  *   - `.dark`  (overrides below)
  *
  * Semantic color roles:
- *   - primary    : the sea blue — every action and every selected thing
- *   - secondary  : sand — quiet fills, the "other" button
- *   - accent     : a tinted sea blue — hover surfaces, selected sidebar rows
- *   - muted      : morning mist — low-priority text, disabled state, table heads
+ *   - primary    : Plasma Blue — every action and every selected thing
+ *   - secondary  : a quiet neutral — the "other" button
+ *   - accent     : the pastel selection tint — hover surfaces, selected rows
+ *   - muted      : the low-priority surface — table heads, disabled state
  *   - success / warning / info / destructive : status badges & banners
- *   - sidebar-*  : the same coast, one step quieter, so the rail sits behind
+ *   - sidebar-*  : the same scheme, one step quieter, so the rail sits behind
  *                  the content instead of competing with it
  */
 
@@ -38,131 +49,132 @@
 .light {
   color-scheme: light;
 
-  /* Surfaces: warm white paper, sand-tinted hairlines. */
-  --background: oklch(0.995 0.004 85);
-  --foreground: oklch(0.235 0.028 235);
+  /* Surfaces: the window, and the view that sits on it. */
+  --background: oklch(0.955 0.002 247.8);
+  --foreground: oklch(0.267 0.007 248.1);
 
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.235 0.028 235);
+  --card-foreground: oklch(0.267 0.007 248.1);
 
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.235 0.028 235);
+  --popover: oklch(0.991 0 0);
+  --popover-foreground: oklch(0.267 0.007 248.1);
 
-  /* The sea. Dark enough for white text, calm enough to stare at all day. */
-  --primary: oklch(0.545 0.105 232);
-  --primary-foreground: oklch(0.985 0.006 225);
+  /* Plasma Blue, one step down: the same hue, deep enough for a button label. */
+  --primary: oklch(0.518 0.114 243.3);
+  --primary-foreground: oklch(1 0 0);
 
-  /* The sand: warm, quiet, one step off the page. */
-  --secondary: oklch(0.955 0.024 85);
-  --secondary-foreground: oklch(0.3 0.045 235);
+  --secondary: oklch(0.906 0.003 247.9);
+  --secondary-foreground: oklch(0.267 0.007 248.1);
 
-  /* Morning mist: the low-priority end of the scale. */
-  --muted: oklch(0.965 0.012 235);
-  --muted-foreground: oklch(0.505 0.03 235);
+  --muted: oklch(0.921 0.003 247.9);
+  --muted-foreground: oklch(0.539 0.023 245.9);
 
-  /* A drop of sea in the surface, for hover and for selected rows. */
-  --accent: oklch(0.94 0.028 228);
-  --accent-foreground: oklch(0.28 0.055 235);
+  /* The pastel selection tint — a hover surface, not a colour of its own. */
+  --accent: oklch(0.96 0.014 244.7);
+  --accent-foreground: oklch(0.267 0.007 248.1);
 
-  --destructive: oklch(0.58 0.215 25);
-  --destructive-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.535 0.161 18.7);
+  --destructive-foreground: oklch(1 0 0);
 
-  --success: oklch(0.6 0.125 168);
-  --success-foreground: oklch(0.985 0 0);
+  --success: oklch(0.522 0.121 153.3);
+  --success-foreground: oklch(1 0 0);
 
-  --warning: oklch(0.76 0.145 80);
-  --warning-foreground: oklch(0.24 0.04 235);
+  --warning: oklch(0.558 0.144 51.9);
+  --warning-foreground: oklch(0.267 0.007 248.1);
 
-  --info: oklch(0.6 0.105 232);
-  --info-foreground: oklch(0.985 0 0);
+  --info: oklch(0.518 0.114 243.3);
+  --info-foreground: oklch(1 0 0);
 
-  --neutral: oklch(0.62 0.02 235);
-  --neutral-foreground: oklch(0.985 0 0);
+  --neutral: oklch(0.56 0.022 245.9);
+  --neutral-foreground: oklch(1 0 0);
 
-  --border: oklch(0.905 0.012 85);
-  --input: oklch(0.895 0.014 85);
-  --ring: oklch(0.6 0.105 232);
+  /* Hairlines: quiet, but a shade darker than the surface they sit on. */
+  --border: oklch(0.861 0.008 241.7);
+  --input: oklch(0.84 0.009 247.9);
+  --ring: oklch(0.518 0.114 243.3);
 
-  --sidebar: oklch(0.985 0.008 85);
-  --sidebar-foreground: oklch(0.235 0.028 235);
-  --sidebar-primary: oklch(0.545 0.105 232);
-  --sidebar-primary-foreground: oklch(0.985 0.006 225);
-  --sidebar-accent: oklch(0.945 0.02 228);
-  --sidebar-accent-foreground: oklch(0.28 0.055 235);
-  --sidebar-border: oklch(0.905 0.012 85);
-  --sidebar-ring: oklch(0.6 0.105 232);
+  --sidebar: oklch(0.955 0.002 247.8);
+  --sidebar-foreground: oklch(0.267 0.007 248.1);
+  --sidebar-primary: oklch(0.518 0.114 243.3);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.96 0.014 244.7);
+  --sidebar-accent-foreground: oklch(0.518 0.114 243.3);
+  --sidebar-border: oklch(0.861 0.008 241.7);
+  --sidebar-ring: oklch(0.518 0.114 243.3);
 
-  /* The charts are the same coast, read from deep water out to the sand. */
-  --chart-1: oklch(0.545 0.105 232);
-  --chart-2: oklch(0.66 0.09 205);
-  --chart-3: oklch(0.76 0.1 185);
-  --chart-4: oklch(0.76 0.13 85);
-  --chart-5: oklch(0.62 0.12 265);
+  /* Five series, far enough apart to tell apart at a glance. */
+  --chart-1: oklch(0.518 0.114 243.3);
+  --chart-2: oklch(0.558 0.144 51.9);
+  --chart-3: oklch(0.522 0.121 153.3);
+  --chart-4: oklch(0.577 0.152 315.3);
+  --chart-5: oklch(0.535 0.161 18.7);
 
-  --radius: 0.5rem;
+  /* One radius for the whole family: cards, controls and floating panels. */
+  --radius: 0.625rem;
 }
 
 .dark {
   color-scheme: dark;
 
-  /* Deep water at dusk: blue-black with a trace of the sea in it. */
-  --background: oklch(0.185 0.018 238);
-  --foreground: oklch(0.945 0.012 230);
+  /* Deep water at dusk: the frame, and the view that sits inside it. */
+  --background: oklch(0.254 0.007 248.1);
+  --foreground: oklch(0.991 0 0);
 
-  --card: oklch(0.215 0.02 238);
-  --card-foreground: oklch(0.945 0.012 230);
+  --card: oklch(0.199 0.005 248.1);
+  --card-foreground: oklch(0.991 0 0);
 
-  --popover: oklch(0.215 0.02 238);
-  --popover-foreground: oklch(0.945 0.012 230);
+  --popover: oklch(0.292 0.008 255.6);
+  --popover-foreground: oklch(0.991 0 0);
 
-  /* The theme's own sea blue — the light-mode primary would glow on this. */
-  --primary: oklch(0.72 0.1 230);
-  --primary-foreground: oklch(0.18 0.03 240);
+  /* Plasma Blue, as it is: on a dark ground it needs no deepening. */
+  --primary: oklch(0.713 0.131 236);
+  --primary-foreground: oklch(0.254 0.007 248.1);
 
-  --secondary: oklch(0.275 0.026 235);
-  --secondary-foreground: oklch(0.93 0.012 230);
+  --secondary: oklch(0.292 0.008 255.6);
+  --secondary-foreground: oklch(0.991 0 0);
 
-  --muted: oklch(0.265 0.024 238);
-  --muted-foreground: oklch(0.675 0.028 235);
+  --muted: oklch(0.292 0.008 255.6);
+  --muted-foreground: oklch(0.731 0.015 248);
 
-  --accent: oklch(0.3 0.038 230);
-  --accent-foreground: oklch(0.93 0.012 230);
+  /* The deep ocean tint: a selected row is a pool, not a colour. */
+  --accent: oklch(0.434 0.075 234.7);
+  --accent-foreground: oklch(0.991 0 0);
 
-  --destructive: oklch(0.65 0.2 25);
-  --destructive-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.686 0.161 15.8);
+  --destructive-foreground: oklch(0.254 0.007 248.1);
 
-  --success: oklch(0.7 0.13 168);
-  --success-foreground: oklch(0.18 0.03 240);
+  --success: oklch(0.663 0.16 152.4);
+  --success-foreground: oklch(0.254 0.007 248.1);
 
-  --warning: oklch(0.8 0.14 80);
-  --warning-foreground: oklch(0.18 0.03 240);
+  --warning: oklch(0.701 0.186 50);
+  --warning-foreground: oklch(0.991 0 0);
 
-  --info: oklch(0.7 0.1 230);
-  --info-foreground: oklch(0.18 0.03 240);
+  --info: oklch(0.713 0.131 236);
+  --info-foreground: oklch(0.254 0.007 248.1);
 
-  --neutral: oklch(0.45 0.02 235);
-  --neutral-foreground: oklch(0.945 0.012 230);
+  --neutral: oklch(0.431 0.013 243.9);
+  --neutral-foreground: oklch(0.991 0 0);
 
-  --border: oklch(0.3 0.024 238);
-  --input: oklch(0.325 0.024 238);
-  --ring: oklch(0.72 0.1 230);
+  --border: oklch(0.33 0.011 248.2);
+  --input: oklch(0.372 0.013 248.2);
+  --ring: oklch(0.713 0.131 236);
 
-  --sidebar: oklch(0.205 0.019 238);
-  --sidebar-foreground: oklch(0.945 0.012 230);
-  --sidebar-primary: oklch(0.72 0.1 230);
-  --sidebar-primary-foreground: oklch(0.18 0.03 240);
-  --sidebar-accent: oklch(0.285 0.03 234);
-  --sidebar-accent-foreground: oklch(0.93 0.012 230);
-  --sidebar-border: oklch(0.3 0.024 238);
-  --sidebar-ring: oklch(0.72 0.1 230);
+  --sidebar: oklch(0.254 0.007 248.1);
+  --sidebar-foreground: oklch(0.991 0 0);
+  --sidebar-primary: oklch(0.713 0.131 236);
+  --sidebar-primary-foreground: oklch(0.254 0.007 248.1);
+  --sidebar-accent: oklch(0.434 0.075 234.7);
+  --sidebar-accent-foreground: oklch(0.991 0 0);
+  --sidebar-border: oklch(0.33 0.011 248.2);
+  --sidebar-ring: oklch(0.713 0.131 236);
 
-  --chart-1: oklch(0.72 0.1 230);
-  --chart-2: oklch(0.74 0.09 205);
-  --chart-3: oklch(0.8 0.09 185);
-  --chart-4: oklch(0.82 0.12 85);
-  --chart-5: oklch(0.7 0.11 265);
+  --chart-1: oklch(0.713 0.131 236);
+  --chart-2: oklch(0.701 0.186 50);
+  --chart-3: oklch(0.663 0.16 152.4);
+  --chart-4: oklch(0.671 0.141 309.9);
+  --chart-5: oklch(0.686 0.161 15.8);
 
-  --radius: 0.5rem;
+  --radius: 0.625rem;
 }
 
 /* ----- Base resets ----- */
@@ -181,6 +193,21 @@ body {
     'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
   font-feature-settings: 'cv11', 'ss01', 'ss03';
   -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * Icons.
+ *
+ * Breeze draws its icons as thin monochrome lines, and that is what makes the
+ * interface read as flat rather than as a collection of coloured stickers. The
+ * icons here are already monochrome; they are drawn a little too heavy for the
+ * rest of the theme, so the stroke is thinned in one place.
+ *
+ * `stroke-width` is an inherited SVG property, so this reaches every path in
+ * the icon — and CSS beats the presentation attribute the library sets.
+ */
+.lucide {
+  stroke-width: 1.75;
 }
 
 /*
