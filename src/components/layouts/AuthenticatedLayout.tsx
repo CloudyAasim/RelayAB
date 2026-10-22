@@ -241,16 +241,27 @@ function SidebarShell({ role, username, displayName, children }: AuthenticatedLa
 
         <SidebarFooter>
           {/*
-           * One row in both states. The status block collapses its own width
-           * and opacity while the rail narrows, so the toggle stays pinned to
-           * the right edge the whole time and simply ends up centred in the
-           * icon-only rail — no mid-animation layout switch.
+           * A row when the panel is open, a column when it is the icon rail.
+           *
+           * The rail is one column of icons from top to bottom, and the two
+           * buttons at its foot used to sit side by side — the one place
+           * where that column broke. Stacked, they line up with the nav
+           * icons above them instead.
+           *
+           * The status block still shrinks its own width *and* height
+           * instead of being unmounted, so it fades out of the column
+           * rather than popping out of it.
            */}
-          <div className={cn("flex items-center justify-between", collapsed ? "gap-0" : "gap-2")}>
+          <div
+            className={cn(
+              "flex",
+              collapsed ? "flex-col items-start gap-1" : "items-center justify-between gap-2",
+            )}
+          >
             <div
               className={cn(
-                "flex items-center gap-2 overflow-hidden text-xs text-muted-foreground transition-[max-width,opacity] duration-300 ease-sidebar motion-reduce:transition-none",
-                collapsed ? "max-w-0 opacity-0" : "max-w-[180px] opacity-100 delay-150",
+                "flex items-center gap-2 overflow-hidden text-xs text-muted-foreground transition-[max-width,max-height,opacity] duration-300 ease-sidebar motion-reduce:transition-none",
+                collapsed ? "max-h-0 max-w-0 opacity-0" : "max-h-4 max-w-[180px] opacity-100 delay-150",
               )}
             >
               <Activity className="h-3.5 w-3.5 shrink-0 text-success" />

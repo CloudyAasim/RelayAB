@@ -37,10 +37,14 @@ describe("sidebarStateForViewport", () => {
  *   1. the footer kept the status label and the toggle in one `justify-between`
  *      row, so the toggle overflowed the rail (measured scrollWidth 62 >
  *      clientWidth 55);
- *   2. the width snapped / labels popped and the footer switched to a column
+ *   2. the width snapped / labels popped and the footer switched its layout
  *      mid-animation, which made the collapse feel jumpy.
- * The rail now eases its width, keeps labels mounted and clips them, and the
- * footer stays a single row that shrinks its status block.
+ *
+ * The rail now eases its width and keeps labels mounted and clipped. The
+ * footer's layout does switch — the rail is one column of icons from top to
+ * bottom, and the two buttons at its foot were the one place where that
+ * column broke, so they now stack — but nothing is unmounted to make it
+ * switch: the status block shrinks its own width *and* height and fades.
  */
 describe("sidebar: collapsed rail layout & motion", () => {
   const layout = read("components/layouts/AuthenticatedLayout.tsx");
@@ -72,12 +76,21 @@ describe("sidebar: collapsed rail layout & motion", () => {
     );
   });
 
-  it("keeps the footer a single shrinking row (no mid-animation column)", () => {
-    expect(layout).toContain("justify-between");
+  it("stacks the two bottom buttons in the icon-only rail", () => {
+    // The rail is one column of icons from top to bottom. The account button
+    // and the collapse toggle used to sit side by side at the foot of it —
+    // the one place where that column broke.
     expect(layout).toContain(
-      'collapsed ? "max-w-0 opacity-0" : "max-w-[180px] opacity-100 delay-150"',
+      'collapsed ? "flex-col items-start gap-1" : "items-center justify-between gap-2"',
     );
-    expect(layout).not.toContain("flex flex-col items-center");
+    expect(layout).toContain("justify-between");
+  });
+
+  it("shrinks the status block out of the column instead of unmounting it", () => {
+    expect(layout).toContain(
+      'collapsed ? "max-h-0 max-w-0 opacity-0" : "max-h-4 max-w-[180px] opacity-100 delay-150"',
+    );
+    expect(layout).not.toContain('collapsed && "hidden"');
   });
 
   it("aligns the collapsed brand mark with the 32px nav icons", () => {
