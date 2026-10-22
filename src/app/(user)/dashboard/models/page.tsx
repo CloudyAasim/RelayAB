@@ -115,6 +115,7 @@ export default async function ModelsPage() {
             audioFile: t("dashboard.models.media.audioFile"),
             run: t("dashboard.models.media.run"),
             running: t("dashboard.models.media.running"),
+            progressHint: t("dashboard.models.media.progressHint"),
             needsKey: t("dashboard.models.media.needsKey"),
             needsPrompt: t("dashboard.models.media.needsPrompt"),
             needsFile: t("dashboard.models.media.needsFile"),

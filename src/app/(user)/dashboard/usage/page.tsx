@@ -23,6 +23,9 @@ import {
   resolveRange,
   sortByMetric,
   cacheHitRate,
+  formatUsageMetric,
+  metricValue,
+  usagePace,
   type UsageGroupRow,
 } from "@/lib/usage/report";
 import { timezoneLabelKey, timezoneOffsetMinutes } from "@/lib/timezone";
@@ -121,6 +124,9 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
   const quotaUsed = fullUser?.quotaUsed ?? 0;
   const neverGranted = quotaLimit === 0;
   const remaining = Math.max(0, quotaLimit - quotaUsed);
+
+  /** The pace over the selected range: the average per bucket, and the peak. */
+  const pace = usagePace(report.series, metric);
 
   const unitLabel = t(`admin.keys.create.quotaType.${quotaType}`);
   const fmtQuota = (n: number) =>
@@ -356,6 +362,11 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
             metricLabel={metricLabel}
             summary={report.summary}
             labels={labels}
+            paceLabel={t("usage.chart.average", {
+              unit: t(range.grain === "hour" ? "usage.chart.grainHour" : "usage.chart.grainDay"),
+              value: formatUsageMetric(pace.average, metric),
+              peak: formatUsageMetric(pace.peak, metric),
+            })}
             emptyLabel={t("usage.empty")}
           />
         </Card>

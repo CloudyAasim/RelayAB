@@ -22,6 +22,9 @@ import {
   parseUsageMetric,
   resolveRange,
   sortByMetric,
+  formatUsageMetric,
+  metricValue,
+  usagePace,
   type UsageGroupRow,
 } from "@/lib/usage/report";
 import { timezoneLabelKey, timezoneOffsetMinutes } from "@/lib/timezone";
@@ -129,6 +132,9 @@ export default async function AdminUsagePage({ searchParams }: UsagePageProps) {
     return user ? formatUserIdentity(user.username, user.displayName) : id;
   };
   const keyById = new Map(allKeys.map((key) => [key.id, key]));
+
+  /** The pace over the selected range: the average per bucket, and the peak. */
+  const pace = usagePace(report.series, metric);
 
   const labels = {
     credits: t("usage.table.credits"),
@@ -296,6 +302,11 @@ export default async function AdminUsagePage({ searchParams }: UsagePageProps) {
             metricLabel={metricLabel}
             summary={report.summary}
             labels={labels}
+            paceLabel={t("usage.chart.average", {
+              unit: t(range.grain === "hour" ? "usage.chart.grainHour" : "usage.chart.grainDay"),
+              value: formatUsageMetric(pace.average, metric),
+              peak: formatUsageMetric(pace.peak, metric),
+            })}
             emptyLabel={t("usage.empty")}
           />
         </Card>

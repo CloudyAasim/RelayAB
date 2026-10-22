@@ -15,6 +15,7 @@
  * and overrideable.
  */
 import type { UsageLog } from "@/lib/db/types";
+import { formatCredits, formatNumber } from "@/lib/utils";
 
 const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
@@ -313,6 +314,36 @@ export function metricValue(
   if (metric === "credits") return row.creditsUsed;
   if (metric === "tokens") return row.totalTokens;
   return row.requests;
+}
+
+/**
+ * A metric's value, formatted the way the interface shows it.
+ *
+ * Credits are shown in their own unit (「12.3 积分」) and the rest as plain
+ * numbers, and the two must agree everywhere they appear — the axis, the
+ * hover card, the rate line. One helper, so they cannot drift.
+ */
+export function formatUsageMetric(value: number, metric: UsageMetric): string {
+  return metric === "credits" ? formatCredits(value) : formatNumber(value);
+}
+
+/**
+ * The pace over a series: the average per bucket, and the busiest bucket.
+ *
+ * The bars say "how much in each bucket"; these two say "how fast it is
+ * going" — the reading a transfer notification gives you while the file is
+ * still moving. The average is the pace, the peak is the worst bucket.
+ */
+export function usagePace(
+  points: readonly UsageSeriesPoint[],
+  metric: UsageMetric,
+): { average: number; peak: number } {
+  const values = points.map((point) => metricValue(point, metric));
+  if (values.length === 0) return { average: 0, peak: 0 };
+  return {
+    average: values.reduce((sum, value) => sum + value, 0) / values.length,
+    peak: Math.max(...values),
+  };
 }
 
 /** Copy of `rows`, ranked by the selected metric (desc), id as tie-break. */

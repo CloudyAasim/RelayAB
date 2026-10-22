@@ -1,5 +1,6 @@
 import {
   bucketLabel,
+  formatUsageMetric,
   metricValue,
   type UsageGrain,
   type UsageMetric,
@@ -9,7 +10,7 @@ import {
 import { cn, formatCredits, formatNumber } from "@/lib/utils";
 
 function formatMetric(value: number, metric: UsageMetric): string {
-  return metric === "credits" ? formatCredits(value) : formatNumber(value);
+  return formatUsageMetric(value, metric);
 }
 
 interface Props {
@@ -21,6 +22,8 @@ interface Props {
   /** Window totals, shown above the chart with the selected metric emphasized. */
   summary?: UsageSummary;
   labels: { credits: string; tokens: string; requests: string; images: string };
+  /** "平均每 {unit} ≈ {value}（峰值 {peak}）" — the pace, already substituted. */
+  paceLabel: string;
   emptyLabel: string;
 }
 
@@ -39,6 +42,7 @@ export function UsageBarChart({
   metricLabel,
   summary,
   labels,
+  paceLabel,
   emptyLabel,
 }: Props) {
   if (points.length === 0) {
@@ -73,6 +77,18 @@ export function UsageBarChart({
           )}
         </div>
       )}
+
+      {/*
+        The pace, in one line.
+
+        The bars say "how much in each bucket"; this says "how fast it is
+        going" — the same reading a transfer notification gives you while the
+        file is still moving. Two numbers, because one is not enough: the
+        average is the pace, the peak is the worst bucket you will have.
+      */}
+      <p className="mb-2 text-xs text-muted-foreground">
+        <span className="tabular-nums">{paceLabel}</span>
+      </p>
 
       <div className="flex gap-2">
         {/* Y axis: max / mid / 0 */}

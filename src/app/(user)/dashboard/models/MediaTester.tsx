@@ -23,6 +23,8 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
+import { Progress } from "@/components/ui/Progress";
+import { useT } from "@/components/i18n/I18nProvider";
 import { CredentialChoice, type Mode } from "@/lib/assistant/CredentialPanel";
 
 export interface MediaModelOption {
@@ -71,6 +73,8 @@ interface Labels {
   audioFile: string;
   run: string;
   running: string;
+  /** What this kind of run usually costs in time. */
+  progressHint: string;
   needsKey: string;
   needsPrompt: string;
   needsFile: string;
@@ -171,6 +175,34 @@ export function MediaTester({ models, labels }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
+
+  /**
+   * How long the current run has been going.
+   *
+   * The upstream gives no percentage for a video job, so the only honest
+   * number is the wait itself — and a wait the reader can see is a wait they
+   * do not read as a hang. Ticks once a second, and only while busy.
+   */
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!busy) {
+      setElapsed(0);
+      return;
+    }
+    const started = Date.now();
+    const id = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, [busy]);
+
+  /**
+   * The elapsed time, in the reader's language.
+   *
+   * The number is only known here, in the browser, so the sentence is built
+   * here too — a placeholder has to be filled by `t()`, not by string surgery
+   * in a component.
+   */
+  const t = useT();
+  const elapsedLabel = t("dashboard.models.media.elapsed", { n: String(elapsed) });
 
   /**
    * The voice catalogue, fetched when a text-to-speech model is selected.
@@ -628,6 +660,23 @@ export function MediaTester({ models, labels }: Props) {
               {busy ? labels.running : labels.run}
             </Button>
           </div>
+          {/*
+            The wait, made visible.
+
+            A video generation is tens of seconds to minutes with no percentage
+            to show, and the only thing on screen used to be a button whose
+            label changed. This is KDE's busy progress bar: the work is real,
+            the total is unknown, and a bar that sits still reads as a hung
+            page. The hint says how long this usually takes, so the reader
+            knows whether to wait or to go look at the logs.
+          */}
+          {busy && (
+            <Progress
+              className="pt-1"
+              label={elapsedLabel}
+              hint={labels.progressHint}
+            />
+          )}
           {credentialMode === "key" && !relayKey.trim() && (
             <p className="text-xs text-muted-foreground">{labels.needsKey}</p>
           )}
