@@ -44,13 +44,28 @@ export function Sidebar({ children }: { children: ReactNode }) {
         aria-label="Sidebar navigation"
         data-state={collapsed ? "collapsed" : "expanded"}
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-[288px] flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width,transform] duration-300 ease-sidebar motion-reduce:transition-none lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 lg:w-[240px]",
+          "fixed inset-y-0 left-0 z-50 flex w-[288px] flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width,transform] duration-300 ease-sidebar motion-reduce:transition-none lg:sticky lg:top-2 lg:h-screen lg:translate-x-0 lg:w-[240px]",
           // Plasma 6's floating panel: on a wide screen the rail lifts off the
           // edge, rounds its corners and casts one soft shadow, so it reads as a
           // panel *above* the page rather than a wall beside it. On a narrow
           // screen there is no room to float, so it docks back to the edge as a
           // drawer — which is what the mobile branch below already does.
-          "lg:my-2 lg:ml-2 lg:h-[calc(100vh-1rem)] lg:rounded-lg lg:border lg:border-sidebar-border lg:shadow-float",
+          //
+          // Two load-bearing details:
+          //
+          //   `lg:top-2` — a sticky box is placed by its **border box**, so
+          //   `top: 0` would park the panel flush against the top of the
+          //   viewport the moment it stuck and the 8px margin would be gone
+          //   (measured: the brand mark sat at y=12 instead of y=20). The
+          //   inset carries the gap instead, so the panel keeps it whether it
+          //   is scrolling or not.
+          //
+          //   `lg:bottom-auto` — `inset-y-0` (from the mobile drawer's
+          //   `fixed`) leaves `bottom: 0` in force, and a sticky box pinned by
+          //   **both** edges cannot move: it has to fit inside the scrollport,
+          //   so the whole panel scrolled with the page instead of staying
+          //   put. Releasing the bottom edge lets `top` alone govern.
+          "lg:my-2 lg:ml-2 lg:bottom-auto lg:h-[calc(100vh-1rem)] lg:rounded-lg lg:border lg:border-sidebar-border lg:shadow-float",
           isMobile ? (open ? "translate-x-0 shadow-float" : "-translate-x-full") : "",
           collapsed && "lg:w-[64px]",
         )}

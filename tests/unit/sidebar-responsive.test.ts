@@ -110,13 +110,35 @@ describe("sidebar: collapsed rail layout & motion", () => {
   });
 
   it("keeps the footer one column in both states", () => {
-    // Three lines: the status, the account, the collapse toggle. The status
-    // shrinks its own width and height and fades; nothing is unmounted.
+    // Two lines: the account and the collapse toggle. There is no layout
+    // switch any more, so nothing is mounted or unmounted to make one.
     expect(layout).toContain('"flex flex-col items-start gap-1"');
     expect(layout).not.toContain("justify-between");
-    expect(layout).toContain(
-      'collapsed ? "max-h-0 max-w-0 opacity-0" : "max-h-4 max-w-[180px] opacity-100 delay-150"',
-    );
+  });
+
+  it("has no status line in the footer", () => {
+    // The "service online" hint told nobody anything and cost a row.
+    expect(layout).not.toContain("nav.sidebar.statusOnline");
+    expect(layout).not.toContain("Activity");
+  });
+
+  it("keeps the panel on screen while the page scrolls", () => {
+    // `inset-y-0` (the mobile drawer) leaves `bottom: 0` in force, and a
+    // sticky box pinned by **both** edges cannot move: it has to fit inside
+    // the scrollport, so the whole panel scrolled with the page instead of
+    // staying put.
+    expect(sidebar).toContain("lg:sticky");
+    expect(sidebar).toContain("lg:bottom-auto");
+    expect(sidebar).toContain("lg:my-2");
+  });
+
+  it("keeps the panel 8px below the top once it sticks", () => {
+    // A sticky box is placed by its **border box**, so `top: 0` parked the
+    // panel flush against the top of the viewport and the 8px margin was
+    // gone (measured: the brand mark sat at y=12 instead of y=20). The inset
+    // has to carry the gap, not the margin.
+    expect(sidebar).toContain("lg:top-2");
+    expect(sidebar).not.toContain("lg:top-0");
   });
 
   it("gives the account one home, in the footer, in both states", () => {

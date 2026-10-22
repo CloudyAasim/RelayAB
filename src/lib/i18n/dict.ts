@@ -102,7 +102,6 @@ const zhCN: Dict = {
   "nav.sidebar.reference": "参考",
   "nav.sidebar.personal": "我的",
   "nav.myDashboard": "我的密钥与额度",
-  "nav.sidebar.statusOnline": "服务运行中",
 
   // ===== Theme =====
   "theme.toggle": "切换主题",
@@ -1509,7 +1508,6 @@ const en: Dict = {
   "nav.sidebar.reference": "Reference",
   "nav.sidebar.personal": "Personal",
   "nav.myDashboard": "My keys & credits",
-  "nav.sidebar.statusOnline": "Service online",
 
   // ===== Theme =====
   "theme.toggle": "Toggle theme",

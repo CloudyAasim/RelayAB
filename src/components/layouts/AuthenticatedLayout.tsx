@@ -38,7 +38,6 @@ import {
   Server,
   Settings,
   Users,
-  Activity,
   Wallet,
   FileText,
   FlaskConical,
@@ -227,26 +226,13 @@ function SidebarShell({ role, username, displayName, children }: AuthenticatedLa
           {/*
            * One column, always — open panel or icon rail.
            *
-           * Three lines: the status, the account, the collapse toggle. The
-           * account is the line that used to move: it lived in the panel's
-           * top-right corner and dropped to the bottom only when the rail
-           * shut. Now it has one home, next to the other two, and nothing
-           * in the panel changes place between the two states.
-           *
-           * The status block shrinks its own width *and* height instead of
-           * being unmounted, so it fades out of the column rather than
-           * popping out of it.
+           * Two lines: the account and the collapse toggle. The account is
+           * the line that used to move: it lived in the panel's top-right
+           * corner and dropped to the bottom only when the rail shut. Now it
+           * has one home, and nothing in the panel changes place between the
+           * two states.
            */}
           <div className="flex flex-col items-start gap-1">
-            <div
-              className={cn(
-                "flex items-center gap-2 overflow-hidden text-xs text-muted-foreground transition-[max-width,max-height,opacity] duration-300 ease-sidebar motion-reduce:transition-none",
-                collapsed ? "max-h-0 max-w-0 opacity-0" : "max-h-4 max-w-[180px] opacity-100 delay-150",
-              )}
-            >
-              <Activity className="h-3.5 w-3.5 shrink-0 text-success" />
-              <span className="truncate">{t("nav.sidebar.statusOnline")}</span>
-            </div>
             {/* The account, in its permanent home. In the icon rail it shrinks
                 to the bare avatar, because 64px has no room for a name. */}
             <UserMenu
