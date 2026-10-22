@@ -258,7 +258,8 @@ function SidebarShell({ role, username, displayName, children }: AuthenticatedLa
             )}
             <SidebarToggle />
           </div>
-        </SidebarFooter>      </Sidebar>
+        </SidebarFooter>
+      </Sidebar>
 
       <SidebarInset>
         <AppHeader username={username} displayName={displayName} role={role} />
