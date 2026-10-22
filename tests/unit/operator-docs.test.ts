@@ -117,7 +117,23 @@ describe("where a page goes", () => {
     // operator's prose through the document. Then a reader looking for the rate
     // limit had to know which chapter somebody had filed it under, and the
     // operator had to decide that on every page. One chapter, one place to look.
-    expect(visibleDocPages(pages).map((p) => p.id)).toEqual(["limits", "pick", "loose"]);
+    //
+    // The order is the one `compareText` produces: the same on every machine.
+    // It used to be `localeCompare`, which follows the *ambient* locale — pinyin
+    // on a machine with a Chinese locale, code points on the CI runner, which
+    // has no UTF-8 locale set. The same deployment showed its pages in two
+    // different orders depending on where it ran, and this test only ever saw
+    // the one its own machine produced.
+    expect(visibleDocPages(pages).map((p) => p.id)).toEqual(["loose", "pick", "limits"]);
+  });
+
+  it("and the order does not depend on the order the rows came back in", () => {
+    // The rows come from a database, so their order is whatever the query
+    // returned. The reading order is decided by the sort, not by the rows.
+    const shuffled = [pages[2], pages[0], pages[1], pages[3]];
+    expect(visibleDocPages(shuffled).map((p) => p.id)).toEqual(
+      visibleDocPages(pages).map((p) => p.id),
+    );
   });
 
   it("a draft is in none of it", () => {

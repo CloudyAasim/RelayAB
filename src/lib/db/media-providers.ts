@@ -36,6 +36,7 @@ import { encryptSecret } from "../crypto/secrets";
 import { generateId } from "../crypto/hashing";
 import { getAll, getOne, rowToMediaProvider, run, toDbBool } from "./sqlite";
 import { parseMediaSpec, validateMediaSpecs, type MediaCapability, type MediaProvider, type MediaSpec, type PublicMediaProvider } from "../media/spec";
+import { compareText } from "../utils";
 
 export interface CreateMediaProviderInput {
   name: string;
@@ -210,13 +211,18 @@ export async function deleteMediaProvider(id: string): Promise<boolean> {
  * Resolve a client-facing media model name to a provider + its model row.
  * Providers are consulted in priority order (ascending, then name), matching
  * how the chat proxy picks a provider for a model.
+ *
+ * The name comparison is the locale-independent one: provider names are
+ * Chinese half the time, and `localeCompare` sorts them by pinyin on one
+ * machine and by code point on another — so which provider answers a model
+ * that two of them both serve would depend on where the process was running.
  */
 export async function resolveMediaProviderForModel(
   clientModel: string,
 ): Promise<{ provider: MediaProvider; upstreamId: string; pricePerItem: number } | null> {
   const providers = await listMediaProviders({ enabledOnly: true });
   for (const provider of providers.sort(
-    (a, b) => a.priority - b.priority || a.name.localeCompare(b.name),
+    (a, b) => a.priority - b.priority || compareText(a.name, b.name),
   )) {
     const model = provider.models[clientModel];
     if (model && model.enabled) {

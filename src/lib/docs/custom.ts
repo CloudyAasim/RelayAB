@@ -17,6 +17,7 @@
  * everything in it, one place to look.
  */
 import type { DocPage } from "@/lib/db/settings";
+import { compareText } from "@/lib/utils";
 import {
   userDocSections,
   INTEGRATION_GUIDE,
@@ -63,13 +64,19 @@ export function validatePage(page: Partial<DocPage>): string | null {
  * Title rather than insertion order, because an operator who does not set an
  * order still expects the pages they wrote in a sensible sequence rather than
  * in whatever order the rows came back.
+ *
+ * The title comparison is the locale-independent one (`compareText`), not
+ * `localeCompare`: the ambient locale decides what `localeCompare` does with
+ * Chinese titles — pinyin on a machine with a Chinese locale, code points on
+ * a machine without one — and the same deployment would then show its pages
+ * in a different order depending on where it ran. See `compareText`.
  */
 export function sortDocPages(pages: readonly DocPage[]): DocPage[] {
   return [...pages].sort((a, b) => {
     const ao = a.order ?? Number.MAX_SAFE_INTEGER;
     const bo = b.order ?? Number.MAX_SAFE_INTEGER;
     if (ao !== bo) return ao - bo;
-    return a.title.localeCompare(b.title);
+    return compareText(a.title, b.title);
   });
 }
 

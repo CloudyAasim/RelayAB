@@ -57,6 +57,31 @@ export function formatCreditsCeil(units: number): string {
   }).format(ceiled);
 }
 
+/**
+ * Compare two pieces of text the same way on every machine.
+ *
+ * `localeCompare` with no locale follows the **ambient** locale, and the
+ * ambient locale is not the same everywhere: on a machine with a Chinese
+ * locale it sorts by pinyin, and on the CI runner — which has no UTF-8
+ * locale set — it falls back to code point order. The same deployment
+ * therefore showed its pages in two different orders depending on where it
+ * ran, and the test that pinned the order only ever saw the one its own
+ * machine produced.
+ *
+ * So: compare the lower-cased strings by code point. That is the same answer
+ * on every platform and every Node build, it is case-insensitive for Latin
+ * text (so "apple" sorts before "Banana", as a reader expects), and for
+ * Chinese it is a stable order rather than a pinyin order that only some
+ * machines agree on.
+ */
+export function compareText(a: string, b: string): number {
+  const la = a.toLowerCase();
+  const lb = b.toLowerCase();
+  if (la < lb) return -1;
+  if (la > lb) return 1;
+  return 0;
+}
+
 /** Format a number with thousand separators. */
 export function formatNumber(n: number): string {
   return new Intl.NumberFormat("en-US").format(n);
