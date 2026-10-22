@@ -27,6 +27,7 @@ export default async function AdminDocsPage() {
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t("admin.docs.title")}</SectionPageLayout.Title>
+      <SectionPageLayout.Description>{t("admin.docs.subtitle")}</SectionPageLayout.Description>
       <SectionPageLayout.Content>
         <DocsShell
           basePath="/admin/docs"

@@ -45,6 +45,9 @@ export default async function MediaProvidersPage() {
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t("admin.mediaProviders.title")}</SectionPageLayout.Title>
+      <SectionPageLayout.Description>
+        {t("admin.mediaProviders.description")}
+      </SectionPageLayout.Description>
       <SectionPageLayout.Actions>
         <CreateMediaProviderButton templates={templates} />
       </SectionPageLayout.Actions>
@@ -57,7 +60,7 @@ export default async function MediaProvidersPage() {
             <EmptyState
               icon={<ImageIcon className="h-5 w-5" />}
               title={t("admin.mediaProviders.empty")}
-              description={t("admin.mediaProviders.new")}
+              description={t("admin.mediaProviders.empty.description")}
               action={<CreateMediaProviderButton templates={templates} />}
             />
           ) : (

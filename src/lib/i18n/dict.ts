@@ -724,7 +724,7 @@ const zhCN: Dict = {
   "admin.searchProviders.new": "新增搜索提供商",
   "admin.searchProviders.formDesc": "填写后端类型、地址和密钥。SearXNG 只需要地址；Tavily 和 Brave 需要 API 密钥。",
   "admin.searchProviders.empty": "还没有搜索提供商",
-  "admin.searchProviders.emptyHint": "添加一个后端后，助手和 /v1/search 才可以使用网页搜索。",
+  "admin.searchProviders.emptyHint": "点击右上角「新增搜索提供商」加一个后端，助手和 /v1/search 才能用网页搜索。",
   "admin.searchProviders.name": "名称",
   "admin.searchProviders.serviceId": "客户端名称",
   "admin.searchProviders.serviceIdHint":
@@ -1421,6 +1421,17 @@ const zhCN: Dict = {
   "admin.providers.description":
     "上游模型供应商：决定哪些模型可被调用、怎么转发、每家怎么计价。",
   "admin.keys.description": "给账号签发网关密钥；密钥只显示一次，丢失只能重建。",
+  "admin.settings.description": "对外公开的接口地址，以及文档站的名字、公告与章节。",
+  "admin.modelNotes.description":
+    "给每个模型写一份说明：上下文窗口、输出上限、思考等级和价格；助手与用户文档都会读它。",
+  "admin.mediaProviders.empty.description":
+    "图片、视频、语音、音乐的上游供应商都写在这里；点击右上角「新增供应商」加一个，客户端才能用上对应的模型。",
+  "admin.providers.empty.description":
+    "先加一个上游供应商：可用的模型、转发规则和计费都在它里面配。点击右上角「新建」开始。",
+  "admin.overview.recentUsersEmptyDescription":
+    "还没有用户。建好第一个之后，这里会显示最近登录过的账号。",
+  "admin.overview.recentUsageEmptyDescription":
+    "还没有调用记录。账号第一次请求之后，这里会显示最近的调用。",
 };
 
 const en: Dict = {
@@ -2121,7 +2132,7 @@ const en: Dict = {
   "admin.searchProviders.new": "Add search provider",
   "admin.searchProviders.formDesc": "Pick the backend type, address and key. SearXNG needs only an address; Tavily and Brave need an API key.",
   "admin.searchProviders.empty": "No search providers yet",
-  "admin.searchProviders.emptyHint": "Add a backend before the assistant and /v1/search can search.",
+  "admin.searchProviders.emptyHint": "Click “New search provider” to add a backend; the assistant and /v1/search can search once there is one.",
   "admin.searchProviders.name": "Name",
   "admin.searchProviders.serviceId": "Client name",
   "admin.searchProviders.serviceIdHint":
@@ -2841,6 +2852,18 @@ const en: Dict = {
     "The upstream providers: which models exist, how requests are forwarded, and what each one costs.",
   "admin.keys.description":
     "Issue gateway keys for accounts. A key is shown once — if it is lost, it has to be replaced.",
+  "admin.settings.description":
+    "The public API address, plus the docs site's name, announcement and chapters.",
+  "admin.modelNotes.description":
+    "A note per model — context window, output cap, reasoning levels and price. The assistant and the user docs read them.",
+  "admin.mediaProviders.empty.description":
+    "The upstream providers for images, video, speech and music live here. Add one and the client can use the matching models.",
+  "admin.providers.empty.description":
+    "Add an upstream provider first: the models it offers, how requests are forwarded and how it is billed are all configured on it.",
+  "admin.overview.recentUsersEmptyDescription":
+    "No users yet. Once the first one exists, the accounts that signed in recently show up here.",
+  "admin.overview.recentUsageEmptyDescription":
+    "No requests recorded yet. This fills up once an account makes its first call.",
 };
 
 export const DICTS: Record<Locale, Dict> = { "zh-CN": zhCN, en };

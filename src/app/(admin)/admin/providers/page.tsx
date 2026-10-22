@@ -213,7 +213,7 @@ export default async function ProvidersPage() {
           <EmptyState
             icon={<Server className="h-5 w-5" />}
             title={t("admin.providers.empty.title")}
-            description={t("admin.providers.create.desc")}
+            description={t("admin.providers.empty.description")}
             action={<CreateProviderButton />}
           />
         ) : (

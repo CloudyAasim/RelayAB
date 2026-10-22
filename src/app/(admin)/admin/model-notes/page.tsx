@@ -50,6 +50,9 @@ export default async function ModelNotesPage() {
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t("admin.modelNotes.title")}</SectionPageLayout.Title>
+      <SectionPageLayout.Description>
+        {t("admin.modelNotes.description")}
+      </SectionPageLayout.Description>
       <SectionPageLayout.Content>
         <div className="space-y-6">
           <ModelConfigForm rows={rows} />

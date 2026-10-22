@@ -117,7 +117,10 @@ export default async function AdminOverviewPage() {
               }
             />
             {recentUsers.length === 0 ? (
-              <EmptyState title={t("admin.users.empty.title")} />
+              <EmptyState
+                title={t("admin.users.empty.title")}
+                description={t("admin.overview.recentUsersEmptyDescription")}
+              />
             ) : (
               <Table>
                 <THead>
@@ -189,7 +192,10 @@ export default async function AdminOverviewPage() {
             description={t("admin.overview.recentUsageDesc")}
           />
           {recentUsage.length === 0 ? (
-            <EmptyState title={t("admin.overview.recentUsageEmpty")} />
+            <EmptyState
+              title={t("admin.overview.recentUsageEmpty")}
+              description={t("admin.overview.recentUsageEmptyDescription")}
+            />
           ) : (
             <Table>
               <THead>

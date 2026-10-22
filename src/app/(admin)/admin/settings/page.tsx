@@ -64,6 +64,9 @@ export default async function SettingsPage() {
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t("admin.settings.title")}</SectionPageLayout.Title>
+      <SectionPageLayout.Description>
+        {t("admin.settings.description")}
+      </SectionPageLayout.Description>
       <SectionPageLayout.Content>
         <div className="space-y-6">
           <Card className="max-w-2xl">
