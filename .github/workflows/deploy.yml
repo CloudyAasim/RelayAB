@@ -45,6 +45,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # The runner has no pnpm of its own. `corepack enable` reads the pin in
+      # package.json ("packageManager": "pnpm@10.28.0"), so the runner installs
+      # exactly the version the lockfile was written with — the same version the
+      # Dockerfile installs, and the same one this repository is developed with.
+      - name: Enable pnpm
+        run: corepack enable
+
       - name: Install
         run: pnpm install --frozen-lockfile
 
