@@ -144,6 +144,21 @@ export default function LoginPage() {
                 )}
               </Button>
             </form>
+
+            {/*
+              The two questions a person actually has on this page, answered
+              before they ask them.
+
+              "I do not have an account" and "I forgot my password" both end
+              in "ask an administrator" — and until this line existed, the only
+              way to find that out was to submit the form and get an error.
+              Two quiet lines, no extra chrome, and the dead end is not a dead
+              end any more.
+            */}
+            <div className="space-y-1.5 border-t border-border pt-3 text-xs leading-relaxed text-muted-foreground">
+              <p>{t("login.noAccount")}</p>
+              <p>{t("login.forgotPassword")}</p>
+            </div>
           </Card>
 
           <p className="mt-6 text-center text-xs text-muted-foreground">

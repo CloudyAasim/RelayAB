@@ -4,11 +4,23 @@
  * Responsive: title and actions stack on narrow, inline on wider.
  */
 import { Children, isValidElement, type ReactElement, type ReactNode } from "react";
+import { cn } from "@/lib/utils";
 
 type SlotProps = { children?: ReactNode };
 
 function Title(_props: SlotProps): ReactNode { return null; }
 Title.displayName = "SectionPageLayout.Title";
+
+/**
+ * One sentence under the title: what this page is for, and — where it matters
+ * — what the thing on this page will do.
+ *
+ * A page whose title is its only label makes the reader guess. This sentence
+ * is the one place on the page that can answer "what am I looking at, and
+ * what happens if I touch it" before they touch anything.
+ */
+function Description(_props: SlotProps): ReactNode { return null; }
+Description.displayName = "SectionPageLayout.Description";
 
 function Actions(_props: SlotProps): ReactNode { return null; }
 Actions.displayName = "SectionPageLayout.Actions";
@@ -22,10 +34,17 @@ Breadcrumb.displayName = "SectionPageLayout.Breadcrumb";
 export interface SectionPageLayoutProps {
   children: ReactNode;
   scrollContent?: boolean;
+  /** Applied to the centred column — for the rare page that needs a wider one. */
+  className?: string;
 }
 
-export function SectionPageLayout({ children, scrollContent = true }: SectionPageLayoutProps) {
+export function SectionPageLayout({
+  children,
+  scrollContent = true,
+  className,
+}: SectionPageLayoutProps) {
   let title: ReactNode = null;
+  let description: ReactNode = null;
   let actions: ReactNode = null;
   let content: ReactNode = null;
   let breadcrumb: ReactNode = null;
@@ -35,6 +54,7 @@ export function SectionPageLayout({ children, scrollContent = true }: SectionPag
     if (!isValidElement(node)) return;
     const child = node as ReactElement<SlotProps>;
     if (child.type === Title) title = child.props.children;
+    else if (child.type === Description) description = child.props.children;
     else if (child.type === Actions) actions = child.props.children;
     else if (child.type === Content) content = child.props.children;
     else if (child.type === Breadcrumb) breadcrumb = child.props.children;
@@ -73,14 +93,26 @@ export function SectionPageLayout({ children, scrollContent = true }: SectionPag
         belongs to the shell (`main` already pads), so this only caps and
         centres.
       */}
-      <div className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col space-y-6">
+      <div
+        className={cn(
+          "mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col space-y-6",
+          className,
+        )}
+      >
         {hasHeader && (
           <div className="pb-3 sm:pb-4">
             {breadcrumb != null && <div className="mb-2">{breadcrumb}</div>}
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3 sm:gap-x-4">
-              <h2 className="text-xl font-semibold tracking-tight text-foreground">
-                {title}
-              </h2>
+              <div className="min-w-0">
+                <h2 className="text-xl font-semibold tracking-tight text-foreground">
+                  {title}
+                </h2>
+                {description != null && (
+                  <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+                    {description}
+                  </p>
+                )}
+              </div>
               {actions != null && (
                 <div className="flex flex-wrap items-center gap-2">
                   {actions}
@@ -98,6 +130,7 @@ export function SectionPageLayout({ children, scrollContent = true }: SectionPag
 }
 
 SectionPageLayout.Title = Title;
+SectionPageLayout.Description = Description;
 SectionPageLayout.Actions = Actions;
 SectionPageLayout.Content = Content;
 SectionPageLayout.Breadcrumb = Breadcrumb;

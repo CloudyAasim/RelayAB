@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useT } from "@/components/i18n/I18nProvider";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { Switch } from "@/components/ui/Switch";
 import { AlertCircle, CheckCircle2, Save } from "lucide-react";
 
 /** The vendors that ship with a template, plus whatever a row names itself. */
@@ -318,13 +319,16 @@ export function SearchProviderForm({ provider, templates, onSaved }: Props) {
           onChange={(e) => setCreditsPerCall(e.target.value)}
           hint={t("admin.searchProviders.creditsHint")}
         />
-        <label className="flex items-center gap-2 self-end pb-2 text-sm text-foreground">
-          <input
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => setEnabled(e.target.checked)}
-            className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
-          />
+        <label
+          htmlFor="search-provider-enabled"
+          className="flex items-center gap-2 self-end pb-2 text-sm text-foreground"
+        >
+          {/*
+            A switch, not a checkbox: this says "this provider is live", and a
+            box in a form full of settings does not say that. Clicking the
+            label works too, because the label points at the control.
+          */}
+          <Switch id="search-provider-enabled" checked={enabled} onCheckedChange={setEnabled} />
           {t("dashboard.status.enabled")}
         </label>
       </div>

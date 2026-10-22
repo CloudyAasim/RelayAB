@@ -14,6 +14,7 @@ import { useState } from "react";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { SwitchField } from "@/components/ui/Switch";
 import { useT } from "@/components/i18n/I18nProvider";
 import { useSettingsSave } from "@/components/admin/useSettingsSave";
 
@@ -78,18 +79,20 @@ export function DocsSiteForm({ initial }: { initial: SiteDocsValues }) {
           value={supportContact}
           onChange={(e) => setSupportContact(e.target.value)}
         />
-        <label className="flex items-start gap-2 text-sm text-muted-foreground">
-          <input
-            type="checkbox"
-            className="mt-1"
-            checked={publicCatalog}
-            onChange={(e) => setPublicCatalog(e.target.checked)}
-          />
-          <span>
-            {t("admin.docsSettings.publicCatalog")}
-            <span className="mt-0.5 block text-xs">{t("admin.docsSettings.publicCatalogHint")}</span>
-          </span>
-        </label>
+        {/*
+          The one setting on this page that is a yes/no about the whole site,
+          so it gets the switch treatment: a row with a name, a sentence that
+          says what turning it on actually publishes, and the control on the
+          right. It used to be a checkbox under a text input, where it read as
+          one more field to fill in.
+        */}
+        <SwitchField
+          id="docs-public-catalog"
+          label={t("admin.docsSettings.publicCatalog")}
+          description={t("admin.docsSettings.publicCatalogHint")}
+          checked={publicCatalog}
+          onCheckedChange={setPublicCatalog}
+        />
       </div>
 
       <div className="mt-4 flex items-center gap-3">

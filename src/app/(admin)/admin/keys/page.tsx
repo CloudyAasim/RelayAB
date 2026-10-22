@@ -57,6 +57,7 @@ export default async function KeysPage() {
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t("admin.keys.title")}</SectionPageLayout.Title>
+      <SectionPageLayout.Description>{t("admin.keys.description")}</SectionPageLayout.Description>
       <SectionPageLayout.Actions>
         <CreateKeyButton users={users.map((u) => ({ id: u.id, username: u.username, displayName: u.displayName }))} />
       </SectionPageLayout.Actions>

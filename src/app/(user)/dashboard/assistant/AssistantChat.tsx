@@ -21,6 +21,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { Switch } from "@/components/ui/Switch";
 import {
   Sheet,
   SheetContent,
@@ -1622,14 +1623,21 @@ export function AssistantChat({
                 it lives with the other things you can change about how this
                 screen looks rather than with the model configuration. */}
             <div className="rounded-lg border border-border p-3">
-              <label className="flex cursor-pointer items-start gap-2.5">
-                <input
-                  type="checkbox"
-                  className="mt-0.5 h-4 w-4 rounded border-input text-primary focus:ring-ring"
+              <label
+                htmlFor="assistant-pretty"
+                className="flex cursor-pointer items-start gap-2.5"
+              >
+                {/*
+                  A switch, not a checkbox: this says "the answers are
+                  rendered", and a box in a panel of settings does not say that.
+                */}
+                <Switch
+                  id="assistant-pretty"
+                  className="mt-0.5"
                   checked={pretty}
-                  onChange={(e) => {
-                    setPretty(e.target.checked);
-                    writePretty(e.target.checked);
+                  onCheckedChange={(checked) => {
+                    setPretty(checked);
+                    writePretty(checked);
                   }}
                 />
                 <span>

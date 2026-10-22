@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge, StatusDot } from "@/components/ui/Badge";
 import { LegacyModal as Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
+import { Switch } from "@/components/ui/Switch";
 import { useT } from "@/components/i18n/I18nProvider";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";
 import type { ApiKey } from "@/lib/db/types";
@@ -228,12 +229,15 @@ export function UserKeyActions({
             onChange={(e) => setExpiresAt(e.target.value)}
             hint={apiKey.expiresAt ? `${t("common.current")}: ${formatDate(apiKey.expiresAt, timeZone)}` : undefined}
           />
-          <label className="flex items-center gap-2 text-sm text-foreground">
-            <input
-              type="checkbox"
+          <label
+            htmlFor="api-key-enabled"
+            className="flex items-center gap-2 text-sm text-foreground"
+          >
+            {/* "Is this key live" is a switch, not a checkbox. */}
+            <Switch
+              id="api-key-enabled"
               checked={enabled}
-              onChange={(e) => setEnabled(e.target.checked)}
-              className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
+              onCheckedChange={setEnabled}
               disabled={isForceDisabled}
             />
             {t("dashboard.keyActions.enabled")}

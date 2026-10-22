@@ -22,6 +22,7 @@ export default async function SettingsPage() {
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t("settings.title")}</SectionPageLayout.Title>
+      <SectionPageLayout.Description>{t("settings.subtitle")}</SectionPageLayout.Description>
       <SectionPageLayout.Content>
         <div className="space-y-6">
           <Card>

@@ -52,6 +52,9 @@ export default async function ModelsPage() {
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t("dashboard.models.title")}</SectionPageLayout.Title>
+      <SectionPageLayout.Description>
+        {t("dashboard.models.description")}
+      </SectionPageLayout.Description>
 
       {/* SectionPageLayout renders only its four slots and silently drops any
           other child — a page without this wrapper shows its title and nothing

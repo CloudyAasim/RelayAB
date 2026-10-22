@@ -123,6 +123,9 @@ export default async function SearchAdminPage() {
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t("admin.searchProviders.title")}</SectionPageLayout.Title>
+      <SectionPageLayout.Description>
+        {t("admin.searchProviders.summary")}
+      </SectionPageLayout.Description>
       <SectionPageLayout.Actions>
         <CreateSearchProviderButton templates={TEMPLATE_OPTIONS} />
       </SectionPageLayout.Actions>

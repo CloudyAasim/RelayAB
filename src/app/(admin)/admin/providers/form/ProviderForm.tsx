@@ -20,6 +20,7 @@
  */
 import type { ReactNode } from "react";
 import { Input } from "@/components/ui/Input";
+import { Switch } from "@/components/ui/Switch";
 import { useT } from "@/components/i18n/I18nProvider";
 import { ProviderModeSwitch } from "@/app/(admin)/admin/providers/ProviderModeSwitch";
 import { ProviderFacesField } from "@/app/(admin)/admin/providers/ProviderFacesField";
@@ -131,12 +132,12 @@ export function ProviderForm({
           onChange={(e) => patch({ priority: e.target.value })}
         />
 
-        <label className="flex items-center gap-2 pt-6 text-sm">
-          <input
-            type="checkbox"
+        <label htmlFor="provider-enabled" className="flex items-center gap-2 pt-6 text-sm">
+          {/* "Is this provider live" is a switch, not a checkbox. */}
+          <Switch
+            id="provider-enabled"
             checked={values.enabled}
-            onChange={(e) => patch({ enabled: e.target.checked })}
-            className="rounded w-4 h-4"
+            onCheckedChange={(checked) => patch({ enabled: checked })}
           />
           {t("admin.providers.create.enabled")}
         </label>

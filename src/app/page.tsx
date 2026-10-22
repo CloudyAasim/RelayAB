@@ -56,11 +56,14 @@ export default async function WelcomePage() {
 
   return (
     <div className="relative flex-1 overflow-hidden bg-background">
-      {/* Decorative wash */}
-      <div className="pointer-events-none absolute inset-0" aria-hidden>
-        <div className="absolute -top-40 left-1/4 h-96 w-96 rounded-full bg-primary/10 blur-3xl" />
-        <div className="absolute -top-24 right-1/4 h-80 w-80 rounded-full bg-info/10 blur-3xl" />
-      </div>
+      {/*
+        No decorative wash.
+
+        Breeze is flat: depth comes from one soft shadow on the things that
+        float above the page, not from blurred colour behind them. The accent
+        square and the cards already carry the hierarchy; a glow behind them
+        only made the page busier.
+      */}
 
       {/* Theme toggle - top right */}
       <div className="absolute right-4 top-4 z-10">
@@ -72,14 +75,19 @@ export default async function WelcomePage() {
         <div className="flex flex-col items-center text-center">
           {/* Brand: icon + name */}
           <div className="mb-4 flex items-center gap-2 sm:mb-5 sm:gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20 sm:h-14 sm:w-14">
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary text-primary-foreground sm:h-14 sm:w-14">
               <Server className="h-6 w-6 sm:h-7 sm:w-7" />
             </div>
             <span className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl sm:font-semibold sm:tracking-tight">
               RelayAB
             </span>
           </div>
-          <h1 className="mt-2 text-lg font-medium tracking-tight text-muted-foreground sm:text-xl sm:font-medium sm:tracking-tight">
+          {/*
+            The heading is the heading. It used to be `text-muted-foreground`,
+            which made the page's own title quieter than the paragraph under
+            it — the reader had to work out what the page was for.
+          */}
+          <h1 className="mt-2 text-xl font-medium tracking-tight text-foreground sm:text-2xl">
             {t("welcome.title")}
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-muted-foreground sm:mt-3 sm:text-base">

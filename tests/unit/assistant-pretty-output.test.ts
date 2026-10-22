@@ -116,7 +116,11 @@ describe("assistant: the pretty switch", () => {
 
   it("offers the switch in the settings drawer", () => {
     expect(CHAT).toContain("assistant.pretty.switch");
-    expect(CHAT).toMatch(/checked=\{pretty\}[\s\S]{0,160}writePretty\(e\.target\.checked\)/);
+    // The control is a switch now rather than a checkbox, so the pattern is
+    // the switch's own: the value is bound to `pretty`, and turning it writes
+    // the preference. What this test is about — "the setting is on screen and
+    // saving it sticks" — has not changed.
+    expect(CHAT).toMatch(/checked=\{pretty\}[\s\S]{0,200}writePretty\(/);
   });
 });
 

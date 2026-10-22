@@ -71,6 +71,9 @@ export default async function AdminOverviewPage() {
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t("admin.overview.title")}</SectionPageLayout.Title>
+      <SectionPageLayout.Description>
+        {t("admin.overview.description")}
+      </SectionPageLayout.Description>
       <SectionPageLayout.Content>
         {/* Stat row */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

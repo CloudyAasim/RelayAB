@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { Switch } from "@/components/ui/Switch";
 import { useT } from "@/components/i18n/I18nProvider";
 import { AlertCircle, CheckCircle2, Save } from "lucide-react";
 
@@ -137,12 +138,15 @@ export function MediaProviderForm({ provider, templates, onSaved }: Props) {
           value={priority}
           onChange={(e) => setPriority(e.target.value)}
         />
-        <label className="flex items-center gap-2 self-end pb-2 text-sm text-foreground">
-          <input
-            type="checkbox"
+        <label
+          htmlFor="media-provider-enabled"
+          className="flex items-center gap-2 self-end pb-2 text-sm text-foreground"
+        >
+          {/* "Is this provider live" is a switch, not a checkbox. */}
+          <Switch
+            id="media-provider-enabled"
             checked={enabled}
-            onChange={(e) => setEnabled(e.target.checked)}
-            className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
+            onCheckedChange={setEnabled}
           />
           {t("dashboard.status.enabled")}
         </label>

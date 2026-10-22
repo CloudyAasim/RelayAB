@@ -67,8 +67,10 @@ const zhCN: Dict = {
   "login.username": "用户名",
   "login.password": "密码",
   "login.submit": "登录",
-  "login.failed": "登录失败",
-  "login.networkError": "网络错误",
+  "login.failed": "用户名或密码不对，再试一次。",
+  "login.networkError": "连不上服务器，检查网络后再试。",
+  "login.noAccount": "账号由管理员创建。还没有账号的话，找管理员开一个。",
+  "login.forgotPassword": "忘记密码？同样找管理员重置。",
   "common.backToHome": "返回首页",
   "login.footnote": "RelayAB · 自托管 AI API 网关",
 
@@ -717,7 +719,8 @@ const zhCN: Dict = {
   "admin.settings.title": "系统设置",
   "admin.searchProviders.title": "搜索提供商",
   "admin.searchProviders.description":
-    "网页搜索的后端。站点可以配多个搜索服务，**用哪一个由调用方自己点名，没有默认的那一个**：客户端在请求里带 service 字段（目录在 GET /v1/search/services），助手那边由每个账号在设置里选。只有一个能用时它就是唯一能用的；有多个而调用方没点名，请求会直接失败并列出可选的那几个。没有配置任何提供商时，回退到环境变量里的搜索后端。",
+    "网页搜索的后端。站点可以配多个搜索服务，用哪一个由调用方自己点名，没有默认的那一个：客户端在请求里带 service 字段（目录在 GET /v1/search/services），助手那边由每个账号在设置里选。只有一个能用时它就是唯一能用的；有多个而调用方没点名，请求会直接失败并列出可选的那几个。没有配置任何提供商时，回退到环境变量里的搜索后端。",
+  "admin.searchProviders.summary": "助手的网页搜索走哪几个服务、按次怎么计价。",
   "admin.searchProviders.new": "新增搜索提供商",
   "admin.searchProviders.formDesc": "填写后端类型、地址和密钥。SearXNG 只需要地址；Tavily 和 Brave 需要 API 密钥。",
   "admin.searchProviders.empty": "还没有搜索提供商",
@@ -1405,6 +1408,19 @@ const zhCN: Dict = {
   "admin.docsSettings.saving": "保存中…",
   "admin.docsSettings.saved": "已保存，刷新用户文档页即可看到。",
 
+  // ===== 页面说明 =====
+  //
+  // One sentence under each page's title: what the page is for, and — where
+  // it matters — what changing something here actually does. A page whose
+  // only label is its title makes the reader guess; these are the sentences
+  // that answer "what am I looking at, and what happens if I touch it".
+  "usage.description": "每一次请求的用量、消耗与明细。数字来自用量日志，可能有轻微延迟。",
+  "dashboard.models.description":
+    "用你自己的密钥对本网关的模型发一次真实请求，走的是和客户端完全相同的路径。",
+  "admin.overview.description": "这个部署现在的用量、用户与密钥概况。",
+  "admin.providers.description":
+    "上游模型供应商：决定哪些模型可被调用、怎么转发、每家怎么计价。",
+  "admin.keys.description": "给账号签发网关密钥；密钥只显示一次，丢失只能重建。",
 };
 
 const en: Dict = {
@@ -1443,8 +1459,10 @@ const en: Dict = {
   "login.username": "Username",
   "login.password": "Password",
   "login.submit": "Sign in",
-  "login.failed": "Login failed",
-  "login.networkError": "Network error",
+  "login.failed": "That username and password do not match. Check them and try again.",
+  "login.networkError": "Could not reach the server. Check your connection and try again.",
+  "login.noAccount": "An administrator creates accounts. Ask yours for one if you do not have it yet.",
+  "login.forgotPassword": "Lost your password? An administrator can reset it.",
   "common.backToHome": "Back to home",
   "login.footnote": "RelayAB · Self-hosted AI API gateway",
 
@@ -2097,7 +2115,9 @@ const en: Dict = {
   "admin.settings.title": "Settings",
   "admin.searchProviders.title": "Search providers",
   "admin.searchProviders.description":
-    "Backends for web search. The one marked “Active” answers every request; with none marked, the enabled row with the smallest priority number does. A client can name one with its client name (GET /v1/search/services lists them). With no providers configured, the environment backend is the fallback.",
+    "Backends for web search. A site can run several search services, and the caller names the one it wants — there is no default: a client names it with the `service` field (the list is at GET /v1/search/services), and in the assistant each account picks one in its own settings. With only one usable service, that is the only one; with several and no name given, the request fails and lists the options. With no providers configured, the search backend in the environment variables is the fallback.",
+  "admin.searchProviders.summary":
+    "Which services the assistant searches through, and what each call costs.",
   "admin.searchProviders.new": "Add search provider",
   "admin.searchProviders.formDesc": "Pick the backend type, address and key. SearXNG needs only an address; Tavily and Brave need an API key.",
   "admin.searchProviders.empty": "No search providers yet",
@@ -2808,6 +2828,19 @@ const en: Dict = {
   "admin.docsSettings.saving": "Saving…",
   "admin.docsSettings.saved": "Saved. Open the user docs page to see it.",
 
+  // ===== Page descriptions =====
+  //
+  // One sentence under each page's title: what the page is for, and — where
+  // it matters — what changing something here actually does.
+  "usage.description":
+    "Usage, cost and the detail behind every request. The numbers come from the usage log, so they can lag by a moment.",
+  "dashboard.models.description":
+    "Send a real request to this gateway's models with your own key — the same path a client would take.",
+  "admin.overview.description": "What this deployment is doing right now: usage, users and keys.",
+  "admin.providers.description":
+    "The upstream providers: which models exist, how requests are forwarded, and what each one costs.",
+  "admin.keys.description":
+    "Issue gateway keys for accounts. A key is shown once — if it is lost, it has to be replaced.",
 };
 
 export const DICTS: Record<Locale, Dict> = { "zh-CN": zhCN, en };

@@ -181,6 +181,7 @@ export default async function AdminUsagePage({ searchParams }: UsagePageProps) {
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t("usage.title")}</SectionPageLayout.Title>
+      <SectionPageLayout.Description>{t("usage.description")}</SectionPageLayout.Description>
       <SectionPageLayout.Content>
         <p className="mb-4 text-xs text-muted-foreground">
           {t("usage.tzNote", { zone: t(timezoneLabelKey(me.timezone)) })}

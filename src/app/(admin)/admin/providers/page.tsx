@@ -201,6 +201,9 @@ export default async function ProvidersPage() {
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t("admin.providers.title")}</SectionPageLayout.Title>
+      <SectionPageLayout.Description>
+        {t("admin.providers.description")}
+      </SectionPageLayout.Description>
       <SectionPageLayout.Actions>
         <CreateProviderButton />
       </SectionPageLayout.Actions>
