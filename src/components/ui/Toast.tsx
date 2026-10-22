@@ -4,6 +4,10 @@
  * Toast is a lightweight notification system that auto-dismisses.
  * Includes Toaster component to render active toasts.
  *
+ * Look — the Breeze skeleton: hairline border, one soft `shadow-float`,
+ * `rounded-lg` corners, a `p-4` card and a `font-semibold` title over a
+ * `text-sm text-muted-foreground` description.
+ *
  * Usage:
  *   1. Mount <Toaster /> once in the root layout
  *   2. Import { useToast } from "@/components/ui/Toast"
@@ -36,14 +40,22 @@ const ToastViewport = React.forwardRef<
 ToastViewport.displayName = ToastPrimitives.Viewport.displayName;
 
 const toastVariants = cva(
-  "group pointer-events-auto relative flex w-full items-center justify-between gap-2 overflow-hidden rounded-md border p-4 pr-6 shadow-lg transition-all data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[swipe=end]:animate-out data-[state=closed]:fade-out-80 data-[state=closed]:slide-out-to-right-full data-[state=open]:slide-in-from-top-full data-[state=open]:sm:slide-in-from-bottom-full",
+  // Breeze's skeleton: hairline border, one soft `shadow-float`, `rounded-lg`
+  // corners and a `p-4` card. The title is `font-semibold`, the description
+  // drops to `text-sm text-muted-foreground` so the two read as a hierarchy.
+  //
+  // The tinted variants are `bg-destructive/10` and friends: the theme
+  // colours in `tailwind.config.ts` are functions, so an opacity modifier on
+  // one of them is a colour mix of the same variable.
+  "group pointer-events-auto relative flex w-full items-center justify-between gap-2 overflow-hidden rounded-lg border p-4 pr-6 shadow-float transition-all data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[swipe=end]:animate-out data-[state=closed]:fade-out-80 data-[state=closed]:slide-out-to-right-full data-[state=open]:slide-in-from-top-full data-[state=open]:sm:slide-in-from-bottom-full",
   {
     variants: {
       variant: {
-        default: "border-border bg-background text-foreground",
+        default: "border-border bg-popover text-popover-foreground",
         destructive:
-          "destructive group border-destructive bg-destructive text-destructive-foreground",
-        success: "border-success/30 bg-success/10 text-success",
+          "border-destructive/30 bg-destructive/10 text-destructive",
+        success:
+          "border-success/30 bg-success/10 text-success",
       },
     },
     defaultVariants: {
@@ -72,7 +84,7 @@ const ToastAction = React.forwardRef<
   <ToastPrimitives.Action
     ref={ref}
     className={cn(
-      "inline-flex h-8 shrink-0 items-center justify-center rounded-md border bg-transparent px-3 text-sm font-medium ring-offset-background transition-colors hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+      "inline-flex h-8 shrink-0 items-center justify-center rounded-md border border-border bg-transparent px-3 text-sm font-medium ring-offset-background transition-colors hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
       className,
     )}
     {...props}
@@ -87,7 +99,7 @@ const ToastClose = React.forwardRef<
   <ToastPrimitives.Close
     ref={ref}
     className={cn(
-      "absolute right-1 top-1 rounded-md p-1 text-foreground/50 opacity-0 transition-opacity hover:text-foreground focus:opacity-100 focus:outline-none focus:ring-2 group-hover:opacity-100",
+      "absolute right-1 top-1 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus:opacity-100 focus:outline-none focus:ring-2 group-hover:opacity-100",
       className,
     )}
     toast-close=""
@@ -116,7 +128,7 @@ const ToastDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <ToastPrimitives.Description
     ref={ref}
-    className={cn("text-sm opacity-90", className)}
+    className={cn("text-sm text-muted-foreground", className)}
     {...props}
   />
 ));

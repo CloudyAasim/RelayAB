@@ -3,6 +3,11 @@
  *
  * Used to organize content into switchable sections, e.g. in the docs page.
  *
+ * Look — one accent only: the selected tab carries a pale sea tint with
+ * `text-primary`, the unselected ones stay `text-muted-foreground`. The tint
+ * is `bg-primary/10`: the theme colours in `tailwind.config.ts` are functions,
+ * so an opacity modifier on one of them is a colour mix of the same variable.
+ *
  *   <Tabs defaultValue="openai">
  *     <TabsList>
  *       <TabsTrigger value="openai">OpenAI</TabsTrigger>
@@ -27,7 +32,7 @@ const TabsList = React.forwardRef<
   <TabsPrimitive.List
     ref={ref}
     className={cn(
-      "inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground",
+      "inline-flex h-9 items-center justify-center gap-1 rounded-lg bg-muted p-1 text-muted-foreground",
       className,
     )}
     {...props}
@@ -42,7 +47,7 @@ const TabsTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow",
+      "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-primary/10 data-[state=active]:text-primary",
       className,
     )}
     {...props}

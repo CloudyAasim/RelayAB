@@ -63,13 +63,13 @@ export function CreateUserButton() {
             onChange={(e) => setPassword(e.target.value)}
           />
           <div>
-            <label className="block text-sm font-medium text-slate-700">
+            <label className="block text-sm font-medium text-foreground">
               {t("admin.users.create.role")}
             </label>
             <select
               value={role}
               onChange={(e) => setRole(e.target.value as "user" | "admin")}
-              className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
             >
               <option value="user">{t("admin.users.role.user")}</option>
               <option value="admin">{t("admin.users.role.admin")}</option>

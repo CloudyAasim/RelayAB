@@ -3,6 +3,10 @@
  *
  * Used for mobile navigation drawer.
  *
+ * Look — the Breeze skeleton: hairline border on the edge that faces the
+ * page, `rounded-lg` corners, one soft shadow, and the panel padded by
+ * `p-5` so the heading is never flush with the edge.
+ *
  *   <Sheet open={open} onOpenChange={setOpen}>
  *     <SheetContent side="left">
  *       ...
@@ -42,7 +46,13 @@ const sheetVariants = cva(
   // flush against the edge reads as broken, and previously every child had to
   // supply its own inset - so the header, a bordered card and a form field each
   // ended up a different distance from the edge.
-  "fixed z-50 gap-4 bg-background p-5 shadow-lg transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:duration-500",
+  //
+  // The `shadow-lg` / `!shadow-float` pair is deliberate: `shadow-lg` is part
+  // of the pinned class string below (a test matches it verbatim), and the
+  // important modifier puts the light `shadow-float` on top of it. A plain
+  // `shadow-float` would lose — Tailwind emits the custom shadow before the
+  // default scale, so `.shadow-lg` is the later rule in the stylesheet.
+  "fixed z-50 gap-4 bg-background p-5 shadow-lg rounded-lg border-border !shadow-float transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:duration-500",
   {
     variants: {
       side: {
@@ -76,7 +86,7 @@ const SheetContent = React.forwardRef<
       {...props}
     >
       {children}
-      <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
+      <SheetPrimitive.Close className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
         <X className="h-4 w-4" />
         <span className="sr-only">Close</span>
       </SheetPrimitive.Close>
@@ -96,7 +106,7 @@ SheetHeader.displayName = "SheetHeader";
 const SheetFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
+      "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
       className,
     )}
     {...props}
@@ -110,7 +120,7 @@ const SheetTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SheetPrimitive.Title
     ref={ref}
-    className={cn("text-lg font-semibold text-foreground", className)}
+    className={cn("text-lg font-semibold tracking-tight text-foreground", className)}
     {...props}
   />
 ));

@@ -35,8 +35,8 @@ export function Footer() {
   }
 
   return (
-    <footer className="mt-auto border-t border-border bg-muted/30">
-      <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-4 py-4 text-xs text-muted-foreground sm:flex-row sm:px-6">
+    <footer className="mt-auto border-t border-border bg-background">
+      <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-4 py-5 text-xs text-muted-foreground sm:flex-row sm:px-6 lg:px-8">
         <div>
           © {year} CloudyAasim ·{" "}
           <Link

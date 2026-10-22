@@ -1,6 +1,9 @@
 /**
  * Popover — shadcn/ui style with Radix UI primitives.
  *
+ * Look — the Breeze skeleton: hairline border, one soft `shadow-float`,
+ * `rounded-lg` corners and a `p-4` panel.
+ *
  *   <Popover>
  *     <PopoverTrigger>Open</PopoverTrigger>
  *     <PopoverContent>Content here</PopoverContent>
@@ -25,7 +28,7 @@ const PopoverContent = React.forwardRef<
       align={align}
       sideOffset={sideOffset}
       className={cn(
-        "z-50 w-72 rounded-md border border-border bg-popover p-4 text-popover-foreground shadow-md outline-none",
+        "z-50 w-72 rounded-lg border border-border bg-popover p-4 text-popover-foreground shadow-float outline-none",
         "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
         className,
       )}

@@ -1,6 +1,10 @@
 /**
  * Tooltip — shadcn/ui style with Radix UI primitives.
  *
+ * Look — the Breeze skeleton: hairline border, one soft `shadow-float`,
+ * `rounded-lg` corners. A tooltip stays compact (`px-3 py-2`), so it uses
+ * less padding than the larger floating panels.
+ *
  *   <TooltipProvider>
  *     <Tooltip>
  *       <TooltipTrigger>Hover me</TooltipTrigger>
@@ -26,7 +30,7 @@ const TooltipContent = React.forwardRef<
     ref={ref}
     sideOffset={sideOffset}
     className={cn(
-      "z-50 overflow-hidden rounded-md bg-foreground px-3 py-1.5 text-xs text-background shadow-md",
+      "z-50 overflow-hidden rounded-lg border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-float",
       "data-[state=delayed-open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=delayed-open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=delayed-open]:zoom-in-95",
       className,
     )}

@@ -3,128 +3,166 @@
 @tailwind utilities;
 
 /*
- * Design tokens — modeled after the Vercel/shadcn "Sidebar" pattern.
+ * Design tokens — the "Ocean Breeze" palette on a Breeze-shaped skeleton.
  *
- * Color values use the oklch() color space for perceptually uniform
- * lightness. Two themes:
+ * **Where the colours come from.** The palette is the published *Ocean Breeze*
+ * theme (shadcn.io/theme/ocean-breeze): a temperate coast, not a tropical one —
+ * "gentle sea blues at oklch(0.72 0.10 230) that calm without cooling, sandy
+ * warm neutrals at oklch(0.88 0.04 80) that feel like beach at dawn, and the
+ * soft blue-gray of morning mist at oklch(0.75 0.05 240)". Those three anchors
+ * are the theme's own numbers; the rest of the scale below is built around them
+ * so that every role (surface, text, hairline, status) comes from the same
+ * coast instead of from four unrelated neutrals.
+ *
+ * **How the shapes come from Breeze.** Breeze's look is structural, not
+ * decorative: white surfaces, hairline borders, one soft shadow, generous
+ * padding, and a single accent that carries every action. The tokens below
+ * keep that discipline — the accent is the sea blue, the neutrals are sand and
+ * mist, and nothing is louder than the thing you are meant to click.
+ *
+ * Two themes:
  *   - `.light` (default — used when html has no `.dark` class)
  *   - `.dark`  (overrides below)
  *
  * Semantic color roles:
- *   - primary    : brand accent (RelayAB blue)
- *   - secondary  : muted surface fills
- *   - accent     : subtle highlight (e.g. selected sidebar row)
- *   - muted      : low-priority text and disabled state
+ *   - primary    : the sea blue — every action and every selected thing
+ *   - secondary  : sand — quiet fills, the "other" button
+ *   - accent     : a tinted sea blue — hover surfaces, selected sidebar rows
+ *   - muted      : morning mist — low-priority text, disabled state, table heads
  *   - success / warning / info / destructive : status badges & banners
- *   - sidebar-*  : dedicated palette for the left sidebar so it can stand
- *                    out from the main content surface
+ *   - sidebar-*  : the same coast, one step quieter, so the rail sits behind
+ *                  the content instead of competing with it
  */
 
 :root,
 .light {
   color-scheme: light;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+
+  /* Surfaces: warm white paper, sand-tinted hairlines. */
+  --background: oklch(0.995 0.004 85);
+  --foreground: oklch(0.235 0.028 235);
 
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --card-foreground: oklch(0.235 0.028 235);
 
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
+  --popover-foreground: oklch(0.235 0.028 235);
 
-  --primary: oklch(0.55 0.18 256);            /* RelayAB blue */
-  --primary-foreground: oklch(0.985 0 0);
+  /* The sea. Dark enough for white text, calm enough to stare at all day. */
+  --primary: oklch(0.545 0.105 232);
+  --primary-foreground: oklch(0.985 0.006 225);
 
-  --secondary: oklch(0.96 0.005 247);
-  --secondary-foreground: oklch(0.21 0.04 257);
+  /* The sand: warm, quiet, one step off the page. */
+  --secondary: oklch(0.955 0.024 85);
+  --secondary-foreground: oklch(0.3 0.045 235);
 
-  --muted: oklch(0.97 0.003 247);
-  --muted-foreground: oklch(0.49 0.02 257);
+  /* Morning mist: the low-priority end of the scale. */
+  --muted: oklch(0.965 0.012 235);
+  --muted-foreground: oklch(0.505 0.03 235);
 
-  --accent: color-mix(in oklch, oklch(0.55 0.18 256) 10%, oklch(1 0 0));
-  --accent-foreground: oklch(0.21 0.04 257);
+  /* A drop of sea in the surface, for hover and for selected rows. */
+  --accent: oklch(0.94 0.028 228);
+  --accent-foreground: oklch(0.28 0.055 235);
 
-  --destructive: oklch(0.577 0.245 27.325);
+  --destructive: oklch(0.58 0.215 25);
   --destructive-foreground: oklch(0.985 0 0);
 
-  --success: oklch(0.596 0.145 163.225);
+  --success: oklch(0.6 0.125 168);
   --success-foreground: oklch(0.985 0 0);
 
-  --warning: oklch(0.681 0.162 75.834);
-  --warning-foreground: oklch(0.145 0 0);
+  --warning: oklch(0.76 0.145 80);
+  --warning-foreground: oklch(0.24 0.04 235);
 
-  --info: oklch(0.588 0.158 241.966);
+  --info: oklch(0.6 0.105 232);
   --info-foreground: oklch(0.985 0 0);
 
-  --neutral: oklch(0.708 0 0);
-  --neutral-foreground: oklch(0.145 0 0);
+  --neutral: oklch(0.62 0.02 235);
+  --neutral-foreground: oklch(0.985 0 0);
 
-  --border: oklch(0.92 0.005 247);
-  --input: oklch(0.92 0.005 247);
-  --ring: oklch(0.55 0.18 256);
+  --border: oklch(0.905 0.012 85);
+  --input: oklch(0.895 0.014 85);
+  --ring: oklch(0.6 0.105 232);
 
-  --sidebar: oklch(0.985 0.002 247);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.55 0.18 256);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.95 0.01 247);
-  --sidebar-accent-foreground: oklch(0.21 0.04 257);
-  --sidebar-border: oklch(0.92 0.005 247);
-  --sidebar-ring: oklch(0.55 0.18 256);
+  --sidebar: oklch(0.985 0.008 85);
+  --sidebar-foreground: oklch(0.235 0.028 235);
+  --sidebar-primary: oklch(0.545 0.105 232);
+  --sidebar-primary-foreground: oklch(0.985 0.006 225);
+  --sidebar-accent: oklch(0.945 0.02 228);
+  --sidebar-accent-foreground: oklch(0.28 0.055 235);
+  --sidebar-border: oklch(0.905 0.012 85);
+  --sidebar-ring: oklch(0.6 0.105 232);
 
-  --radius: 0.625rem;
+  /* The charts are the same coast, read from deep water out to the sand. */
+  --chart-1: oklch(0.545 0.105 232);
+  --chart-2: oklch(0.66 0.09 205);
+  --chart-3: oklch(0.76 0.1 185);
+  --chart-4: oklch(0.76 0.13 85);
+  --chart-5: oklch(0.62 0.12 265);
+
+  --radius: 0.5rem;
 }
 
 .dark {
   color-scheme: dark;
-  --background: oklch(0.145 0.005 247);
-  --foreground: oklch(0.985 0 0);
 
-  --card: oklch(0.18 0.008 247);
-  --card-foreground: oklch(0.985 0 0);
+  /* Deep water at dusk: blue-black with a trace of the sea in it. */
+  --background: oklch(0.185 0.018 238);
+  --foreground: oklch(0.945 0.012 230);
 
-  --popover: oklch(0.18 0.008 247);
-  --popover-foreground: oklch(0.985 0 0);
+  --card: oklch(0.215 0.02 238);
+  --card-foreground: oklch(0.945 0.012 230);
 
-  --primary: oklch(0.72 0.16 256);
-  --primary-foreground: oklch(0.145 0 0);
+  --popover: oklch(0.215 0.02 238);
+  --popover-foreground: oklch(0.945 0.012 230);
 
-  --secondary: oklch(0.22 0.01 247);
-  --secondary-foreground: oklch(0.93 0.005 247);
+  /* The theme's own sea blue — the light-mode primary would glow on this. */
+  --primary: oklch(0.72 0.1 230);
+  --primary-foreground: oklch(0.18 0.03 240);
 
-  --muted: oklch(0.22 0.01 247);
-  --muted-foreground: oklch(0.66 0.02 247);
+  --secondary: oklch(0.275 0.026 235);
+  --secondary-foreground: oklch(0.93 0.012 230);
 
-  --accent: color-mix(in oklch, oklch(0.72 0.16 256) 14%, oklch(0.18 0.008 247));
-  --accent-foreground: oklch(0.93 0.005 247);
+  --muted: oklch(0.265 0.024 238);
+  --muted-foreground: oklch(0.675 0.028 235);
 
-  --destructive: oklch(0.65 0.22 27);
+  --accent: oklch(0.3 0.038 230);
+  --accent-foreground: oklch(0.93 0.012 230);
+
+  --destructive: oklch(0.65 0.2 25);
   --destructive-foreground: oklch(0.985 0 0);
 
-  --success: oklch(0.68 0.16 163);
-  --success-foreground: oklch(0.145 0 0);
+  --success: oklch(0.7 0.13 168);
+  --success-foreground: oklch(0.18 0.03 240);
 
-  --warning: oklch(0.78 0.16 76);
-  --warning-foreground: oklch(0.145 0 0);
+  --warning: oklch(0.8 0.14 80);
+  --warning-foreground: oklch(0.18 0.03 240);
 
-  --info: oklch(0.7 0.16 242);
-  --info-foreground: oklch(0.145 0 0);
+  --info: oklch(0.7 0.1 230);
+  --info-foreground: oklch(0.18 0.03 240);
 
-  --neutral: oklch(0.55 0 0);
-  --neutral-foreground: oklch(0.985 0 0);
+  --neutral: oklch(0.45 0.02 235);
+  --neutral-foreground: oklch(0.945 0.012 230);
 
-  --border: oklch(0.28 0.01 247);
-  --input: oklch(0.28 0.01 247);
-  --ring: oklch(0.72 0.16 256);
+  --border: oklch(0.3 0.024 238);
+  --input: oklch(0.325 0.024 238);
+  --ring: oklch(0.72 0.1 230);
 
-  --sidebar: oklch(0.18 0.008 247);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.72 0.16 256);
-  --sidebar-primary-foreground: oklch(0.145 0 0);
-  --sidebar-accent: oklch(0.25 0.012 247);
-  --sidebar-accent-foreground: oklch(0.93 0.005 247);
-  --sidebar-border: oklch(0.28 0.01 247);
-  --sidebar-ring: oklch(0.72 0.16 256);
+  --sidebar: oklch(0.205 0.019 238);
+  --sidebar-foreground: oklch(0.945 0.012 230);
+  --sidebar-primary: oklch(0.72 0.1 230);
+  --sidebar-primary-foreground: oklch(0.18 0.03 240);
+  --sidebar-accent: oklch(0.285 0.03 234);
+  --sidebar-accent-foreground: oklch(0.93 0.012 230);
+  --sidebar-border: oklch(0.3 0.024 238);
+  --sidebar-ring: oklch(0.72 0.1 230);
+
+  --chart-1: oklch(0.72 0.1 230);
+  --chart-2: oklch(0.74 0.09 205);
+  --chart-3: oklch(0.8 0.09 185);
+  --chart-4: oklch(0.82 0.12 85);
+  --chart-5: oklch(0.7 0.11 265);
+
+  --radius: 0.5rem;
 }
 
 /* ----- Base resets ----- */

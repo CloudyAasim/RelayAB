@@ -28,12 +28,12 @@ export function AppHeader({ username, displayName, role, pageTitle }: AppHeaderP
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-background/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 lg:px-6">
+    <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-background/85 px-4 backdrop-blur sm:px-6 lg:px-8">
       {/* Mobile menu trigger */}
       <Button
         size="icon"
         variant="ghost"
-        className="hidden lg:flex"
+        className="hidden rounded-lg lg:flex"
         onClick={() => toggleSidebar()}
         aria-label={t("nav.toggleSidebar")}
       >
@@ -45,6 +45,7 @@ export function AppHeader({ username, displayName, role, pageTitle }: AppHeaderP
         <Button
           size="icon"
           variant="ghost"
+          className="rounded-lg"
           onClick={() => setOpen(!open)}
           aria-label={t("nav.toggleSidebar")}
         >
@@ -53,7 +54,7 @@ export function AppHeader({ username, displayName, role, pageTitle }: AppHeaderP
       )}
 
       {/* Brand on mobile */}
-      <Link href="/" className="font-semibold tracking-tight lg:hidden">
+      <Link href="/" className="font-semibold tracking-tight text-foreground lg:hidden">
         RelayAB
       </Link>
 
@@ -102,7 +103,7 @@ function UserMenu({
         aria-label={t("nav.user.menu")}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+        className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
       >
         <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
           {username.slice(0, 1).toUpperCase()}
@@ -117,8 +118,8 @@ function UserMenu({
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />
-          <div className="absolute right-0 top-full z-50 mt-2 w-56 rounded-md border border-border bg-popover text-popover-foreground shadow-lg animate-slide-down">
-            <div className="border-b border-border px-3 py-2.5">
+          <div className="absolute right-0 top-full z-50 mt-2 w-56 rounded-lg border border-border bg-popover text-popover-foreground shadow-float animate-slide-down">
+            <div className="border-b border-border px-4 py-3">
               <p className="truncate text-sm font-medium">{name}</p>
               <p className="truncate text-xs text-muted-foreground">
                 @{username} · {role === "admin" ? t("nav.user.adminBadge") : t("nav.user.userBadge")}
@@ -127,7 +128,7 @@ function UserMenu({
             {role === "admin" && (
               <Link
                 href="/admin"
-                className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent"
+                className="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground"
                 onClick={() => setOpen(false)}
               >
                 <LayoutDashboard className="h-4 w-4 text-muted-foreground" />
@@ -136,7 +137,7 @@ function UserMenu({
             )}
             <Link
               href="/dashboard/settings"
-              className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent"
+              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground"
               onClick={() => setOpen(false)}
             >
               <Settings className="h-4 w-4 text-muted-foreground" />
@@ -145,7 +146,7 @@ function UserMenu({
             <form action={logoutAction}>
               <button
                 type="submit"
-                className="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/5"
+                className="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10"
               >
                 <LogOut className="h-4 w-4" />
                 {t("nav.logout")}

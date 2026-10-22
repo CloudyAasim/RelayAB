@@ -31,7 +31,7 @@ export function ThemeToggle() {
   // SSR placeholder
   if (!mounted) {
     return (
-      <Button size="icon" variant="ghost" aria-label={t("theme.toggle")}>
+      <Button size="icon" variant="ghost" className="h-9 w-9 rounded-lg" aria-label={t("theme.toggle")}>
         <Sun className="h-4 w-4" />
       </Button>
     );
@@ -57,6 +57,7 @@ export function ThemeToggle() {
     <Button
       size="icon"
       variant="ghost"
+      className="h-9 w-9 rounded-lg"
       onClick={cycle}
       aria-label={`${t("theme.toggle")} (${label})`}
       title={`${t("theme.toggle")} (${label})`}

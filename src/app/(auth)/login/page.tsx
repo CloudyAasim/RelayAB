@@ -55,15 +55,9 @@ export default function LoginPage() {
      *     `overflow-y-auto` only as a safety net, but normally the content
      *     fits well below the header on every viewport >= 360px.
      */
-    <div className="fixed inset-0 flex flex-col bg-gradient-to-br from-background via-background to-muted">
-      {/* Decorative blobs — clipped to viewport */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
-        <div className="absolute -top-1/4 -left-1/4 h-1/2 w-1/2 rounded-full bg-primary/10 blur-3xl" />
-        <div className="absolute -bottom-1/4 -right-1/4 h-1/2 w-1/2 rounded-full bg-info/10 blur-3xl" />
-      </div>
-
+    <div className="fixed inset-0 flex flex-col bg-secondary/60">
       {/* Header */}
-      <header className="relative z-10 flex h-12 shrink-0 items-center justify-between px-3 sm:h-14 sm:px-6">
+      <header className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4 sm:px-6">
         <Link
           href="/"
           className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
@@ -75,21 +69,21 @@ export default function LoginPage() {
       </header>
 
       {/* Main content - centered, locked to remaining space */}
-      <main className="relative z-10 flex flex-1 items-center justify-center overflow-hidden px-3">
+      <main className="flex flex-1 items-center justify-center overflow-hidden px-4 py-8 sm:px-6">
         <div className="w-full max-w-sm sm:max-w-md">
           {/* Brand */}
-          <div className="mb-4 text-center sm:mb-6">
-            <div className="mx-auto mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg sm:mb-3 sm:h-14 sm:w-14">
-              <Server className="h-5 w-5 sm:h-7 sm:w-7" />
+          <div className="mb-6 text-center sm:mb-8">
+            <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-lg bg-primary text-primary-foreground sm:h-12 sm:w-12">
+              <Server className="h-5 w-5 sm:h-6 sm:w-6" />
             </div>
-            <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-2xl">RelayAB</h1>
-            <p className="mt-0.5 text-xs text-muted-foreground sm:mt-1 sm:text-sm">
+            <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">RelayAB</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
               {t("login.pageTitle")}
             </p>
           </div>
 
           {/* Form card */}
-          <Card className="shadow-xl">
+          <Card>
             <CardHeader title={t("login.signIn")} description={t("login.signInDesc")} />
             {/*
               `method="post"` is a security requirement, not decoration: the
@@ -98,9 +92,9 @@ export default function LoginPage() {
               spilling the password into history, proxy logs and the Referer
               header. The React handler still owns the real submit path.
             */}
-            <form onSubmit={onSubmit} method="post" className="space-y-3 sm:space-y-4">
+            <form onSubmit={onSubmit} method="post" className="space-y-4">
               <div className="space-y-1">
-                <label htmlFor="username" className="block text-xs font-medium text-foreground sm:text-sm">
+                <label htmlFor="username" className="block text-sm font-medium text-foreground">
                   {t("login.username")}
                 </label>
                 <div className="relative">
@@ -117,7 +111,7 @@ export default function LoginPage() {
                 </div>
               </div>
               <div className="space-y-1">
-                <label htmlFor="password" className="block text-xs font-medium text-foreground sm:text-sm">
+                <label htmlFor="password" className="block text-sm font-medium text-foreground">
                   {t("login.password")}
                 </label>
                 <div className="relative">
@@ -136,12 +130,12 @@ export default function LoginPage() {
               </div>
 
               {error && (
-                <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs text-destructive sm:text-sm">
+                <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                   {error}
                 </div>
               )}
 
-              <Button type="submit" loading={loading} className="w-full">
+              <Button type="submit" loading={loading} className="w-full rounded-lg bg-primary text-primary-foreground">
                 {loading ? null : (
                   <>
                     {t("login.submit")}
@@ -152,7 +146,7 @@ export default function LoginPage() {
             </form>
           </Card>
 
-          <p className="mt-3 text-center text-xs text-muted-foreground sm:mt-4">
+          <p className="mt-6 text-center text-xs text-muted-foreground">
             {t("login.footnote")}
           </p>
         </div>

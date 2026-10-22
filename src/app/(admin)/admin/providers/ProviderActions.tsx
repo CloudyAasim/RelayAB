@@ -119,7 +119,7 @@ export function ProviderActions({ providerId, providerName }: Props) {
         </span>
       )}
       {test.phase === "testing" && (
-        <span className="ml-2 text-xs font-mono text-slate-500">…</span>
+        <span className="ml-2 text-xs font-mono text-muted-foreground">…</span>
       )}
 
       {provider && (

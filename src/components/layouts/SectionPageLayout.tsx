@@ -64,23 +64,34 @@ export function SectionPageLayout({ children, scrollContent = true }: SectionPag
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {hasHeader && (
-        <div className="pb-3 sm:pb-4">
-          {breadcrumb != null && <div className="mb-2">{breadcrumb}</div>}
-          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3 sm:gap-x-4">
-            <h2 className="text-base font-semibold tracking-tight text-foreground sm:text-lg md:text-xl">
-              {title}
-            </h2>
-            {actions != null && (
-              <div className="flex flex-wrap items-center gap-2">
-                {actions}
-              </div>
-            )}
+      {/*
+        One centred column for the whole page.
+
+        Breeze keeps its content on a single reading column that never runs
+        edge to edge: the page is centred and capped, so a wide table gets
+        room while a paragraph does not get a 1280px line. The gutter itself
+        belongs to the shell (`main` already pads), so this only caps and
+        centres.
+      */}
+      <div className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col space-y-6">
+        {hasHeader && (
+          <div className="pb-3 sm:pb-4">
+            {breadcrumb != null && <div className="mb-2">{breadcrumb}</div>}
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3 sm:gap-x-4">
+              <h2 className="text-xl font-semibold tracking-tight text-foreground">
+                {title}
+              </h2>
+              {actions != null && (
+                <div className="flex flex-wrap items-center gap-2">
+                  {actions}
+                </div>
+              )}
+            </div>
           </div>
+        )}
+        <div className={scrollContent ? "min-h-0 flex-1" : "min-h-0 flex-1 overflow-hidden"}>
+          {content}
         </div>
-      )}
-      <div className={scrollContent ? "min-h-0 flex-1" : "min-h-0 flex-1 overflow-hidden"}>
-        {content}
       </div>
     </div>
   );

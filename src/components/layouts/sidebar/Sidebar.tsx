@@ -39,7 +39,7 @@ export function Sidebar({ children }: { children: ReactNode }) {
         data-state={collapsed ? "collapsed" : "expanded"}
         className={cn(
           "fixed inset-y-0 left-0 z-50 flex w-[288px] flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width,transform] duration-300 ease-sidebar motion-reduce:transition-none lg:sticky lg:top-0 lg:h-screen lg:translate-x-0",
-          isMobile ? (open ? "translate-x-0 shadow-xl" : "-translate-x-full") : "",
+          isMobile ? (open ? "translate-x-0 shadow-float" : "-translate-x-full") : "",
           collapsed && "lg:w-14",
         )}
       >
@@ -63,7 +63,7 @@ export function SidebarHeader({ children, className }: { children: ReactNode; cl
 }
 
 export function SidebarContent({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("flex-1 overflow-y-auto px-3 py-3", className)}>{children}</div>;
+  return <div className={cn("flex-1 overflow-y-auto px-3 py-4", className)}>{children}</div>;
 }
 
 export function SidebarFooter({ children, className }: { children: ReactNode; className?: string }) {
@@ -101,7 +101,7 @@ export function SidebarToggle({ className }: { className?: string }) {
       aria-expanded={!collapsed}
       title={t("nav.toggleSidebar")}
       className={cn(
-        "flex shrink-0 items-center justify-center rounded-md text-sidebar-foreground/70 transition-[width,height,background-color,color] duration-300 ease-sidebar hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring motion-reduce:transition-none",
+        "flex shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-[width,height,background-color,color] duration-300 ease-sidebar hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring motion-reduce:transition-none",
         collapsed ? "h-8 w-8" : "h-7 w-7",
         className,
       )}
@@ -145,7 +145,7 @@ export function SidebarGroup({
   return (
     <div className={cn("py-1", className)}>
       {label && !collapsed && (
-        <div className="px-3 py-1 text-[11px] font-medium uppercase tracking-wider text-sidebar-foreground/60">
+        <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
           {label}
         </div>
       )}
@@ -179,10 +179,13 @@ export function SidebarMenuButton({
 }: SidebarMenuButtonProps) {
   const { collapsed, isMobile, setOpen } = useSidebar();
   const baseClass = cn(
-    "group flex w-full items-center gap-3 rounded-md py-2 pl-3 pr-3 text-sm font-medium",
+    "group flex w-full items-center gap-3 rounded-lg py-2 pl-3 pr-3 text-sm font-medium",
     "transition-[padding,background-color,color] duration-300 ease-sidebar hover:duration-150 motion-reduce:transition-none",
-    "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-    isActive && "bg-sidebar-accent text-sidebar-accent-foreground",
+    "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+    // The current page is the one row in the rail that carries the accent
+    // colour, and it holds it on hover as well - otherwise the row changes
+    // colour the moment the pointer lands on it.
+    isActive && "bg-primary/10 text-primary hover:bg-primary/10 hover:text-primary",
     // Keep the icon next to the rail edge and let the closing rail settle
     // around it, instead of switching to `justify-center` and making the icon
     // jump to the middle of the still-wide button at the start of the collapse.

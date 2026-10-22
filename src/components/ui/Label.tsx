@@ -1,6 +1,9 @@
 /**
  * Label — shadcn/ui style with Radix UI primitives.
  *
+ * Look — `text-sm font-medium text-foreground`, fading out when the field it
+ * labels is disabled.
+ *
  *   <Label htmlFor="email">Email</Label>
  *   <Input id="email" type="email" />
  */
@@ -17,7 +20,7 @@ const Label = React.forwardRef<
   <LabelPrimitive.Root
     ref={ref}
     className={cn(
-      "text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
+      "text-sm font-medium text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-60",
       className,
     )}
     {...props}

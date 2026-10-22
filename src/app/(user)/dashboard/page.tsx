@@ -59,31 +59,36 @@ export default async function DashboardPage() {
         <CreateKeyButton allocation={allocation} />
       </SectionPageLayout.Actions>
       <SectionPageLayout.Content>
-        {/* Stats row - responsive: 1 col → 2 cols → 3 cols */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-          <StatCard
-            label={t("dashboard.stat.activeKeys")}
-            value={formatNumber(keys.filter((k) => k.enabled).length)}
-            icon={<KeyRound className="h-4 w-4" />}
-            tone="primary"
-          />
-          <StatCard
-            label={t("dashboard.stat.tokensUsed")}
-            value={formatNumber(agg.totalTokens)}
-            icon={<Activity className="h-4 w-4" />}
-            tone="info"
-          />
-          <StatCard
-            label={t("dashboard.stat.creditsUsed")}
-            value={formatCredits(agg.creditsUsed)}
-            icon={<Coins className="h-4 w-4" />}
-            tone="orange"
-          />
-        </div>
+        {/*
+          One rhythm for the whole page: every block below is a section of its
+          own, separated by the same 24px, so the page reads as a stack of
+          titled cards rather than as a pile of boxes that happen to touch.
+        */}
+        <div className="space-y-6">
+          {/* Stats row - responsive: 1 col → 2 cols → 3 cols */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">
+            <StatCard
+              label={t("dashboard.stat.activeKeys")}
+              value={formatNumber(keys.filter((k) => k.enabled).length)}
+              icon={<KeyRound className="h-4 w-4" />}
+              tone="primary"
+            />
+            <StatCard
+              label={t("dashboard.stat.tokensUsed")}
+              value={formatNumber(agg.totalTokens)}
+              icon={<Activity className="h-4 w-4" />}
+              tone="info"
+            />
+            <StatCard
+              label={t("dashboard.stat.creditsUsed")}
+              value={formatCredits(agg.creditsUsed)}
+              icon={<Coins className="h-4 w-4" />}
+              tone="orange"
+            />
+          </div>
 
-        {/* Allocation banner */}
-        {fullUser && (
-          <div className="mt-4 sm:mt-6">
+          {/* Allocation banner */}
+          {fullUser && (
             <AllocationSummary
               quotaType={fullUser.quotaType}
               quotaLimit={fullUser.quotaLimit}
@@ -92,11 +97,9 @@ export default async function DashboardPage() {
               maxActiveKeys={fullUser.maxActiveKeys}
               activeKeyCount={keys.filter((k) => k.enabled).length}
             />
-          </div>
-        )}
+          )}
 
-        {/* API Keys list */}
-        <div className="mt-4 sm:mt-6">
+          {/* API Keys list */}
           <Card>
             <CardHeader
               title={t("dashboard.apiKeys.title")}
@@ -166,11 +169,11 @@ export default async function DashboardPage() {
               </div>
             )}
           </Card>
-        </div>
 
-        <p className="mt-6 text-center text-xs text-muted-foreground sm:mt-8">
-          {t("dashboard.help.contactAdmin")}
-        </p>
+          <p className="text-center text-xs text-muted-foreground">
+            {t("dashboard.help.contactAdmin")}
+          </p>
+        </div>
       </SectionPageLayout.Content>
     </SectionPageLayout>
   );

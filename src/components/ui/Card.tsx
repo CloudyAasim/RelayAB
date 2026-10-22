@@ -42,7 +42,7 @@ const Card = forwardRef<HTMLDivElement, CardProps>(
     <div
       ref={ref}
       className={cn(
-        "rounded-lg border border-border bg-card text-card-foreground shadow-sm",
+        "rounded-lg border border-border bg-card text-card-foreground shadow-card",
         padded && "p-4 sm:p-6",
         className,
       )}
@@ -177,7 +177,7 @@ function StatCard({
   return (
     <div
       className={cn(
-        "rounded-lg border border-border bg-card p-3 shadow-sm transition-colors sm:p-5",
+        "rounded-lg border border-border bg-card p-3 shadow-card transition-colors sm:p-5",
         className,
       )}
       {...rest}

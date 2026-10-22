@@ -162,7 +162,7 @@ function SidebarShell({ role, username, displayName, children }: AuthenticatedLa
           <Link href="/" className="flex min-w-0 items-center gap-2">
             <span
               className={cn(
-                "flex shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground transition-[height,width] duration-300 ease-sidebar motion-reduce:transition-none",
+                "flex shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-[height,width] duration-300 ease-sidebar motion-reduce:transition-none",
                 // Icon-only rail: match the 32px footprint of the nav items so
                 // the brand mark and the menu icons share one vertical axis.
                 collapsed ? "h-8 w-8" : "h-7 w-7",

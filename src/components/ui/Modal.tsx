@@ -8,6 +8,11 @@
  *   - aria-modal, aria-labelledby set correctly
  *   - Portal rendering (escapes stacking contexts)
  *
+ * Look — the Breeze skeleton: a hairline border, one soft `shadow-float`,
+ * a `rounded-lg` panel padded by `p-5`, a `font-semibold` title over a
+ * `text-sm text-muted-foreground` description, and a footer strip with a
+ * hairline above it.
+ *
  *   <Modal open={open} onOpenChange={setOpen} title="..." description="..." wide>
  *     content
  *     <ModalFooter>
@@ -61,8 +66,10 @@ const ModalContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-[50%] top-[50%] z-50 grid w-full translate-x-[-50%] translate-y-[-50%] gap-4 border border-border bg-background p-6 shadow-lg",
-        "max-h-[90vh] overflow-y-auto rounded-lg",
+        // Breeze's skeleton: a hairline border, one soft shadow, roomy padding.
+        // No second accent, no heavy shadow — the panel is paper on paper.
+        "fixed left-[50%] top-[50%] z-50 grid w-full translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border border-border bg-popover p-5 text-popover-foreground shadow-float",
+        "max-h-[90vh] overflow-y-auto",
         "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
         extraWide && "max-w-5xl",
         wide && "max-w-2xl",
@@ -72,7 +79,7 @@ const ModalContent = React.forwardRef<
       {...props}
     >
       {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
+      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
         <X className="h-4 w-4" />
         <span className="sr-only">Close</span>
       </DialogPrimitive.Close>
@@ -101,7 +108,7 @@ const ModalTitle = React.forwardRef<
   <DialogPrimitive.Title
     ref={ref}
     className={cn(
-      "text-base font-semibold leading-none tracking-tight",
+      "text-base font-semibold leading-none tracking-tight text-foreground",
       className,
     )}
     {...props}
@@ -136,8 +143,11 @@ function ModalFooter({
   return (
     <div
       className={cn(
+        // The footer is a strip of its own: a hairline above it, the sand-tinted
+        // muted surface below, and the negative margins let it run to the
+        // panel's edges (the panel pads by p-5, so the bleed is p-5 too).
         "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-2",
-        "border-t border-border bg-muted/30 -mx-6 -mb-6 mt-2 px-6 py-3 rounded-b-lg",
+        "border-t border-border bg-muted/30 -mx-5 -mb-5 mt-2 px-5 py-3 rounded-b-lg",
         className,
       )}
       {...props}

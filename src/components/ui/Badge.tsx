@@ -1,27 +1,39 @@
+/**
+ * Badge — a small status pill.
+ *
+ * Look — the Breeze skeleton: no border, one pale surface and the tone's own
+ * colour for the text, `rounded-full` corners and `text-xs`. The same
+ * convention the StatCard tones use, so a badge and a stat tile read as one
+ * system.
+ *
+ * The pale surfaces are `bg-x/10`: the theme colours in `tailwind.config.ts`
+ * are functions, so an opacity modifier on one of them is a colour mix of the
+ * same variable — which means the tint follows the light/dark switch.
+ */
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 
 type Tone = "neutral" | "primary" | "success" | "warning" | "danger" | "info" | "purple" | "slate" | "orange";
 
 const toneClass: Record<Tone, string> = {
-  neutral:
-    "bg-muted text-muted-foreground border-border",
+  neutral: "bg-muted text-muted-foreground",
   primary:
-    "bg-primary/10 text-primary border-primary/20",
+    "bg-primary/10 text-primary",
   success:
-    "bg-success/10 text-success border-success/20",
+    "bg-success/10 text-success",
+  // The warning token is a light amber, so it is too pale to be text on a
+  // near-white surface: the light mode reads as ink on sand, the dark mode
+  // as the amber itself (the convention used elsewhere in the app).
   warning:
-    "bg-warning/10 text-warning border-warning/30",
+    "bg-warning/15 text-warning-foreground dark:text-warning",
   danger:
-    "bg-destructive/10 text-destructive border-destructive/20",
+    "bg-destructive/10 text-destructive",
   info:
-    "bg-info/10 text-info border-info/20",
+    "bg-info/10 text-info",
   purple:
-    "bg-[color:oklch(0.92_0.06_310)] text-[color:oklch(0.45_0.18_310)] border-[color:oklch(0.85_0.08_310)] dark:bg-[color:oklch(0.32_0.08_310)] dark:text-[color:oklch(0.85_0.14_310)] dark:border-[color:oklch(0.42_0.1_310)]",
-  slate:
-    "bg-muted text-foreground/80 border-border",
-  orange:
-    "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-800",
+    "bg-[color:oklch(0.92_0.06_310)] text-[color:oklch(0.45_0.18_310)] dark:bg-[color:oklch(0.32_0.08_310)] dark:text-[color:oklch(0.85_0.14_310)]",
+  slate: "bg-secondary text-secondary-foreground",
+  orange: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
 };
 
 export function Badge({
@@ -36,7 +48,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-medium",
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
         toneClass[tone],
         className,
       )}
