@@ -74,18 +74,23 @@ export function UserMenu({
   username,
   displayName,
   role,
-  compact = false,
+  variant = "full",
 }: {
   username: string;
   displayName?: string;
   role: "admin" | "user";
   /**
-   * The icon-only rail is 88px wide. A name, a role badge and a chevron do
-   * not fit in it, so the trigger shrinks to the avatar alone. The menu
-   * behind it stays exactly the same, because the way out must never be out
-   * of reach.
+   * How much room the trigger has.
+   *
+   * - `full`  — avatar, name, role badge, chevron. The narrow-screen bar,
+   *              which is as wide as the screen.
+   * - `panel` — avatar and chevron. The floating panel's header: the brand
+   *              wordmark lives there too, and the two together need more
+   *              than 288px once the name is spelled out.
+   * - `mini`  — the avatar alone. The 88px icon-only rail has room for
+   *              nothing else.
    */
-  compact?: boolean;
+  variant?: "full" | "panel" | "mini";
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -106,29 +111,33 @@ export function UserMenu({
           aria-label={t("nav.user.menu")}
           className={cn(
             "rounded-lg border border-border bg-card text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
-            compact
+            variant === "mini"
               ? "flex h-8 w-8 items-center justify-center"
-              : "inline-flex items-center gap-2 px-2.5 py-1.5",
+              : variant === "panel"
+                ? "flex h-8 items-center gap-1 px-2"
+                : "inline-flex items-center gap-2 px-2.5 py-1.5",
           )}
         >
           <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
             {username.slice(0, 1).toUpperCase()}
           </span>
-          {!compact && (
+          {variant === "full" && (
             <>
               <span className="hidden sm:inline">{username}</span>
               <Badge tone={role === "admin" ? "primary" : "neutral"} className="hidden md:inline-flex">
                 {role}
               </Badge>
-              <ChevronDown className="h-4 w-4 text-muted-foreground" />
             </>
+          )}
+          {variant !== "mini" && (
+            <ChevronDown className="h-4 w-4 text-muted-foreground" />
           )}
         </button>
       </PopoverTrigger>
 
       <PopoverContent
-        side={compact ? "top" : "bottom"}
-        align={compact ? "start" : "end"}
+        side={variant === "mini" ? "top" : "bottom"}
+        align={variant === "mini" ? "start" : "end"}
         sideOffset={8}
         className="w-56 p-0"
       >

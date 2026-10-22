@@ -109,15 +109,24 @@ describe("sidebar: the account menu in the icon-only rail", () => {
   const layout = read("components/layouts/AuthenticatedLayout.tsx");
   const header = read("components/layouts/AppHeader.tsx");
 
-  it("shrinks the trigger to the avatar and hides the name and badge", () => {
-    expect(header).toContain("compact = false");
-    expect(header).toContain("!compact && (");
+  it("shrinks the trigger to the avatar in the icon-only rail", () => {
+    expect(header).toContain('variant?: "full" | "panel" | "mini"');
+    expect(header).toContain('variant === "mini"');
     expect(header).toContain('"flex h-8 w-8 items-center justify-center"');
   });
 
-  it("is handed the compact flag only where the rail is narrow", () => {
+  it("gives the panel header the tight variant, so the wordmark is not cut", () => {
+    // The brand wordmark and the trigger share the panel's 288px. Spelling
+    // the name out there cut the wordmark down to "R…".
     expect(layout).toContain(
-      "<UserMenu username={username} displayName={displayName} role={role} compact />",
+      '<UserMenu username={username} displayName={displayName} role={role} variant="panel" />',
+    );
+    expect(header).toContain('variant === "full" && (');
+  });
+
+  it("hands the mini variant to the icon-only rail", () => {
+    expect(layout).toContain(
+      '<UserMenu username={username} displayName={displayName} role={role} variant="mini" />',
     );
   });
 

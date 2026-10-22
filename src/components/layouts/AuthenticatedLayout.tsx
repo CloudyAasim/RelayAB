@@ -199,7 +199,12 @@ function SidebarShell({ role, username, displayName, children }: AuthenticatedLa
           */}
           {!collapsed && (
             <div className="ml-auto">
-              <UserMenu username={username} displayName={displayName} role={role} />
+              {/*
+                The `panel` variant: the brand wordmark is next door, and the
+                two together need more than 288px once the name is spelled
+                out — the wordmark was being cut to "R…".
+              */}
+              <UserMenu username={username} displayName={displayName} role={role} variant="panel" />
             </div>
           )}
         </SidebarHeader>
@@ -255,7 +260,7 @@ function SidebarShell({ role, username, displayName, children }: AuthenticatedLa
                 the status just vacated — and shrinks to the bare avatar,
                 because 88px has no room for a name and a role badge. */}
             {collapsed && (
-              <UserMenu username={username} displayName={displayName} role={role} compact />
+              <UserMenu username={username} displayName={displayName} role={role} variant="mini" />
             )}
             <SidebarToggle />
           </div>
