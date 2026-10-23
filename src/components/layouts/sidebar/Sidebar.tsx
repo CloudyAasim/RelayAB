@@ -112,7 +112,11 @@ export function SidebarContent({ children, className }: { children: ReactNode; c
   return (
     <div
       className={cn(
-        "flex-1 overflow-y-auto px-3 py-4",
+        // `overscroll-contain`: the panel's list scrolls on its own, and
+        // reaching its end must not start scrolling the page behind it — on a
+        // phone the two scrolls chain and the page slides away under the
+        // panel.
+        "flex-1 overflow-y-auto overscroll-contain px-3 py-4",
         // In the icon rail the scrollbar would eat the right-hand side of the
         // item column: the 6px it takes off the content box made the selected
         // row's highlight 34px instead of 40px, and it ended up touching the
@@ -245,7 +249,7 @@ export function SidebarGroup({
 }
 
 export function SidebarMenu({ children, className }: { children: ReactNode; className?: string }) {
-  return <ul className={cn("flex flex-col gap-0.5", className)}>{children}</ul>;
+  return <ul className={cn("flex flex-col gap-1 sm:gap-0.5", className)}>{children}</ul>;
 }
 
 export function SidebarMenuItem({ children }: { children: ReactNode }) {
@@ -269,7 +273,9 @@ export function SidebarMenuButton({
 }: SidebarMenuButtonProps) {
   const { collapsed, isMobile, setOpen } = useSidebar();
   const baseClass = cn(
-    "group flex w-full items-center gap-3 rounded-lg py-2 pl-3 pr-3 text-sm font-medium",
+    // 44px tall on a phone — a finger needs that — and the tighter row the
+    // desktop keeps, where the pointer does not.
+    "group flex w-full items-center gap-3 rounded-lg py-3 pl-3 pr-3 text-sm font-medium sm:py-2",
     SIDEBAR_CONTROL_MOTION,
     "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
     // The current page is the one row in the rail that carries the accent

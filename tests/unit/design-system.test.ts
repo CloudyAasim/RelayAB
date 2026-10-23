@@ -99,6 +99,22 @@ describe("flat, not decorative", () => {
     }
   });
 
+  it("and none in the app shell either", () => {
+    // The narrow bar was translucent and blurred while the floating panel is
+    // solid — two surfaces in two languages, on the same screen. Breeze is
+    // flat: the only blur left is the one dimming the page behind an overlay.
+    for (const file of filesIn(join(ROOT, "src", "components", "layouts"))) {
+      const source = readFileSync(file, "utf-8");
+      const blurs = source.match(/backdrop-blur-[a-z]+/g) ?? [];
+      for (const blur of blurs) {
+        expect(
+          blur,
+          `${file} uses ${blur}: the only blur allowed is the one dimming an overlay`,
+        ).toBe("backdrop-blur-sm");
+      }
+    }
+  });
+
   it("one shadow family: the two named ones", () => {
     for (const file of UI_FILES) {
       const source = readFileSync(file, "utf-8");

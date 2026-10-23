@@ -104,3 +104,40 @@ describe("one motion recipe for the panel", () => {
     expect(layout).not.toContain("pageTitle");
   });
 });
+
+/**
+ * The phone is not a small desktop: the things you touch have to be big
+ * enough to touch, the things you read have to leave room for the screen,
+ * and a panel that scrolls must not drag the page behind it along.
+ */
+describe("the panel on a phone", () => {
+  const sidebar = read("components/layouts/sidebar/Sidebar.tsx");
+  const header = read("components/layouts/AppHeader.tsx");
+  const table = read("components/ui/Table.tsx");
+
+  it("touch targets are a finger wide", () => {
+    // 44px is the smallest target a thumb can hit; the desktop keeps the
+    // tighter row, where the pointer does not need the room.
+    expect(sidebar).toContain("py-3 pl-3 pr-3");
+    expect(sidebar).toContain("sm:py-2");
+    expect(header).toContain("h-11");
+  });
+
+  it("the panel's own scroll does not drag the page with it", () => {
+    expect(sidebar).toContain("overscroll-contain");
+  });
+
+  it("the narrow bar is a solid surface, like the panel", () => {
+    // A translucent, blurred bar next to a solid floating panel is two
+    // visual languages on one screen.
+    expect(header).not.toContain("backdrop-blur");
+    expect(header).toMatch(/border-b border-border bg-background\b/);
+  });
+
+  it("the table gives the phone some of its width back", () => {
+    // Four columns on a 375px screen: sixteen pixels of padding per column
+    // is sixteen pixels of nothing to read.
+    expect(table).toContain("px-3 py-3");
+    expect(table).toContain("sm:px-4");
+  });
+});

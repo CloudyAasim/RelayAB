@@ -3,7 +3,11 @@
  *
  * Look — hairline row separators, a quiet head (`bg-muted/50 text-muted-foreground
  * text-xs font-medium`), one hover surface (`hover:bg-muted/40`), and uniform
- * `px-4 py-3` cells.
+ * cells.
+ *
+ * The cells are `px-3` on a phone and `px-4` from `sm` up: a four-column table
+ * has to fit a 375px screen, and sixteen pixels of padding per column is
+ * sixteen pixels of nothing to read.
  *
  * The tinted surfaces are `bg-muted/50` and friends: the theme colours in
  * `tailwind.config.ts` are functions, so an opacity modifier on one of them is
@@ -44,7 +48,7 @@ export function TR({ children, className, ...rest }: HTMLAttributes<HTMLTableRow
 
 export function TH({ children, className, ...rest }: HTMLAttributes<HTMLTableCellElement> & { children: ReactNode }) {
   return (
-    <th className={cn("px-4 py-3 text-xs font-medium text-muted-foreground", className)} {...rest}>
+    <th className={cn("px-3 py-3 text-xs font-medium text-muted-foreground sm:px-4", className)} {...rest}>
       {children}
     </th>
   );
@@ -52,7 +56,7 @@ export function TH({ children, className, ...rest }: HTMLAttributes<HTMLTableCel
 
 export function TD({ children, className, colSpan, ...rest }: HTMLAttributes<HTMLTableCellElement> & { children: ReactNode; className?: string; colSpan?: number }) {
   return (
-    <td className={cn("px-4 py-3 align-middle", className)} colSpan={colSpan} {...rest}>
+    <td className={cn("px-3 py-3 align-middle sm:px-4", className)} colSpan={colSpan} {...rest}>
       {children}
     </td>
   );

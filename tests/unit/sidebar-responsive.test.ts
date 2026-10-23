@@ -218,7 +218,7 @@ describe("sidebar: the account menu in the icon-only rail", () => {
   });
 
   it("gives the panel's account button the column width", () => {
-    expect(header).toContain('"flex h-8 w-full items-center gap-2 pl-2 pr-2.5"');
+    expect(header).toContain('"flex h-11 w-full items-center gap-2 pl-2 pr-2.5 sm:h-8"');
     expect(header).toContain("ml-auto h-4 w-4 shrink-0 text-muted-foreground");
   });
 

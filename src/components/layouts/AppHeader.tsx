@@ -37,12 +37,12 @@ export function AppHeader({ username, displayName, role }: AppHeaderProps) {
   const { open, setOpen, isMobile } = useSidebar();
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-background/85 px-4 backdrop-blur sm:px-6 lg:hidden">
+    <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-background px-4 sm:px-6 lg:hidden">
       {isMobile && (
         <Button
           size="icon"
           variant="ghost"
-          className={cn("rounded-lg", SIDEBAR_CONTROL_MOTION)}
+          className={cn("rounded-lg", SIDEBAR_CONTROL_MOTION, "h-11 w-11 sm:h-10 sm:w-10")}
           onClick={() => setOpen(!open)}
           aria-label={t("nav.toggleSidebar")}
         >
@@ -119,8 +119,8 @@ export function UserMenu({
             variant === "mini"
               ? "flex h-8 w-10 items-center justify-center"
               : variant === "panel"
-                ? "flex h-8 w-full items-center gap-2 pl-2 pr-2.5"
-                : "inline-flex items-center gap-2 px-2.5 py-1.5",
+                ? "flex h-11 w-full items-center gap-2 pl-2 pr-2.5 sm:h-8"
+                : "inline-flex h-11 items-center gap-2 px-2.5 sm:h-9",
           )}
         >
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
