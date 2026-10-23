@@ -98,8 +98,8 @@ describe("sidebar: collapsed rail layout & motion", () => {
     expect(layout).not.toContain('collapsed ? "h-8 w-8" : "h-7 w-7"');
   });
 
-  it("gives the toggle a 32px hit target when collapsed", () => {
-    expect(sidebar).toContain('collapsed ? "h-8 w-8 justify-center"');
+  it("gives the toggle a 40px hit target when collapsed", () => {
+    expect(sidebar).toContain('collapsed ? "h-8 w-10 justify-center"');
     expect(sidebar).not.toContain('collapsed ? "h-8 w-8" : "h-7 w-7"');
   });
 
@@ -108,11 +108,22 @@ describe("sidebar: collapsed rail layout & motion", () => {
     // afterthought; the open panel says what the button does. The label
     // fades with the rail, like the nav labels and the brand wordmark.
     expect(sidebar).toContain(
-      'collapsed ? "h-8 w-8 justify-center" : "h-8 gap-2 pl-2 pr-2.5 text-sm font-medium"',
+      'collapsed ? "h-8 w-10 justify-center" : "h-8 w-full gap-3 pl-3 pr-2.5 text-sm font-medium"',
     );
     expect(sidebar).toContain('{t("nav.sidebar.collapse")}');
     expect(sidebar).toContain(
       'collapsed ? "max-w-0 opacity-0" : "max-w-[120px] opacity-100 delay-150"',
+    );
+  });
+
+  it("gives the footer buttons the same width as the nav items", () => {
+    // The panel is one column of rows; two shorter buttons at the foot of it
+    // made it look like two pieces put together. Open panel: the full column
+    // width. Icon rail: the same 40px the nav rows use.
+    expect(sidebar).toContain("border-t border-sidebar-border px-3 py-3");
+    expect(sidebar).toContain('collapsed && "w-10 gap-0"');
+    expect(sidebar).toContain(
+      'collapsed ? "h-8 w-10 justify-center" : "h-8 w-full gap-3 pl-3 pr-2.5 text-sm font-medium"',
     );
   });
 
@@ -181,7 +192,12 @@ describe("sidebar: the account menu in the icon-only rail", () => {
   it("shrinks the trigger to the avatar in the icon-only rail", () => {
     expect(header).toContain('variant?: "full" | "panel" | "mini"');
     expect(header).toContain('variant === "mini"');
-    expect(header).toContain('"flex h-8 w-8 items-center justify-center"');
+    expect(header).toContain('"flex h-8 w-10 items-center justify-center"');
+  });
+
+  it("gives the panel's account button the column width", () => {
+    expect(header).toContain('"flex h-8 w-full items-center gap-2 pl-2 pr-2.5"');
+    expect(header).toContain("ml-auto h-4 w-4 shrink-0 text-muted-foreground");
   });
 
   it("gives the open panel the panel variant (name, no role badge)", () => {

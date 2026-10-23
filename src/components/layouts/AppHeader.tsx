@@ -111,17 +111,17 @@ export function UserMenu({
           aria-label={t("nav.user.menu")}
           className={cn(
             "rounded-lg border border-border bg-card text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
+            // The panel's footer is a column of rows, and these two sit in it
+            // like the nav items above: the same width in the open panel
+            // (`w-full`) and the same 40px in the icon rail (`w-10`).
             variant === "mini"
-              ? "flex h-8 w-8 items-center justify-center"
+              ? "flex h-8 w-10 items-center justify-center"
               : variant === "panel"
-                // `pl-1`, not `px-2.5`: the avatar has to land on the same
-                // pixel as the bare avatar in the icon rail, so the panel's
-                // footer and its narrow form share one axis.
-                ? "flex h-8 items-center gap-1.5 pl-1 pr-2.5"
+                ? "flex h-8 w-full items-center gap-2 pl-2 pr-2.5"
                 : "inline-flex items-center gap-2 px-2.5 py-1.5",
           )}
         >
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
             {username.slice(0, 1).toUpperCase()}
           </span>
           {variant !== "mini" && (
@@ -133,7 +133,7 @@ export function UserMenu({
             </Badge>
           )}
           {variant !== "mini" && (
-            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            <ChevronDown className="ml-auto h-4 w-4 shrink-0 text-muted-foreground" />
           )}
         </button>
       </PopoverTrigger>

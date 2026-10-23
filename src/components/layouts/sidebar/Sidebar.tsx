@@ -113,7 +113,7 @@ export function SidebarContent({ children, className }: { children: ReactNode; c
 
 export function SidebarFooter({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn("border-t border-sidebar-border px-4 py-3", className)}>
+    <div className={cn("border-t border-sidebar-border px-3 py-3", className)}>
       {children}
     </div>
   );
@@ -150,8 +150,13 @@ export function SidebarToggle({ className }: { className?: string }) {
         // out what the button does, like every other button down there —
         // a bare glyph next to a labelled account button reads as an
         // afterthought.
+        //
+        // The width follows the nav items: the same column in the open panel
+        // (`w-full`) and the same 40px in the icon rail (`w-10`). Two
+        // narrower buttons at the foot of a column of full-width rows is
+        // what made the panel look like it was assembled from two pieces.
         "flex shrink-0 items-center rounded-lg text-sidebar-foreground/70 transition-[width,height,background-color,color] duration-300 ease-sidebar hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring motion-reduce:transition-none",
-        collapsed ? "h-8 w-8 justify-center" : "h-8 gap-2 pl-2 pr-2.5 text-sm font-medium",
+        collapsed ? "h-8 w-10 justify-center" : "h-8 w-full gap-3 pl-3 pr-2.5 text-sm font-medium",
         className,
       )}
     >
