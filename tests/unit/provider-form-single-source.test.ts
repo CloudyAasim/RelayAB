@@ -55,7 +55,6 @@ const values: ProviderFormValues = {
   baseUrl: "https://api.minimaxi.com/v1",
   apiKey: "sk-test",
   priority: "2",
-  weight: "3",
   enabled: true,
   headers: "api-version: 2024-08-01-preview",
   faces: {

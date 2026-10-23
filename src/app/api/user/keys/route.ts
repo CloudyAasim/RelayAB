@@ -29,7 +29,6 @@ import {
   listApiKeysByUser,
   ApiKeyNotFoundError,
 } from "@/lib/db/keys";
-import { ipRuleProblem } from "@/lib/auth/ip-allowlist";
 
 const PostSchema = z.object({
   label: z.string().min(1).max(64),
@@ -39,29 +38,6 @@ const PostSchema = z.object({
    * grant access to a model the owner lacks — see checkKeyStatus().
    */
   allowedModels: z.array(z.string()).optional(),
-  /**
-   * Client addresses allowed to use this key. Empty = no restriction.
-   *
-   * An exact address, or an IPv4 network such as `203.0.113.0/24`. A rule
-   * this module cannot honour is refused rather than stored and silently
-   * ignored — a rule that looks like it works and does not is the worst
-   * outcome available.
-   */
-  allowedIps: z
-    .array(z.string().max(64))
-    .max(64)
-    .optional()
-    .superRefine((value, ctx) => {
-      for (const rule of value ?? []) {
-        const problem = ipRuleProblem(rule);
-        if (problem) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: `"${rule}" is not a usable rule: ${problem}`,
-          });
-        }
-      }
-    }),
 });
 
 export async function GET(): Promise<Response> {
@@ -137,10 +113,6 @@ export async function POST(req: Request): Promise<Response> {
       // Keys start with no extra narrowing; the owner's whitelist still
       // applies at request time, so the effective permission is unchanged.
       allowedModels: parsed.data.allowedModels ?? [],
-      // The client's own choice: which addresses this key may be used from.
-      // Empty means "anywhere", which is the same as a key created before
-      // this existed.
-      allowedIps: parsed.data.allowedIps ?? [],
     });
     return NextResponse.json({
       ok: true,

@@ -21,8 +21,6 @@ import { getApiKeyByPlaintext } from "../db/keys";
 import { getUserById } from "../db/users";
 import { ensureBootstrapped } from "../db/bootstrap";
 import { modelAllowedFor } from "./model-access";
-import { ipAllowed, clientIpFromHeaders } from "./ip-allowlist";
-import { consumeUserRequestSlot } from "./rate-limit";
 import {
   ApiKeySchema,
   UserSchema,
@@ -144,7 +142,6 @@ export async function lookupUserById(userId: string): Promise<User | null> {
  *   3. owner account still enabled
  *   4. the OWNER's quota pool still has headroom
  *   5. model permission — intersection of owner whitelist and key whitelist
- *   6. the client's address is on the key's allowlist, if it has one
  *
  * Step 4 is the architecturally important one: quota is checked against the
  * user, not the key, so minting extra keys does not mint extra budget.
@@ -154,13 +151,6 @@ export function checkKeyStatus(args: {
   user?: User;
   requestedModel?: string;
   now?: number;
-  /**
-   * The client's address, as the platform in front of us reported it.
-   *
-   * Only needed when the key carries an allowlist. A key without one accepts
-   * any address, so an absent value is not a hole — it is the ordinary case.
-   */
-  clientIp?: string;
   /**
    * For a call that cannot spend anything — reading the balance, listing the
    * models. An empty pool is a reason to refuse a *purchase*, not a reason to
@@ -214,19 +204,6 @@ export function checkKeyStatus(args: {
     }
   }
 
-  // The allowlist is the last gate, and the only one that looks at where the
-  // request came from. It is checked after the cheap ones because a request
-  // that is going to be refused for a disabled key should be refused for
-  // that, not for its address.
-  //
-  // A key without an allowlist accepts any address — the rule only exists
-  // for the keys whose owner asked for it.
-  if (key.allowedIps.length > 0) {
-    if (!ipAllowed(args.clientIp ?? "", key.allowedIps)) {
-      return { ok: false, reason: "ip_not_allowed", key, user };
-    }
-  }
-
   return { ok: true, reason: "ok", key, user };
 }
 
@@ -237,8 +214,6 @@ export function checkKeyStatus(args: {
 export async function authenticateBearer(args: {
   authHeader: string | null | undefined;
   requestedModel?: string;
-  /** The client's address, for a key that carries an allowlist. */
-  clientIp?: string;
   /** See {@link checkKeyStatus}. For reads that cannot spend. */
   skipQuotaCheck?: boolean;
 }): Promise<KeyValidationResult> {
@@ -264,53 +239,9 @@ export async function authenticateBearer(args: {
     key,
     user: user ?? undefined,
     requestedModel: args.requestedModel,
-    ...(args.clientIp !== undefined ? { clientIp: args.clientIp } : {}),
     ...(args.skipQuotaCheck ? { skipQuotaCheck: true } : {}),
   });
-  if (!result.ok) return { ...result, user: user ?? undefined };
-
-  // The rate limit comes last: it is the only check that counts something,
-  // and a request refused for a disabled key should not have used up a slot.
-  //
-  // It is skipped for the same calls that skip the quota check — a read that
-  // costs nothing should not be what pushes a client over its limit.
-  const rpmLimit = user?.rpmLimit ?? 0;
-  if (!args.skipQuotaCheck && rpmLimit > 0 && user) {
-    const decision = await consumeUserRequestSlot(user.id, rpmLimit);
-    if (!decision.allowed) {
-      return { ok: false, reason: "rate_limited", key, user };
-    }
-  }
-
   return { ...result, user: user ?? undefined };
-}
-
-/**
- * The whole authentication step, given the request.
- *
- * Everything a proxied route needs in one call: the bearer token from
- * whichever carrier the client used, the client's address, the key's checks,
- * and the owner's rate limit.
- *
- * This exists because the address and the request both have to come from the
- * `Request`, and threading them through separately meant every route had to
- * remember to pass the right thing — the failure mode of a security check
- * that is opt-in is a route that forgets.
- */
-export async function authenticateRequest(
-  req: Request,
-  opts: {
-    requestedModel?: string;
-    /** See {@link checkKeyStatus}. For reads that cannot spend. */
-    skipQuotaCheck?: boolean;
-  } = {},
-): Promise<KeyValidationResult> {
-  return authenticateBearer({
-    authHeader: resolveAuthHeader(req),
-    clientIp: clientIpFromHeaders(req.headers),
-    ...(opts.requestedModel !== undefined ? { requestedModel: opts.requestedModel } : {}),
-    ...(opts.skipQuotaCheck ? { skipQuotaCheck: true } : {}),
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -426,21 +357,6 @@ export function reasonToHttp(reason: string): { status: number; code: string; me
       };
     case "model_not_allowed":
       return { status: 403, code: "model_not_allowed", message: "This key is not permitted to call this model" };
-    case "ip_not_allowed":
-      return {
-        status: 403,
-        code: "ip_not_allowed",
-        message: "This key may only be used from an allowed client address",
-      };
-    case "rate_limited":
-      // 429, and not 403: the client is allowed to make this call, it is the
-      // *rate* that is over. An OpenAI client recognises 429 as a limit it can
-      // back off from — see `openAiErrorType`.
-      return {
-        status: 429,
-        code: "rate_limited",
-        message: "Rate limit exceeded for this account",
-      };
     default:
       return { status: 500, code: "internal_error", message: "Unknown validation failure" };
   }

@@ -91,7 +91,6 @@ export const DEFAULT_USER_ALLOCATION = Object.freeze({
   quotaLimit: 0,     // nothing granted yet — admin must allocate
   maxActiveKeys: 0,  // 0 = no cap
   allowedModels: [] as string[],
-  rpmLimit: 0,       // 0 = no request-rate limit
 });
 
 export const UserSchema = z.object({
@@ -121,15 +120,6 @@ export const UserSchema = z.object({
   allowedModels: z
     .array(z.string())
     .default([]),
-  /**
-   * Requests per minute this user may make, across every key they own.
-   *
-   * 0 = no limit. The limit lives on the **user** rather than on the key
-   * for the same reason the quota does: a limit on the key is undone by
-   * minting another key, and the thing worth protecting is the upstream
-   * provider's quota, not the key.
-   */
-  rpmLimit: z.number().int().nonnegative().default(0),
 });
 export type User = z.infer<typeof UserSchema>;
 
@@ -165,14 +155,6 @@ export const ApiKeySchema = z.object({
    * applies.
    */
   allowedModels: z.array(z.string()),
-  /**
-   * Client addresses allowed to use this key. Empty = no restriction.
-   *
-   * A key is a bearer token, so this is the cheap second lock that makes a
-   * leaked key useless somewhere else: an exact address, or an IPv4 network
-   * such as `203.0.113.0/24`.
-   */
-  allowedIps: z.array(z.string()).default([]),
   createdAt: z.string(),
   lastUsedAt: z.string().nullable(),
 });
@@ -358,21 +340,6 @@ export const ProviderSchema = z.object({
   modelConfigs: z.record(z.string(), ModelConfigSchema).optional().default({}),
   enabled: z.boolean(),
   priority: z.number().int(),
-  /**
-   * How much of the traffic this provider takes, relative to the others in
-   * the same priority tier.
-   *
-   * **0 means "not drawn from proactively"** — the provider still serves
-   * traffic when the ones ahead of it fail, but a healthy request is not
-   * handed to it. That makes 0 the natural value for a standby, and it keeps
-   * the default behaviour of a deployment that never heard of weights
-   * exactly what it was: the first provider in its tier, every time.
-   *
-   * New API adds 10 to every weight instead, so that no channel is ever
-   * excluded. The difference matters here because this gateway can fail
-   * over: a weightless provider is the one a failure reaches.
-   */
-  weight: z.number().int().nonnegative().default(0),
   // Optional per-provider HTTP headers (e.g. api-version for Azure).
   headers: z.record(z.string(), z.string()).optional().default({}),
   // Upstream format: responses (native), chat, or anthropic
@@ -583,11 +550,7 @@ export type KeyValidationReason =
   | "key_expired"
   | "quota_exceeded_credits"
   | "quota_exceeded_tokens"
-  | "model_not_allowed"
-  /** The client's address is not on the key's allowlist. */
-  | "ip_not_allowed"
-  /** The account is over its requests-per-minute budget. */
-  | "rate_limited";
+  | "model_not_allowed";
 
 export interface KeyValidationResult {
   ok: boolean;

@@ -8,7 +8,6 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createApiKey, listAllApiKeys, listApiKeysByUser } from "@/lib/db/keys";
 import { getCurrentUser } from "@/lib/auth/session";
-import { ipRuleProblem } from "@/lib/auth/ip-allowlist";
 
 const PostSchema = z.object({
   userId: z.string().min(1),
@@ -16,28 +15,6 @@ const PostSchema = z.object({
   expiresAt: z.string().nullable().optional(),
   /** Optional narrowing of the owner's model whitelist for this key only. */
   allowedModels: z.array(z.string()).optional(),
-  /**
-   * Client addresses allowed to use this key. Empty = no restriction.
-   *
-   * An exact address, or an IPv4 network such as `203.0.113.0/24`. A rule
-   * that cannot be honoured is refused rather than stored and silently
-   * ignored.
-   */
-  allowedIps: z
-    .array(z.string().max(64))
-    .max(64)
-    .optional()
-    .superRefine((value, ctx) => {
-      for (const rule of value ?? []) {
-        const problem = ipRuleProblem(rule);
-        if (problem) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: `"${rule}" is not a usable rule: ${problem}`,
-          });
-        }
-      }
-    }),
 });
 
 export async function GET(req: Request): Promise<Response> {
@@ -90,7 +67,6 @@ export async function POST(req: Request): Promise<Response> {
     label: parsed.data.label,
     expiresAt: parsed.data.expiresAt ?? null,
     allowedModels: parsed.data.allowedModels ?? [],
-    allowedIps: parsed.data.allowedIps ?? [],
   });
   return NextResponse.json({
     ok: true,

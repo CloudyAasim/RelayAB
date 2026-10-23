@@ -132,30 +132,16 @@ export function ProviderForm({
           onChange={(e) => patch({ priority: e.target.value })}
         />
 
-        <Input
-          label={t("admin.providers.create.weight")}
-          type="number"
-          value={values.weight}
-          onChange={(e) => patch({ weight: e.target.value })}
-        />
+        <label htmlFor="provider-enabled" className="flex items-center gap-2 pt-6 text-sm">
+          {/* "Is this provider live" is a switch, not a checkbox. */}
+          <Switch
+            id="provider-enabled"
+            checked={values.enabled}
+            onCheckedChange={(checked) => patch({ enabled: checked })}
+          />
+          {t("admin.providers.create.enabled")}
+        </label>
       </div>
-
-      {/* The weight only means something next to the priority it splits with,
-          so the sentence that explains it sits under the two fields rather
-          than in a tooltip nobody opens. */}
-      <p className="-mt-2 text-xs text-muted-foreground">
-        {t("admin.providers.create.weightHint")}
-      </p>
-
-      <label htmlFor="provider-enabled" className="flex items-center gap-2 text-sm">
-        {/* "Is this provider live" is a switch, not a checkbox. */}
-        <Switch
-          id="provider-enabled"
-          checked={values.enabled}
-          onCheckedChange={(checked) => patch({ enabled: checked })}
-        />
-        {t("admin.providers.create.enabled")}
-      </label>
 
       {/*
         Headers were create-only. A request header set at creation could not be

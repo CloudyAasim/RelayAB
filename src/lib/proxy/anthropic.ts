@@ -24,9 +24,6 @@ import { ssePassthrough } from "./stream-tap";
 import { providerFaces, type ApiKey, type Provider, type User } from "../db/types";
 import { applyParameterPolicy } from "../protocol/parameter-policy";
 import { readTextSpecs, specForSurface, activeSpecFor } from "../protocol/text-specs";
-import { orderCandidates } from "./selection";
-import { runWithFailover, upstreamFailureIsRetryable } from "./failover";
-import { getMaxProviderAttempts } from "../db/settings";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -41,14 +38,6 @@ export interface AnthropicProxyResult {
   /** Content-Type to use together with `body`. */
   contentType?: string;
   error?: { code: string; message: string };
-  /**
-   * Whether another provider might do better.
-   *
-   * See `ProxyResult.retryable` in openai.ts: it is what tells the failover
-   * loop whether the next provider is worth trying, and the reasoning is the
-   * same on this surface.
-   */
-  retryable?: boolean;
 }
 
 export interface AnthropicProxyDeps {
@@ -142,30 +131,15 @@ export async function proxyAnthropicMessage(args: {
   //    carries its own base URL. Rows written before that model still work —
   //    they resolve to an Anthropic-only face.
   const candidates = await findAnthropicProvidersForModel(req.model);
-  if (candidates.length === 0) {
+  const provider = candidates[0];
+  if (!provider) {
     return {
       ok: false,
       status: 400,
       error: { code: "model_not_mapped", message: `No Anthropic provider configured for model '${req.model}'` },
     };
   }
-
-  // The order is the failover order: the first entry serves the request and
-  // the rest are what a failure reaches for.
-  const ordered = orderCandidates(candidates);
-  const maxAttempts = await getMaxProviderAttempts();
-  const result = await runWithFailover({
-    candidates: ordered,
-    maxAttempts,
-    attempt: (provider) => doProxy({ req, apiKey, user, provider, signal, deps, fetchImpl }),
-  });
-  return (
-    result ?? {
-      ok: false,
-      status: 502,
-      error: { code: "upstream_error", message: "No upstream could serve this request" },
-    }
-  );
+  return doProxy({ req, apiKey, user, provider, signal, deps, fetchImpl });
 }
 
 // ---------------------------------------------------------------------------
@@ -226,12 +200,10 @@ async function doProxy(args: {
     });
   } catch (err) {
     await recordFailure({ apiKey, provider, model: req.model, upstreamModel, error: err });
-    // The provider could not be reached at all. Another one may be.
     return {
       ok: false,
       status: 502,
       error: { code: "upstream_error", message: String(err) },
-      retryable: true,
     };
   }
 
@@ -276,7 +248,6 @@ async function doProxy(args: {
       ok: false,
       status: 502,
       error: { code: "upstream_error", message: `Upstream ${response.status}` },
-      retryable: upstreamFailureIsRetryable(response.status),
     };
   }
 

@@ -323,11 +323,6 @@ function ModelRows({ model: m, isChat }: { model: CatalogModel; isChat: boolean 
               {t("docs.catalog.priority")}: {m.source.priority}
             </p>
           )}
-          {m.source.weight !== null && m.source.weight > 0 && (
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {t("docs.catalog.weight")}: {m.source.weight}
-            </p>
-          )}
         </td>
         {isChat ? (
           <>
@@ -423,9 +418,6 @@ function ModelRows({ model: m, isChat }: { model: CatalogModel; isChat: boolean 
               )}
               {m.source.priority !== null && (
                 <Detail label={t("docs.catalog.priority")} value={String(m.source.priority)} />
-              )}
-              {m.source.weight !== null && m.source.weight > 0 && (
-                <Detail label={t("docs.catalog.weight")} value={String(m.source.weight)} />
               )}
               {modes.length > 0 && (
                 <Detail label={t("docs.catalog.modes")} value={modes.join(" / ")} />

@@ -118,7 +118,6 @@ describe("db types - toPublic helpers", () => {
       quotaUsed: 0,
       maxActiveKeys: 0,
       allowedModels: [],
-      rpmLimit: 0,
     };
     const pub = toPublicUser(u);
     expect("passwordHash" in pub).toBe(false);
@@ -136,7 +135,6 @@ describe("db types - toPublic helpers", () => {
       modelConfigs: {},
       enabled: true,
       priority: 1,
-      weight: 0,
       headers: {},
       upstreamFormat: "responses",
       openaiEnabled: true,

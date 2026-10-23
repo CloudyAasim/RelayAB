@@ -28,7 +28,6 @@ function makeUser(over: Partial<User> = {}): User {
     quotaUsed: 0,
     maxActiveKeys: 0,
     allowedModels: [],
-    rpmLimit: 0,
     ...over,
   };
 }

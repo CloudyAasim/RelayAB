@@ -27,7 +27,6 @@ export function CreateKeyButton({ allocation, primary, label }: Props) {
   const [open, setOpen] = useState(false);
   const [keyLabel, setKeyLabel] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
-  const [allowedIps, setAllowedIps] = useState("");
   const [plainKey, setPlainKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -40,7 +39,6 @@ export function CreateKeyButton({ allocation, primary, label }: Props) {
   function reset() {
     setKeyLabel("");
     setExpiresAt("");
-    setAllowedIps("");
     setPlainKey(null);
     setError(null);
   }
@@ -56,11 +54,6 @@ export function CreateKeyButton({ allocation, primary, label }: Props) {
         body: JSON.stringify({
           label: keyLabel,
           expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
-          // One rule per line; the server refuses a rule it cannot honour.
-          allowedIps: allowedIps
-            .split(/[\n,;]/)
-            .map((rule) => rule.trim())
-            .filter((rule) => rule.length > 0),
         }),
       });
       const data = await res.json();
@@ -136,25 +129,6 @@ export function CreateKeyButton({ allocation, primary, label }: Props) {
               value={expiresAt}
               onChange={(e) => setExpiresAt(e.target.value)}
             />
-
-            {/* The allowlist is the answer to "what if this key leaks". Left
-                empty it changes nothing — the key works from anywhere, exactly
-                as it did before this field existed. */}
-            <div>
-              <label className="block text-sm font-medium mb-1.5">
-                {t("dashboard.createKey.allowedIps")}
-              </label>
-              <textarea
-                value={allowedIps}
-                onChange={(e) => setAllowedIps(e.target.value)}
-                rows={3}
-                placeholder="203.0.113.7"
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
-              />
-              <p className="mt-1.5 text-xs text-muted-foreground">
-                {t("dashboard.createKey.allowedIpsHint")}
-              </p>
-            </div>
 
             <div className="rounded-md border border-border bg-muted/40 p-3 text-xs space-y-1.5">
               <div className="flex items-center gap-1.5 font-medium text-foreground">

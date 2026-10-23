@@ -66,13 +66,6 @@ const UpdateSchema = z
     announcement: z.string().max(20_000).optional(),
     supportContact: z.string().max(500).optional(),
     publicCatalog: z.boolean().optional(),
-    /**
-     * How many providers one request may be tried against.
-     *
-     * Operational rather than presentation, like `publicUrl`: it changes how
-     * traffic is routed, so it is a number with a floor rather than a string.
-     */
-    maxProviderAttempts: z.number().int().min(1).max(10).optional(),
     modelNotes: z.record(z.string().min(1).max(200), ModelNoteSchema).optional(),
     // Capped as a whole as well as per page: the list is rendered into the
     // reader's navigation, and a hundred entries there is a hundred entries

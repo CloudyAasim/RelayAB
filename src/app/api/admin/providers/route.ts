@@ -20,12 +20,6 @@ export const PostSchema = z.object({
   modelConfigs: z.record(z.string(), ModelConfigPatchSchema).optional(),
   enabled: z.boolean().optional(),
   priority: z.number().int().optional(),
-  /**
-   * Share of the traffic, relative to the other providers in the same
-   * priority tier. 0 = not drawn from proactively (a standby that only
-   * serves when the ones ahead of it fail).
-   */
-  weight: z.number().int().nonnegative().optional(),
   headers: z.record(z.string(), z.string()).optional(),
   upstreamFormat: z.enum(["responses", "chat", "anthropic"]).optional(),
   openaiEnabled: z.boolean().optional(),
@@ -119,7 +113,6 @@ export async function POST(req: Request): Promise<Response> {
       modelConfigs: parsed.data.modelConfigs ?? {},
       enabled: parsed.data.enabled ?? true,
       priority: parsed.data.priority ?? 1,
-      weight: parsed.data.weight ?? 0,
       headers: parsed.data.headers,
       upstreamFormat: parsed.data.upstreamFormat ?? "responses",
       openaiEnabled: parsed.data.openaiEnabled,

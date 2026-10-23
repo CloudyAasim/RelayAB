@@ -22,8 +22,6 @@ const PostSchema = z.object({
   quotaLimit: z.number().int().nonnegative().optional(),
   maxActiveKeys: z.number().int().nonnegative().optional(),
   allowedModels: z.array(z.string()).optional(),
-  /** Requests per minute across all of this user's keys. 0 = no limit. */
-  rpmLimit: z.number().int().nonnegative().optional(),
 });
 
 export async function GET(req: Request): Promise<Response> {
@@ -87,7 +85,6 @@ export async function POST(req: Request): Promise<Response> {
       quotaLimit: parsed.data.quotaLimit,
       maxActiveKeys: parsed.data.maxActiveKeys,
       allowedModels: parsed.data.allowedModels,
-      rpmLimit: parsed.data.rpmLimit,
     });
     return NextResponse.json({
       ok: true,

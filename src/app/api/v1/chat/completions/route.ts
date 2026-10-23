@@ -8,7 +8,7 @@
  *
  * Flow: parse Bearer → look up key → validate → forward → record usage.
  */
-import { authenticateRequest, reasonToHttp } from "@/lib/auth/apikey";
+import { authenticateBearer, reasonToHttp, resolveAuthHeader } from "@/lib/auth/apikey";
 import { proxyError } from "@/lib/proxy/errors";
 import { proxyChatCompletion } from "@/lib/proxy/openai";
 import { proxyResultToResponse } from "@/lib/proxy/respond";
@@ -34,7 +34,8 @@ export async function POST(req: Request): Promise<Response> {
     typeof body === "object" && body !== null && "model" in body
       ? String((body as Record<string, unknown>).model ?? "")
       : "";
-  const auth = await authenticateRequest(req, {
+  const auth = await authenticateBearer({
+    authHeader: resolveAuthHeader(req),
     requestedModel,
   });
 

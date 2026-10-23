@@ -19,7 +19,6 @@
  * apart is what stops a copy edit from silently becoming a routing change.
  */
 import { getAll, getOne, run, withTransaction } from "./sqlite";
-import { revalidateTag, unstable_cache } from "next/cache";
 
 export interface AppSettings {
   publicUrl?: string;
@@ -79,19 +78,6 @@ export interface AppSettings {
    * operator knows: their usage policy, their rate limits, which model to pick.
    */
   docPages?: DocPage[];
-  /**
-   * How many upstream providers a single request may be tried against.
-   *
-   * 2 means "try the next one when the first fails". The number is capped by
-   * how many providers actually serve the model, so a deployment with one
-   * provider per model is unaffected whatever this is set to — there is
-   * nowhere else to go.
-   *
-   * New API calls this the retry count, and it is off by default there. It is
-   * on here because the failure it prevents is total: without it, one vendor
-   * having a bad minute takes down every request for that model.
-   */
-  maxProviderAttempts?: number;
 }
 
 export interface DocPage {
@@ -132,18 +118,6 @@ const SEARCH_ENABLED_KEY = "searchEnabled";
 const SEARCH_CREDITS_PER_CALL_KEY = "searchCreditsPerCall";
 const MODEL_NOTES_KEY = "modelNotes";
 const DOC_PAGES_KEY = "docPages";
-const MAX_PROVIDER_ATTEMPTS_KEY = "maxProviderAttempts";
-
-/**
- * How many providers one request may be tried against, when the operator has
- * not said otherwise.
- *
- * 2, not 1: the second attempt is what turns "one vendor is down" into "one
- * vendor is down". It costs nothing when the first attempt succeeds, and the
- * attempt count is capped by the number of providers that actually serve the
- * model, so a deployment with a single provider behaves exactly as before.
- */
-export const DEFAULT_MAX_PROVIDER_ATTEMPTS = 2;
 
 /** Every scalar key, so a read is one query rather than one per field. */
 const SCALAR_KEYS = [
@@ -206,39 +180,7 @@ export async function getSettings(): Promise<AppSettings> {
   const searchPrice = rawPrice ? Number(rawPrice) : NaN;
   if (Number.isInteger(searchPrice) && searchPrice >= 0) out.searchCreditsPerCall = searchPrice;
 
-  const rawAttempts = byKey.get(MAX_PROVIDER_ATTEMPTS_KEY)?.trim();
-  const attempts = rawAttempts ? Number(rawAttempts) : NaN;
-  if (Number.isInteger(attempts) && attempts >= 1) out.maxProviderAttempts = attempts;
-
   return out;
-}
-
-/**
- * The attempt budget, read for the request path.
- *
- * Cached, because it is read on every proxied request and it changes only
- * when an operator edits the settings. The tag is the one `updateSettings`
- * revalidates, so a change takes effect immediately rather than after the
- * cache window.
- */
-const getMaxProviderAttemptsCached = unstable_cache(
-  async (): Promise<number> => {
-    const settings = await getSettings();
-    return settings.maxProviderAttempts ?? DEFAULT_MAX_PROVIDER_ATTEMPTS;
-  },
-  ["relayab:maxProviderAttempts"],
-  { tags: ["relayab:settings"], revalidate: 60 },
-);
-
-/** How many providers one request may be tried against. */
-export async function getMaxProviderAttempts(): Promise<number> {
-  try {
-    return await getMaxProviderAttemptsCached();
-  } catch {
-    // A settings read that fails must not take the gateway down; the default
-    // is a safe answer either way.
-    return DEFAULT_MAX_PROVIDER_ATTEMPTS;
-  }
 }
 
 /** Write only the keys present in `settings`, then return the merged result. */
@@ -277,12 +219,6 @@ export async function updateSettings(settings: Partial<AppSettings>): Promise<Ap
         write(MODEL_NOTES_KEY, JSON.stringify(notes));
       }
     }
-    if (settings.maxProviderAttempts !== undefined) {
-      write(
-        MAX_PROVIDER_ATTEMPTS_KEY,
-        String(Math.max(1, Math.trunc(settings.maxProviderAttempts))),
-      );
-    }
     if (settings.docPages !== undefined) {
       const pages = settings.docPages ?? [];
       if (pages.length === 0) {
@@ -293,10 +229,6 @@ export async function updateSettings(settings: Partial<AppSettings>): Promise<Ap
         write(DOC_PAGES_KEY, JSON.stringify(pages));
       }
     }
-    const merged = await getSettings();
-    // The attempt budget is read on every proxied request through a cached
-    // lookup, so the cache has to be told when the answer changes.
-    revalidateTag("relayab:settings");
-    return merged;
+    return getSettings();
   });
 }

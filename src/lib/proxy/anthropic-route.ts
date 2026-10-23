@@ -18,7 +18,7 @@
  * Keeping one implementation here means the two routes cannot drift.
  */
 import { NextResponse } from "next/server";
-import { authenticateRequest, reasonToHttp } from "@/lib/auth/apikey";
+import { authenticateBearer, reasonToHttp, resolveAuthHeader } from "@/lib/auth/apikey";
 import { proxyAnthropicMessage } from "@/lib/proxy/anthropic";
 import { proxyResultToResponse } from "@/lib/proxy/respond";
 import { validateAnthropicBody } from "@/lib/proxy/validate";
@@ -45,7 +45,9 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
   // `x-api-key`; OpenAI-style clients use `Authorization: Bearer`. Both
   // carriers are normalised by `resolveAuthHeader`, which also honours the
   // legacy `?api_key=` query-param style.
-  const auth = await authenticateRequest(req, {
+  const authHeader = resolveAuthHeader(req);
+  const auth = await authenticateBearer({
+    authHeader,
     requestedModel,
   });
 

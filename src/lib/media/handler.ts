@@ -349,10 +349,13 @@ export async function authorizeMediaRequest(
 ): Promise<
   { ok: true; key: ApiKey; user: User } | { ok: false; response: Response }
 > {
-  const { authenticateRequest, reasonToHttp } = await import("@/lib/auth/apikey");
+  const { authenticateBearer, reasonToHttp, resolveAuthHeader } = await import(
+    "@/lib/auth/apikey"
+  );
   const { getUserById } = await import("@/lib/db/users");
 
-  const auth = await authenticateRequest(req, {
+  const auth = await authenticateBearer({
+    authHeader: resolveAuthHeader(req),
     requestedModel,
   });
   // The rejections below are built here rather than returned as data for the

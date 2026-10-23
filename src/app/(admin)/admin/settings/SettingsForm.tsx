@@ -9,20 +9,12 @@ import { Button } from "@/components/ui/Button";
 interface Props {
   currentUrl: string;
   envConfigured: boolean;
-  /**
-   * How many providers one request may be tried against.
-   *
-   * Kept in step with the stored setting so the field shows what is in force
-   * rather than what the code would default to.
-   */
-  maxProviderAttempts: number;
 }
 
-export function SettingsForm({ currentUrl, envConfigured, maxProviderAttempts }: Props) {
+export function SettingsForm({ currentUrl, envConfigured }: Props) {
   const t = useT();
   const router = useRouter();
   const [url, setUrl] = useState(currentUrl);
-  const [attempts, setAttempts] = useState(String(maxProviderAttempts));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -37,10 +29,7 @@ export function SettingsForm({ currentUrl, envConfigured, maxProviderAttempts }:
       const res = await fetch("/api/admin/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          publicUrl: url || undefined,
-          maxProviderAttempts: Math.max(1, Number(attempts) || 1),
-        }),
+        body: JSON.stringify({ publicUrl: url || undefined }),
       });
 
       const text = await res.text();
@@ -87,20 +76,7 @@ export function SettingsForm({ currentUrl, envConfigured, maxProviderAttempts }:
         onChange={(e) => setUrl(e.target.value)}
         placeholder="https://api.example.com"
       />
-
-      {/* How many providers a request may be tried against. The number is
-          capped by how many providers serve the model, so a deployment with
-          one provider per model is unaffected by it. */}
-      <Input
-        label={t("admin.settings.maxProviderAttempts")}
-        type="number"
-        min="1"
-        max="10"
-        value={attempts}
-        onChange={(e) => setAttempts(e.target.value)}
-        hint={t("admin.settings.maxProviderAttemptsHint")}
-      />
-
+      
       {error && <p className="text-sm text-destructive">{error}</p>}
       {success && <p className="text-sm text-green-600">{t("common.success")}</p>}
       

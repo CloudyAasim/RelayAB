@@ -23,7 +23,7 @@
  */
 import { NextResponse } from "next/server";
 
-import { authenticateRequest, reasonToHttp } from "@/lib/auth/apikey";
+import { authenticateBearer, reasonToHttp, resolveAuthHeader } from "@/lib/auth/apikey";
 import { listSearchProviders } from "@/lib/db/search-providers";
 import { searchServices } from "@/lib/search/resolve";
 import { proxyError } from "@/lib/proxy/errors";
@@ -32,7 +32,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request): Promise<Response> {
-  const auth = await authenticateRequest(req, {
+  const auth = await authenticateBearer({
+    authHeader: resolveAuthHeader(req),
     // Listing is a read: an account that cannot afford a search can still ask
     // what there is to search with.
     skipQuotaCheck: true,

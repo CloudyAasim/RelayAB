@@ -65,11 +65,6 @@ export interface CreateProviderInput {
   modelConfigs?: Record<string, ModelConfigPatch>;
   enabled?: boolean;
   priority?: number;
-  /**
-   * Share of the traffic, relative to the other providers in the same
-   * priority tier. 0 = not drawn from proactively (a standby).
-   */
-  weight?: number;
   headers?: Record<string, string>;
   upstreamFormat?: "responses" | "chat" | "anthropic";
   /** OpenAI-side face (Responses/Chat). Defaults to on. */
@@ -100,11 +95,6 @@ export interface UpdateProviderInput {
   modelConfigs?: Record<string, ModelConfigPatch>;
   enabled?: boolean;
   priority?: number;
-  /**
-   * Share of the traffic, relative to the other providers in the same
-   * priority tier. 0 = not drawn from proactively (a standby).
-   */
-  weight?: number;
   headers?: Record<string, string>;
   upstreamFormat?: "responses" | "chat" | "anthropic";
   openaiEnabled?: boolean;
@@ -146,7 +136,6 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
     modelConfigs: input.modelConfigs ?? {},
     enabled: input.enabled ?? true,
     priority: input.priority ?? 1,
-    weight: input.weight ?? 0,
     headers: input.headers ?? {},
     upstreamFormat: input.upstreamFormat ?? "responses",
     openaiEnabled: input.openaiEnabled ?? faceDefaults.openaiEnabled,
@@ -165,10 +154,10 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
   run(
     `INSERT INTO providers
        (id, name, kind, base_url, encrypted_api_key, model_mapping,
-        model_configs, enabled, priority, weight, headers, upstream_format,
+        model_configs, enabled, priority, headers, upstream_format,
         openai_enabled, anthropic_enabled, anthropic_base_url, text_specs,
         active_mode, created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       provider.id,
       provider.name,
@@ -183,7 +172,6 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
       JSON.stringify(provider.modelConfigs ?? {}),
       toDbBool(provider.enabled),
       provider.priority,
-      provider.weight,
       JSON.stringify(provider.headers ?? {}),
       provider.upstreamFormat,
       toDbBool(provider.openaiEnabled),
@@ -332,7 +320,6 @@ export async function updateProvider(
       modelConfigs: patch.modelConfigs ?? existing.modelConfigs,
       enabled: patch.enabled === undefined ? existing.enabled : patch.enabled,
       priority: patch.priority ?? existing.priority,
-      weight: patch.weight ?? existing.weight,
       headers: patch.headers ?? existing.headers,
       upstreamFormat: patch.upstreamFormat ?? existing.upstreamFormat,
       openaiEnabled: patch.openaiEnabled ?? existing.openaiEnabled,
@@ -357,7 +344,7 @@ export async function updateProvider(
       `UPDATE providers SET
          name = ?, kind = ?, base_url = ?, encrypted_api_key = ?,
          model_mapping = ?, model_configs = ?, enabled = ?, priority = ?,
-         weight = ?, headers = ?, upstream_format = ?, openai_enabled = ?,
+         headers = ?, upstream_format = ?, openai_enabled = ?,
          anthropic_enabled = ?, anthropic_base_url = ?, text_specs = ?,
          active_mode = ?, updated_at = ?
        WHERE id = ?`,
@@ -370,7 +357,6 @@ export async function updateProvider(
         JSON.stringify(merged.modelConfigs ?? {}),
         toDbBool(merged.enabled),
         merged.priority,
-        merged.weight,
         JSON.stringify(merged.headers ?? {}),
         merged.upstreamFormat,
         toDbBool(merged.openaiEnabled),

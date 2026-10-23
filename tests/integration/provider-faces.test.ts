@@ -86,7 +86,6 @@ function row(over: Partial<Provider>): Provider {
     modelConfigs: {},
     enabled: true,
     priority: 0,
-    weight: 0,
     headers: {},
     upstreamFormat: "responses",
     openaiEnabled: true,

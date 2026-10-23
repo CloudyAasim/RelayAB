@@ -12,13 +12,15 @@
  * Auth: `x-api-key: sk-relay-...` or `Authorization: Bearer sk-relay-...`.
  */
 import { NextResponse } from "next/server";
-import { authenticateRequest, reasonToHttp } from "@/lib/auth/apikey";
+import { authenticateBearer, reasonToHttp, resolveAuthHeader } from "@/lib/auth/apikey";
 import { anthropicModelList, listClientModelIds } from "@/lib/proxy/model-catalog";
 
 export const runtime = "nodejs";
 
 export async function GET(req: Request): Promise<Response> {
-  const auth = await authenticateRequest(req);
+  const auth = await authenticateBearer({
+    authHeader: resolveAuthHeader(req),
+  });
   if (!auth.ok || !auth.key) {
     const http = reasonToHttp(auth.reason);
     return NextResponse.json(

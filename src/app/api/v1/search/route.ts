@@ -21,7 +21,7 @@
  */
 import { NextResponse } from "next/server";
 
-import { authenticateRequest, reasonToHttp } from "@/lib/auth/apikey";
+import { authenticateBearer, reasonToHttp, resolveAuthHeader } from "@/lib/auth/apikey";
 import { getUserById } from "@/lib/db/users";
 import { proxyError, quotaHeaders } from "@/lib/proxy/errors";
 import {
@@ -83,7 +83,7 @@ function parseLimit(raw: unknown): number {
 }
 
 async function handle(req: Request, body: SearchBody): Promise<Response> {
-  const auth = await authenticateRequest(req);
+  const auth = await authenticateBearer({ authHeader: resolveAuthHeader(req) });
   if (!auth.ok || !auth.key) {
     const http = reasonToHttp(auth.reason);
     return proxyError(http.status, http.code, http.message);

@@ -63,8 +63,6 @@ export interface CreateUserInput {
   quotaLimit?: number;
   maxActiveKeys?: number;
   allowedModels?: string[];
-  /** Requests per minute across all of this user's keys. 0 = no limit. */
-  rpmLimit?: number;
 }
 
 export interface UpdateUserInput {
@@ -79,8 +77,6 @@ export interface UpdateUserInput {
   quotaUsed?: number;
   maxActiveKeys?: number;
   allowedModels?: string[];
-  /** Requests per minute across all of this user's keys. 0 = no limit. */
-  rpmLimit?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -113,7 +109,6 @@ export async function createUser(input: CreateUserInput): Promise<User> {
     quotaUsed: 0,
     maxActiveKeys: input.maxActiveKeys ?? DEFAULT_USER_ALLOCATION.maxActiveKeys,
     allowedModels: input.allowedModels ?? [],
-    rpmLimit: input.rpmLimit ?? DEFAULT_USER_ALLOCATION.rpmLimit,
   });
 
   // ATOMIC CONFLICT CHECK + INSERT.
@@ -128,8 +123,8 @@ export async function createUser(input: CreateUserInput): Promise<User> {
       `INSERT INTO users
          (id, username, password_hash, role, display_name, timezone,
           created_at, updated_at, last_login_at, quota_type, quota_limit,
-          quota_used, max_active_keys, allowed_models, rpm_limit)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          quota_used, max_active_keys, allowed_models)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         user.id,
         user.username,
@@ -145,7 +140,6 @@ export async function createUser(input: CreateUserInput): Promise<User> {
         user.quotaUsed,
         user.maxActiveKeys,
         JSON.stringify(user.allowedModels),
-        user.rpmLimit,
       ],
     );
   } catch (err) {
@@ -239,7 +233,6 @@ export async function updateUser(
     quotaUsed: patch.quotaUsed ?? existing.quotaUsed,
     maxActiveKeys: patch.maxActiveKeys ?? existing.maxActiveKeys,
     allowedModels: patch.allowedModels ?? existing.allowedModels,
-    rpmLimit: patch.rpmLimit ?? existing.rpmLimit,
     updatedAt: now,
   };
   // Re-validate.
@@ -249,7 +242,7 @@ export async function updateUser(
     `UPDATE users SET
        display_name = ?, timezone = ?, role = ?, quota_type = ?,
        quota_limit = ?, quota_used = ?, max_active_keys = ?,
-       allowed_models = ?, rpm_limit = ?, updated_at = ?
+       allowed_models = ?, updated_at = ?
      WHERE id = ?`,
     [
       validated.displayName,
@@ -260,7 +253,6 @@ export async function updateUser(
       validated.quotaUsed,
       validated.maxActiveKeys,
       JSON.stringify(validated.allowedModels),
-      validated.rpmLimit,
       validated.updatedAt,
       userId,
     ],
