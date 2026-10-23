@@ -95,7 +95,7 @@ describe("responsive UI: sidebar invariants", () => {
   });
 
   it("mobile drawer uses fixed positioning", () => {
-    expect(sidebar).toContain("fixed inset-y-0 left-0");
+    expect(sidebar).toContain("fixed left-0 top-2 bottom-2");
   });
 
   it("context detects mobile via 1023px breakpoint", () => {

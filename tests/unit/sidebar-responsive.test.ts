@@ -137,8 +137,23 @@ describe("sidebar: collapsed rail layout & motion", () => {
   });
 
   it("fits its content: 240px open, 64px shut", () => {
-    expect(sidebar).toContain("lg:w-[240px]");
+    expect(sidebar).toContain("flex w-[240px] flex-col");
     expect(sidebar).toContain('collapsed && "lg:w-[64px]"');
+  });
+
+  it("gives the phone drawer the same panel, not a slab of its own", () => {
+    // One object, two presentations: the drawer is the desktop panel —
+    // same width, same rounded corners, same shadow, same interior — only
+    // an overlay. It used to be a 288px hard-edged slab.
+    expect(sidebar).toContain("fixed left-0 top-2 bottom-2 z-50 ml-2 flex w-[240px]");
+    expect(sidebar).toContain("rounded-lg border border-sidebar-border");
+    expect(sidebar).toContain("shadow-float");
+  });
+
+  it("slides the drawer off the edge including the 8px it stands off it", () => {
+    // Otherwise 8px of the panel would stay on screen when it is closed.
+    expect(sidebar).toContain("-translate-x-[calc(-100%_-_0.5rem)]");
+    expect(sidebar).not.toContain('"-translate-x-full"');
   });
 
   it("keeps the footer one column in both states", () => {
@@ -200,10 +215,16 @@ describe("sidebar: the account menu in the icon-only rail", () => {
     expect(header).toContain("ml-auto h-4 w-4 shrink-0 text-muted-foreground");
   });
 
+  it("does not repeat the name as a role badge", () => {
+    // The trigger said "admin admin" on an account called admin — the role
+    // is in the menu, where it belongs.
+    expect(header).not.toContain("<Badge");
+    expect(header).not.toContain("nav.user.adminBadge\"><");
+  });
+
   it("gives the open panel the panel variant (name, no role badge)", () => {
     // The name and the role badge side by side read as "admin admin", and the
     // badge is what pushed the wordmark out of the panel's header.
-    expect(header).toContain('variant === "full" && (');
     expect(header).toContain('variant === "panel"');
     expect(layout).toContain('variant={collapsed ? "mini" : "panel"}');
   });

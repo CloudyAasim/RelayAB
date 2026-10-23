@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { LogOut, Menu, Settings, ChevronDown, LayoutDashboard, Palette } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover";
 import { cn } from "@/lib/utils";
@@ -126,11 +125,6 @@ export function UserMenu({
           </span>
           {variant !== "mini" && (
             <span className={variant === "panel" ? "truncate" : "hidden sm:inline"}>{username}</span>
-          )}
-          {variant === "full" && (
-            <Badge tone={role === "admin" ? "primary" : "neutral"} className="hidden md:inline-flex">
-              {role}
-            </Badge>
           )}
           {variant !== "mini" && (
             <ChevronDown className="ml-auto h-4 w-4 shrink-0 text-muted-foreground" />

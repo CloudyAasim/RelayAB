@@ -12,11 +12,11 @@ import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/comp
  * Sidebar — left rail for the authenticated layout.
  *
  * Responsive breakpoints:
- * - Mobile (< 1024px): slide-in drawer
+ * - Mobile (< 1024px): the same panel, as an overlay drawer
  * - Desktop (≥ 1024px): persistent rail, collapsible
  *
  * Width:
- * - Mobile drawer: 288 (288px)
+ * - Mobile drawer: 240 (240px)
  * - Desktop expanded: 240 (240px)
  * - Desktop collapsed: 64 (64px)
  *
@@ -25,6 +25,9 @@ import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/comp
  * 32px control column, 16px of margin — so that every icon in the rail (the
  * brand mark, the nav items, the account and the collapse toggle) sits on the
  * same vertical axis whether the panel is open or shut.
+ *
+ * The drawer is the same object as the desktop panel: same width, same rounded
+ * corners, same shadow, same interior. It is only an overlay.
  */
 export function Sidebar({ children }: { children: ReactNode }) {
   const { collapsed, open, setOpen, isMobile } = useSidebar();
@@ -44,14 +47,10 @@ export function Sidebar({ children }: { children: ReactNode }) {
         aria-label="Sidebar navigation"
         data-state={collapsed ? "collapsed" : "expanded"}
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-[288px] flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width,transform] duration-300 ease-sidebar motion-reduce:transition-none lg:sticky lg:top-2 lg:h-screen lg:translate-x-0 lg:w-[240px]",
-          // Plasma 6's floating panel: on a wide screen the rail lifts off the
-          // edge, rounds its corners and casts one soft shadow, so it reads as a
-          // panel *above* the page rather than a wall beside it. On a narrow
-          // screen there is no room to float, so it docks back to the edge as a
-          // drawer — which is what the mobile branch below already does.
-          //
-          // Two load-bearing details:
+          // Mobile: the same floating panel as the desktop, only as an overlay.
+          // It does not get its own shape — one object, two presentations.
+          "fixed left-0 top-2 bottom-2 z-50 ml-2 flex w-[240px] flex-col overflow-hidden rounded-lg border border-sidebar-border bg-sidebar text-sidebar-foreground shadow-float transition-[width,transform] duration-300 ease-sidebar motion-reduce:transition-none lg:sticky lg:bottom-auto lg:h-[calc(100vh-1rem)] lg:my-2 lg:translate-x-0",
+          // Two load-bearing details for the desktop rail:
           //
           //   `lg:top-2` — a sticky box is placed by its **border box**, so
           //   `top: 0` would park the panel flush against the top of the
@@ -65,8 +64,15 @@ export function Sidebar({ children }: { children: ReactNode }) {
           //   **both** edges cannot move: it has to fit inside the scrollport,
           //   so the whole panel scrolled with the page instead of staying
           //   put. Releasing the bottom edge lets `top` alone govern.
-          "lg:my-2 lg:ml-2 lg:bottom-auto lg:h-[calc(100vh-1rem)] lg:rounded-lg lg:border lg:border-sidebar-border lg:shadow-float",
-          isMobile ? (open ? "translate-x-0 shadow-float" : "-translate-x-full") : "",
+          //
+          // Closed on mobile: slide the whole panel off the left edge
+          // **including** the 8px it stands off it, or 8px of it would stay
+          // on screen.
+          isMobile
+            ? open
+              ? "translate-x-0"
+              : "-translate-x-[calc(-100%_-_0.5rem)]"
+            : "",
           collapsed && "lg:w-[64px]",
         )}
       >
