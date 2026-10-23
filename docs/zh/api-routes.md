@@ -331,6 +331,36 @@ Content-Type: application/json
 
 ---
 
+### 1.6 其它模型调用端点
+
+对话之外的几个模型调用。它们共用同一把密钥、同一套错误信封与余额头，形状是
+OpenAI 自己的形状，所以客户端不用为它们写第二套解析。
+
+| 端点 | 用途 | 上游 | 计费 |
+| --- | --- | --- | --- |
+| `POST /v1/embeddings` | 向量化 | `<baseUrl>/embeddings` | 只算输入 token（没有输出） |
+| `POST /v1/rerank` | 重排（Cohere 与 Jina 两种方言） | `<baseUrl>/rerank` | 输入 token + 上游报出的输出 token |
+| `POST /v1/moderations` | 内容审核 | `<baseUrl>/moderations` | 输入 token（上游不报用量，按估算） |
+| `POST /v1/audio/translations` | 语音翻译（multipart） | 媒体规格的路径 | 按件 |
+
+**没有对应上游的，就不接**：Anthropic Messages 协议没有 `/embeddings`、
+`/rerank`、`/moderations`，所以 Anthropic 格式的 Provider 不参与这三个端点的
+选路 —— 那里没有可翻译的东西。
+
+### 1.7 Gemini 客户端面
+
+| 端点 | 用途 |
+| --- | --- |
+| `POST /v1beta/models/{model}:generateContent` | Gemini 对话（请求体是 `contents`） |
+| `POST /v1beta/models/{model}:streamGenerateContent` | Gemini 流式对话 |
+| `GET /v1beta/models` | Gemini 模型列表（形状是 `models` 数组，名字是 `models/<模型名>`） |
+
+鉴权用 Google 的载体（`x-goog-api-key` 或 `?key=`），OpenAI 形状的也可以。
+这些端点由 `next.config.mjs` 里的 rewrite 指向 `/api/v1beta/*` —— **改公开路径
+时 rewrite 那一层也要一起提交**。
+
+---
+
 ## 2. 管理 API（Session 鉴权）
 
 > 所有 `/api/admin/*` 路由都需 `session.userId` 存在且 `session.role === "admin"`。

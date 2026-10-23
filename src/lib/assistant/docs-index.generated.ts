@@ -82,7 +82,7 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     surface: "user",
     id: "gemini",
     summary: "Gemini 兼容用法：/v1beta/models/{model}:generateContent",
-    keys: ["docs.gemini.title","docs.gemini.desc","docs.gemini.line1","docs.gemini.endpoint","docs.gemini.key","docs.gemini.keyValue","docs.gemini.example","docs.gemini.streaming","docs.gemini.limits","docs.gemini.anyVendor"],
+    keys: ["docs.gemini.title","docs.gemini.desc","docs.gemini.line1","docs.gemini.endpoint","docs.gemini.key","docs.gemini.keyValue","docs.gemini.example","docs.gemini.streaming","docs.gemini.limits","docs.gemini.anyVendor","docs.gemini.modelsTitle","docs.gemini.modelsDesc","docs.gemini.modelsExample","docs.gemini.modelsResponse"],
   },
   {
     surface: "user",
@@ -134,7 +134,7 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     surface: "user",
     id: "vectors",
     summary: "向量与重排接口 /v1/embeddings、/v1/rerank：怎么调、怎么计费",
-    keys: ["docs.vectors.title","docs.vectors.desc","docs.vectors.line1","docs.vectors.embeddings","docs.vectors.embeddingsInput","docs.vectors.rerank","docs.vectors.rerankInput","docs.vectors.billing","docs.vectors.note","docs.help.contactAdmin"],
+    keys: ["docs.vectors.title","docs.vectors.desc","docs.vectors.line1","docs.vectors.embeddings","docs.vectors.embeddingsInput","docs.vectors.rerank","docs.vectors.rerankInput","docs.vectors.moderations","docs.vectors.moderationsInput","docs.vectors.moderationsNote","docs.vectors.billing","docs.vectors.note","docs.help.contactAdmin"],
   },
   {
     surface: "user",

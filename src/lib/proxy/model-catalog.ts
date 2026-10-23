@@ -175,3 +175,81 @@ export function anthropicModelList(ids: string[], createdAt: Date): AnthropicMod
     created_at: timestamp,
   }));
 }
+
+/**
+ * Google's list names the model `models/<id>` and carries the token limits,
+ * which the Gemini SDKs read to size a request before sending it.
+ */
+export interface GeminiModelEntry {
+  name: string;
+  displayName: string;
+  description: string;
+  inputTokenLimit: number;
+  outputTokenLimit: number;
+  supportedGenerationMethods: string[];
+}
+
+/** One model a key may call, with the limits the operator declared for it. */
+export interface ClientModelDetail {
+  id: string;
+  contextLength: number;
+  maxOutputTokens: number;
+}
+
+/**
+ * The models a key may call, with their limits.
+ *
+ * The same question as {@link intersectClientModels} — and it must never
+ * disagree with it — but with the model's own numbers attached, which the
+ * Gemini list needs and the OpenAI one does not.
+ *
+ * The defaults are the ones the model editor uses for a row that says nothing:
+ * a model with no declared limits is not a model without limits, and a list
+ * that said so would be a claim rather than a fact.
+ */
+export async function listClientModelDetails(
+  key: ApiKey,
+  owner?: User | null,
+): Promise<ClientModelDetail[]> {
+  const providers = await listProviders({ enabledOnly: true });
+  const out: ClientModelDetail[] = [];
+  const seen = new Set<string>();
+
+  for (const provider of providers) {
+    const faces = providerFaces(provider);
+    if (!faces.openai && !faces.anthropic) continue;
+    for (const clientId of Object.keys(provider.modelMapping)) {
+      if (seen.has(clientId)) continue;
+      if (!modelAllowedFor(clientId, key, owner)) continue;
+      seen.add(clientId);
+      const config = provider.modelConfigs?.[clientId];
+      out.push({
+        id: clientId,
+        contextLength: config?.contextLength ?? DEFAULT_CONTEXT_LENGTH,
+        maxOutputTokens: config?.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
+      });
+    }
+  }
+  return out;
+}
+
+/** The limits a model row that declares none is taken to have. */
+const DEFAULT_CONTEXT_LENGTH = 128000;
+const DEFAULT_MAX_OUTPUT_TOKENS = 8192;
+
+/**
+ * Gemini's model list.
+ *
+ * `name` is `models/<id>` — Google's own spelling — because the Gemini SDKs
+ * take that name and put it straight into the next request's path.
+ */
+export function geminiModelList(models: ClientModelDetail[]): GeminiModelEntry[] {
+  return models.map((model) => ({
+    name: `models/${model.id}`,
+    displayName: model.id,
+    description: "",
+    inputTokenLimit: model.contextLength,
+    outputTokenLimit: model.maxOutputTokens,
+    supportedGenerationMethods: ["generateContent", "streamGenerateContent"],
+  }));
+}

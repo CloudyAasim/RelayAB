@@ -359,6 +359,38 @@ forwarded to `<baseUrl>/v1/messages`.
 
 ---
 
+### 1.6 The other model-call endpoints
+
+The model calls that are not conversations. They share one key, one error
+envelope and the same balance headers, and they wear OpenAI's own shapes — so a
+client does not need a second parser for them.
+
+| Endpoint | Purpose | Upstream | Billed on |
+| --- | --- | --- | --- |
+| `POST /v1/embeddings` | Embedding a text | `<baseUrl>/embeddings` | Input tokens only (there is no output) |
+| `POST /v1/rerank` | Re-ranking (Cohere's and Jina's dialects) | `<baseUrl>/rerank` | Input tokens plus the output tokens the upstream reports |
+| `POST /v1/moderations` | Content moderation | `<baseUrl>/moderations` | Input tokens (the upstream reports no usage, so they are estimated) |
+| `POST /v1/audio/translations` | Speech translation (multipart) | The media spec's path | Per item |
+
+**No upstream, no endpoint**: the Anthropic Messages protocol has no
+`/embeddings`, `/rerank` or `/moderations`, so an Anthropic-format provider is
+not a candidate for those three — there is nothing there to translate.
+
+### 1.7 The Gemini client surface
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /v1beta/models/{model}:generateContent` | A Gemini conversation (the body is `contents`) |
+| `POST /v1beta/models/{model}:streamGenerateContent` | A Gemini streamed conversation |
+| `GET /v1beta/models` | The Gemini model list (a `models` array, each named `models/<model>`) |
+
+Auth uses Google's carriers (`x-goog-api-key` or `?key=`); the OpenAI-shaped ones
+work too. These paths are rewritten to `/api/v1beta/*` by `next.config.mjs` —
+**the rewrite layer has to be committed along with the route** when a public
+path changes.
+
+---
+
 ## 2. Admin API (session authentication)
 
 > Every `/api/admin/*` route requires `session.userId` to be present and

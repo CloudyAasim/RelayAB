@@ -501,6 +501,27 @@ POST /v1beta/models/{model}:streamGenerateContent`}
             {t("docs.gemini.limits")}
           </p>
           <p className="text-xs text-muted-foreground">{t("docs.gemini.anyVendor")}</p>
+          {/*
+            The model list. A Gemini client asks for it before it talks, and
+            without it the client stops at "cannot load models" while the chat
+            endpoint is working fine — the same hole the Anthropic surface had
+            until it got GET /anthropic/v1/models.
+          */}
+          <h3 className="text-sm font-semibold">{t("docs.gemini.modelsTitle")}</h3>
+          <p className="text-xs text-muted-foreground">{t("docs.gemini.modelsDesc")}</p>
+          <CodeBlock
+            label={t("docs.gemini.modelsExample")}
+            value={`curl ${baseUrl}/v1beta/models \\
+  -H "x-goog-api-key: $RELAYAB_KEY"`}
+          />
+          <CodeBlock
+            label={t("docs.gemini.modelsResponse")}
+            value={`{ "models": [
+  { "name": "models/YOUR_MODEL_ID", "displayName": "YOUR_MODEL_ID",
+    "inputTokenLimit": 200000, "outputTokenLimit": 64000,
+    "supportedGenerationMethods": ["generateContent", "streamGenerateContent"] }
+] }`}
+          />
         </div>
       </Card>
     );
@@ -730,6 +751,19 @@ console.log(resp.choices[0].message.content);`}
             />
             <p className="text-xs text-muted-foreground">
               {t("docs.vectors.rerankInput")}
+            </p>
+            <CodeBlock
+              label={t("docs.vectors.moderations")}
+              value={`curl ${openaiBase}/moderations \\
+  -H "Authorization: Bearer $RELAYAB_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"model": "omni-moderation-latest", "input": "一段要判断的文字"}'`}
+            />
+            <p className="text-xs text-muted-foreground">
+              {t("docs.vectors.moderationsInput")}
+            </p>
+            <p className="rounded-md border border-border bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">
+              {t("docs.vectors.moderationsNote")}
             </p>
             <p className="rounded-md border border-border bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">
               {t("docs.vectors.billing")}

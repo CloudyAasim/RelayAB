@@ -248,7 +248,7 @@ const zhCN: Dict = {
   "docs.nav.credits": "余额",
   "docs.nav.sdks": "代码示例",
   "docs.nav.media": "图片 / 视频 / 语音",
-  "docs.nav.vectors": "向量 / 重排",
+  "docs.nav.vectors": "向量 / 重排 / 审核",
   "docs.nav.search": "网页搜索",
   "docs.nav.catalog": "模型目录",
   "docs.guide.integration": "接入指南",
@@ -341,9 +341,9 @@ const zhCN: Dict = {
   "docs.media.voicePicker": "在「模型」页的测试界面里可以直接选音色：用的就是这份列表，按你选的模型过滤；也可以选「手动填写」自己填一个音色 id。",
   "docs.media.billing": "计费按「每件」：成功产出的图片/音频各扣一次，被内容安全拦截或失败的不计费。",
   "docs.media.translate": "语音翻译 — POST /v1/audio/translations（multipart，上传 file）",
-  "docs.vectors.title": "向量与重排",
+  "docs.vectors.title": "向量与重排，还有内容审核",
   "docs.vectors.desc":
-    "两种不是对话的模型调用：把文本变成向量，以及给一批文档重新排序。请求头、错误信封和余额头都和 /v1/chat/completions 一样 —— 同一把密钥、同一套错误格式，客户端不用为它写第二套解析。",
+    "三种不是对话的模型调用：把文本变成向量，给一批文档重新排序，以及判断一段文字要不要拦。请求头、错误信封和余额头都和 /v1/chat/completions 一样 —— 同一把密钥、同一套错误格式，客户端不用为它写第二套解析。",
   "docs.vectors.line1":
     "模型名在「模型」页的目录里，和对话模型共用一张表：向量模型和重排模型同样是模型，同样按价格表计价。",
   "docs.vectors.embeddings": "向量化 — POST /v1/embeddings（JSON）",
@@ -360,6 +360,11 @@ const zhCN: Dict = {
     "向量只算输入 token（没有输出）；重排算输入 token 和上游报出来的输出 token。价格走同一张模型价格表 —— 运营给模型定价，不是给端点定价。",
   "docs.vectors.note":
     "重排这一条，Cohere 和 Jina 两种方言都兼容：请求体一样，响应只差一个 meta 块。哪个上游在后面，由管理员配的服务商决定。",
+  "docs.vectors.moderations": "内容审核 — POST /v1/moderations",
+  "docs.vectors.moderationsInput":
+    "input 是一段文字或一组文字（字符串数组）。响应是上游原样给的判定结果：每个 input 对应 results 里的一条，flagged 是要不要拦，categories 是各类别的判定，category_scores 是各类别的分值。",
+  "docs.vectors.moderationsNote":
+    "上游不报用量，所以这一次调用按输入文本的 token 估算计费（与流式没有用量帧时同一种做法）。能不能用，取决于管理员配的上游有没有审核模型 —— 大多数厂商没有。",
   "docs.search.title": "网页搜索",
   "docs.search.desc": "把关键词交给搜索后端，拿回链接与摘要。搜索本身不调用模型，不消耗任何模型 token。",
   "docs.search.line1": "这是本服务自己加的接口（OpenAI 没有 /v1/search），但请求头、错误信封和余额头都按 OpenAI 的样子来：同一把密钥、同一套错误格式、同样的 x-ratelimit-* 余额头，客户端不用为它写第二套解析。",
@@ -498,6 +503,11 @@ const zhCN: Dict = {
     "两处会掉信息，说在前面：thinkingConfig.thinkingBudget 只有一个取值能原样翻译（0，等于「不要思考」），别的预算值在这里丢掉 —— 要固定预算，在管理员的协议规则里写死；safetySettings 没有别的协议有对应字段，也丢掉。",
   "docs.gemini.anyVendor":
     "厂商只提供 Anthropic 端点、或只提供 Google 原生 Gemini 端点，都能用这一套 Gemini 接口，网关负责转换。",
+  "docs.gemini.modelsTitle": "模型列表",
+  "docs.gemini.modelsDesc":
+    "GET /v1beta/models 列出你的密钥能调用的模型，形状与 Google 一致（models 数组，每个模型的名字是 models/<模型名>）。Gemini 客户端在对话之前会先取这份列表 —— 没有它，客户端会在「无法加载模型」上停住，而对话接口其实是好的。",
+  "docs.gemini.modelsExample": "curl 示例",
+  "docs.gemini.modelsResponse": "响应",
   "docs.anthropic.line1": "Anthropic SDK 默认走 https://api.anthropic.com，需要手动把 baseURL 改成下面的值。",
   "docs.anthropic.baseUrl": "Base URL（官方 SDK）/ Base URL（AI SDK）",
   "docs.anthropic.baseUrl.official": "官方 Anthropic SDK：Base URL 写到 /anthropic（SDK 自己会追加 /v1/messages）",
@@ -1718,7 +1728,7 @@ const en: Dict = {
   "docs.nav.credits": "Balance",
   "docs.nav.sdks": "Code samples",
   "docs.nav.media": "Images / video / audio",
-  "docs.nav.vectors": "Vectors / rerank",
+  "docs.nav.vectors": "Vectors / rerank / moderation",
   "docs.nav.search": "Web search",
   "docs.nav.catalog": "Model catalogue",
   "docs.guide.integration": "Integration guide",
@@ -1814,9 +1824,9 @@ const en: Dict = {
   "docs.media.voicePicker": "The test panel on the Models page lets you pick a voice: it uses that same list, filtered by the model you selected — and you can choose 'Type one in' to enter a voice id yourself.",
   "docs.media.billing": "Media is billed per item: each successfully produced image/audio costs once; failures and content-policy rejections are not charged.",
   "docs.media.translate": "Translation — POST /v1/audio/translations (multipart, upload a file)",
-  "docs.vectors.title": "Vectors and rerank",
+  "docs.vectors.title": "Vectors, rerank and moderation",
   "docs.vectors.desc":
-    "Two model calls that are not conversations: turning text into a vector, and re-ranking a list of documents. The header, the error envelope and the balance headers are the same as /v1/chat/completions — one key, one error shape, so a client does not need a second parser for them.",
+    "Three model calls that are not conversations: turning text into a vector, re-ranking a list of documents, and deciding whether a piece of text should be blocked. The header, the error envelope and the balance headers are the same as /v1/chat/completions — one key, one error shape, so a client does not need a second parser for them.",
   "docs.vectors.line1":
     "The model id comes from the catalogue on the Models page, which is the same table the chat models are in: an embedding model and a rerank model are models, and they are priced from the same table.",
   "docs.vectors.embeddings": "Embedding — POST /v1/embeddings (JSON)",
@@ -1833,6 +1843,11 @@ const en: Dict = {
     "An embedding call is billed on input tokens only (there is no output); a rerank is billed on the input tokens and the output tokens the upstream reports. The price comes from the same model price table — an operator prices a model, not an endpoint.",
   "docs.vectors.note":
     "For rerank, both dialects work: Cohere's and Jina's take the same request and differ only in a meta block in the answer. Which one is behind it is decided by the provider the administrator configured.",
+  "docs.vectors.moderations": "Content moderation — POST /v1/moderations",
+  "docs.vectors.moderationsInput":
+    "The input is a piece of text or a list of them (an array of strings). The answer is the upstream's own verdict: one entry in results per input, with flagged saying whether to block it, categories the per-category verdicts and category_scores the per-category scores.",
+  "docs.vectors.moderationsNote":
+    "The upstream reports no usage, so this call is billed on the estimated token count of the input text (the same fallback as a stream that ends without a usage frame). Whether it works at all depends on the provider the administrator configured having a moderation model — most vendors do not.",
   "docs.search.title": "Web search",
   "docs.search.desc": "Send keywords to the search backend and get links plus snippets back. The search itself does not call a model and consumes no model tokens.",
   "docs.search.line1": "This is an endpoint this relay adds (OpenAI has no /v1/search), but the header, the error envelope and the balance headers are OpenAI's: the same key, the same error shape, the same x-ratelimit-* headers, so a client does not need a second parser for it.",
@@ -1972,6 +1987,11 @@ const en: Dict = {
     "Two things are lost on the way, said up front: a thinkingConfig.thinkingBudget only translates exactly at one value (0, which means \"do not think\"); other budgets are dropped here — pin one in the administrator's protocol rules instead. safetySettings has no equivalent field in any other protocol, and is dropped too.",
   "docs.gemini.anyVendor":
     "A vendor that only publishes an Anthropic endpoint — or only Google's native Gemini endpoint — can be called through these Gemini endpoints as well, because the gateway does the conversion.",
+  "docs.gemini.modelsTitle": "Model list",
+  "docs.gemini.modelsDesc":
+    "GET /v1beta/models lists the models your key may call, in Google's own shape (a models array, each model named models/<model>). A Gemini client asks for this list before it talks — without it the client stops at \"cannot load models\" while the chat endpoint is working fine.",
+  "docs.gemini.modelsExample": "curl example",
+  "docs.gemini.modelsResponse": "Response",
   "docs.anthropic.line1": "The Anthropic SDK defaults to https://api.anthropic.com. Override baseURL to the value below.",
   "docs.anthropic.header": "Auth header (x-api-key, not Authorization)",
   "docs.anthropic.baseUrl": "Base URL (official SDK) / Base URL (AI SDK)",
