@@ -68,20 +68,20 @@ describe("SectionPageLayout header row", () => {
   it("renders nothing but the content when there is no title at all", () => {
     const html = render(h(SectionPageLayout.Content, null, "body"));
     expect(html).not.toContain("<h2");
-    // The padding wrapper is the actual cost, so assert on the wrapper rather
-    // than on the absence of visible text: an empty div is easy to bring back.
-    expect(html).not.toContain("sm:pb-4");
+    // The header block is the actual cost, so assert on the block rather than
+    // on the absence of visible text: an empty div is easy to bring back.
+    expect(html).not.toContain("data-page-header");
   });
 
   it("keeps the row when only actions are supplied", () => {
     const html = render(h(SectionPageLayout.Actions, null, "refresh"), h(SectionPageLayout.Content, null, "body"));
-    expect(html).toContain("sm:pb-4");
+    expect(html).toContain("data-page-header");
     expect(html).toContain("refresh");
   });
 
   it("keeps the row when only a breadcrumb is supplied", () => {
     const html = render(h(SectionPageLayout.Breadcrumb, null, "docs"), h(SectionPageLayout.Content, null, "body"));
-    expect(html).toContain("sm:pb-4");
+    expect(html).toContain("data-page-header");
     expect(html).toContain("docs");
   });
 });

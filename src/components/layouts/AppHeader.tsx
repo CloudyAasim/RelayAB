@@ -116,8 +116,13 @@ export function UserMenu({
             // The panel's footer is a column of rows, and these two sit in it
             // like the nav items above: the same width in the open panel
             // (`w-full`) and the same 40px in the icon rail (`w-10`).
+            // The avatar stays at the **left** in both variants: centring it in
+            // the narrow one made it jump to the middle of the still-wide
+            // button the moment the rail started to close, and then slide
+            // back. `pl-2` puts the 24px avatar exactly in the middle of the
+            // 40px square anyway.
             variant === "mini"
-              ? "flex h-8 w-10 items-center justify-center"
+              ? "flex h-8 w-10 items-center justify-start pl-2"
               : variant === "panel"
                 ? "flex h-11 w-full items-center gap-2 pl-2 pr-2.5 sm:h-8"
                 : "inline-flex h-11 items-center gap-2 px-2.5 sm:h-9",

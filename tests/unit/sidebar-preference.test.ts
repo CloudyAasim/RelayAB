@@ -91,6 +91,26 @@ describe("one motion recipe for the panel", () => {
     expect(header).not.toContain("transition-colors hover:bg-accent");
   });
 
+  it("the recipe covers the size changes, not just the colours", () => {
+    // The collapse toggle goes from the full column to a 40px square and the
+    // nav rows lose the gap behind their clipped label. Those two used to
+    // snap while the text was still fading, and the button tore itself in
+    // half on the way down.
+    const motion = read("components/layouts/sidebar/motion.ts");
+    expect(motion).toContain("transition-[width,padding,gap,background-color,color]");
+  });
+
+  it("nothing in the panel re-centres itself while it is resizing", () => {
+    // Centring the icon in the narrow state made it jump to the middle of
+    // the still-wide button the moment the rail started to close, and then
+    // slide back. The icon now stays at the left edge in both states — which
+    // is the middle of the 40px square anyway.
+    const sidebar = read("components/layouts/sidebar/Sidebar.tsx");
+    const header = read("components/layouts/AppHeader.tsx");
+    expect(sidebar).not.toContain('collapsed ? "h-8 w-10 justify-center"');
+    expect(header).not.toContain('"flex h-8 w-10 items-center justify-center"');
+  });
+
   it("no control keeps a private transition of its own", () => {
     // A second, hand-written duration in the panel is how they drift apart.
     for (const source of [sidebar, header, layout]) {

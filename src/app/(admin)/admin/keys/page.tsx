@@ -70,7 +70,7 @@ export default async function KeysPage() {
               description={t("admin.keys.empty.description")}
             />
           ) : (
-            <Table>
+            <Table bare>
               <THead>
                 <TR>
                   <TH>{t("admin.keys.create.label")}</TH>

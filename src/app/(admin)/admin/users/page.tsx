@@ -68,7 +68,7 @@ export default async function UsersPage() {
               action={<CreateUserButton />}
             />
           ) : (
-            <Table>
+            <Table bare>
               <THead>
                 <TR>
                   <TH>{t("admin.users.create.username")}</TH>

@@ -169,7 +169,7 @@ export default async function SearchAdminPage() {
               action={<CreateSearchProviderButton templates={TEMPLATE_OPTIONS} />}
             />
           ) : (
-            <Table>
+            <Table bare>
               <THead>
                 <TR>
                   <TH>{t("admin.searchProviders.name")}</TH>

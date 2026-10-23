@@ -78,7 +78,7 @@ export function ProviderModelsEditor({
     key_: "contextLength" | "maxOutputTokens" | "inputCost" | "outputCost",
   ) => (
     <label key={key_} className="flex items-center gap-1">
-      <span className="whitespace-nowrap text-[10px] text-muted-foreground">{label}</span>
+      <span className="whitespace-nowrap text-xs text-muted-foreground">{label}</span>
       <input
         type="number"
         value={rows[index][key_]}
@@ -100,7 +100,7 @@ export function ProviderModelsEditor({
     key_: "cachedInputCost" | "cacheWriteCost",
   ) => (
     <label key={key_} className="flex items-center gap-1">
-      <span className="whitespace-nowrap text-[10px] text-muted-foreground">{label}</span>
+      <span className="whitespace-nowrap text-xs text-muted-foreground">{label}</span>
       <input
         type="number"
         value={rows[index][key_] ?? ""}
@@ -159,7 +159,7 @@ export function ProviderModelsEditor({
                   */}
                   <div className="flex flex-wrap items-center gap-2">
                     <label className="flex min-w-0 flex-1 items-center gap-1">
-                      <span className="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground">
+                      <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
                         {t("admin.providers.create.clientModel")}
                       </span>
                       <input
@@ -173,7 +173,7 @@ export function ProviderModelsEditor({
                       />
                     </label>
                     <label className="flex min-w-0 flex-1 items-center gap-1">
-                      <span className="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground">
+                      <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
                         {t("admin.providers.create.upstreamModel")}
                       </span>
                       <input

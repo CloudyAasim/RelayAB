@@ -205,25 +205,25 @@ export function ModelCatalog({ models, providers, site, publicUrl }: Props) {
                       <>
                         <th className="py-2 pr-3 font-medium">
                           {t("docs.catalog.rateIn")}
-                          <span className="block text-[10px] font-normal text-muted-foreground">
+                          <span className="block text-xs font-normal text-muted-foreground">
                             {t("docs.catalog.perMillion")}
                           </span>
                         </th>
                         <th className="py-2 pr-3 font-medium">
                           {t("docs.catalog.rateOut")}
-                          <span className="block text-[10px] font-normal text-muted-foreground">
+                          <span className="block text-xs font-normal text-muted-foreground">
                             {t("docs.catalog.perMillion")}
                           </span>
                         </th>
                         <th className="py-2 pr-3 font-medium">
                           {t("docs.catalog.rateCachedRead")}
-                          <span className="block text-[10px] font-normal text-muted-foreground">
+                          <span className="block text-xs font-normal text-muted-foreground">
                             {t("docs.catalog.perMillion")}
                           </span>
                         </th>
                         <th className="py-2 pr-3 font-medium">
                           {t("docs.catalog.rateCachedWrite")}
-                          <span className="block text-[10px] font-normal text-muted-foreground">
+                          <span className="block text-xs font-normal text-muted-foreground">
                             {t("docs.catalog.perMillion")}
                           </span>
                         </th>
@@ -231,7 +231,7 @@ export function ModelCatalog({ models, providers, site, publicUrl }: Props) {
                     ) : (
                       <th className="py-2 pr-3 font-medium">
                         {t("docs.catalog.pricePerItem")}
-                        <span className="block text-[10px] font-normal text-muted-foreground">
+                        <span className="block text-xs font-normal text-muted-foreground">
                           {t("docs.catalog.perItem")}
                         </span>
                       </th>
@@ -290,7 +290,7 @@ function ModelRows({ model: m, isChat }: { model: CatalogModel; isChat: boolean 
           <div className="flex flex-wrap items-center gap-1.5">
             <code className="font-mono text-xs">{m.id}</code>
             {m.upstreamId && m.upstreamId !== m.id && (
-              <span className="text-[11px] text-muted-foreground">← {m.upstreamId}</span>
+              <span className="text-xs text-muted-foreground">← {m.upstreamId}</span>
             )}
             {!isChat && m.capability && <Badge tone="purple">{m.capability}</Badge>}
             {m.faces.map((f) => (
@@ -314,12 +314,12 @@ function ModelRows({ model: m, isChat }: { model: CatalogModel; isChat: boolean 
         <td className="py-2 pr-3 text-xs">
           <span className="font-medium text-foreground">{m.source.name}</span>
           {m.source.baseUrl && (
-            <p className="mt-0.5 break-all font-mono text-[11px] text-muted-foreground">
+            <p className="mt-0.5 break-all font-mono text-xs text-muted-foreground">
               {m.source.baseUrl}
             </p>
           )}
           {m.source.priority !== null && (
-            <p className="mt-0.5 text-[11px] text-muted-foreground">
+            <p className="mt-0.5 text-xs text-muted-foreground">
               {t("docs.catalog.priority")}: {m.source.priority}
             </p>
           )}
@@ -332,7 +332,7 @@ function ModelRows({ model: m, isChat }: { model: CatalogModel; isChat: boolean 
         ) : (
           <>
             <td className="py-2 pr-3 text-xs">{m.capability ?? "—"}</td>
-            <td className="py-2 pr-3 font-mono text-[11px]">{m.source.endpoint ?? "—"}</td>
+            <td className="py-2 pr-3 font-mono text-xs">{m.source.endpoint ?? "—"}</td>
           </>
         )}
         {isChat ? (
@@ -368,7 +368,7 @@ function ModelRows({ model: m, isChat }: { model: CatalogModel; isChat: boolean 
             type="button"
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
-            className="rounded px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             {t("docs.catalog.detail")} {open ? "▾" : "▸"}
           </button>
@@ -437,7 +437,7 @@ function ModelRows({ model: m, isChat }: { model: CatalogModel; isChat: boolean 
               ))}
             </dl>
             {modes.length === 0 && sizes.length === 0 && rest.length === 0 && (
-              <p className="text-[11px] text-muted-foreground">{t("docs.catalog.detailEmpty")}</p>
+              <p className="text-xs text-muted-foreground">{t("docs.catalog.detailEmpty")}</p>
             )}
           </td>
         </tr>

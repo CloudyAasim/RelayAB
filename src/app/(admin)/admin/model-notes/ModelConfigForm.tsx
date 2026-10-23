@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 /**
  * src/app/(admin)/admin/model-notes/ModelConfigForm.tsx
@@ -215,7 +215,7 @@ export function ModelConfigForm({ rows }: { rows: ModelConfigRow[] }) {
                       {rowSummary(row)}
                     </span>
                     {!row.enabled && (
-                      <span className="shrink-0 text-[10px] text-destructive">
+                      <span className="shrink-0 text-xs text-destructive">
                         {t("admin.modelConfig.off")}
                       </span>
                     )}

@@ -13,6 +13,12 @@
  *   padding). Fast on the way in, unhurried on the way out: `hover:duration-150`
  *   makes the pointer's arrival snappy and the departure soft.
  *
+ *   `width` and `gap` are in the list because the panel's own controls change
+ *   size when it opens and shuts: the collapse toggle goes from the full
+ *   column to a 40px square, and the nav rows lose the gap behind their
+ *   clipped label. Without them those two snapped while the text was still
+ *   fading, and the button tore itself in half on the way down.
+ *
  *   LABEL — the text that collapses when the rail narrows. It is measured, so
  *   it animates on width and opacity, never on anything the browser cannot
  *   interpolate.
@@ -26,7 +32,7 @@
  * should be none to explain.
  */
 export const SIDEBAR_CONTROL_MOTION =
-  "transition-[padding,background-color,color] duration-300 ease-sidebar hover:duration-150 motion-reduce:transition-none";
+  "transition-[width,padding,gap,background-color,color] duration-300 ease-sidebar hover:duration-150 motion-reduce:transition-none";
 
 export const SIDEBAR_LABEL_MOTION =
   "transition-[max-width,opacity] duration-300 ease-sidebar motion-reduce:transition-none";

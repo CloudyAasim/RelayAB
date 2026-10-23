@@ -852,13 +852,13 @@ export function AssistantSettingsPanel({
               disabled={effortUnsupported}
               levels={mode === "account" ? (facts?.reasoningLevels ?? []) : []}
             />
-            <p className="font-mono text-[10px] text-muted-foreground">reasoning_effort</p>
+            <p className="font-mono text-xs text-muted-foreground">reasoning_effort</p>
             {effortUnsupported ? (
               // The one explanation that fits: not "there are no levels known"
               // but "this model does not read this parameter at all", and where
               // to go instead. Without the second half the user is left looking
               // for the setting that does it.
-              <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+              <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
                 {t("assistant.settings.reasoningNotSupported")}
               </p>
             ) : (
@@ -872,7 +872,7 @@ export function AssistantSettingsPanel({
                   thinking stays on. A user who wants to spend less and picks the
                   default gets the opposite, and nothing on screen says so.
                 */}
-                <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
                   {t("assistant.settings.reasoningDefaultIsNotOff")}
                 </p>
               </>
@@ -915,13 +915,13 @@ export function AssistantSettingsPanel({
               <option value="adaptive">{t("assistant.settings.thinkingOn")}</option>
               <option value="disabled">{t("assistant.settings.thinkingOff")}</option>
             </select>
-            <p className="font-mono text-[10px] text-muted-foreground">thinking.type</p>
+            <p className="font-mono text-xs text-muted-foreground">thinking.type</p>
             {switchUnsupported ? (
-              <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+              <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
                 {t("assistant.settings.thinkingSwitchNotSupported")}
               </p>
             ) : (
-              <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+              <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
                 {t("assistant.settings.thinkingModeHint")}
               </p>
             )}
@@ -1452,7 +1452,7 @@ function ReasoningCombobox({
         use is noise, and the field's own explanation is the relevant one.
       */}
       {!fromVendor && !disabled && (
-        <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+        <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
           {t("assistant.settings.reasoningUnknown")}
         </p>
       )}
@@ -1519,7 +1519,7 @@ function ParamField({
         onChange={(e) => onChange(blankToNull(e.target.value))}
         className="h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm tabular-nums"
       />
-      <p className="font-mono text-[10px] text-muted-foreground">{wire}</p>
+      <p className="font-mono text-xs text-muted-foreground">{wire}</p>
     </div>
   );
 }

@@ -99,7 +99,7 @@ describe("sidebar: collapsed rail layout & motion", () => {
   });
 
   it("gives the toggle a 40px hit target when collapsed", () => {
-    expect(sidebar).toContain('collapsed ? "h-8 w-10 justify-center"');
+    expect(sidebar).toContain('collapsed ? "h-8 w-10 pl-3"');
     expect(sidebar).not.toContain('collapsed ? "h-8 w-8" : "h-7 w-7"');
   });
 
@@ -108,7 +108,7 @@ describe("sidebar: collapsed rail layout & motion", () => {
     // afterthought; the open panel says what the button does. The label
     // fades with the rail, like the nav labels and the brand wordmark.
     expect(sidebar).toContain(
-      'collapsed ? "h-8 w-10 justify-center" : "h-8 w-full gap-3 pl-3 pr-2.5 text-sm font-medium"',
+      'collapsed ? "h-8 w-10 pl-3" : "h-8 w-full gap-3 pl-3 pr-2.5 text-sm font-medium"',
     );
     expect(sidebar).toContain('{t("nav.sidebar.collapse")}');
     expect(sidebar).toContain(
@@ -123,7 +123,7 @@ describe("sidebar: collapsed rail layout & motion", () => {
     expect(sidebar).toContain("border-t border-sidebar-border px-3 py-3");
     expect(sidebar).toContain('collapsed && "w-10 gap-0"');
     expect(sidebar).toContain(
-      'collapsed ? "h-8 w-10 justify-center" : "h-8 w-full gap-3 pl-3 pr-2.5 text-sm font-medium"',
+      'collapsed ? "h-8 w-10 pl-3" : "h-8 w-full gap-3 pl-3 pr-2.5 text-sm font-medium"',
     );
   });
 
@@ -214,7 +214,7 @@ describe("sidebar: the account menu in the icon-only rail", () => {
   it("shrinks the trigger to the avatar in the icon-only rail", () => {
     expect(header).toContain('variant?: "full" | "panel" | "mini"');
     expect(header).toContain('variant === "mini"');
-    expect(header).toContain('"flex h-8 w-10 items-center justify-center"');
+    expect(header).toContain('"flex h-8 w-10 items-center justify-start pl-2"');
   });
 
   it("gives the panel's account button the column width", () => {

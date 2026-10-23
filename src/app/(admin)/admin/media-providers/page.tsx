@@ -64,7 +64,7 @@ export default async function MediaProvidersPage() {
               action={<CreateMediaProviderButton templates={templates} />}
             />
           ) : (
-            <Table>
+            <Table bare>
               <THead>
                 <TR>
                   <TH>{t("admin.mediaProviders.name")}</TH>

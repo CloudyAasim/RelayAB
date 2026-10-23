@@ -100,7 +100,11 @@ export function SectionPageLayout({
         )}
       >
         {hasHeader && (
-          <div className="pb-3 sm:pb-4">
+          // No padding of its own: the column's `space-y-6` already sets the
+          // gap to the content below, and a second 16px on top of it made
+          // every page open with a hole in it. The marker keeps the block
+          // assertable — an empty div is easy to bring back by accident.
+          <div data-page-header>
             {breadcrumb != null && <div className="mb-2">{breadcrumb}</div>}
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3 sm:gap-x-4">
               <div className="min-w-0">

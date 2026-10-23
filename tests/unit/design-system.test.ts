@@ -213,3 +213,53 @@ describe("arbitrary values", () => {
     ).toEqual([]);
   });
 });
+
+/**
+ * Breeze's floor is the 4px grid, and its smallest type is 12px. A 10px
+ * label is a label nobody can read on a phone — and there were fifty-five of
+ * them.
+ */
+describe("the type and spacing floor", () => {
+  const SRC = join(ROOT, "src");
+
+  it("never sets a type size below 12px", () => {
+    const hits: string[] = [];
+    for (const file of filesIn(SRC)) {
+      const source = readFileSync(file, "utf-8");
+      for (const match of source.matchAll(/text-\[(\d+)px\]/g)) {
+        if (Number(match[1]) < 12) {
+          hits.push(`${file.replace(ROOT, "")}: ${match[0]}`);
+        }
+      }
+    }
+    expect(hits, `type below 12px:\n${hits.join("\n")}`).toEqual([]);
+  });
+
+  it("keeps vertical gaps on the 4px grid", () => {
+    const hits: string[] = [];
+    for (const file of filesIn(SRC)) {
+      const source = readFileSync(file, "utf-8");
+      for (const match of source.matchAll(/space-y-(\d+(?:\.\d+)?)/g)) {
+        const value = Number(match[1]);
+        if (!Number.isInteger(value * 4) || value * 4 < 4) {
+          hits.push(`${file.replace(ROOT, "")}: ${match[0]}`);
+        }
+      }
+    }
+    expect(hits, `off-grid vertical gap:\n${hits.join("\n")}`).toEqual([]);
+  });
+
+  it("a table inside a card carries no frame of its own", () => {
+    // Framed, it reads as a box inside a box: two borders and two shadows a
+    // few pixels apart.
+    const hits: string[] = [];
+    for (const file of filesIn(SRC)) {
+      const source = readFileSync(file, "utf-8");
+      if (!source.includes("<Card")) continue;
+      for (const match of source.matchAll(/<Table(?![^>]*\bbare\b)[^>]*>/g)) {
+        hits.push(`${file.replace(ROOT, "")}: ${match[0]}`);
+      }
+    }
+    expect(hits, `framed table inside a card:\n${hits.join("\n")}`).toEqual([]);
+  });
+});

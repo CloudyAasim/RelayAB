@@ -122,7 +122,7 @@ export default async function AdminOverviewPage() {
                 description={t("admin.overview.recentUsersEmptyDescription")}
               />
             ) : (
-              <Table>
+              <Table bare>
                 <THead>
                   <TR>
                     <TH>{t("admin.users.create.username")}</TH>
@@ -197,7 +197,7 @@ export default async function AdminOverviewPage() {
               description={t("admin.overview.recentUsageEmptyDescription")}
             />
           ) : (
-            <Table>
+            <Table bare>
               <THead>
                 <TR>
                   <TH>{t("dashboard.table.time")}</TH>

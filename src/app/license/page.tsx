@@ -291,7 +291,7 @@ export default async function LicensePage() {
               </Badge>
             }
           />
-          <Table>
+          <Table bare>
             <THead>
               <TR>
                 <TH>{t("license.table.package")}</TH>
@@ -321,7 +321,7 @@ export default async function LicensePage() {
               </Badge>
             }
           />
-          <Table>
+          <Table bare>
             <THead>
               <TR>
                 <TH>{t("license.table.package")}</TH>

@@ -127,14 +127,14 @@ export function ProviderInterfacesList({
         ))}
       </div>
 
-      <p className="mt-2 text-[11px] text-muted-foreground">
+      <p className="mt-2 text-xs text-muted-foreground">
         {written === SURFACES.length
           ? t("admin.textSpec.allConfigured", { n: SURFACES.length })
           : t("admin.textSpec.configuredCount", { n: written, total: SURFACES.length })}
       </p>
 
       {!verdict.ok && (
-        <ul className="mt-2 space-y-0.5 rounded-md bg-destructive/10 p-2 text-xs text-destructive">
+        <ul className="mt-2 space-y-1 rounded-md bg-destructive/10 p-2 text-xs text-destructive">
           {verdict.errors.map((e) => (
             <li key={e}>· {e}</li>
           ))}
@@ -185,7 +185,7 @@ function InterfaceRow({
           >
             <span className="text-muted-foreground">{open ? "▾" : "▸"}</span>
             <span className="text-xs font-medium text-foreground">{label}</span>
-            <code className="truncate text-[10px] text-muted-foreground">{clientPath}</code>
+            <code className="truncate text-xs text-muted-foreground">{clientPath}</code>
           </button>
           <Button
             type="button"
@@ -200,7 +200,7 @@ function InterfaceRow({
             {t("admin.textSpec.add")}
           </Button>
         </div>
-        <p className="mt-1 pl-4 text-[11px] text-muted-foreground">
+        <p className="mt-1 pl-4 text-xs text-muted-foreground">
           {t("admin.textSpec.defaultNote")}
         </p>
         {open && raw !== undefined && (
@@ -227,9 +227,9 @@ function InterfaceRow({
         >
           <span className="text-muted-foreground">{open ? "▾" : "▸"}</span>
           <span className="text-xs font-medium text-foreground">{label}</span>
-          <code className="truncate text-[10px] text-muted-foreground">{clientPath}</code>
+          <code className="truncate text-xs text-muted-foreground">{clientPath}</code>
           {entry.kind === "bad" && (
-            <span className="ml-auto shrink-0 text-[10px] text-destructive">
+            <span className="ml-auto shrink-0 text-xs text-destructive">
               {t("admin.textSpec.mode.brokenEntry")}
             </span>
           )}
@@ -272,14 +272,14 @@ function RuleBody({
         className="w-full rounded-md border border-input bg-background p-3 font-mono text-xs leading-relaxed"
       />
       {entry.kind === "bad" && (
-        <ul className="space-y-0.5 rounded-md bg-destructive/10 p-2 text-xs text-destructive">
+        <ul className="space-y-1 rounded-md bg-destructive/10 p-2 text-xs text-destructive">
           {entry.errors.map((e) => (
             <li key={e}>· {e}</li>
           ))}
         </ul>
       )}
       {entry.kind === "ok" && entry.warnings.length > 0 && (
-        <ul className="space-y-0.5 rounded-md bg-warning/10 p-2 text-xs text-warning-foreground">
+        <ul className="space-y-1 rounded-md bg-warning/10 p-2 text-xs text-warning-foreground">
           {entry.warnings.map((w) => (
             <li key={w}>· {w}</li>
           ))}

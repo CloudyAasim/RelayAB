@@ -245,7 +245,7 @@ export function PendingActions({ isAdmin }: { isAdmin: boolean }) {
                     onChange={(e) => setKeys((prev) => ({ ...prev, [a.id]: e.target.value }))}
                     className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                   />
-                  <p className="text-[11px] text-muted-foreground">{t("actions.apiKeyHint")}</p>
+                  <p className="text-xs text-muted-foreground">{t("actions.apiKeyHint")}</p>
                 </div>
               )}
               <div className="flex items-center gap-2">

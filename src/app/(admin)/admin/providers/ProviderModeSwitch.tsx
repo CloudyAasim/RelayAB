@@ -45,7 +45,7 @@ export function ProviderModeSwitch({
           <span
             className={
               on
-                ? "flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground"
+                ? "flex h-4 w-4 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground"
                 : "flex h-4 w-4 items-center justify-center rounded-full border border-border"
             }
             aria-hidden
@@ -54,7 +54,7 @@ export function ProviderModeSwitch({
           </span>
           <span className="text-sm font-medium text-foreground">{title}</span>
           {badge && (
-            <span className="ml-auto rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-medium text-primary">
+            <span className="ml-auto rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">
               {badge}
             </span>
           )}

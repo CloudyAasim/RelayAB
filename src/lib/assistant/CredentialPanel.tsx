@@ -151,7 +151,7 @@ export function AccountCredentialPanel({ onChanged }: { onChanged?: () => void }
                   noticing. A pill rather than a recoloured word, so it reads
                   as a status and not as part of the title. */}
               <span
-                className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                   state.enabled ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
                 }`}
               >
@@ -186,7 +186,7 @@ export function AccountCredentialPanel({ onChanged }: { onChanged?: () => void }
           </div>
         ) : (
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+            <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
               {state.keyPrefix}
             </span>
             <Button

@@ -97,12 +97,12 @@ export function ModelPickerModal({
                     broken, and every other assertion in the repository passed. */}
                 <span className="block font-mono text-xs text-foreground">{e.id}</span>
                 {done ? (
-                  <span className="block text-[11px] text-muted-foreground">
+                  <span className="block text-xs text-muted-foreground">
                     {t("admin.providers.alreadyAdded")}
                   </span>
                 ) : (
                   (e.contextLength || e.maxOutputTokens || e.reasoningLevels?.length) && (
-                    <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
                       {e.contextLength ? `${t("admin.providers.contextLabel")}: ${e.contextLength}` : null}
                       {e.maxOutputTokens ? ` · ${t("admin.providers.outputLabel")}: ${e.maxOutputTokens}` : null}
                       {e.reasoningLevels?.length

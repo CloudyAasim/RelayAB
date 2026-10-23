@@ -92,7 +92,7 @@ export function UsageBarChart({
 
       <div className="flex gap-2">
         {/* Y axis: max / mid / 0 */}
-        <div className="flex h-40 w-16 shrink-0 flex-col justify-between text-right text-[10px] tabular-nums text-muted-foreground sm:w-20">
+        <div className="flex h-40 w-16 shrink-0 flex-col justify-between text-right text-xs tabular-nums text-muted-foreground sm:w-20">
           <span>{formatMetric(max, metric)}</span>
           <span>{formatMetric(max / 2, metric)}</span>
           <span>0</span>
@@ -123,7 +123,7 @@ export function UsageBarChart({
                     className="w-full rounded-t-sm bg-primary transition-[filter] group-hover:brightness-110 group-focus:brightness-110"
                     style={{ height: `${height}%` }}
                   />
-                  <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2 py-1 text-[10px] leading-tight text-popover-foreground shadow-md group-hover:block group-focus:block">
+                  <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2 py-1 text-xs leading-tight text-popover-foreground shadow-md group-hover:block group-focus:block">
                     <div className="font-medium">{bucket}</div>
                     <div className="font-semibold text-primary">
                       {metricLabel} {formatMetric(value, metric)}
@@ -138,7 +138,7 @@ export function UsageBarChart({
               );
             })}
           </div>
-          <div className="mt-1.5 flex justify-between text-[10px] text-muted-foreground">
+          <div className="mt-1.5 flex justify-between text-xs text-muted-foreground">
             <span>{bucketLabel(points[0].bucket, grain)}</span>
             {points.length > 1 && (
               <span>{bucketLabel(points[points.length - 1].bucket, grain)}</span>

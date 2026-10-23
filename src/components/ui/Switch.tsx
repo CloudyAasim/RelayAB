@@ -89,7 +89,7 @@ export function SwitchField({
         className,
       )}
     >
-      <div className="min-w-0 space-y-0.5">
+      <div className="min-w-0 space-y-1">
         <label htmlFor={id} className="block text-sm font-medium text-foreground">
           {label}
         </label>

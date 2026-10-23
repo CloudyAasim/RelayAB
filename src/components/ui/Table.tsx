@@ -9,16 +9,32 @@
  * has to fit a 375px screen, and sixteen pixels of padding per column is
  * sixteen pixels of nothing to read.
  *
- * The tinted surfaces are `bg-muted/50` and friends: the theme colours in
- * `tailwind.config.ts` are functions, so an opacity modifier on one of them is
- * a colour mix of the same variable.
+ * `bare` drops the table's own frame — border, rounding, shadow and surface.
+ * A table that lives **inside** a card is that card's content, not a second
+ * surface: framed, it reads as a box inside a box, with two borders and two
+ * shadows eight pixels apart.
  */
 import { cn } from "@/lib/utils";
 import type { HTMLAttributes, ReactNode } from "react";
 
-export function Table({ children, className }: { children: ReactNode; className?: string }) {
+export function Table({
+  children,
+  className,
+  bare = false,
+}: {
+  children: ReactNode;
+  className?: string;
+  /** No frame of its own — for a table that sits inside a card. */
+  bare?: boolean;
+}) {
   return (
-    <div className={cn("overflow-hidden rounded-lg border border-border bg-card shadow-card", className)}>
+    <div
+      className={cn(
+        "overflow-hidden",
+        !bare && "rounded-lg border border-border bg-card shadow-card",
+        className,
+      )}
+    >
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">{children}</table>
       </div>

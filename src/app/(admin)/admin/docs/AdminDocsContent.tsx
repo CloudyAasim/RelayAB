@@ -50,7 +50,7 @@ export function AdminDocsContent({ section, t }: { section: AdminDocId; t: TFn }
 
   if (section === "providers") {
     return (
-      <div className="space-y-4 sm:space-y-5">
+      <div className="space-y-4 sm:space-y-6">
         <Card>
           <CardHeader
             title={<CardTitle icon={<Server className="h-4 w-4" />}>{t("admin.docs.provider.title")}</CardTitle>}
@@ -195,7 +195,7 @@ export function AdminDocsContent({ section, t }: { section: AdminDocId; t: TFn }
 
   if (section === "media") {
     return (
-      <div className="space-y-4 sm:space-y-5">
+      <div className="space-y-4 sm:space-y-6">
         <Card>
           <CardHeader
             title={
@@ -235,7 +235,7 @@ export function AdminDocsContent({ section, t }: { section: AdminDocId; t: TFn }
 
   if (section === "search") {
     return (
-      <div className="space-y-4 sm:space-y-5">
+      <div className="space-y-4 sm:space-y-6">
         <Card>
           <CardHeader
             title={
@@ -282,7 +282,7 @@ export function AdminDocsContent({ section, t }: { section: AdminDocId; t: TFn }
 
   if (section === "spec-check") {
     return (
-      <div className="space-y-4 sm:space-y-5">
+      <div className="space-y-4 sm:space-y-6">
         <Card>
           <CardHeader
             title={

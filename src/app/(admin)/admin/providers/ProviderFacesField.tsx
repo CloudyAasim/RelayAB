@@ -119,7 +119,7 @@ export function ProviderFacesField({
               <p className="mt-1 text-xs text-muted-foreground">
                 {t("admin.providers.faces.anthropic.baseUrlHint")}
               </p>
-              <p className="mt-1 text-[11px] text-muted-foreground">
+              <p className="mt-1 text-xs text-muted-foreground">
                 {t("admin.providers.faces.anthropicTip.endpoint")}
               </p>
             </div>

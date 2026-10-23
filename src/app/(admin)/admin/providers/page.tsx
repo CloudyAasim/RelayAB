@@ -217,7 +217,7 @@ export default async function ProvidersPage() {
             action={<CreateProviderButton />}
           />
         ) : (
-          <Table>
+          <Table bare>
             <THead>
               <TR>
                 <TH>{t("admin.providers.create.name")}</TH>

@@ -1304,7 +1304,7 @@ export function AssistantChat({
                 <div key={m.id} className="flex gap-3">
                   <div
                     aria-hidden
-                    className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground"
+                    className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground"
                   >
                     AI
                   </div>
@@ -1380,7 +1380,7 @@ export function AssistantChat({
                     // object URL for a chip the user is about to send.
                     <img src={u.previewUrl} alt="" className="h-9 w-9 shrink-0 rounded object-cover" />
                   ) : (
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-muted text-[10px] uppercase">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-muted text-xs uppercase">
                       {u.contentType.split("/")[1] ?? "?"}
                     </span>
                   )}
@@ -1494,7 +1494,7 @@ export function AssistantChat({
             )}
           </div>
 
-          <p className="mt-1.5 text-center text-[11px] text-muted-foreground">
+          <p className="mt-1.5 text-center text-xs text-muted-foreground">
             {currentTitle ?? t("assistant.composerHint")}
           </p>
         </div>
@@ -1527,7 +1527,7 @@ export function AssistantChat({
             {threads.length === 0 && (
               <p className="px-1 py-3 text-sm text-muted-foreground">{t("assistant.noHistory")}</p>
             )}
-            <div className="space-y-0.5">
+            <div className="space-y-1">
             {threads.map((th) => {
               const renaming = renamingId === th.id;
               return (

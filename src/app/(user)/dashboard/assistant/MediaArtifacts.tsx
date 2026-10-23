@@ -455,8 +455,8 @@ export const AssistantBody = memo(function AssistantBody({
         <details className="group rounded-md border border-border/60 bg-muted/40">
           <summary className="flex cursor-pointer list-none items-center gap-2 px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground">
             <span className="font-medium">{thinkingLabel}</span>
-            <span className="text-[10px] opacity-70 group-open:hidden">{expandLabel}</span>
-            <span className="hidden text-[10px] opacity-70 group-open:inline">
+            <span className="text-xs opacity-70 group-open:hidden">{expandLabel}</span>
+            <span className="hidden text-xs opacity-70 group-open:inline">
               {collapseLabel}
             </span>
           </summary>
@@ -482,8 +482,8 @@ export const AssistantBody = memo(function AssistantBody({
             */}
             <summary className="flex cursor-pointer list-none items-center gap-2 px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground">
               <span className="font-medium">{thinkingLabel}</span>
-              <span className="text-[10px] opacity-70 group-open:hidden">{expandLabel}</span>
-              <span className="hidden text-[10px] opacity-70 group-open:inline">
+              <span className="text-xs opacity-70 group-open:hidden">{expandLabel}</span>
+              <span className="hidden text-xs opacity-70 group-open:inline">
                 {collapseLabel}
               </span>
             </summary>
@@ -598,9 +598,9 @@ export const ToolResultCard = memo(function ToolResultCard({
             className={`h-1.5 w-1.5 shrink-0 rounded-full ${failed ? "bg-destructive" : "bg-primary"}`}
           />
           <span className="font-medium">{toolName ?? label}</span>
-          <span className="text-[11px] opacity-70 group-open:hidden">{label}</span>
-          <span className="ml-auto text-[11px] opacity-70 group-open:hidden">展开</span>
-          <span className="ml-auto hidden text-[11px] opacity-70 group-open:inline">收起</span>
+          <span className="text-xs opacity-70 group-open:hidden">{label}</span>
+          <span className="ml-auto text-xs opacity-70 group-open:hidden">展开</span>
+          <span className="ml-auto hidden text-xs opacity-70 group-open:inline">收起</span>
         </summary>
         {display.trim() ? (
           <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words border-t border-border px-3 py-2 text-xs">

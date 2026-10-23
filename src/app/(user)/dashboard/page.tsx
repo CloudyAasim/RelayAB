@@ -125,7 +125,7 @@ export default async function DashboardPage() {
               />
             ) : (
               <div className="overflow-x-auto -mx-3 sm:mx-0">
-                <Table>
+                <Table bare>
                   <THead>
                     <TR>
                       <TH className="whitespace-nowrap">{t("admin.keys.create.label")}</TH>

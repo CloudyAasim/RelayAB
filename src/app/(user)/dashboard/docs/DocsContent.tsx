@@ -668,7 +668,7 @@ function UrlRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col gap-2 px-2 py-2.5 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0 flex-1">
-        <div className="text-[10px] uppercase tracking-wider text-muted-foreground sm:text-xs">
+        <div className="text-xs uppercase tracking-wider text-muted-foreground sm:text-xs">
           {label}
         </div>
         <div className="mt-0.5 select-all break-all font-mono text-xs text-foreground sm:text-sm">
@@ -687,7 +687,7 @@ function CodeBlock({ label, value }: { label: string; value: string }) {
         <div className="text-xs font-medium text-muted-foreground">{label}</div>
         <CopyButton value={value} small />
       </div>
-      <pre className="overflow-x-auto rounded-md border border-border bg-foreground/[0.03] px-2.5 py-2 text-[10px] font-mono leading-relaxed text-foreground sm:px-3 sm:py-2.5 sm:text-xs">
+      <pre className="overflow-x-auto rounded-md border border-border bg-foreground/[0.03] px-2.5 py-2 text-xs font-mono leading-relaxed text-foreground sm:px-3 sm:py-2.5 sm:text-xs">
         {value}
       </pre>
     </div>

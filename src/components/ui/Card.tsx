@@ -177,13 +177,16 @@ function StatCard({
   return (
     <div
       className={cn(
-        "rounded-lg border border-border bg-card p-3 shadow-card transition-colors sm:p-5",
+        // 12/16px, on the 4px grid — and the same family the content cards
+        // use, so a stat tile and a card around it do not look like two
+        // different products.
+        "rounded-lg border border-border bg-card p-3 shadow-card transition-colors sm:p-4",
         className,
       )}
       {...rest}
     >
       <div className="flex items-start justify-between gap-2">
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground sm:text-xs">
+        <span className="text-xs uppercase tracking-wider text-muted-foreground sm:text-xs">
           {label}
         </span>
         {icon && (
@@ -201,7 +204,7 @@ function StatCard({
         {value}
       </div>
       {(hint || trend) && (
-        <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground sm:mt-1.5 sm:text-xs">
+        <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground sm:mt-1.5 sm:text-xs">
           {trend && (
             <span className={cn("font-medium", trendClass[trend.direction])}>
               {trend.direction === "up" ? "↑" : trend.direction === "down" ? "↓" : "→"}{" "}

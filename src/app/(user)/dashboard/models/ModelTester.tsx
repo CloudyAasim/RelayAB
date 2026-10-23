@@ -369,12 +369,12 @@ const [governedBy, setGovernedBy] = useState<string | null>(null);
           to tell a broken model from a deliberate override.
         */}
         {decisions.length > 0 && (
-          <ul className="space-y-0.5 rounded-md bg-muted/50 p-2 text-xs text-muted-foreground">
+          <ul className="space-y-1 rounded-md bg-muted/50 p-2 text-xs text-muted-foreground">
             {/* Which interface's rule did this. A provider carries one per
                 interface and the test goes out through Chat Completions, so
                 without the label these lines belong to nobody. */}
             {governedBy && (
-              <li className="text-[10px] opacity-80">
+              <li className="text-xs opacity-80">
                 {labels.decidedBy} <code className="text-foreground">{governedBy}</code>
               </li>
             )}

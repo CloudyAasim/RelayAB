@@ -181,10 +181,15 @@ export function SidebarToggle({ className }: { className?: string }) {
         // (`w-full`) and the same 40px in the icon rail (`w-10`). Two
         // narrower buttons at the foot of a column of full-width rows is
         // what made the panel look like it was assembled from two pieces.
+        //
+        // The icon stays at the **left** in both states (`pl-3`, no
+        // `justify-center`): centring it made it jump to the middle of the
+        // still-wide button the moment the rail started to close, and then
+        // slide back — the button tore itself in half on the way down.
         "flex shrink-0 items-center rounded-lg text-sidebar-foreground/70",
         SIDEBAR_CONTROL_MOTION,
         "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-        collapsed ? "h-8 w-10 justify-center" : "h-8 w-full gap-3 pl-3 pr-2.5 text-sm font-medium",
+        collapsed ? "h-8 w-10 pl-3" : "h-8 w-full gap-3 pl-3 pr-2.5 text-sm font-medium",
         className,
       )}
     >
