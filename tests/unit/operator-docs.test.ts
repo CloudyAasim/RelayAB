@@ -484,6 +484,7 @@ describe("the outline", () => {
       "credits",
       "sdks",
       "media",
+      "vectors",
       "catalog",
       "parameters",
     ]);

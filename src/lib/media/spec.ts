@@ -50,6 +50,16 @@ export const MEDIA_CAPABILITIES = [
   "video.generate",
   "audio.tts",
   "audio.stt",
+  /**
+   * Speech translated into text.
+   *
+   * Separate from `audio.stt` because it is a different request: the target
+   * language is fixed by the endpoint, the answer is in that language rather
+   * than in the language that was spoken, and a vendor serves the two on
+   * different paths. Merging them would mean one spec could not describe
+   * both.
+   */
+  "audio.translate",
   "music.generate",
 ] as const;
 export type MediaCapability = (typeof MEDIA_CAPABILITIES)[number];

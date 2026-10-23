@@ -289,6 +289,7 @@ const TITLES = {
   "user:credits": "额度余额：GET /v1/credits 怎么查、is_available、响应头里的额度",
   "user:sdks": "官方 SDK 接法：Python / Node / CLI",
   "user:media": "媒体能力总览与模型目录：图片、视频、语音、音乐",
+  "user:vectors": "向量与重排接口 /v1/embeddings、/v1/rerank：怎么调、怎么计费",
   "user:search": "网页搜索接口 /v1/search：怎么调、按次计费、失败不扣费",
   "user:catalog": "本部署的模型目录：实时读取服务商表，分对话与媒体两张表",
   "user:parameters": "管理员自己写的参数参考（如果管理员写了的话）",

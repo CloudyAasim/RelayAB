@@ -16,6 +16,7 @@ import {
   Image as ImageIcon,
   Coins,
   Search,
+  Layers,
 } from "lucide-react";
 
 interface Props {
@@ -612,6 +613,13 @@ console.log(resp.choices[0].message.content);`}
   -F file=@speech.mp3`}
           />
           <CodeBlock
+            label={t("docs.media.translate")}
+            value={`curl ${openaiBase}/audio/translations \\
+  -H "Authorization: Bearer $RELAYAB_KEY" \\
+  -F model=whisper-1 \\
+  -F file=@speech.mp3`}
+          />
+          <CodeBlock
             label={t("docs.media.music")}
             value={`curl ${openaiBase}/audio/music \\
   -H "Authorization: Bearer $RELAYAB_KEY" \\
@@ -639,6 +647,57 @@ console.log(resp.choices[0].message.content);`}
         {t("docs.help.contactAdmin")}
       </p>
     </div>
+    );
+  }
+
+  if (section === "vectors") {
+    return (
+      <div className="space-y-4 sm:space-y-6">
+        <Card>
+          <CardHeader
+            title={
+              <span className="flex items-center gap-2">
+                <Layers className="h-4 w-4 text-muted-foreground" />
+                {t("docs.vectors.title")}
+              </span>
+            }
+            description={t("docs.vectors.desc")}
+          />
+          <div className="space-y-3 text-xs text-foreground/90 sm:space-y-4 sm:text-sm">
+            <p>{t("docs.vectors.line1")}</p>
+            <CodeBlock
+              label={t("docs.vectors.embeddings")}
+              value={`curl ${openaiBase}/embeddings \\
+  -H "Authorization: Bearer $RELAYAB_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"model": "text-embedding-3-small", "input": "一段文本"}'`}
+            />
+            <p className="text-xs text-muted-foreground">
+              {t("docs.vectors.embeddingsInput")}
+            </p>
+            <CodeBlock
+              label={t("docs.vectors.rerank")}
+              value={`curl ${openaiBase}/rerank \\
+  -H "Authorization: Bearer $RELAYAB_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"model": "rerank-v3", "query": "想问的问题", "documents": ["候选一", "候选二"]}'`}
+            />
+            <p className="text-xs text-muted-foreground">
+              {t("docs.vectors.rerankInput")}
+            </p>
+            <p className="rounded-md border border-border bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">
+              {t("docs.vectors.billing")}
+            </p>
+            <p className="rounded-md border border-border bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">
+              {t("docs.vectors.note")}
+            </p>
+          </div>
+        </Card>
+
+        <p className="py-2 text-center text-xs text-muted-foreground">
+          {t("docs.help.contactAdmin")}
+        </p>
+      </div>
     );
   }
 

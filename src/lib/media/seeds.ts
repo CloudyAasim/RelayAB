@@ -494,6 +494,35 @@ export const OPENAI_STT_SPEC: MediaSpec = {
   metadata: { modes: ["speech-to-text"], input_field: "file" },
 };
 
+/**
+ * OpenAI-compatible translation: the audio arrives, the transcript comes back
+ * in the target language.
+ *
+ * **No `language` field.** On a transcription the language is an input — it
+ * tells the model what it is hearing. On a translation the target is fixed by
+ * the endpoint, so there is nothing for the client to say, and OpenAI's own
+ * endpoint does not accept one. A vendor that does want it can add the field
+ * to its own spec.
+ */
+export const OPENAI_TRANSLATE_SPEC: MediaSpec = {
+  specVersion: 1,
+  capability: "audio.translate",
+  displayName: "OpenAI-compatible translation",
+  models: ["whisper-1"],
+  transport: { method: "POST", path: "/audio/translations", contentType: "multipart/form-data" },
+  auth: { type: "bearer" },
+  request: {
+    model: "$.model",
+    file: {
+      $file: { path: "$.image", filename: "$.filename", contentType: "application/octet-stream" },
+    },
+    prompt: "$.prompt",
+  },
+  response: { text: "$.text", taskId: "$.id" },
+  limits: { timeoutMs: 120_000 },
+  metadata: { modes: ["speech-to-text", "translate"], input_field: "file" },
+};
+
 /** Template for vendors that answer with a task id you poll. */
 export const ASYNC_VIDEO_SPEC: MediaSpec = {
   specVersion: 1,
@@ -564,7 +593,7 @@ export const MEDIA_TEMPLATES: Record<
       "gpt-4o-mini-tts": { upstreamId: "gpt-4o-mini-tts", pricePerItem: 0, enabled: true },
       "whisper-1": { upstreamId: "whisper-1", pricePerItem: 0, enabled: true },
     },
-    specs: [OPENAI_TTS_SPEC, OPENAI_STT_SPEC],
+    specs: [OPENAI_TTS_SPEC, OPENAI_STT_SPEC, OPENAI_TRANSLATE_SPEC],
   },
   "async-video": {
     name: "Async video vendor",

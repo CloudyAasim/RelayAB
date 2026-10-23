@@ -54,6 +54,10 @@ const USER_SECTION_IDS = [
   "credits",
   "sdks",
   "media",
+  // Two model calls that are not conversations. Their own chapter because
+  // neither of them is a conversation, and filing them under "media" would be
+  // wrong in the same way filing search under "endpoints" was.
+  "vectors",
   // The live catalogue: what this deployment serves, read from the provider
   // tables on every request. It is a chapter rather than a wall above the
   // document, because a wall is the first thing every reader scrolls past and
@@ -149,6 +153,7 @@ const USER_LABEL_KEYS = [
   "docs.nav.credits",
   "docs.nav.sdks",
   "docs.nav.media",
+  "docs.nav.vectors",
   "docs.nav.catalog",
   // The operator's guide is not a chapter among these any more — it is one of
   // the two guides the document is split into, and it carries its own paging.
@@ -189,6 +194,7 @@ const CHAPTER_ANSWER_KEYS: Readonly<Record<string, string>> = {
   credits: "docs.chapter.answers.credits",
   sdks: "docs.chapter.answers.sdks",
   media: "docs.chapter.answers.media",
+  vectors: "docs.chapter.answers.vectors",
 };
 
 export function userChapterAnswers(t: TFn): Record<string, string> {
