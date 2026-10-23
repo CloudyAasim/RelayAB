@@ -768,6 +768,8 @@ const zhCN: Dict = {
   "admin.providers.faces.anthropic.hint": "关闭后这条 Provider 不响应 /v1/messages 与 /anthropic/v1/messages。",
   "admin.providers.faces.anthropic.baseUrl": "Anthropic 基址",
   "admin.providers.faces.anthropic.baseUrlHint": "留空则由上面的 API 地址推导（去掉结尾的 /v1）。厂商的 Anthropic 端点与 OpenAI 不同时请显式填写：MiniMax 是 https://api.minimaxi.com/anthropic，不是 https://api.minimaxi.com/v1。",
+  "admin.providers.faces.anthropic.geminiNote":
+    "注意：Google 的基址下面没有 Anthropic 端点。这一侧只有在另外填了一个 Anthropic 基址时才会真的生效，否则 /v1/messages 不会用这一条 Provider。",
   "admin.providers.faces.noneWarning": "两个协议面都关闭，这条 Provider 不会被任何接口使用。",
   "admin.providers.faces.anthropicTip.endpoint": "/anthropic/v1/messages 会被转发到 <Anthropic 基址>/v1/messages",
   "admin.providers.syncHint": "按已保存的配置拉取；如果改了地址或 密钥，请先保存再获取",
@@ -2242,6 +2244,8 @@ const en: Dict = {
   "admin.providers.faces.anthropic.hint": "Turn off to stop this provider answering /v1/messages and /anthropic/v1/messages.",
   "admin.providers.faces.anthropic.baseUrl": "Anthropic base URL",
   "admin.providers.faces.anthropic.baseUrlHint": "Leave empty to derive it from the API URL above (one trailing /v1 is stripped). Set it explicitly when the vendor's Anthropic endpoint differs from its OpenAI one: MiniMax is https://api.minimaxi.com/anthropic, not https://api.minimaxi.com/v1.",
+  "admin.providers.faces.anthropic.geminiNote":
+    "Note: Google's base has no Anthropic endpoint under it. This side only really works when a separate Anthropic base URL is given — otherwise /v1/messages will not use this provider.",
   "admin.providers.faces.noneWarning": "Both faces are off — this provider will not be used by any endpoint.",
   "admin.providers.faces.anthropicTip.endpoint": "/anthropic/v1/messages is forwarded to <Anthropic base>/v1/messages",
   "admin.providers.syncHint": "Fetches with the saved configuration; save first if you changed the URL or key",

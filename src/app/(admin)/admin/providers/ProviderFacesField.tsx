@@ -180,6 +180,15 @@ export function ProviderFacesField({
               <p className="mt-1 text-xs text-muted-foreground">
                 {t("admin.providers.faces.anthropic.baseUrlHint")}
               </p>
+              {/* The one case where the switch is on and the side still does
+                  not answer: Google's base has no Anthropic endpoint under
+                  it. Saying so beats a checkbox that promises a surface the
+                  provider will not serve. */}
+              {nativeGemini && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {t("admin.providers.faces.anthropic.geminiNote")}
+                </p>
+              )}
               <p className="mt-1 text-xs text-muted-foreground">
                 {t("admin.providers.faces.anthropicTip.endpoint")}
               </p>
