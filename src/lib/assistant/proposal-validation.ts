@@ -103,6 +103,12 @@ export const ProviderArgsSchema = z
     activeMode: z.enum(["simple", "advanced"]).optional(),
     openaiEnabled: z.boolean().optional(),
     anthropicEnabled: z.boolean().optional(),
+    /**
+     * How the Anthropic face is served: the vendor's own `/v1/messages`, or
+     * the gateway's translation of the request into the protocol the vendor
+     * does speak.
+     */
+    anthropicMode: z.enum(["native", "translated"]).optional(),
     enabled: z.boolean().optional(),
     priority: z.number().int().optional(),
     modelMapping: z.record(z.string(), z.string()).optional(),
@@ -208,6 +214,7 @@ export const ProviderCreateSchema = z
     enabled: z.boolean().optional(),
     openaiEnabled: z.boolean().optional(),
     anthropicEnabled: z.boolean().optional(),
+    anthropicMode: z.enum(["native", "translated"]).optional(),
     anthropicBaseUrl: z.string().max(500).nullable().optional(),
     /**
      * The same two fields the update schema carries, for the same reason.

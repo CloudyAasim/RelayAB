@@ -317,6 +317,12 @@ list_providers 查到的为准。**把厂商原生接口直接抄进参数指南
 
 前提是上游真的提供那套形状。厂商不提供就别开，那只是让一个永远 404 的面看起来像是配置过了。
 
+**厂商根本不说 Anthropic，但你想让 Anthropic 客户端（Claude Code 等）调到它** ——
+那就开 \`anthropicEnabled\` 并把 \`anthropicMode\` 设成 \`translated\`：网关会把请求
+转成上游说的那种协议，答案再转回 Anthropic。不设的话，Anthropic 客户端会拿到
+上游的 404。反过来，厂商自己提供 \`/v1/messages\` 时，\`anthropicMode\` 保持
+\`native\`（默认值）——那一路是原样转发的，不需要转换。
+
 ### 2. upstreamFormat 按上游**实际提供**的端点选
 
 这不是「哪个更好」，是「上游有没有这个端点」：

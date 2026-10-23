@@ -91,6 +91,7 @@ export function renderProviderDiff(
       patchedLine(patch, "anthropicBaseUrl", provider.anthropicBaseUrl ?? null),
       patchedLine(patch, "openaiEnabled", provider.openaiEnabled),
       patchedLine(patch, "anthropicEnabled", provider.anthropicEnabled),
+      patchedLine(patch, "anthropicMode", provider.anthropicMode),
       patchedLine(patch, "enabled", provider.enabled),
       patchedLine(patch, "priority", provider.priority),
       patchedLine(patch, "upstreamFormat", provider.upstreamFormat),

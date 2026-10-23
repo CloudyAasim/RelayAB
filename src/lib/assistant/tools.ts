@@ -823,6 +823,7 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
           summary: { type: "string", description: "一句话说明这次变更的目的" },
           baseUrl: { type: "string" },
           anthropicBaseUrl: { type: "string" },
+          anthropicMode: { type: "string", enum: ["native", "translated"] },
           openaiEnabled: { type: "boolean" },
           anthropicEnabled: { type: "boolean" },
           enabled: { type: "boolean" },
@@ -1161,6 +1162,12 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
               "OpenAI 协议面。上游说 chat/responses 时是直连；上游说 anthropic/gemini 时表示由网关转换来服务。",
           },
           anthropicEnabled: { type: "boolean", description: "Anthropic 协议面，上游说 /v1/messages 时开" },
+          anthropicMode: {
+            type: "string",
+            enum: ["native", "translated"],
+            description:
+              "Anthropic 协议面怎么服务：native = 厂商自己的 /v1/messages；translated = 厂商不说 Anthropic，由网关转换。只说 OpenAI 兼容协议的厂商要用 translated，Anthropic 客户端才调得动它。",
+          },
           anthropicBaseUrl: {
             type: "string",
             description: "Anthropic 面的 base URL。留空会根据 baseUrl 推导；上游两套形状不同域时才填。",
@@ -2419,6 +2426,7 @@ async function listProvidersTool(): Promise<ToolResult> {
         openaiEnabled: p.openaiEnabled,
         anthropicEnabled: p.anthropicEnabled,
         anthropicBaseUrl: p.anthropicBaseUrl ?? null,
+        anthropicMode: p.anthropicMode,
         models: Object.keys(p.modelMapping ?? {}),
         modelDetails: configs.map(([id, c]) => ({
           id,
@@ -3493,6 +3501,9 @@ async function proposeProviderUpdate(
   if (typeof args.anthropicBaseUrl === "string") patch.anthropicBaseUrl = args.anthropicBaseUrl.trim();
   if (typeof args.openaiEnabled === "boolean") patch.openaiEnabled = args.openaiEnabled;
   if (typeof args.anthropicEnabled === "boolean") patch.anthropicEnabled = args.anthropicEnabled;
+  if (args.anthropicMode === "native" || args.anthropicMode === "translated") {
+    patch.anthropicMode = args.anthropicMode;
+  }
   if (typeof args.enabled === "boolean") patch.enabled = args.enabled;
   if (typeof args.priority === "number" && Number.isInteger(args.priority)) {
     patch.priority = args.priority;
@@ -4005,6 +4016,9 @@ async function proposeProviderCreate(
 
   if (typeof args.openaiEnabled === "boolean") spec.openaiEnabled = args.openaiEnabled;
   if (typeof args.anthropicEnabled === "boolean") spec.anthropicEnabled = args.anthropicEnabled;
+  if (args.anthropicMode === "native" || args.anthropicMode === "translated") {
+    spec.anthropicMode = args.anthropicMode;
+  }
   if (typeof args.anthropicBaseUrl === "string") {
     // Empty means "derive it from baseUrl", which is stored as NULL — the same
     // distinction the editor makes. `""` would reach the Anthropic client as a
