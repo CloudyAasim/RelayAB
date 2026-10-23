@@ -41,6 +41,8 @@ export interface ProviderRecord {
   openaiEnabled?: boolean;
   anthropicEnabled?: boolean;
   anthropicBaseUrl?: string | null;
+  /** How the Anthropic face is served. Absent means "native", as it always was. */
+  anthropicMode?: "native" | "translated";
   textSpecs?: string[];
   /** Which configuration is live. Absent/null = "follow the rules if any". */
   activeMode?: string | null;
@@ -86,6 +88,12 @@ export interface ProviderPayload {
   upstreamFormat: "responses" | "chat" | "anthropic" | "gemini";
   anthropicEnabled: boolean;
   anthropicBaseUrl: string | null;
+  /**
+   * How the Anthropic face is served: the vendor's own `/v1/messages`, or the
+   * gateway's translation of the request into the protocol the vendor does
+   * speak.
+   */
+  anthropicMode: "native" | "translated";
   modelMapping: Record<string, string>;
   modelConfigs: Record<string, unknown>;
   textSpecs?: string[];
@@ -166,6 +174,7 @@ export function buildProviderPayload(
     upstreamFormat: faces.upstreamFormat,
     anthropicEnabled: faces.anthropicEnabled,
     anthropicBaseUrl: faces.anthropicBaseUrl || null,
+    anthropicMode: faces.anthropicMode,
     modelMapping,
     modelConfigs,
     // The whole list goes either way. Switching to simple turns the rules off;
@@ -208,6 +217,9 @@ export function facesFromProvider(provider: ProviderRecord): ProviderFacesValue 
     upstreamFormat: anthropicOnly ? "anthropic" : stored,
     anthropicEnabled: provider.anthropicEnabled ?? anthropicOnly,
     anthropicBaseUrl: provider.anthropicBaseUrl ?? "",
+    // A row written before the choice existed is served natively, which is what
+    // it was doing before the choice existed.
+    anthropicMode: provider.anthropicMode ?? "native",
   };
 }
 

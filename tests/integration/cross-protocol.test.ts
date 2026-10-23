@@ -224,11 +224,66 @@ describe("an Anthropic-only vendor, called from the OpenAI side", () => {
     expect(calls[0].url).toBe("https://api.anthropic.com/v1/messages");
   });
 
-  it("refuses a structured-output request rather than answering with prose", async () => {
-    // Anthropic Messages has no JSON-schema response mode. Dropping the
-    // instruction would produce a 200 with prose in it — and the client's
-    // JSON.parse would fail three lines later, with nothing pointing at the
-    // cause. So the request is refused, and the refusal says what to do.
+  it("answers a structured-output request by using a tool", async () => {
+    // Anthropic has no JSON-schema response mode, so the instruction becomes
+    // the thing Anthropic does have: a tool with a schema, forced. The answer
+    // comes back as that tool's arguments — which is the JSON the client asked
+    // for. Dropping the instruction instead would give a client that asked
+    // for JSON a 200 and some prose.
+    const { plain } = await seed();
+    stubUpstream(
+      JSON.stringify({
+        id: "msg_1",
+        type: "message",
+        role: "assistant",
+        model: "claude-up",
+        content: [
+          { type: "tool_use", id: "toolu_1", name: "response", input: { answer: "42" } },
+        ],
+        stop_reason: "tool_use",
+        usage: { input_tokens: 4, output_tokens: 6 },
+      }),
+    );
+
+    const res = await responsesPOST(
+      new Request("http://localhost:3000/v1/responses", {
+        method: "POST",
+        headers: bearer(plain),
+        body: JSON.stringify({
+          model: "client-m",
+          input: "hi",
+          text: {
+            format: {
+              type: "json_schema",
+              name: "response",
+              schema: { type: "object", properties: { answer: { type: "string" } } },
+            },
+          },
+        }),
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { output_text: string; output: Array<{ type: string }> };
+    // The JSON the client asked for, unwrapped from the tool that carried it.
+    expect(body.output_text).toBe('{"answer":"42"}');
+    expect(body.output[0].type).toBe("message");
+
+    // And the upstream was asked for exactly that: a forced tool with the schema.
+    expect(calls).toHaveLength(1);
+    const tools = calls[0].body.tools as Array<{ name: string; input_schema: unknown }>;
+    expect(tools[0].name).toBe("response");
+    expect(tools[0].input_schema).toEqual({
+      type: "object",
+      properties: { answer: { type: "string" } },
+    });
+    expect(calls[0].body.tool_choice).toEqual({ type: "tool", name: "response" });
+  });
+
+  it("refuses a structured-output request that asks for a stream", async () => {
+    // A streamed tool call arrives as a run of partial JSON, and the pivot
+    // cannot assemble it frame by frame yet. Saying so beats streaming prose
+    // the client will fail to parse.
     const { plain } = await seed();
     stubUpstream();
 
@@ -239,7 +294,8 @@ describe("an Anthropic-only vendor, called from the OpenAI side", () => {
         body: JSON.stringify({
           model: "client-m",
           input: "hi",
-          text: { format: { type: "json_schema", name: "answer", schema: { type: "object" } } },
+          stream: true,
+          text: { format: { type: "json_schema", name: "response", schema: { type: "object" } } },
         }),
       }),
     );
@@ -247,7 +303,7 @@ describe("an Anthropic-only vendor, called from the OpenAI side", () => {
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: { code: string; message: string } };
     expect(body.error.code).toBe("invalid_request_error");
-    expect(body.error.message).toContain("tool");
+    expect(body.error.message).toContain("stream");
     // And the upstream was never asked: there was nothing to ask it.
     expect(calls).toHaveLength(0);
   });

@@ -381,8 +381,8 @@ describe("the endpoint refuses an invalid spec on both verbs", () => {
     // so a create answered 200 with nothing stored.
     expect(API_POST).toMatch(/textSpecs: parsed\.data\.textSpecs \?\? \[\]/);
     expect(DB).toMatch(/textSpecs: input\.textSpecs \?\? \[\],/);
-    expect(DB).toMatch(/anthropic_base_url, text_specs,\n\s+active_mode, created_at, updated_at\)/);
-    expect(DB).toMatch(/anthropic_enabled = \?, anthropic_base_url = \?, text_specs = \?/);
+    expect(DB).toMatch(/anthropic_base_url, anthropic_mode,\n\s+text_specs, active_mode, created_at, updated_at\)/);
+    expect(DB).toMatch(/anthropic_enabled = \?, anthropic_base_url = \?, anthropic_mode = \?,\s+text_specs = \?/);
     // The old column is read, never written: it would make the value list and
     // the column list disagree, and `updated_at` would go in as undefined.
     expect(DB).not.toMatch(/text_spec,/);

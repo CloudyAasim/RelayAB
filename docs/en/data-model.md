@@ -228,6 +228,7 @@ routing and rotation, ordered by `priority`.
 | `openaiEnabled` | `openai_enabled` | INTEGER NOT NULL DEFAULT 1 | Whether this provider serves the OpenAI-facing endpoints (`/v1/chat/completions`, `/v1/responses`) |
 | `anthropicEnabled` | `anthropic_enabled` | INTEGER NOT NULL DEFAULT 0 | Whether this provider **also** serves the Anthropic Messages surface (`/anthropic/v1/messages`, `/v1/messages`) |
 | `anthropicBaseUrl` | `anthropic_base_url` | TEXT NULL | Base URL for the Anthropic face. `NULL` = derive it from `base_url` (one trailing `/v1` is stripped). Set it explicitly when the vendor's Anthropic endpoint is a sub-path, e.g. `https://api.deepseek.com/anthropic` |
+| `anthropicMode` | `anthropic_mode` | TEXT NOT NULL DEFAULT `'native'` | How the Anthropic face is **served**: `native` = the vendor's own `/v1/messages`, the request goes as it is; `translated` = the vendor speaks no Anthropic and the gateway rewrites the request into the protocol it does speak. The default is `native`, so every row written before this column existed is still served the way it was |
 | `enabled` | `enabled` | INTEGER NOT NULL | 0/1 |
 | `priority` | `priority` | INTEGER NOT NULL DEFAULT 0 | Routing priority (lower number wins) |
 | `createdAt` | `created_at` | TEXT NOT NULL | ISO string |

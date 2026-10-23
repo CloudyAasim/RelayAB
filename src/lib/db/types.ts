@@ -381,6 +381,20 @@ export const ProviderSchema = z.object({
    */
   anthropicBaseUrl: z.string().nullable().default(null),
   /**
+   * How the Anthropic face is served.
+   *
+   * - `native` — the vendor publishes its own `/v1/messages`, and the request
+   *   goes out in Anthropic's shape. This is what the face has always meant.
+   * - `translated` — the vendor speaks no Anthropic at all, and the gateway
+   *   rewrites the request into the protocol it does speak.
+   *
+   * The two are different things rather than two spellings of one, so the
+   * choice is the operator's: the gateway cannot know whether a vendor
+   * publishes `/v1/messages`, and guessing would either 404 on a vendor that
+   * does not or bypass the endpoint of one that does.
+   */
+  anthropicMode: z.enum(["native", "translated"]).default("native"),
+  /**
    * The provider's wire protocols, one entry per compatibility interface it
    * serves.
    *
@@ -449,8 +463,12 @@ export interface ProviderFaces {
    * Non-null when the provider serves the Anthropic Messages surface.
    * `baseUrl` may be empty — the URL builder then falls back to the vendor
    * default (`https://api.anthropic.com`).
+   *
+   * `mode` says how the face is served: `native` (the vendor's own endpoint)
+   * or `translated` (the gateway rewrites the request into the protocol the
+   * vendor does speak).
    */
-  anthropic: { baseUrl: string } | null;
+  anthropic: { baseUrl: string; mode: "native" | "translated" } | null;
 }
 
 /** Drop one trailing `/v1` so an OpenAI base can seed an Anthropic base. */
@@ -510,9 +528,13 @@ export function providerFaces(provider: Provider): ProviderFaces {
   //
   // A Gemini-native row is the exception: Google's base has no Anthropic
   // endpoint under it, so the face needs a base URL of its own to exist at all.
+  //
+  // A **translated** face is served by the gateway, so the base URL is not
+  // where the request goes — it is the row's own base, used by the dialect the
+  // request is translated into.
   const anthropic =
     nativeAnthropic || (anthropicOn && (!nativeGemini || explicitAnthropicBase !== ""))
-      ? { baseUrl: anthropicBaseUrl }
+      ? { baseUrl: anthropicBaseUrl, mode: provider.anthropicMode }
       : null;
 
   return { openai, anthropic };

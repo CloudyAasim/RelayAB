@@ -40,6 +40,7 @@ export function emptyFormValues(): ProviderFormValues {
       upstreamFormat: "responses",
       anthropicEnabled: false,
       anthropicBaseUrl: "",
+      anthropicMode: "native",
     },
     modelRows: EMPTY_MODEL_ROWS,
     textSpecs: [],

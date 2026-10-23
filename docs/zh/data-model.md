@@ -209,6 +209,7 @@ function checkKeyStatus({ key, user, requestedModel }): KeyValidationResult {
 | `openaiEnabled` | `openai_enabled` | INTEGER NOT NULL DEFAULT 1 | 该 Provider 是否服务 OpenAI 侧端点（`/v1/chat/completions`、`/v1/responses`） |
 | `anthropicEnabled` | `anthropic_enabled` | INTEGER NOT NULL DEFAULT 0 | 该 Provider 是否**同时**提供 Anthropic Messages 协议面（`/anthropic/v1/messages`、`/v1/messages`） |
 | `anthropicBaseUrl` | `anthropic_base_url` | TEXT NULL | Anthropic 协议面的 base URL。`NULL` = 由 `base_url` 推导（会去掉一个结尾的 `/v1`）。当厂商的 Anthropic 端点是子路径时需显式设置，如 `https://api.deepseek.com/anthropic` |
+| `anthropicMode` | `anthropic_mode` | TEXT NOT NULL DEFAULT `'native'` | Anthropic 协议面**怎么服务**：`native` = 厂商自己的 `/v1/messages`，请求原样发过去；`translated` = 厂商不说 Anthropic，网关把请求转成它说的那种协议。默认值是 `native`，所以这一列出现之前写的每一行都还按老样子服务 |
 | `enabled` | `enabled` | INTEGER NOT NULL | 0/1 |
 | `priority` | `priority` | INTEGER NOT NULL DEFAULT 0 | 路由优先级（数字小优先） |
 | `createdAt` | `created_at` | TEXT NOT NULL | ISO 字符串 |

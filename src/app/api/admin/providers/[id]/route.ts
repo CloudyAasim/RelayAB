@@ -22,6 +22,7 @@ export const PatchSchema = z.object({
   openaiEnabled: z.boolean().optional(),
   anthropicEnabled: z.boolean().optional(),
   anthropicBaseUrl: z.string().nullable().optional(),
+  anthropicMode: z.enum(["native", "translated"]).optional(),
   /**
    * The wire protocols, one JSON document per compatibility interface.
    *

@@ -45,7 +45,7 @@ export interface AnthropicProxyDeps {
   upstreamUrlFor?: (provider: Provider) => string;
 }
 
-interface AnthropicRequest {
+export interface AnthropicRequest {
   model: string;
   messages: Array<{ role: "user" | "assistant"; content: string }>;
   max_tokens: number;
@@ -96,6 +96,14 @@ export async function proxyAnthropicMessage(args: {
   /** Incoming request signal — streams settle their usage when it aborts. */
   signal?: AbortSignal;
   deps?: AnthropicProxyDeps;
+  /**
+   * The row to serve this request from.
+   *
+   * Absent means "pick one" — the usual case. It is passed when the caller
+   * has already chosen one: a surface that picks from the rows with an
+   * Anthropic face has a different set of candidates than the OpenAI faces do.
+   */
+  provider?: Provider;
 }): Promise<AnthropicProxyResult> {
   const { req, apiKey, user, signal, deps } = args;
   const fetchImpl = deps?.fetchImpl ?? fetch;
@@ -130,7 +138,9 @@ export async function proxyAnthropicMessage(args: {
   //    shares the row's API key, model mapping and model configs, and only
   //    carries its own base URL. Rows written before that model still work —
   //    they resolve to an Anthropic-only face.
-  const candidates = await findAnthropicProvidersForModel(req.model);
+  const candidates = args.provider
+    ? [args.provider]
+    : await findAnthropicProvidersForModel(req.model);
   const provider = candidates[0];
   if (!provider) {
     return {

@@ -139,6 +139,7 @@ describe("db types - toPublic helpers", () => {
       upstreamFormat: "responses",
       openaiEnabled: true,
       anthropicEnabled: false,
+    anthropicMode: "native" as const,
       anthropicBaseUrl: null,
       textSpecs: [],
       activeMode: null,

@@ -76,7 +76,7 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     surface: "user",
     id: "anthropic",
     summary: "Anthropic 兼容用法：/anthropic/v1/messages",
-    keys: ["docs.anthropic.title","docs.anthropic.desc","docs.anthropic.line1","docs.anthropic.baseUrl.official","docs.anthropic.baseUrl.aiSdk","docs.anthropic.baseUrl","docs.anthropic.header","docs.anthropic.baseUrl.tip","docs.anthropic.example","docs.anthropic.sdkHint","docs.anthropic.sdk","docs.anthropic.modelsTitle","docs.anthropic.modelsDesc","docs.anthropic.modelsExample","docs.anthropic.modelsResponse"],
+    keys: ["docs.anthropic.title","docs.anthropic.desc","docs.anthropic.line1","docs.anthropic.anyVendor","docs.anthropic.baseUrl.official","docs.anthropic.baseUrl.aiSdk","docs.anthropic.baseUrl","docs.anthropic.header","docs.anthropic.baseUrl.tip","docs.anthropic.example","docs.anthropic.sdkHint","docs.anthropic.sdk","docs.anthropic.modelsTitle","docs.anthropic.modelsDesc","docs.anthropic.modelsExample","docs.anthropic.modelsResponse"],
   },
   {
     surface: "user",

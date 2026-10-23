@@ -25,6 +25,7 @@ export const PostSchema = z.object({
   openaiEnabled: z.boolean().optional(),
   anthropicEnabled: z.boolean().optional(),
   anthropicBaseUrl: z.string().nullable().optional(),
+  anthropicMode: z.enum(["native", "translated"]).optional(),
   /**
    * The wire protocols, one JSON document per compatibility interface.
    *
@@ -118,6 +119,7 @@ export async function POST(req: Request): Promise<Response> {
       openaiEnabled: parsed.data.openaiEnabled,
       anthropicEnabled: parsed.data.anthropicEnabled,
       anthropicBaseUrl: parsed.data.anthropicBaseUrl ?? null,
+      anthropicMode: parsed.data.anthropicMode ?? "native",
       textSpecs: parsed.data.textSpecs ?? [],
       activeMode: parsed.data.activeMode ?? null,
     });

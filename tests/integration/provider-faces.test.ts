@@ -90,6 +90,7 @@ function row(over: Partial<Provider>): Provider {
     upstreamFormat: "responses",
     openaiEnabled: true,
     anthropicEnabled: false,
+    anthropicMode: "native",
     anthropicBaseUrl: null,
     textSpecs: [],
     activeMode: null,
@@ -152,7 +153,9 @@ describe("providerFaces", () => {
     expect(reloaded?.anthropicEnabled).toBe(true);
     const faces = providerFaces(reloaded!);
     expect(faces.openai).toEqual({ format: "chat" });
-    expect(faces.anthropic).toEqual({ baseUrl: "https://api.agnes-ai.cn" });
+    // The face says how it is served as well as where: `native` is the
+    // vendor's own /v1/messages, and it is what a row has always meant.
+    expect(faces.anthropic).toEqual({ baseUrl: "https://api.agnes-ai.cn", mode: "native" });
   });
 
   it("hides the models of a provider whose faces are all off", () => {
@@ -192,7 +195,7 @@ describe("providerFaces", () => {
       providerFaces(row({ upstreamFormat: "anthropic", baseUrl: "https://api.agnes-ai.cn" })),
     ).toEqual({
       openai: { format: "anthropic" },
-      anthropic: { baseUrl: "https://api.agnes-ai.cn" },
+      anthropic: { baseUrl: "https://api.agnes-ai.cn", mode: "native" },
     });
   });
 
@@ -220,7 +223,7 @@ describe("providerFaces", () => {
       ),
     ).toEqual({
       openai: { format: "chat" },
-      anthropic: { baseUrl: "https://v.test" }, // one trailing /v1 is stripped
+      anthropic: { baseUrl: "https://v.test", mode: "native" }, // one trailing /v1 is stripped
     });
   });
 
@@ -233,7 +236,7 @@ describe("providerFaces", () => {
           anthropicBaseUrl: "https://api.deepseek.com/anthropic",
         }),
       ).anthropic,
-    ).toEqual({ baseUrl: "https://api.deepseek.com/anthropic" });
+    ).toEqual({ baseUrl: "https://api.deepseek.com/anthropic", mode: "native" });
   });
 
   it("can disable the OpenAI face and keep only Anthropic", () => {

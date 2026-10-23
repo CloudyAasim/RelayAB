@@ -1005,6 +1005,16 @@ export async function proxyChatCompletion(args: {
   /** Incoming request signal — streams settle their usage when it aborts. */
   signal?: AbortSignal;
   deps?: ProxyDeps;
+  /**
+   * The row to serve this request from.
+   *
+   * Absent means "pick one" — the usual case, where the Chat face resolves
+   * the provider itself. It is passed when the caller has already chosen one:
+   * the Anthropic face, for instance, picks from the rows that have an
+   * Anthropic face, which is not the same set as the rows that have an OpenAI
+   * one.
+   */
+  provider?: Provider;
 }): Promise<ProxyResult> {
   const { req, apiKey, user, signal, deps } = args;
   const fetchImpl = deps?.fetchImpl ?? fetch;
@@ -1034,9 +1044,9 @@ export async function proxyChatCompletion(args: {
   // cannot accept a Chat Completions body, so it is eligible for the
   // /anthropic endpoint and for the other surfaces **by translation**, which
   // is handled further down.
-  const providers = (await findProvidersForModel(req.model)).filter(
-    (p) => providerFaces(p).openai !== null,
-  );
+  const providers = args.provider
+    ? [args.provider]
+    : (await findProvidersForModel(req.model)).filter((p) => providerFaces(p).openai !== null);
   if (providers.length === 0) {
     return {
       ok: false,
@@ -1267,7 +1277,7 @@ async function recordFailure(args: {
 // OpenAI Responses API
 // ---------------------------------------------------------------------------
 
-interface ResponseAPIRequest {
+export interface ResponseAPIRequest {
   model: string;
   input?: string | Array<{ type: string; content?: string; audio?: unknown }>;
   tools?: unknown[];
@@ -1333,20 +1343,41 @@ export async function proxyOpenAIResponse(args: {
     };
   }
   const provider = providers[0];
+  return proxyResponsesViaDialect({ req, provider, apiKey, user, signal, deps });
+}
+
+/**
+ * Call a provider in the dialect it speaks, with the request in the pivot shape.
+ *
+ * The one place that knows how to reach a given row: natively for a Responses
+ * upstream, and by conversion for the other three. Every surface that has to
+ * reach a row it picked itself goes through here, so "which dialect is this
+ * row" is answered in one place.
+ */
+export async function proxyResponsesViaDialect(args: {
+  req: ResponseAPIRequest;
+  /** The row to call. Its dialect decides how. */
+  provider: Provider;
+  apiKey: ApiKey;
+  user: User;
+  signal?: AbortSignal;
+  deps?: ProxyDeps;
+}): Promise<ProxyResult> {
+  const { req, provider, apiKey, user, signal, deps } = args;
   const format = providerFaces(provider).openai?.format;
   if (format === "chat") {
-    return proxyResponsesViaChat({ req, apiKey, user, signal, deps });
+    return proxyResponsesViaChat({ req, apiKey, user, signal, deps, provider });
   }
   if (format === "anthropic") {
     // The upstream speaks Anthropic Messages. The request is rewritten into
     // Anthropic's shape and the answer rewritten back — which is what lets a
     // Claude model answer a Responses client (and, through it, a Gemini one).
-    return proxyResponsesViaAnthropic({ req, apiKey, user, signal, deps });
+    return proxyResponsesViaAnthropic({ req, apiKey, user, signal, deps, provider });
   }
   if (format === "gemini") {
     // The upstream speaks Google's own Gemini API. Same idea, one dialect
     // further out: `contents` in, `candidates` out.
-    return proxyResponsesViaGemini({ req, apiKey, user, signal, deps });
+    return proxyResponsesViaGemini({ req, apiKey, user, signal, deps, provider });
   }
   return proxyResponsesNative({ req, apiKey, user, signal, deps, provider });
 }
@@ -1738,14 +1769,17 @@ async function proxyResponsesViaChat(args: {
   user: User;
   signal?: AbortSignal;
   deps?: ProxyDeps;
+  /** The row to call, when the caller has already picked one. */
+  provider?: Provider;
 }): Promise<ProxyResult> {
-  const { req, apiKey, user, signal, deps } = args;
+  const { req, apiKey, user, signal, deps, provider } = args;
   const chatResult = await proxyChatCompletion({
     req: responsesToChatRequest(req),
     apiKey,
     user,
     signal,
     deps,
+    ...(provider ? { provider } : {}),
   });
   if (!chatResult.ok) {
     return { ok: false, status: chatResult.status, error: chatResult.error };
@@ -1783,37 +1817,60 @@ async function proxyResponsesViaAnthropic(args: {
   user: User;
   signal?: AbortSignal;
   deps?: ProxyDeps;
+  /** The row to call, when the caller has already picked one. */
+  provider?: Provider;
 }): Promise<ProxyResult> {
-  const { req, apiKey, user, signal, deps } = args;
+  const { req, apiKey, user, signal, deps, provider } = args;
 
   /**
    * Anthropic Messages has no JSON-schema response mode, so the instruction
-   * cannot be carried over.
+   * becomes the thing Anthropic does have: **a tool with a schema, forced**.
+   * The answer comes back as that tool's arguments — which is the JSON the
+   * client asked for.
    *
-   * Carrying it over is not an option and dropping it is worse than an error:
-   * a client that asked for JSON and received prose gets a 200 and a parse
-   * failure three lines later, with nothing pointing at the cause. So the
-   * request is refused, and the refusal says what to do instead — Anthropic's
-   * own way of asking for JSON is a tool with a schema.
+   * The alternative — dropping the instruction — gives a client that asked for
+   * JSON a 200 and some prose, and its JSON.parse fails three lines later
+   * with nothing pointing at the cause.
    */
-  if (asRecord(asRecord(req.text)?.format)) {
+  const jsonFormat = responsesJsonFormat(req.text);
+
+  if (jsonFormat && req.stream === true) {
+    // A streamed tool call arrives as a run of partial JSON, and the pivot
+    // would have to assemble it frame by frame. Until that exists, the honest
+    // answer is to say so rather than to stream prose.
     return {
       ok: false,
       status: 400,
       error: {
         code: "invalid_request_error",
         message:
-          "This upstream speaks Anthropic Messages, which has no JSON-schema response mode. Ask for the JSON through a tool with a schema instead.",
+          "A structured-output request against an Anthropic upstream is not supported while streaming. Ask for the same request without \"stream\": true.",
       },
     };
   }
 
+  const anthropicReq = responsesToAnthropicRequest(req);
+  let toolName: string | null = null;
+  if (jsonFormat) {
+    toolName = anthropicToolName(jsonFormat.name);
+    anthropicReq.tools = [
+      {
+        name: toolName,
+        description:
+          "Answer with a JSON object matching the schema. This tool is the only way to answer.",
+        input_schema: (jsonFormat.schema as unknown) ?? { type: "object" },
+      },
+    ];
+    anthropicReq.tool_choice = { type: "tool", name: toolName };
+  }
+
   const result = await proxyAnthropicMessage({
-    req: responsesToAnthropicRequest(req) as Parameters<typeof proxyAnthropicMessage>[0]["req"],
+    req: anthropicReq as Parameters<typeof proxyAnthropicMessage>[0]["req"],
     apiKey,
     user,
     signal,
     deps,
+    ...(provider ? { provider } : {}),
   });
   if (!result.ok) {
     return { ok: false, status: result.status, error: result.error };
@@ -1832,10 +1889,93 @@ async function proxyResponsesViaAnthropic(args: {
       contentType: "text/event-stream; charset=utf-8",
     };
   }
+
+  const body = result.data as AnthropicMessageResponse;
+  if (jsonFormat && toolName) {
+    return { ok: true, status: 200, data: structuredAnswer(body, toolName, req) };
+  }
   return {
     ok: true,
     status: 200,
-    data: anthropicToResponsesResponse(result.data as AnthropicMessageResponse, req),
+    data: anthropicToResponsesResponse(body, req),
+  };
+}
+
+/**
+ * The structured-output instruction in the pivot's shape, if there is one.
+ */
+function responsesJsonFormat(
+  text: unknown,
+): { type: string; name?: string; schema?: unknown } | null {
+  const format = asRecord(asRecord(text)?.format);
+  if (!format) return null;
+  const type = typeof format.type === "string" ? format.type : "";
+  if (type !== "json_schema" && type !== "json_object") return null;
+  return {
+    type,
+    ...(typeof format.name === "string" ? { name: format.name } : {}),
+    ...(format.schema !== undefined ? { schema: format.schema } : {}),
+  };
+}
+
+/**
+ * A tool name Anthropic will accept.
+ *
+ * Anthropic's names are letters, digits, underscores and dashes; a JSON schema
+ * named `my.answer` would be refused, so the punctuation goes.
+ */
+function anthropicToolName(name: unknown): string {
+  const raw = typeof name === "string" ? name : "";
+  const cleaned = raw.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
+  return cleaned || "response";
+}
+
+/**
+ * The pivot's answer when the JSON came back as a tool's arguments.
+ *
+ * The client asked for the JSON itself, so the tool call is unwrapped into
+ * the message the client is going to read — the tool was the mechanism, not
+ * the answer.
+ */
+function structuredAnswer(
+  body: AnthropicMessageResponse,
+  toolName: string,
+  originalReq: ResponseAPIRequest,
+): Record<string, unknown> {
+  const call = (body.content ?? []).find(
+    (block) => block?.type === "tool_use" && (block as { name?: string }).name === toolName,
+  );
+  const input = call ? (call as { input?: unknown }).input : undefined;
+  const text = input === undefined ? "" : JSON.stringify(input);
+  const id = body.id ?? `resp_${Date.now()}`;
+  const inputTokens = body.usage?.input_tokens ?? 0;
+  const outputTokens = body.usage?.output_tokens ?? 0;
+
+  return {
+    id,
+    object: "response",
+    created_at: Math.floor(Date.now() / 1000),
+    status: "completed",
+    model: body.model ?? originalReq.model,
+    output: text
+      ? [
+          {
+            id: `${id}_msg`,
+            type: "message",
+            status: "completed",
+            role: "assistant",
+            content: [{ type: "output_text", text, annotations: [] }],
+          },
+        ]
+      : [],
+    output_text: text,
+    error: null,
+    incomplete_details: null,
+    usage: {
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      total_tokens: inputTokens + outputTokens,
+    },
   };
 }
 
@@ -1858,12 +1998,14 @@ async function proxyResponsesViaGemini(args: {
   user: User;
   signal?: AbortSignal;
   deps?: ProxyDeps;
+  /** The row to call, when the caller has already picked one. */
+  provider?: Provider;
 }): Promise<ProxyResult> {
   const { req, apiKey, user, signal, deps } = args;
   const fetchImpl = deps?.fetchImpl ?? fetch;
 
-  const providers = await findOpenAIProvidersForModel(req.model);
-  const provider = providers[0];
+  const provider =
+    args.provider ?? (await findOpenAIProvidersForModel(req.model))[0] ?? null;
   if (!provider) {
     return {
       ok: false,

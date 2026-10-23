@@ -29,6 +29,19 @@ export interface ProviderFacesValue {
   upstreamFormat: UpstreamFormat;
   anthropicEnabled: boolean;
   anthropicBaseUrl: string;
+  /**
+   * How the Anthropic face is served.
+   *
+   * `native` — the vendor publishes its own `/v1/messages`, and the request
+   * goes out in Anthropic's shape.
+   * `translated` — the vendor speaks no Anthropic, and the gateway rewrites the
+   * request into the protocol it does speak.
+   *
+   * The two are different things rather than two spellings of one, so the
+   * choice is the operator's: the gateway cannot know whether a vendor
+   * publishes `/v1/messages`.
+   */
+  anthropicMode: "native" | "translated";
 }
 
 export function ProviderFacesField({
@@ -171,27 +184,61 @@ export function ProviderFacesField({
           </p>
           {value.anthropicEnabled && (
             <div className="mt-2 pl-6">
-              <Input
-                label={t("admin.providers.faces.anthropic.baseUrl")}
-                value={value.anthropicBaseUrl}
-                onChange={(e) => set({ anthropicBaseUrl: e.target.value })}
-                placeholder="https://api.agnes-ai.cn"
-              />
-              <p className="mt-1 text-xs text-muted-foreground">
-                {t("admin.providers.faces.anthropic.baseUrlHint")}
+              {/*
+                How this side is served. The two are different things rather
+                than two spellings of one — the vendor's own endpoint, or the
+                gateway's translation — and the gateway cannot tell which is
+                true, so the operator says it.
+              */}
+              <p className="mb-1 text-xs font-medium text-foreground">
+                {t("admin.providers.faces.anthropic.modeLabel")}
               </p>
-              {/* The one case where the switch is on and the side still does
-                  not answer: Google's base has no Anthropic endpoint under
-                  it. Saying so beats a checkbox that promises a surface the
-                  provider will not serve. */}
-              {nativeGemini && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {t("admin.providers.faces.anthropic.geminiNote")}
-                </p>
+              <select
+                value={value.anthropicMode}
+                onChange={(e) =>
+                  set({ anthropicMode: e.target.value as "native" | "translated" })
+                }
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="native">{t("admin.providers.faces.anthropic.mode.native")}</option>
+                <option value="translated">
+                  {t("admin.providers.faces.anthropic.mode.translated")}
+                </option>
+              </select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {value.anthropicMode === "native"
+                  ? t("admin.providers.faces.anthropic.modeHint.native")
+                  : t("admin.providers.faces.anthropic.modeHint.translated")}
+              </p>
+
+              {/* The base URL is where the request goes only when the vendor
+                  serves Anthropic itself; in the translated mode the request
+                  goes to the vendor's own protocol. */}
+              {value.anthropicMode === "native" && (
+                <>
+                  <Input
+                    label={t("admin.providers.faces.anthropic.baseUrl")}
+                    value={value.anthropicBaseUrl}
+                    onChange={(e) => set({ anthropicBaseUrl: e.target.value })}
+                    placeholder="https://api.agnes-ai.cn"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {t("admin.providers.faces.anthropic.baseUrlHint")}
+                  </p>
+                  {/* The one case where the switch is on and the side still
+                      does not answer: Google's base has no Anthropic endpoint
+                      under it. Saying so beats a checkbox that promises a
+                      surface the provider will not serve. */}
+                  {nativeGemini && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {t("admin.providers.faces.anthropic.geminiNote")}
+                    </p>
+                  )}
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {t("admin.providers.faces.anthropicTip.endpoint")}
+                  </p>
+                </>
               )}
-              <p className="mt-1 text-xs text-muted-foreground">
-                {t("admin.providers.faces.anthropicTip.endpoint")}
-              </p>
             </div>
           )}
         </div>

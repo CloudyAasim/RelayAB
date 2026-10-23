@@ -19,7 +19,7 @@
  */
 import { NextResponse } from "next/server";
 import { authenticateBearer, reasonToHttp, resolveAuthHeader } from "@/lib/auth/apikey";
-import { proxyAnthropicMessage } from "@/lib/proxy/anthropic";
+import { proxyAnthropicSurface } from "@/lib/proxy/anthropic-surface";
 import { proxyResultToResponse } from "@/lib/proxy/respond";
 import { validateAnthropicBody } from "@/lib/proxy/validate";
 import type { ApiKey } from "@/lib/db/types";
@@ -83,8 +83,8 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
   const requestedStream =
     typeof body === "object" && body !== null && "stream" in body &&
     Boolean((body as Record<string, unknown>).stream);
-  const result = await proxyAnthropicMessage({
-    req: body as Parameters<typeof proxyAnthropicMessage>[0]["req"],
+  const result = await proxyAnthropicSurface({
+    req: body as Parameters<typeof proxyAnthropicSurface>[0]["req"],
     apiKey: auth.key as ApiKey,
     user: owner,
     // Let a client disconnect settle the usage row instead of dropping it.

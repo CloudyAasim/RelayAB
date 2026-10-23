@@ -62,6 +62,7 @@ const values: ProviderFormValues = {
     upstreamFormat: "responses",
     anthropicEnabled: true,
     anthropicBaseUrl: "https://api.minimaxi.com/anthropic",
+    anthropicMode: "native",
   },
   modelRows: [newModelRow({ clientId: "abab", upstreamId: "abab-6" })],
   textSpecs: ['{"protocol":"openai-chat"}'],

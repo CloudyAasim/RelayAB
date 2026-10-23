@@ -405,6 +405,7 @@ x-ratelimit-unit: credits      # 单位；账号按 token 计量时这里就是 
         />
         <div className="space-y-3 text-xs text-foreground/90 sm:space-y-4 sm:text-sm">
           <p>{t("docs.anthropic.line1")}</p>
+          <p className="text-xs text-muted-foreground">{t("docs.anthropic.anyVendor")}</p>
           <p className="text-xs text-muted-foreground">
             {t("docs.anthropic.baseUrl.official")}
           </p>

@@ -74,6 +74,12 @@ export interface CreateProviderInput {
   /** Base URL for the Anthropic face; empty derives it from `baseUrl`. */
   anthropicBaseUrl?: string | null;
   /**
+   * How the Anthropic face is served: the vendor's own `/v1/messages`, or the
+   * gateway's translation. Defaults to `native`, which is what the face has
+   * always meant.
+   */
+  anthropicMode?: "native" | "translated";
+  /**
    * One protocol document per compatibility interface. An empty list is the
    * default and means "forward the client's request as sent" — so a new
    * provider needs none of this to be a working one.
@@ -100,6 +106,8 @@ export interface UpdateProviderInput {
   openaiEnabled?: boolean;
   anthropicEnabled?: boolean;
   anthropicBaseUrl?: string | null;
+  /** How the Anthropic face is served. Defaults to `native`. */
+  anthropicMode?: "native" | "translated";
   /**
    * One protocol document per compatibility interface. An empty list is the
    * default and means "forward the client's request as sent" — which is also how
@@ -141,6 +149,9 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
     openaiEnabled: input.openaiEnabled ?? faceDefaults.openaiEnabled,
     anthropicEnabled: input.anthropicEnabled ?? faceDefaults.anthropicEnabled,
     anthropicBaseUrl: input.anthropicBaseUrl ?? null,
+    // How the Anthropic face is served. Absent means the vendor's own
+    // endpoint, which is what the face has always meant.
+    anthropicMode: input.anthropicMode ?? "native",
     textSpecs: input.textSpecs ?? [],
     activeMode: input.activeMode ?? null,
     createdAt: now,
@@ -155,9 +166,9 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
     `INSERT INTO providers
        (id, name, kind, base_url, encrypted_api_key, model_mapping,
         model_configs, enabled, priority, headers, upstream_format,
-        openai_enabled, anthropic_enabled, anthropic_base_url, text_specs,
-        active_mode, created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        openai_enabled, anthropic_enabled, anthropic_base_url, anthropic_mode,
+        text_specs, active_mode, created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       provider.id,
       provider.name,
@@ -177,6 +188,7 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
       toDbBool(provider.openaiEnabled),
       toDbBool(provider.anthropicEnabled),
       provider.anthropicBaseUrl ?? null,
+      provider.anthropicMode,
       JSON.stringify(provider.textSpecs ?? []),
       provider.activeMode ?? null,
       provider.createdAt,
@@ -345,8 +357,8 @@ export async function updateProvider(
          name = ?, kind = ?, base_url = ?, encrypted_api_key = ?,
          model_mapping = ?, model_configs = ?, enabled = ?, priority = ?,
          headers = ?, upstream_format = ?, openai_enabled = ?,
-         anthropic_enabled = ?, anthropic_base_url = ?, text_specs = ?,
-         active_mode = ?, updated_at = ?
+         anthropic_enabled = ?, anthropic_base_url = ?, anthropic_mode = ?,
+         text_specs = ?, active_mode = ?, updated_at = ?
        WHERE id = ?`,
       [
         merged.name,
@@ -362,6 +374,7 @@ export async function updateProvider(
         toDbBool(merged.openaiEnabled),
         toDbBool(merged.anthropicEnabled),
         merged.anthropicBaseUrl,
+        merged.anthropicMode,
         JSON.stringify(merged.textSpecs ?? []),
         merged.activeMode ?? null,
         merged.updatedAt,

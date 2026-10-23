@@ -509,6 +509,8 @@ const zhCN: Dict = {
   "docs.gemini.modelsExample": "curl 示例",
   "docs.gemini.modelsResponse": "响应",
   "docs.anthropic.line1": "Anthropic SDK 默认走 https://api.anthropic.com，需要手动把 baseURL 改成下面的值。",
+  "docs.anthropic.anyVendor":
+    "这一面服务的是 Anthropic 形状的请求（Claude Code、Anthropic SDK、ONLYOFFICE 的 Anthropic 接入）。上游是谁由管理员配置：厂商自己提供 /v1/messages 就直接用；厂商只说 OpenAI 兼容协议，管理员可以把这一面设成「由网关转换」，请求会转成上游的形状发出去，答案再转回 Anthropic。",
   "docs.anthropic.baseUrl": "Base URL（官方 SDK）/ Base URL（AI SDK）",
   "docs.anthropic.baseUrl.official": "官方 Anthropic SDK：Base URL 写到 /anthropic（SDK 自己会追加 /v1/messages）",
   "docs.anthropic.baseUrl.aiSdk": "Vercel AI SDK（@ai-sdk/anthropic）：Base URL 必须写到 /anthropic/v1，否则 SDK 只会追加 /messages",
@@ -777,6 +779,13 @@ const zhCN: Dict = {
   "admin.providers.faces.anthropic.label": "Anthropic Messages 侧 — /v1/messages、/anthropic/v1/messages",
   "admin.providers.faces.anthropic.hint": "关闭后这条 Provider 不响应 /v1/messages 与 /anthropic/v1/messages。",
   "admin.providers.faces.anthropic.baseUrl": "Anthropic 基址",
+  "admin.providers.faces.anthropic.modeLabel": "这一侧怎么服务",
+  "admin.providers.faces.anthropic.mode.native": "厂商自己的 Anthropic 端点（请求原样发过去）",
+  "admin.providers.faces.anthropic.mode.translated": "由网关转换（厂商不说 Anthropic）",
+  "admin.providers.faces.anthropic.modeHint.native":
+    "厂商自己提供 /v1/messages（基址由上面的 API 地址推导，或在这里显式填写）。请求会以 Anthropic 的形状原样发过去。",
+  "admin.providers.faces.anthropic.modeHint.translated":
+    "厂商不说 Anthropic：网关把请求转成它说的那种协议（OpenAI 兼容 / Anthropic / Gemini），答案再转回 Anthropic。适合只提供 OpenAI 兼容接口的厂商 —— 少了这一步，Anthropic 客户端（Claude Code 等）调它只会拿到 404。",
   "admin.providers.faces.anthropic.baseUrlHint": "留空则由上面的 API 地址推导（去掉结尾的 /v1）。厂商的 Anthropic 端点与 OpenAI 不同时请显式填写：MiniMax 是 https://api.minimaxi.com/anthropic，不是 https://api.minimaxi.com/v1。",
   "admin.providers.faces.anthropic.geminiNote":
     "注意：Google 的基址下面没有 Anthropic 端点。这一侧只有在另外填了一个 Anthropic 基址时才会真的生效，否则 /v1/messages 不会用这一条 Provider。",
@@ -931,7 +940,7 @@ const zhCN: Dict = {
   "admin.docs.add.why": "为什么不推荐 Anthropic 模板：模板会预填 api.anthropic.com 的基址和一串 Claude 模型名，接入第三方厂商时这两项都必须改，漏改一项的症状就是 404。",
   "admin.docs.add.note": "两条 Provider 不要映射相同的客户端模型名；各管各的协议，互不干扰。",
   "admin.docs.add.translate":
-    "只提供 Anthropic 端点、或只提供 Google 原生 Gemini 端点的厂商，也能被 OpenAI / Responses / Gemini 客户端调用：在那种 Provider 上打开 OpenAI 侧（或把上游格式选成 Gemini），网关会负责协议转换（请求转成上游的形状，答案再转回来），流式请求照样逐块到达。向量与重排没有对应端点，那种 Provider 接不了这两个接口。另外，Google 的基址下面没有 Anthropic 端点，所以那种 Provider 不能开 Anthropic 侧 —— 除非单独填一个 Anthropic 基址。",
+    "只提供 Anthropic 端点、或只提供 Google 原生 Gemini 端点的厂商，也能被 OpenAI / Responses / Gemini 客户端调用：在那种 Provider 上打开 OpenAI 侧（或把上游格式选成 Gemini），网关会负责协议转换（请求转成上游的形状，答案再转回来），流式请求照样逐块到达。反过来也成立：只说 OpenAI 兼容协议的厂商，可以把「Anthropic Messages 侧」设成「由网关转换」，Claude Code 这类 Anthropic 客户端就调得动它（否则只会拿到 404）。向量与重排没有对应端点，那种 Provider 接不了这两个接口。另外，Google 的基址下面没有 Anthropic 端点，所以那种 Provider 不能开 Anthropic 侧 —— 除非单独填一个 Anthropic 基址。",
   "admin.docs.routes.openai": "/v1/chat/completions、/v1/responses → 上游 OpenAI 兼容基址，例如 https://api.minimaxi.com/v1",
   "admin.docs.routes.anthropic": "/anthropic/v1/messages → 上游 Anthropic 兼容基址，例如 https://api.minimaxi.com/anthropic",
   "admin.docs.mapping.title": "模型映射",
@@ -1993,6 +2002,8 @@ const en: Dict = {
   "docs.gemini.modelsExample": "curl example",
   "docs.gemini.modelsResponse": "Response",
   "docs.anthropic.line1": "The Anthropic SDK defaults to https://api.anthropic.com. Override baseURL to the value below.",
+  "docs.anthropic.anyVendor":
+    "This surface answers requests in Anthropic's shape (Claude Code, the Anthropic SDK, ONLYOFFICE's Anthropic provider). Which vendor is behind it is the administrator's configuration: if the vendor serves /v1/messages itself, that is what is used; if the vendor only speaks an OpenAI-compatible protocol, the administrator can set this side to \"the gateway translates\" — the request goes out in the vendor's shape and the answer comes back in Anthropic's.",
   "docs.anthropic.header": "Auth header (x-api-key, not Authorization)",
   "docs.anthropic.baseUrl": "Base URL (official SDK) / Base URL (AI SDK)",
   "docs.anthropic.baseUrl.official": "Official Anthropic SDK: set baseURL to /anthropic (the SDK appends /v1/messages).",
@@ -2263,6 +2274,13 @@ const en: Dict = {
   "admin.providers.faces.anthropic.label": "Anthropic Messages side — /v1/messages, /anthropic/v1/messages",
   "admin.providers.faces.anthropic.hint": "Turn off to stop this provider answering /v1/messages and /anthropic/v1/messages.",
   "admin.providers.faces.anthropic.baseUrl": "Anthropic base URL",
+  "admin.providers.faces.anthropic.modeLabel": "How this side is served",
+  "admin.providers.faces.anthropic.mode.native": "The vendor's own Anthropic endpoint (the request goes as it is)",
+  "admin.providers.faces.anthropic.mode.translated": "The gateway translates (the vendor speaks no Anthropic)",
+  "admin.providers.faces.anthropic.modeHint.native":
+    "The vendor serves /v1/messages itself (the base is derived from the API URL above, or written here). The request goes out in Anthropic's own shape.",
+  "admin.providers.faces.anthropic.modeHint.translated":
+    "The vendor speaks no Anthropic: the gateway rewrites the request into the protocol it does speak (OpenAI-compatible / Anthropic / Gemini) and the answer back into Anthropic. It is what makes a vendor with only an OpenAI-compatible API usable from an Anthropic client — without it, Claude Code and friends get a 404 from it.",
   "admin.providers.faces.anthropic.baseUrlHint": "Leave empty to derive it from the API URL above (one trailing /v1 is stripped). Set it explicitly when the vendor's Anthropic endpoint differs from its OpenAI one: MiniMax is https://api.minimaxi.com/anthropic, not https://api.minimaxi.com/v1.",
   "admin.providers.faces.anthropic.geminiNote":
     "Note: Google's base has no Anthropic endpoint under it. This side only really works when a separate Anthropic base URL is given — otherwise /v1/messages will not use this provider.",
@@ -2420,7 +2438,7 @@ const en: Dict = {
   "admin.docs.add.why": "Why not the Anthropic template: it pre-fills api.anthropic.com and a list of Claude model names. For a third-party vendor both are wrong, and forgetting either one shows up as a 404.",
   "admin.docs.add.note": "Do not map the same client model name in both providers; each owns its own protocol.",
   "admin.docs.add.translate":
-    "A vendor that only publishes an Anthropic endpoint — or only Google's native Gemini endpoint — can still be called by OpenAI / Responses / Gemini clients: turn the OpenAI side on for such a provider (or set the upstream format to Gemini) and the gateway does the conversion (the request becomes the vendor's shape, the answer comes back the same way), and a streamed answer still arrives piece by piece. Embeddings and rerank have no equivalent endpoint, so such a provider cannot serve them. And Google's base has no Anthropic endpoint under it, so such a provider cannot have the Anthropic side on — unless a separate Anthropic base URL is given.",
+    "A vendor that only publishes an Anthropic endpoint — or only Google's native Gemini endpoint — can still be called by OpenAI / Responses / Gemini clients: turn the OpenAI side on for such a provider (or set the upstream format to Gemini) and the gateway does the conversion (the request becomes the vendor's shape, the answer comes back the same way), and a streamed answer still arrives piece by piece. It works the other way round too: a vendor that speaks only an OpenAI-compatible protocol can have its \"Anthropic Messages side\" set to \"the gateway translates\", and Anthropic clients such as Claude Code can then reach it (without that, they get a 404 from the vendor). Embeddings and rerank have no equivalent endpoint, so such a provider cannot serve them. And Google's base has no Anthropic endpoint under it, so such a provider cannot have the Anthropic side on — unless a separate Anthropic base URL is given.",
   "admin.docs.routes.openai": "/v1/chat/completions, /v1/responses → the upstream OpenAI-compatible base, e.g. https://api.minimaxi.com/v1",
   "admin.docs.routes.anthropic": "/anthropic/v1/messages → the upstream Anthropic-compatible base, e.g. https://api.minimaxi.com/anthropic",
   "admin.docs.mapping.title": "Model mapping",

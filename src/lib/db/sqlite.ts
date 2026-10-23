@@ -617,6 +617,12 @@ const ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; type: string
   // means "this row predates the choice, keep doing what it did", which is not
   // the same statement as 'simple' and must not be back-filled to it.
   { table: "providers", column: "active_mode", type: "TEXT" },
+  // How the Anthropic face is served: the vendor's own /v1/messages endpoint,
+  // or the gateway's own translation. 'native' is the default, so every row
+  // written before this column keeps exactly the behaviour it had — which
+  // matters, because the other mode is a different thing entirely rather than
+  // a newer spelling of the same one.
+  { table: "providers", column: "anthropic_mode", type: "TEXT NOT NULL DEFAULT 'native'" },
   // What the upstream served from, and wrote into, its own prompt cache. Two
   // columns rather than one because they are opposite events that look alike in
   // a usage table, and because only the read is a discount. Nullable so "this
@@ -870,6 +876,10 @@ export function rowToProvider(row: Record<string, unknown>): Provider {
     openaiEnabled: fromDbBool(row.openai_enabled),
     anthropicEnabled: fromDbBool(row.anthropic_enabled),
     anthropicBaseUrl: row.anthropic_base_url ?? null,
+    // A row written before this column existed is served natively, which is
+    // what it was doing before the column existed.
+    anthropicMode:
+      row.anthropic_mode === "translated" ? "translated" : ("native" as const),
     // A row written before the list existed holds one document. Folded into a
     // one-entry list here, at the boundary, so nothing downstream needs to know
     // the old shape ever existed — and `ADD COLUMN` cannot drop the column, so
