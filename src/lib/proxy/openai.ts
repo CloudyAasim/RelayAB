@@ -270,6 +270,7 @@ const REBUILT_FIELDS = [
   "max_output_tokens",
   "max_tokens",
   "reasoning",
+  "text",
 ] as const;
 
 /**
@@ -385,7 +386,44 @@ export function responsesToChatRequest(req: ResponseAPIRequest): ChatCompletionR
     chatReq.extra_body = extraBody;
   }
 
+  // Structured output: the pivot's `text.format` is the Chat's
+  // `response_format`, and it is the same instruction — a client that asked
+  // for JSON and got prose has been answered wrongly.
+  const format = responsesTextFormat(req.text);
+  if (format) chatReq.response_format = format;
+
   return chatReq;
+}
+
+/**
+ * The pivot's structured-output instruction, in Chat's vocabulary.
+ */
+function responsesTextFormat(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const text = value as Record<string, unknown>;
+  const format = asRecord(text.format);
+  if (!format) return undefined;
+
+  const type = typeof format.type === "string" ? format.type : "";
+  if (type === "json_object") return { type: "json_object" };
+  if (type === "json_schema") {
+    return {
+      type: "json_schema",
+      json_schema: {
+        name: typeof format.name === "string" ? format.name : "response",
+        schema: format.schema,
+        ...(format.strict !== undefined ? { strict: format.strict } : {}),
+      },
+    };
+  }
+  return undefined;
+}
+
+/** A record, or null. */
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
 /**
@@ -481,7 +519,12 @@ export function chatToResponsesRequest(
 
   for (const message of messages) {
     const role = String(message.role ?? "user");
-    const text = chatContentToText(message.content);
+    const assistant = role === "assistant";
+    const blocks = chatContentBlocks(message.content, assistant);
+    const text = blocks
+      .filter((block) => typeof block.text === "string")
+      .map((block) => String(block.text))
+      .join("");
 
     if (role === "system" || role === "developer") {
       if (text) instructions.push(text);
@@ -511,11 +554,11 @@ export function chatToResponsesRequest(
       if (!text) continue;
     }
 
-    const assistant = role === "assistant";
-    input.push({
-      role: assistant ? "assistant" : "user",
-      content: [{ type: assistant ? "output_text" : "input_text", text }],
-    });
+    // The blocks, not just the text: an image the client sent is part of the
+    // question, and dropping it makes the answer confidently wrong.
+    if (blocks.length > 0) {
+      input.push({ role: assistant ? "assistant" : "user", content: blocks });
+    }
   }
 
   const out: Record<string, unknown> = { model: chatReq.model, input };
@@ -534,25 +577,95 @@ export function chatToResponsesRequest(
   }
   if (chatReq.tool_choice !== undefined) out.tool_choice = chatReq.tool_choice;
 
+  // Structured output: the Chat spelling and the pivot's are the same
+  // instruction in two vocabularies, and the instruction is not optional — a
+  // client that asked for JSON and got prose has been answered wrongly.
+  const format = chatResponseFormat(chatReq.response_format);
+  if (format) out.text = { format };
+
   return out;
 }
 
 /**
- * The text of a Chat message's content, whatever shape it arrives in.
+ * A Chat message's content as pivot blocks.
+ *
+ * Both the text and the images. The images are the part that used to go
+ * missing: a multimodal question that loses its picture still gets an answer,
+ * and the answer is about something else.
  */
-function chatContentToText(content: ChatContent | undefined): string {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content
-    .map((block) => {
-      if (typeof block === "string") return block;
-      if (block && typeof block === "object" && typeof block.text === "string") {
-        return block.text;
-      }
-      return "";
-    })
-    .filter(Boolean)
-    .join("");
+function chatContentBlocks(
+  content: ChatContent | undefined,
+  assistant: boolean,
+): Array<Record<string, unknown>> {
+  const out: Array<Record<string, unknown>> = [];
+  const textType = assistant ? "output_text" : "input_text";
+
+  if (typeof content === "string") {
+    if (content) out.push({ type: textType, text: content });
+    return out;
+  }
+  if (!Array.isArray(content)) return out;
+
+  for (const block of content) {
+    if (typeof block === "string") {
+      if (block) out.push({ type: textType, text: block });
+      continue;
+    }
+    if (!block || typeof block !== "object") continue;
+
+    const type = typeof block.type === "string" ? block.type : "";
+    if (type === "text" || type === "input_text" || type === "output_text") {
+      const text = typeof block.text === "string" ? block.text : "";
+      if (text) out.push({ type: textType, text });
+      continue;
+    }
+    if (type === "image_url" || type === "input_image") {
+      const url = imageUrlOf(block);
+      if (url) out.push({ type: "input_image", image_url: url });
+    }
+  }
+  return out;
+}
+
+/**
+ * The address of an image, wherever the item happens to keep it.
+ *
+ * The pivot writes `image_url` as a string and the OpenAI-shaped form writes it
+ * as an object — both spellings turn up.
+ */
+function imageUrlOf(item: Record<string, unknown>): string {
+  const raw = item.image_url ?? item.url;
+  if (typeof raw === "string") return raw;
+  if (raw && typeof raw === "object" && typeof (raw as { url?: unknown }).url === "string") {
+    return String((raw as { url: string }).url);
+  }
+  return "";
+}
+
+/**
+ * The pivot's structured-output instruction, in Chat's vocabulary.
+ *
+ * Chat says `response_format`; the pivot says `text.format`. They are the same
+ * instruction, and dropping it is the kind of loss nobody notices until the
+ * client's JSON parse fails.
+ */
+function chatResponseFormat(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const format = value as Record<string, unknown>;
+  const type = typeof format.type === "string" ? format.type : "";
+
+  if (type === "json_object") return { type: "json_object" };
+  if (type === "json_schema") {
+    const schema = format.json_schema ?? format.schema;
+    const inner = (schema && typeof schema === "object" ? schema : {}) as Record<string, unknown>;
+    return {
+      type: "json_schema",
+      name: typeof inner.name === "string" ? inner.name : "response",
+      schema: inner.schema,
+      ...(inner.strict !== undefined ? { strict: inner.strict } : {}),
+    };
+  }
+  return undefined;
 }
 
 /**
@@ -629,7 +742,7 @@ export function responsesToChatResponse(
  * Used when the selected provider only speaks the Anthropic protocol.
  */
 export function responsesToAnthropicRequest(req: ResponseAPIRequest): Record<string, unknown> {
-  const messages: Array<{ role: "user" | "assistant"; content: string }> = [];
+  const messages: Array<{ role: "user" | "assistant"; content: string | unknown[] }> = [];
 
   const fromInput = (input: unknown): void => {
     if (typeof input === "string") {
@@ -647,18 +760,49 @@ export function responsesToAnthropicRequest(req: ResponseAPIRequest): Record<str
       if (typeof content === "string") {
         messages.push({ role, content });
       } else if (Array.isArray(content)) {
-        const text = content
-          .map((block) => {
-            if (typeof block === "string") return block;
-            if (block && typeof block === "object") {
-              const b = block as Record<string, unknown>;
-              return typeof b.text === "string" ? b.text : "";
-            }
-            return "";
-          })
-          .filter(Boolean)
-          .join("\n");
-        if (text) messages.push({ role, content: text });
+        /**
+         * The blocks, not just their text.
+         *
+         * Anthropic takes images the same way the pivot does — as blocks — so
+         * a picture survives the trip. Dropping it would leave the model
+         * answering a question it never saw the picture for, which is worse
+         * than an error: it looks like a right answer.
+         */
+        const blocks: unknown[] = [];
+        for (const block of content) {
+          if (typeof block === "string") {
+            if (block) blocks.push({ type: "text", text: block });
+            continue;
+          }
+          if (!block || typeof block !== "object") continue;
+          const b = block as Record<string, unknown>;
+          const type = typeof b.type === "string" ? b.type : "";
+
+          if (type === "input_text" || type === "output_text" || type === "text") {
+            const text = typeof b.text === "string" ? b.text : "";
+            if (text) blocks.push({ type: "text", text });
+            continue;
+          }
+          if (type === "input_image" || type === "image_url") {
+            const source = anthropicImageSource(b);
+            if (source) blocks.push({ type: "image", source });
+          }
+        }
+        if (blocks.length > 0) {
+          // A message of nothing but text keeps the plain string form, which is
+          // what Anthropic's own clients send.
+          const onlyText = blocks.every(
+            (block) => (block as { type?: string }).type === "text",
+          );
+          if (onlyText) {
+            messages.push({
+              role,
+              content: blocks.map((block) => String((block as { text?: string }).text ?? "")).join("\n"),
+            });
+          } else {
+            messages.push({ role, content: blocks });
+          }
+        }
       }
     }
   };
@@ -681,6 +825,25 @@ export function responsesToAnthropicRequest(req: ResponseAPIRequest): Record<str
     // than arriving as one whole answer at the end.
     stream: req.stream === true,
   };
+}
+
+/**
+ * An image block in Anthropic's own spelling.
+ *
+ * Anthropic takes a picture either as bytes (`base64`) or as an address
+ * (`url`), and the pivot carries a data URL — which is the bytes, written
+ * out. So the two cases are told apart by the shape of the address, not by a
+ * flag nobody set.
+ */
+function anthropicImageSource(block: Record<string, unknown>): unknown {
+  const url = imageUrlOf(block);
+  if (!url) return null;
+
+  const match = /^data:([^;,]+);base64,(.+)$/s.exec(url);
+  if (match) {
+    return { type: "base64", media_type: match[1], data: match[2] };
+  }
+  return { type: "url", url };
 }
 
 interface AnthropicMessageResponse {
@@ -1622,6 +1785,29 @@ async function proxyResponsesViaAnthropic(args: {
   deps?: ProxyDeps;
 }): Promise<ProxyResult> {
   const { req, apiKey, user, signal, deps } = args;
+
+  /**
+   * Anthropic Messages has no JSON-schema response mode, so the instruction
+   * cannot be carried over.
+   *
+   * Carrying it over is not an option and dropping it is worse than an error:
+   * a client that asked for JSON and received prose gets a 200 and a parse
+   * failure three lines later, with nothing pointing at the cause. So the
+   * request is refused, and the refusal says what to do instead — Anthropic's
+   * own way of asking for JSON is a tool with a schema.
+   */
+  if (asRecord(asRecord(req.text)?.format)) {
+    return {
+      ok: false,
+      status: 400,
+      error: {
+        code: "invalid_request_error",
+        message:
+          "This upstream speaks Anthropic Messages, which has no JSON-schema response mode. Ask for the JSON through a tool with a schema instead.",
+      },
+    };
+  }
+
   const result = await proxyAnthropicMessage({
     req: responsesToAnthropicRequest(req) as Parameters<typeof proxyAnthropicMessage>[0]["req"],
     apiKey,

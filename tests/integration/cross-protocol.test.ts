@@ -224,6 +224,34 @@ describe("an Anthropic-only vendor, called from the OpenAI side", () => {
     expect(calls[0].url).toBe("https://api.anthropic.com/v1/messages");
   });
 
+  it("refuses a structured-output request rather than answering with prose", async () => {
+    // Anthropic Messages has no JSON-schema response mode. Dropping the
+    // instruction would produce a 200 with prose in it — and the client's
+    // JSON.parse would fail three lines later, with nothing pointing at the
+    // cause. So the request is refused, and the refusal says what to do.
+    const { plain } = await seed();
+    stubUpstream();
+
+    const res = await responsesPOST(
+      new Request("http://localhost:3000/v1/responses", {
+        method: "POST",
+        headers: bearer(plain),
+        body: JSON.stringify({
+          model: "client-m",
+          input: "hi",
+          text: { format: { type: "json_schema", name: "answer", schema: { type: "object" } } },
+        }),
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("invalid_request_error");
+    expect(body.error.message).toContain("tool");
+    // And the upstream was never asked: there was nothing to ask it.
+    expect(calls).toHaveLength(0);
+  });
+
   it("bills the call once, on the row that served it", async () => {
     // The request changed shape twice on the way out and twice on the way
     // back. That must not turn into two usage rows.

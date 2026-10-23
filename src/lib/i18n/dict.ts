@@ -500,7 +500,7 @@ const zhCN: Dict = {
   "docs.gemini.streaming":
     "流式：文字是逐块到达的。上游说什么协议（Responses / Chat Completions / Anthropic Messages / Gemini），网关把它的帧翻译成 Gemini 的形状 —— 逐块仍然是逐块。",
   "docs.gemini.limits":
-    "两处会掉信息，说在前面：thinkingConfig.thinkingBudget 只有一个取值能原样翻译（0，等于「不要思考」），别的预算值在这里丢掉 —— 要固定预算，在管理员的协议规则里写死；safetySettings 没有别的协议有对应字段，也丢掉。",
+    "三处会掉信息，说在前面：thinkingConfig.thinkingBudget 只有一个取值能原样翻译（0，等于「不要思考」），别的预算值在这里丢掉 —— 要固定预算，在管理员的协议规则里写死；safetySettings 没有别的协议有对应字段，也丢掉；上游是 Anthropic Messages 时，「要一段 JSON」那种请求会被**拒绝**（400），而不是给一段散文 —— Anthropic 没有这个模式，它自己的做法是用带 schema 的工具。图片会带过去：data URL 变成上游的 base64 或 inlineData，远程地址变成 Anthropic 的 url 源。",
   "docs.gemini.anyVendor":
     "厂商只提供 Anthropic 端点、或只提供 Google 原生 Gemini 端点，都能用这一套 Gemini 接口，网关负责转换。",
   "docs.gemini.modelsTitle": "模型列表",
@@ -765,7 +765,7 @@ const zhCN: Dict = {
   "admin.providers.format.hint.chat":
     "客户端调 /v1/responses 时，网关先把请求降级成 Chat Completions 发给上游，再把响应转回 Responses。",
   "admin.providers.format.hint.anthropic":
-    "上游说 Anthropic Messages（/v1/messages）。OpenAI 侧的请求由网关转成 Anthropic 的形状再发出去，答案再转回来。转换会让流式回答变成一次性返回。",
+    "上游说 Anthropic Messages（/v1/messages）。OpenAI 侧的请求由网关转成 Anthropic 的形状再发出去，答案再转回来。图片会带过去（data URL 变成 base64，远程地址变成 url 源）。但 Anthropic 没有「要一段 JSON」这个模式 —— 那种请求会被拒绝（400），而不是给一段散文；它自己的做法是用带 schema 的工具。",
   "admin.providers.format.hint.gemini":
     "上游是 Google 原生 Gemini 接口。网关把请求转成 Gemini 的形状（contents / systemInstruction / generationConfig），上游答完再转回客户端要的那一套。流式回答会整段一次送到。",
   "admin.providers.faces.openai.label": "OpenAI 侧 — /v1/chat/completions、/v1/responses",
@@ -1984,7 +1984,7 @@ const en: Dict = {
   "docs.gemini.streaming":
     "On a stream the text arrives piece by piece. Whatever dialect the upstream speaks (Responses, Chat Completions, Anthropic Messages or Gemini), the gateway translates its frames into Gemini's shape — piece by piece is still piece by piece.",
   "docs.gemini.limits":
-    "Two things are lost on the way, said up front: a thinkingConfig.thinkingBudget only translates exactly at one value (0, which means \"do not think\"); other budgets are dropped here — pin one in the administrator's protocol rules instead. safetySettings has no equivalent field in any other protocol, and is dropped too.",
+    "Three things are lost on the way, said up front: a thinkingConfig.thinkingBudget only translates exactly at one value (0, which means \"do not think\"); other budgets are dropped here — pin one in the administrator's protocol rules instead. safetySettings has no equivalent field in any other protocol, and is dropped too. And with an Anthropic Messages upstream, a request that asks for a piece of JSON is **refused** (400) rather than answered with prose — Anthropic has no such mode; its own way of asking for JSON is a tool with a schema. Pictures do travel: a data URL becomes the upstream's base64 or inlineData, and a remote address becomes Anthropic's url source.",
   "docs.gemini.anyVendor":
     "A vendor that only publishes an Anthropic endpoint — or only Google's native Gemini endpoint — can be called through these Gemini endpoints as well, because the gateway does the conversion.",
   "docs.gemini.modelsTitle": "Model list",
@@ -2251,7 +2251,7 @@ const en: Dict = {
   "admin.providers.format.hint.chat":
     "A client calling /v1/responses is downgraded to Chat Completions on the way up, and the reply is converted back to Responses.",
   "admin.providers.format.hint.anthropic":
-    "The upstream speaks Anthropic Messages (/v1/messages). The gateway rewrites the OpenAI side's request into Anthropic's shape and the answer back. The translation makes a streamed answer arrive in one piece.",
+    "The upstream speaks Anthropic Messages (/v1/messages). The gateway rewrites the OpenAI side's request into Anthropic's shape and the answer back. Pictures travel (a data URL becomes base64, a remote address becomes a url source). But Anthropic has no \"ask for a piece of JSON\" mode — such a request is refused (400) rather than answered with prose; its own way of asking for JSON is a tool with a schema.",
   "admin.providers.format.hint.gemini":
     "The upstream is Google's own Gemini API. The gateway rewrites the request into Gemini's shape (contents / systemInstruction / generationConfig) and the answer back into the one the client asked for. A streamed answer arrives in one piece.",
   "admin.providers.faces.openai.label": "OpenAI side — /v1/chat/completions, /v1/responses",
