@@ -33,6 +33,7 @@ export function emptyFormValues(): ProviderFormValues {
     baseUrl: "",
     apiKey: "",
     priority: "1",
+    weight: "0",
     enabled: true,
     headers: "",
     faces: {
@@ -54,6 +55,7 @@ export function formValuesFromProvider(provider: ProviderRecord): ProviderFormVa
     baseUrl: provider.baseUrl ?? "",
     apiKey: "",
     priority: String(provider.priority ?? "1"),
+    weight: String(provider.weight ?? "0"),
     enabled: provider.enabled,
     headers: headersToText(provider.headers),
     faces: facesFromProvider(provider),

@@ -32,6 +32,7 @@ function makeKey(overrides: Partial<ApiKey> = {}): ApiKey {
     enabled: true,
     forceDisabled: false,
     allowedModels: [],
+    allowedIps: [],
     createdAt: "2026-09-01T00:00:00Z",
     lastUsedAt: null,
     ...overrides,
@@ -57,6 +58,7 @@ function makeUser(overrides: Partial<User> = {}): User {
     quotaUsed: 0,
     maxActiveKeys: 0,
     allowedModels: [],
+    rpmLimit: 0,
     ...overrides,
   };
 }
@@ -66,8 +68,8 @@ async function seedKey(key: ApiKey, user: User = makeUser()): Promise<string> {
   run(
     `INSERT INTO api_keys
        (id, user_id, label, key_hash, key_prefix, expires_at,
-        force_disabled, enabled, allowed_models, created_at, last_used_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+        force_disabled, enabled, allowed_models, allowed_ips, created_at, last_used_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       key.id,
       key.userId,
@@ -78,6 +80,7 @@ async function seedKey(key: ApiKey, user: User = makeUser()): Promise<string> {
       toDbBool(key.forceDisabled),
       toDbBool(key.enabled),
       JSON.stringify(key.allowedModels),
+      JSON.stringify(key.allowedIps),
       key.createdAt,
       key.lastUsedAt ?? null,
     ],
@@ -90,8 +93,8 @@ async function seedUser(user: User): Promise<void> {
     `INSERT INTO users
        (id, username, password_hash, role, display_name, timezone,
         created_at, updated_at, last_login_at, quota_type, quota_limit,
-        quota_used, max_active_keys, allowed_models)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        quota_used, max_active_keys, allowed_models, rpm_limit)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       user.id,
       user.username,
@@ -107,6 +110,7 @@ async function seedUser(user: User): Promise<void> {
       user.quotaUsed,
       user.maxActiveKeys,
       JSON.stringify(user.allowedModels),
+      user.rpmLimit,
     ],
   );
 }

@@ -93,12 +93,20 @@ export interface CreateApiKeyInput {
   expiresAt?: string | null;
   /** Optional narrowing of the owner's model whitelist. */
   allowedModels?: string[];
+  /**
+   * Client addresses allowed to use this key. Empty = no restriction.
+   *
+   * A key is a bearer token, so this is what makes a leaked key useless
+   * somewhere else: an exact address, or an IPv4 network.
+   */
+  allowedIps?: string[];
 }
 
 export interface UpdateApiKeyInput {
   label?: string;
   expiresAt?: string | null;
   allowedModels?: string[];
+  allowedIps?: string[];
   enabled?: boolean;
   forceDisabled?: boolean;
 }
@@ -135,6 +143,7 @@ export async function createApiKey(input: CreateApiKeyInput): Promise<ApiKeyWith
     forceDisabled: false,
     enabled: true,
     allowedModels: input.allowedModels ?? [],
+    allowedIps: input.allowedIps ?? [],
     createdAt: now,
     lastUsedAt: null,
   });
@@ -152,8 +161,8 @@ export async function createApiKey(input: CreateApiKeyInput): Promise<ApiKeyWith
     run(
       `INSERT INTO api_keys
          (id, user_id, label, key_hash, key_prefix, expires_at,
-          force_disabled, enabled, allowed_models, created_at, last_used_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+          force_disabled, enabled, allowed_models, allowed_ips, created_at, last_used_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         apiKey.id,
         apiKey.userId,
@@ -164,6 +173,7 @@ export async function createApiKey(input: CreateApiKeyInput): Promise<ApiKeyWith
         toDbBool(apiKey.forceDisabled),
         toDbBool(apiKey.enabled),
         JSON.stringify(apiKey.allowedModels),
+        JSON.stringify(apiKey.allowedIps),
         apiKey.createdAt,
         apiKey.lastUsedAt,
       ],
@@ -358,6 +368,7 @@ export async function updateApiKey(
       label: patch.label ?? existing.label,
       expiresAt: patch.expiresAt === undefined ? existing.expiresAt : patch.expiresAt,
       allowedModels: patch.allowedModels ?? existing.allowedModels,
+      allowedIps: patch.allowedIps ?? existing.allowedIps,
       enabled: patch.enabled === undefined ? existing.enabled : patch.enabled,
       forceDisabled:
         patch.forceDisabled === undefined ? existing.forceDisabled : patch.forceDisabled,
@@ -369,13 +380,14 @@ export async function updateApiKey(
     // to enumerate them just to avoid clobbering them.
     run(
       `UPDATE api_keys
-          SET label = ?, expires_at = ?, allowed_models = ?,
+          SET label = ?, expires_at = ?, allowed_models = ?, allowed_ips = ?,
               enabled = ?, force_disabled = ?
         WHERE id = ?`,
       [
         merged.label,
         merged.expiresAt,
         JSON.stringify(merged.allowedModels),
+        JSON.stringify(merged.allowedIps),
         toDbBool(merged.enabled),
         toDbBool(merged.forceDisabled),
         keyId,

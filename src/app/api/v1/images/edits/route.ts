@@ -11,7 +11,7 @@
  * `relay.edit_mode` in `/v1/models`.
  */
 import { NextResponse } from "next/server";
-import { authenticateBearer, reasonToHttp, resolveAuthHeader } from "@/lib/auth/apikey";
+import { authenticateRequest, reasonToHttp } from "@/lib/auth/apikey";
 import { getUserById as lookupUserById } from "@/lib/db/users";
 import { proxyError, quotaHeaders } from "@/lib/proxy/errors";
 import { executeMediaRequest, fileToDataUrl, imageItemsResponse, requirePrompt, resultItems, type MediaRequestInput } from "@/lib/media/handler";
@@ -33,8 +33,7 @@ export async function POST(req: Request): Promise<Response> {
 
   const model = form.get("model");
   const requestedModel = typeof model === "string" ? model : "";
-  const auth = await authenticateBearer({
-    authHeader: resolveAuthHeader(req),
+  const auth = await authenticateRequest(req, {
     requestedModel,
   });
   if (!auth.ok || !auth.key) {

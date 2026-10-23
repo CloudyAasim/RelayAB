@@ -154,6 +154,9 @@ const zhCN: Dict = {
   "dashboard.createKey.labelPlaceholder": "例如：日常工作",
   "dashboard.createKey.expiresAt": "过期时间（可选）",
   "dashboard.createKey.expiresAtHint": "留空表示永不过期。",
+  "dashboard.createKey.allowedIps": "允许的客户端地址（可选）",
+  "dashboard.createKey.allowedIpsHint":
+    "一行一个。可以写精确地址（203.0.113.7），也可以写 IPv4 网段（203.0.113.0/24）。留空表示不限制 —— 密钥泄露后在任何地方都能用，这正是这一栏要防的事。",
   "dashboard.createKey.inheritsTitle": "管理员为你配置的额度（每把密钥都一样）：",
   "dashboard.createKey.inheritsQuota": "每把密钥额度",
   "dashboard.createKey.inheritsModels": "可用模型",
@@ -622,6 +625,10 @@ const zhCN: Dict = {
   "admin.users.allocation.allowedModelsHint": "留空表示允许全部已配置提供商中的模型。",
   "admin.users.allocation.maxActiveKeysLabel": "活跃密钥数上限",
   "admin.users.allocation.maxActiveKeysHint": "0 表示无上限。用户的已启用 密钥 超过此值时不能再创建新 密钥。",
+  "admin.users.allocation.rpmLimit": "每分钟请求上限",
+  "admin.users.allocation.rpmLimitLabel": "每分钟请求上限",
+  "admin.users.allocation.rpmLimitHint":
+    "0 表示不限制。这个上限算在账号上，不在密钥上 —— 算在密钥上的话，再建一把密钥就绕过去了。超了会返回 429。",
 
   // ===== Admin Keys =====
   "admin.keys.title": "接口密钥",
@@ -687,6 +694,9 @@ const zhCN: Dict = {
   "admin.providers.create.apiKey": "接口密钥",
   "admin.providers.create.modelMapping": "模型映射（JSON）",
   "admin.providers.create.priority": "优先级",
+  "admin.providers.create.weight": "权重",
+  "admin.providers.create.weightHint":
+    "同一个优先级里，按权重比例分流。0 表示不主动分流给它 —— 它只在前面几家都失败时才顶上（备胎）。两家的权重都留空时，仍然按名称顺序，第一家永远先上。",
   "admin.providers.create.submit": "添加",
   "admin.providers.table.interfaces": "接口",
   "admin.providers.table.hasRule": "有规则",
@@ -820,6 +830,9 @@ const zhCN: Dict = {
   "admin.settings.publicUrlDescription": "设置用户在文档中看到的API访问地址。如果配置了环境变量RELAY_PUBLIC_URL，将优先使用环境变量中的值。",
   "admin.settings.envConfigured": "环境变量已配置",
   "admin.settings.envOverride": "数据库设置会覆盖环境变量配置。",
+  "admin.settings.maxProviderAttempts": "故障转移次数上限",
+  "admin.settings.maxProviderAttemptsHint":
+    "一个请求最多试几家上游。第一家失败（网络错误、5xx、429、上游拒绝它的密钥）就换下一家。实际次数不超过该模型真正配置了几家 —— 只有一个上游时，重试只是把失败拖慢一倍。",
 
   // ===== Admin docs (admin-only) =====
   "admin.docs.title": "管理员文档",
@@ -1365,6 +1378,7 @@ const zhCN: Dict = {
   "docs.catalog.kind": "类型",
   "docs.catalog.base": "基础地址",
   "docs.catalog.priority": "优先级",
+  "docs.catalog.weight": "权重",
   "docs.catalog.format": "接口格式",
   "docs.catalog.endpoint": "端点",
   "docs.catalog.upstream": "上游模型",
@@ -1561,6 +1575,9 @@ const en: Dict = {
   "dashboard.createKey.labelPlaceholder": "e.g. Daily driver",
   "dashboard.createKey.expiresAt": "Expires at (optional)",
   "dashboard.createKey.expiresAtHint": "Leave blank for no expiry.",
+  "dashboard.createKey.allowedIps": "Allowed client addresses (optional)",
+  "dashboard.createKey.allowedIpsHint":
+    "One rule per line. An exact address (203.0.113.7) or an IPv4 network (203.0.113.0/24). Blank means no restriction — which is exactly the problem: a leaked key then works from anywhere.",
   "dashboard.createKey.inheritsTitle": "Per-key quota (inherited from your admin):",
   "dashboard.createKey.inheritsQuota": "Quota per key",
   "dashboard.createKey.inheritsModels": "Allowed models",
@@ -2035,6 +2052,10 @@ const en: Dict = {
   "admin.users.allocation.allowedModelsHint": "Empty = every model in any configured provider.",
   "admin.users.allocation.maxActiveKeysLabel": "Active-key cap",
   "admin.users.allocation.maxActiveKeysHint": "0 = no cap. The user cannot create a new key once their enabled keys reach this limit.",
+  "admin.users.allocation.rpmLimit": "Requests per minute",
+  "admin.users.allocation.rpmLimitLabel": "Requests per minute",
+  "admin.users.allocation.rpmLimitHint":
+    "0 = no limit. The limit is on the account, not on the key — a limit on the key is undone by minting another one. Over the limit answers 429.",
 
   // ===== Admin Keys =====
   "admin.keys.title": "API keys",
@@ -2100,6 +2121,9 @@ const en: Dict = {
   "admin.providers.create.apiKey": "API key",
   "admin.providers.create.modelMapping": "Model Mapping (JSON)",
   "admin.providers.create.priority": "Priority",
+  "admin.providers.create.weight": "Weight",
+  "admin.providers.create.weightHint":
+    "Within one priority, the traffic is split by weight. 0 means it is not drawn from proactively — it only takes over when the ones ahead of it fail (a standby). With every weight left blank the order is still by name, so the first provider always goes first.",
   "admin.providers.create.submit": "Add",
   "admin.providers.table.interfaces": "Interfaces",
   "admin.providers.table.hasRule": "rule",
@@ -2236,6 +2260,9 @@ const en: Dict = {
   "admin.settings.publicUrlDescription": "Set the API URL shown to users in documentation. If RELAY_PUBLIC_URL environment variable is set, it will be used as fallback.",
   "admin.settings.envConfigured": "Environment variable configured",
   "admin.settings.envOverride": "Database settings will override environment variable.",
+  "admin.settings.maxProviderAttempts": "Failover attempts",
+  "admin.settings.maxProviderAttemptsHint":
+    "How many upstreams one request may be tried against. The first one that fails — a network error, a 5xx, a 429, an upstream that rejects its key — hands the request to the next. Never more attempts than there are providers for the model, so a deployment with one upstream is merely slower when it fails.",
 
   // ===== Admin docs (admin-only) =====
   "admin.docs.title": "Admin Docs",
@@ -2802,6 +2829,7 @@ const en: Dict = {
   "docs.catalog.kind": "Kind",
   "docs.catalog.base": "Base URL",
   "docs.catalog.priority": "Priority",
+  "docs.catalog.weight": "Weight",
   "docs.catalog.format": "Upstream format",
   "docs.catalog.endpoint": "Endpoint",
   "docs.catalog.upstream": "Upstream model",

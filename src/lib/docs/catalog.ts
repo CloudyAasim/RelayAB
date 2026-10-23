@@ -90,6 +90,8 @@ export interface CatalogModel {
     kind: "chat" | "media";
     baseUrl: string | null;
     priority: number | null;
+    /** Share of the traffic within the priority tier. 0 = standby. */
+    weight: number | null;
     enabled: boolean;
     /** Chat only: which upstream format the provider speaks. */
     upstreamFormat: string | null;
@@ -215,6 +217,7 @@ export async function buildModelCatalog(): Promise<ModelCatalog> {
           kind: "chat",
           baseUrl: provider.baseUrl ?? null,
           priority: provider.priority,
+          weight: provider.weight,
           enabled: provider.enabled,
           upstreamFormat: provider.upstreamFormat,
           endpoint: null,
@@ -268,6 +271,9 @@ export async function buildModelCatalog(): Promise<ModelCatalog> {
           kind: "media",
           baseUrl: provider.baseUrl ?? null,
           priority: provider.priority,
+          // Media providers are chosen by capability and price, not by a
+          // traffic split, so there is no weight to show.
+          weight: null,
           enabled: provider.enabled,
           upstreamFormat: null,
           // The path the spec posts to. For a reader choosing between two

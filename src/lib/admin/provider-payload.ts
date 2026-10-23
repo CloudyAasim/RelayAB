@@ -36,6 +36,11 @@ export interface ProviderRecord {
   modelConfigs: Record<string, unknown>;
   enabled: boolean;
   priority?: number;
+  /**
+   * Share of the traffic, relative to the other providers in the same
+   * priority tier. 0 = not drawn from proactively (a standby).
+   */
+  weight?: number;
   headers?: Record<string, string> | null;
   upstreamFormat?: UpstreamFormat;
   openaiEnabled?: boolean;
@@ -53,6 +58,11 @@ export interface ProviderFormValues {
   baseUrl: string;
   apiKey: string;
   priority: string;
+  /**
+   * Share of the traffic. Kept as a string, like every other number in this
+   * form, because that is what an `<input type="number">` holds.
+   */
+  weight: string;
   enabled: boolean;
   headers: string;
   faces: ProviderFacesValue;
@@ -75,6 +85,11 @@ export interface ProviderPayload {
   baseUrl: string | null;
   apiKey?: string;
   priority: number;
+  /**
+   * Share of the traffic, relative to the other providers in the same
+   * priority tier. 0 = not drawn from proactively (a standby).
+   */
+  weight: number;
   enabled: boolean;
   headers?: Record<string, string>;
   openaiEnabled: boolean;
@@ -137,7 +152,7 @@ export function buildProviderPayload(
   options: ProviderPayloadOptions = {},
 ): ProviderPayload {
   const { modelMapping, modelConfigs } = rowsToPayload(values.modelRows);
-  const { name, kind, baseUrl, apiKey, priority, enabled, headers, faces } = values;
+  const { name, kind, baseUrl, apiKey, priority, weight, enabled, headers, faces } = values;
 
   return {
     name: name || options.nameFallback || "",
@@ -145,6 +160,9 @@ export function buildProviderPayload(
     baseUrl: baseUrl || null,
     ...(apiKey ? { apiKey: options.apiKey ?? apiKey } : {}),
     priority: Number(priority) || 0,
+    // A negative weight is not a share, it is a mistake. It is clamped to 0,
+    // which reads as "standby" — the same as leaving the field alone.
+    weight: Math.max(0, Number(weight) || 0),
     enabled,
     ...(parseHeaders(headers) ? { headers: parseHeaders(headers) } : {}),
     openaiEnabled: faces.openaiEnabled,

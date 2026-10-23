@@ -9,7 +9,7 @@
  * conversion for Chat/Anthropic-only providers now lives in
  * `proxyOpenAIResponse`, so both paths behave identically.
  */
-import { authenticateBearer, reasonToHttp, resolveAuthHeader } from "@/lib/auth/apikey";
+import { authenticateRequest, reasonToHttp } from "@/lib/auth/apikey";
 import { proxyError } from "@/lib/proxy/errors";
 import { proxyOpenAIResponse } from "@/lib/proxy/openai";
 import { proxyResultToResponse } from "@/lib/proxy/respond";
@@ -34,8 +34,7 @@ export async function POST(req: Request): Promise<Response> {
     typeof body === "object" && body !== null && "model" in body
       ? String((body as Record<string, unknown>).model ?? "")
       : "";
-  const auth = await authenticateBearer({
-    authHeader: resolveAuthHeader(req),
+  const auth = await authenticateRequest(req, {
     requestedModel,
   });
 

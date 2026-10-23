@@ -23,7 +23,7 @@
  * with nothing to authenticate against.
  */
 import { NextResponse } from "next/server";
-import { authenticateBearer, reasonToHttp, resolveAuthHeader } from "@/lib/auth/apikey";
+import { authenticateRequest, reasonToHttp } from "@/lib/auth/apikey";
 import { getUserById } from "@/lib/db/users";
 import { collectVoiceCatalogue } from "@/lib/media/voices";
 import { proxyError, quotaHeaders } from "@/lib/proxy/errors";
@@ -31,8 +31,7 @@ import { proxyError, quotaHeaders } from "@/lib/proxy/errors";
 export const runtime = "nodejs";
 
 export async function GET(req: Request): Promise<Response> {
-  const auth = await authenticateBearer({
-    authHeader: resolveAuthHeader(req),
+  const auth = await authenticateRequest(req, {
     // Reading a list spends nothing, so an empty pool cannot be a reason to
     // refuse — same reasoning as /v1/credits, and for the same reason: the
     // question gets asked precisely when the balance is short.

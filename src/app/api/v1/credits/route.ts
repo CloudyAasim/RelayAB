@@ -32,7 +32,7 @@
  * about a shared account, not something this endpoint could arrange away.
  */
 import { NextResponse } from "next/server";
-import { authenticateBearer, reasonToHttp, resolveAuthHeader } from "@/lib/auth/apikey";
+import { authenticateRequest, reasonToHttp } from "@/lib/auth/apikey";
 import { getUserById } from "@/lib/db/users";
 import { CREDIT_SCALE } from "@/lib/quota/credits";
 import { proxyError, quotaHeaders } from "@/lib/proxy/errors";
@@ -40,8 +40,7 @@ import { proxyError, quotaHeaders } from "@/lib/proxy/errors";
 export const runtime = "nodejs";
 
 export async function GET(req: Request): Promise<Response> {
-  const auth = await authenticateBearer({
-    authHeader: resolveAuthHeader(req),
+  const auth = await authenticateRequest(req, {
     // Reading the balance spends nothing, so an empty pool cannot be a reason to
     // refuse. Without this the endpoint answers only while there is credit left —
     // useless in exactly the situation it was added for.

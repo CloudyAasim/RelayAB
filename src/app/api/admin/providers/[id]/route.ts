@@ -17,6 +17,8 @@ export const PatchSchema = z.object({
   modelConfigs: z.record(z.string(), ModelConfigPatchSchema).optional(),
   enabled: z.boolean().optional(),
   priority: z.number().int().optional(),
+  /** Share of the traffic within the priority tier. 0 = standby. */
+  weight: z.number().int().nonnegative().optional(),
   headers: z.record(z.string(), z.string()).optional(),
   upstreamFormat: z.enum(["responses", "chat", "anthropic"]).optional(),
   openaiEnabled: z.boolean().optional(),

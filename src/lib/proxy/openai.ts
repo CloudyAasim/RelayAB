@@ -31,6 +31,9 @@ import { ssePassthrough } from "./stream-tap";
 import { providerFaces, type ApiKey, type Provider, type User } from "../db/types";
 import { applyParameterPolicy } from "../protocol/parameter-policy";
 import { readTextSpecs, specForSurface, activeSpecFor } from "../protocol/text-specs";
+import { orderCandidates } from "./selection";
+import { runWithFailover, upstreamFailureIsRetryable } from "./failover";
+import { getMaxProviderAttempts } from "../db/settings";
 
 
 // ---------------------------------------------------------------------------
@@ -580,6 +583,19 @@ export interface ProxyResult {
    * narrow it themselves; `respond.ts` is the one that has to.
    */
   error?: { code: string; message: string };
+  /**
+   * Whether another upstream might do better.
+   *
+   * Set by the attempt that produced this result, and it is the only thing
+   * that decides whether the request moves on to the next provider. A network
+   * error, a 5xx, a 429 or a rejected upstream key all mean "this provider
+   * could not serve it"; a 400 or a 404 mean the *request* is the problem, and
+   * asking a different provider would only produce the same answer.
+   *
+   * Absent means "do not retry" — the safe reading, because retrying a request
+   * that was never going to succeed costs the client another round trip.
+   */
+  retryable?: boolean;
 }
 
 export interface ProxyDeps {
@@ -665,8 +681,7 @@ export async function proxyChatCompletion(args: {
   signal?: AbortSignal;
   deps?: ProxyDeps;
 }): Promise<ProxyResult> {
-  const { req, apiKey, user, signal, deps } = args;
-  const fetchImpl = deps?.fetchImpl ?? fetch;
+  const { req, apiKey, user } = args;
 
   if (!req.model) {
     return { ok: false, status: 400, error: { code: "missing_model", message: "model is required" } };
@@ -688,7 +703,7 @@ export async function proxyChatCompletion(args: {
     return { ok: false, status: http.status, error: { code: http.code, message: http.message } };
   }
 
-  // 2. Pick a provider that supports this model.
+  // 2. Pick the providers that can serve this model, and order them.
   // Anthropic-format providers cannot accept a Chat Completions body, so they
   // are only eligible for the /anthropic endpoint.
   const providers = (await findProvidersForModel(req.model)).filter(
@@ -701,7 +716,44 @@ export async function proxyChatCompletion(args: {
       error: { code: "model_not_mapped", message: `No provider configured for model '${req.model}'` },
     };
   }
-  const provider = providers[0];
+
+  // The order IS the failover order: the first entry serves the request and
+  // the rest are what a failure reaches for. A tier in which nobody carries a
+  // weight keeps the order it always had.
+  const ordered = orderCandidates(providers);
+  const maxAttempts = await getMaxProviderAttempts();
+  const result = await runWithFailover({
+    candidates: ordered,
+    maxAttempts,
+    attempt: (provider) => proxyChatCompletionViaProvider({ ...args, provider }),
+  });
+  return (
+    result ?? {
+      ok: false,
+      status: 502,
+      error: { code: "upstream_error", message: "No upstream could serve this request" },
+    }
+  );
+}
+
+/**
+ * One attempt at a Chat Completions request against one provider.
+ *
+ * Split out from {@link proxyChatCompletion} so that the failover loop can
+ * hand it the next provider. Everything it does is about **this** provider:
+ * the upstream model name, the URL, the key, the parameter policy, and the
+ * usage that is settled once the response is in.
+ */
+async function proxyChatCompletionViaProvider(args: {
+  req: ChatCompletionRequest;
+  apiKey: ApiKey;
+  user: User;
+  signal?: AbortSignal;
+  deps?: ProxyDeps;
+  provider: Provider;
+}): Promise<ProxyResult> {
+  const { req, apiKey, user, signal, deps, provider } = args;
+  const fetchImpl = deps?.fetchImpl ?? fetch;
   const upstreamModel = provider.modelMapping[req.model];
 
   // 3. Resolve the upstream URL.
@@ -755,7 +807,13 @@ export async function proxyChatCompletion(args: {
     });
   } catch (err) {
     await recordFailure({ apiKey, provider, model: req.model, upstreamModel, error: err });
-    return { ok: false, status: 502, error: { code: "upstream_error", message: String(err) } };
+    // The provider could not be reached at all. Another one may be.
+    return {
+      ok: false,
+      status: 502,
+      error: { code: "upstream_error", message: String(err) },
+      retryable: true,
+    };
   }
 
   // Streaming: pipe the upstream SSE through to the client and bill on flush.
@@ -798,6 +856,7 @@ export async function proxyChatCompletion(args: {
         code: "upstream_error",
         message: upstreamRefusal(response.status, detail),
       },
+      retryable: upstreamFailureIsRetryable(response.status),
     };
   }
 
@@ -925,12 +984,16 @@ export async function proxyOpenAIResponse(args: {
     return { ok: false, status: http.status, error: { code: http.code, message: http.message } };
   }
 
-  // 2. Pick the provider and honour the protocol it was configured with.
+  // 2. Pick the providers that can serve this model, and order them.
   //
-  // One protocol, no automatic switching: if a vendor was declared as speaking
-  // Chat Completions, the request goes out as Chat Completions and a failure is
-  // reported as a failure. Silently retrying over a different protocol hides
-  // real breakage (and paid for a doomed round trip on every request).
+  // One protocol per provider, no automatic switching: if a vendor was
+  // declared as speaking Chat Completions, the request goes out as Chat
+  // Completions. Silently retrying over a *different protocol* hides real
+  // breakage (and paid for a doomed round trip on every request).
+  //
+  // Failing over to another provider **of the same face** is a different
+  // thing, and is what the attempt loop below does: the next provider serves
+  // the model in its own protocol, which is what the client asked for.
   const providers = await findOpenAIProvidersForModel(req.model);
   if (providers.length === 0) {
     return {
@@ -939,12 +1002,27 @@ export async function proxyOpenAIResponse(args: {
       error: { code: "model_not_mapped", message: `No provider configured for model '${req.model}'` },
     };
   }
-  const provider = providers[0];
-  const format = providerFaces(provider).openai?.format;
-  if (format === "chat") {
-    return proxyResponsesViaChat({ req, apiKey, user, signal, deps });
-  }
-  return proxyResponsesNative({ req, apiKey, user, signal, deps, provider });
+
+  const ordered = orderCandidates(providers);
+  const maxAttempts = await getMaxProviderAttempts();
+  const result = await runWithFailover({
+    candidates: ordered,
+    maxAttempts,
+    attempt: (provider) => {
+      const format = providerFaces(provider).openai?.format;
+      if (format === "chat") {
+        return proxyResponsesViaChat({ req, apiKey, user, signal, deps, provider });
+      }
+      return proxyResponsesNative({ req, apiKey, user, signal, deps, provider });
+    },
+  });
+  return (
+    result ?? {
+      ok: false,
+      status: 502,
+      error: { code: "upstream_error", message: "No upstream could serve this request" },
+    }
+  );
 }
 
 /**
@@ -1008,10 +1086,12 @@ async function proxyResponsesNative(args: {
     });
   } catch (err) {
     await recordFailureResponses({ apiKey, provider, model: req.model, upstreamModel, error: err });
+    // The provider could not be reached at all. Another one may be.
     return {
       ok: false,
       status: 502,
       error: { code: "upstream_error", message: String(err) },
+      retryable: true,
     };
   }
 
@@ -1033,6 +1113,7 @@ async function proxyResponsesNative(args: {
         code: "upstream_error",
         message: upstreamRefusal(response.status, detail),
       },
+      retryable: upstreamFailureIsRetryable(response.status),
     };
   }
 
@@ -1334,17 +1415,26 @@ async function proxyResponsesViaChat(args: {
   user: User;
   signal?: AbortSignal;
   deps?: ProxyDeps;
+  provider: Provider;
 }): Promise<ProxyResult> {
-  const { req, apiKey, user, signal, deps } = args;
-  const chatResult = await proxyChatCompletion({
+  const { req, apiKey, user, signal, deps, provider } = args;
+  const chatResult = await proxyChatCompletionViaProvider({
     req: responsesToChatRequest(req),
     apiKey,
     user,
     signal,
     deps,
+    provider,
   });
   if (!chatResult.ok) {
-    return { ok: false, status: chatResult.status, error: chatResult.error };
+    // The retryability travels with the failure: it is what tells the
+    // failover loop whether another provider is worth trying.
+    return {
+      ok: false,
+      status: chatResult.status,
+      error: chatResult.error,
+      retryable: chatResult.retryable,
+    };
   }
   return {
     ok: true,

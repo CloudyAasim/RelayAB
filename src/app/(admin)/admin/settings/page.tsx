@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { cachedGetSettings } from "@/lib/db/data-cache";
+import { DEFAULT_MAX_PROVIDER_ATTEMPTS } from "@/lib/db/settings";
 import { loadConfig } from "@/lib/config";
 import { Card } from "@/components/ui/Card";
 import { SectionPageLayout } from "@/components/layouts";
@@ -36,11 +37,15 @@ export default async function SettingsPage() {
   // empty one, and a required key that is always undefined is a different type
   // than the one the form takes.
   let site: SiteDocsValues = {};
+  // How many providers a request may be tried against. The default is the
+  // code's, and the field shows whichever of the two is in force.
+  let maxAttempts = DEFAULT_MAX_PROVIDER_ATTEMPTS;
 
   try {
     const settings = await cachedGetSettings();
     dbPublicUrl = settings.publicUrl;
     docsPages = settings.docPages ?? [];
+    maxAttempts = settings.maxProviderAttempts ?? DEFAULT_MAX_PROVIDER_ATTEMPTS;
     site = {
       ...(settings.siteName !== undefined && { siteName: settings.siteName }),
       ...(settings.siteDescription !== undefined && { siteDescription: settings.siteDescription }),
@@ -76,7 +81,11 @@ export default async function SettingsPage() {
                 <p className="text-sm text-muted-foreground mb-4">
                   {t("admin.settings.publicUrlDescription")}
                 </p>
-                <SettingsForm currentUrl={currentUrl} envConfigured={!!envPublicUrl} />
+                <SettingsForm
+                  currentUrl={currentUrl}
+                  envConfigured={!!envPublicUrl}
+                  maxProviderAttempts={maxAttempts}
+                />
               </div>
             </div>
           </Card>

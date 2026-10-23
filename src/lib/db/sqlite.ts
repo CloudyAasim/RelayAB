@@ -270,6 +270,16 @@ CREATE TABLE IF NOT EXISTS login_throttle (
   expires_at INTEGER NOT NULL
 );
 
+-- Request counters for the per-user rate limit in lib/auth/rate-limit.ts.
+-- The same shape as login_throttle, for the same reason: a counter that is
+-- written on every request and must never collide with application data.
+-- expires_at is epoch seconds so the rolling window is an integer compare.
+CREATE TABLE IF NOT EXISTS api_rate_limit (
+  key        TEXT PRIMARY KEY,
+  count      INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+
 -- The AI assistant runs on the *user's own* upstream key rather than on the
 -- admin's providers, so the configuration is per user: one row per person,
 -- absent until they set it up. encrypted_api_key uses the same master key as
@@ -688,6 +698,18 @@ const ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; type: string
   // before this existed: they are still the deployment's service, they just
   // cannot be named yet.
   { table: "search_providers", column: "service_id", type: "TEXT NOT NULL DEFAULT ''" },
+  // How much of the traffic a provider takes, relative to the others in its
+  // priority tier. 0 = not drawn from proactively (a standby that only serves
+  // when the ones ahead of it fail), so a deployment that never sets a
+  // weight behaves exactly as it did before this column existed.
+  { table: "providers", column: "weight", type: "INTEGER NOT NULL DEFAULT 0" },
+  // The client addresses allowed to use a key. Empty JSON array = no
+  // restriction, which is what every key that existed before this column
+  // means.
+  { table: "api_keys", column: "allowed_ips", type: "TEXT NOT NULL DEFAULT '[]'" },
+  // Requests per minute the account may make, across all of its keys.
+  // 0 = no limit.
+  { table: "users", column: "rpm_limit", type: "INTEGER NOT NULL DEFAULT 0" },
 ];
 
 function addColumnIfMissing(
@@ -835,6 +857,7 @@ export function rowToUser(row: Record<string, unknown>): User {
     quotaUsed: row.quota_used,
     maxActiveKeys: row.max_active_keys,
     allowedModels: parseJson<string[]>(String(row.allowed_models ?? "[]"), []),
+    rpmLimit: Number(row.rpm_limit ?? 0),
   });
 }
 
@@ -849,6 +872,7 @@ export function rowToApiKey(row: Record<string, unknown>): ApiKey {
     forceDisabled: fromDbBool(row.force_disabled),
     enabled: fromDbBool(row.enabled),
     allowedModels: parseJson<string[]>(String(row.allowed_models ?? "[]"), []),
+    allowedIps: parseJson<string[]>(String(row.allowed_ips ?? "[]"), []),
     createdAt: row.created_at,
     lastUsedAt: row.last_used_at ?? null,
   });
@@ -865,6 +889,7 @@ export function rowToProvider(row: Record<string, unknown>): Provider {
     modelConfigs: parseJson(String(row.model_configs ?? "{}"), {}),
     enabled: fromDbBool(row.enabled),
     priority: row.priority,
+    weight: Number(row.weight ?? 0),
     headers: parseJson<Record<string, string>>(String(row.headers ?? "{}"), {}),
     upstreamFormat: row.upstream_format,
     openaiEnabled: fromDbBool(row.openai_enabled),

@@ -21,6 +21,8 @@ const PatchSchema = z.object({
   quotaUsed: z.number().int().nonnegative().optional(),
   maxActiveKeys: z.number().int().nonnegative().optional(),
   allowedModels: z.array(z.string()).optional(),
+  /** Requests per minute across all of this user's keys. 0 = no limit. */
+  rpmLimit: z.number().int().nonnegative().optional(),
 });
 
 export async function PATCH(

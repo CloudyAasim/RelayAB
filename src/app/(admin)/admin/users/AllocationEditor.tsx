@@ -12,7 +12,7 @@ import { formatCredits, formatCreditsFloor, formatCreditsCeil, formatNumber } fr
 import { CREDIT_SCALE } from "@/lib/quota/credits";
 import { formatUserIdentity } from "@/lib/user-identity";
 import type { PublicUser } from "@/lib/db/types";
-import { Settings2, Coins, ListChecks, KeyRound, Wallet } from "lucide-react";
+import { Settings2, Coins, ListChecks, KeyRound, Wallet, Gauge } from "lucide-react";
 
 /**
  * Format an amount in the unit the account is denominated in.
@@ -106,6 +106,11 @@ export function AllocationEditor({ users, availableModels }: Props) {
                 k={t("admin.users.allocation.maxActiveKeys")}
                 v={u.maxActiveKeys > 0 ? String(u.maxActiveKeys) : t("admin.users.allocation.uncapped")}
               />
+              <Row
+                icon={<Gauge className="h-3 w-3" />}
+                k={t("admin.users.allocation.rpmLimit")}
+                v={u.rpmLimit > 0 ? String(u.rpmLimit) : t("admin.users.allocation.uncapped")}
+              />
             </dl>
             <div className="mt-3 flex justify-end">
               <Button size="sm" variant="secondary" onClick={() => setEditing(u)}>
@@ -178,6 +183,7 @@ function AllocationModal({
   // empty selection (which would lock the account out of everything).
   const [allModels, setAllModels] = useState(user.allowedModels.length === 0);
   const [maxActiveKeys, setMaxActiveKeys] = useState(String(user.maxActiveKeys));
+  const [rpmLimit, setRpmLimit] = useState(String(user.rpmLimit));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -210,6 +216,7 @@ function AllocationModal({
           ...(resetUsage ? { quotaUsed: 0 } : {}),
           allowedModels: allModels ? [] : Array.from(selectedModels),
           maxActiveKeys: Number(maxActiveKeys),
+          rpmLimit: Number(rpmLimit) || 0,
         }),
       });
       const data = await res.json();
@@ -362,6 +369,16 @@ function AllocationModal({
           value={maxActiveKeys}
           onChange={(e) => setMaxActiveKeys(e.target.value)}
           hint={t("admin.users.allocation.maxActiveKeysHint")}
+        />
+
+        {/* ---- Request rate ---- */}
+        <Input
+          label={t("admin.users.allocation.rpmLimitLabel")}
+          type="number"
+          min="0"
+          value={rpmLimit}
+          onChange={(e) => setRpmLimit(e.target.value)}
+          hint={t("admin.users.allocation.rpmLimitHint")}
         />
 
         {error && (
