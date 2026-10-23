@@ -70,9 +70,19 @@ describe("sidebar: collapsed rail layout & motion", () => {
 
   it("keeps the nav icon where it is when the rail narrows", () => {
     // The rail narrows and the label is clipped — the icon does not move.
-    expect(sidebar).toContain('collapsed && "gap-0"');
+    expect(sidebar).toContain('collapsed && "w-10 gap-0"');
     expect(sidebar).not.toContain("pl-[7.5px]");
     expect(sidebar).not.toContain('collapsed && "justify-center px-2"');
+  });
+
+  it("keeps the icon rail's rows a fixed width, scrollbar or not", () => {
+    // The scrollbar used to eat the right-hand side of the item column: the
+    // highlight shrank from 40px to 34px, ended up touching the scrollbar
+    // track, and the icon stopped being centred inside it. No right padding
+    // pushes the scrollbar out to the panel's edge, and a fixed row width
+    // keeps the highlight the same size either way.
+    expect(sidebar).toContain('collapsed && "pr-0"');
+    expect(sidebar).toContain('collapsed && "w-10 gap-0"');
   });
 
   it("fades the brand wordmark instead of unmounting it", () => {
@@ -88,11 +98,22 @@ describe("sidebar: collapsed rail layout & motion", () => {
     expect(layout).not.toContain('collapsed ? "h-8 w-8" : "h-7 w-7"');
   });
 
-  it("gives the toggle a 32px hit target in both states", () => {
-    expect(sidebar).toContain(
-      '"flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70',
-    );
+  it("gives the toggle a 32px hit target when collapsed", () => {
+    expect(sidebar).toContain('collapsed ? "h-8 w-8 justify-center"');
     expect(sidebar).not.toContain('collapsed ? "h-8 w-8" : "h-7 w-7"');
+  });
+
+  it("spells the toggle out in the open panel", () => {
+    // A bare glyph next to a labelled account button reads as an
+    // afterthought; the open panel says what the button does. The label
+    // fades with the rail, like the nav labels and the brand wordmark.
+    expect(sidebar).toContain(
+      'collapsed ? "h-8 w-8 justify-center" : "h-8 gap-2 pl-2 pr-2.5 text-sm font-medium"',
+    );
+    expect(sidebar).toContain('{t("nav.sidebar.collapse")}');
+    expect(sidebar).toContain(
+      'collapsed ? "max-w-0 opacity-0" : "max-w-[120px] opacity-100 delay-150"',
+    );
   });
 
   it("crossfades the toggle glyph instead of hard-swapping it", () => {

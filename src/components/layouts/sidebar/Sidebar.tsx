@@ -90,7 +90,25 @@ export function SidebarHeader({ children, className }: { children: ReactNode; cl
 }
 
 export function SidebarContent({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("flex-1 overflow-y-auto px-3 py-4", className)}>{children}</div>;
+  const { collapsed } = useSidebar();
+  return (
+    <div
+      className={cn(
+        "flex-1 overflow-y-auto px-3 py-4",
+        // In the icon rail the scrollbar would eat the right-hand side of the
+        // item column: the 6px it takes off the content box made the selected
+        // row's highlight 34px instead of 40px, and it ended up touching the
+        // scrollbar track with the icon no longer centred inside it. With no
+        // right padding the scrollbar moves out to the panel's own edge and
+        // the item column keeps its width — before and after the scrollbar
+        // appears.
+        collapsed && "pr-0",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
 }
 
 export function SidebarFooter({ children, className }: { children: ReactNode; className?: string }) {
@@ -128,15 +146,18 @@ export function SidebarToggle({ className }: { className?: string }) {
       aria-expanded={!collapsed}
       title={t("nav.toggleSidebar")}
       className={cn(
-        // 32×32 in **both** states: the toggle never changes size when the
-        // panel opens or shuts, so the footer keeps its rhythm.
-        "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-[width,height,background-color,color] duration-300 ease-sidebar hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring motion-reduce:transition-none",
+        // The icon rail has room for the glyph alone. The open panel spells
+        // out what the button does, like every other button down there —
+        // a bare glyph next to a labelled account button reads as an
+        // afterthought.
+        "flex shrink-0 items-center rounded-lg text-sidebar-foreground/70 transition-[width,height,background-color,color] duration-300 ease-sidebar hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring motion-reduce:transition-none",
+        collapsed ? "h-8 w-8 justify-center" : "h-8 gap-2 pl-2 pr-2.5 text-sm font-medium",
         className,
       )}
     >
       {/* Both glyphs stay mounted and crossfade so the affordance swaps
           without a hard cut while the rail is still moving. */}
-      <span className="relative flex h-4 w-4 items-center justify-center">
+      <span className="relative flex h-4 w-4 shrink-0 items-center justify-center">
         <PanelLeftOpen
           aria-hidden
           className={cn(
@@ -152,10 +173,19 @@ export function SidebarToggle({ className }: { className?: string }) {
           )}
         />
       </span>
+      {/* The label fades with the rail instead of blinking out of existence,
+          the same way the nav labels and the brand wordmark do. */}
+      <span
+        className={cn(
+          "truncate transition-[max-width,opacity] duration-300 ease-sidebar motion-reduce:transition-none",
+          collapsed ? "max-w-0 opacity-0" : "max-w-[120px] opacity-100 delay-150",
+        )}
+      >
+        {t("nav.sidebar.collapse")}
+      </span>
     </button>
   );
 }
-
 export function SidebarInset({ children }: { children: ReactNode }) {
   return <div className="flex min-h-screen min-w-0 flex-1 flex-col bg-background">{children}</div>;
 }
@@ -217,7 +247,11 @@ export function SidebarMenuButton({
     // The icon stays exactly where it is when the rail narrows: the panel
     // shrinks, the label is clipped, the icon does not move. Only the gap
     // behind the clipped label goes away.
-    collapsed && "gap-0",
+    //
+    // `w-10` instead of `w-full` in the icon rail: a fixed 40px row, so the
+    // highlight keeps its width (and keeps the icon centred inside it) even
+    // when a scrollbar shows up next to it.
+    collapsed && "w-10 gap-0",
   );
 
   const content = (
