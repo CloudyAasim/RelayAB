@@ -120,22 +120,17 @@ const GEMINI_GENERATE: TextSpec = {
 /**
  * The presets the editor offers.
  *
- * **Only the surfaces the gateway serves.** `gemini-generate` is a real
- * protocol and a real preset — a Gemini vendor reached through the chat
- * endpoint does need its parameters renamed to `generationConfig.*` — but there
- * is no `/v1beta/models/*:generateContent` here, so a `gemini-generate` entry
- * would never be selected by any request. It is kept below, out of the picker,
- * rather than deleted: it is the right answer the day that endpoint exists, and
- * deleting the knowledge would mean re-deriving it.
- *
- * The rule that produced this correction, applied to the picker rather than to
- * the code: **an option nothing can select is a lie, and a lie in a
- * configuration UI costs more than the option is worth.**
+ * **Only the surfaces the gateway serves.** `gemini-generate` was kept out of
+ * this list for as long as there was no `/v1beta/models/*:generateContent` to
+ * select it — an option nothing can select is a lie, and a lie in a
+ * configuration UI costs more than the option is worth. That endpoint exists
+ * now, so the preset belongs here.
  */
 export const CONFIGURABLE_PROTOCOLS = [
   "openai-chat",
   "openai-responses",
   "anthropic-messages",
+  "gemini-generate",
 ] as const;
 export type ConfigurableProtocol = (typeof CONFIGURABLE_PROTOCOLS)[number];
 

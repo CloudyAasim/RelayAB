@@ -242,6 +242,7 @@ const zhCN: Dict = {
   "docs.nav.endpoints": "接口地址",
   "docs.nav.openai": "OpenAI 兼容",
   "docs.nav.anthropic": "Anthropic 兼容",
+  "docs.nav.gemini": "Gemini 兼容",
   "docs.nav.responses": "Responses API",
   "docs.nav.models": "模型与密钥",
   "docs.nav.credits": "余额",
@@ -420,6 +421,7 @@ const zhCN: Dict = {
   "docs.chapter.answers.endpoints": "这一章回答：一共有哪些接口，各自是干什么的。",
   "docs.chapter.answers.openai": "这一章回答：怎么用 OpenAI 的方式发一次对话。",
   "docs.chapter.answers.anthropic": "这一章回答：怎么用 Anthropic 的方式发一次对话。",
+  "docs.chapter.answers.gemini": "这一章回答：怎么用 Gemini 的方式发一次对话。",
   "docs.chapter.answers.responses": "这一章回答：怎么调 /v1/responses 这个端点。",
   "docs.chapter.answers.models": "这一章回答：有哪些模型，以及怎么挑。",
   "docs.chapter.answers.credits": "这一章回答：我还剩多少额度，程序怎么查。",
@@ -477,6 +479,21 @@ const zhCN: Dict = {
     "两者回答的不是同一个问题：响应头说「刚才那次调用之后还剩多少」，这个接口说「我还有多少」。额度不足不会拒绝这个接口——问余额不花钱——所以即使池已经空了，它也照常回答 is_available: false。",
   "docs.anthropic.title": "Anthropic Messages",
   "docs.anthropic.desc": "兼容 /anthropic/v1/messages。",
+  "docs.gemini.title": "Gemini generateContent",
+  "docs.gemini.desc":
+    "兼容 Gemini 的 generateContent 与 streamGenerateContent 两个端点（路径见下）。Google 的 SDK、LangChain 的 ChatGoogleGenerativeAI、Gemini CLI 这些只说 Gemini 语言的客户端，就靠这一条接进来。",
+  "docs.gemini.line1":
+    "请求体和回答都是 Gemini 自己的形状：contents / systemInstruction / generationConfig / tools，candidates / usageMetadata。网关在中间做翻译 —— 上游是哪种协议，由管理员配的服务商决定。",
+  "docs.gemini.endpoint": "端点",
+  "docs.gemini.key": "密钥放哪",
+  "docs.gemini.keyValue":
+    "x-goog-api-key 头或 ?key= 查询参数（Google SDK 的默认做法）；Authorization: Bearer 也照样收。",
+  "docs.gemini.example":
+    "curl -X POST \"$PUBLIC_URL/v1beta/models/YOUR_MODEL_ID:generateContent\" \\\n  -H \"x-goog-api-key: $RELAYAB_KEY\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":\"Hello!\"}]}]}'",
+  "docs.gemini.streaming":
+    "流式：上游是 Responses 协议时，文字是逐块到达的；上游是 Chat Completions 协议时，它没有能逐块说的形状，于是整段回答一次送到 —— 仍然是合法的 Gemini 流，但不是逐字的。",
+  "docs.gemini.limits":
+    "两处会掉信息，说在前面：thinkingConfig.thinkingBudget 只有一个取值能原样翻译（0，等于「不要思考」），别的预算值在这里丢掉 —— 要固定预算，在管理员的协议规则里写死；safetySettings 没有别的协议有对应字段，也丢掉。",
   "docs.anthropic.line1": "Anthropic SDK 默认走 https://api.anthropic.com，需要手动把 baseURL 改成下面的值。",
   "docs.anthropic.baseUrl": "Base URL（官方 SDK）/ Base URL（AI SDK）",
   "docs.anthropic.baseUrl.official": "官方 Anthropic SDK：Base URL 写到 /anthropic（SDK 自己会追加 /v1/messages）",
@@ -1671,6 +1688,7 @@ const en: Dict = {
   "docs.nav.endpoints": "Endpoint URLs",
   "docs.nav.openai": "OpenAI compatible",
   "docs.nav.anthropic": "Anthropic compatible",
+  "docs.nav.gemini": "Gemini compatible",
   "docs.nav.responses": "Responses API",
   "docs.nav.models": "Models & keys",
   "docs.nav.credits": "Balance",
@@ -1852,6 +1870,7 @@ const en: Dict = {
   "docs.chapter.answers.endpoints": "This chapter answers: which endpoints exist and what each one is for.",
   "docs.chapter.answers.openai": "This chapter answers: how to send a conversation the OpenAI way.",
   "docs.chapter.answers.anthropic": "This chapter answers: how to send a conversation the Anthropic way.",
+  "docs.chapter.answers.gemini": "This chapter answers: how to send a conversation the Gemini way.",
   "docs.chapter.answers.responses": "This chapter answers: how to call the /v1/responses endpoint.",
   "docs.chapter.answers.models": "This chapter answers: which models there are, and how to pick one.",
   "docs.chapter.answers.credits": "This chapter answers: how much is left, and how a program asks.",
@@ -1910,6 +1929,21 @@ const en: Dict = {
     "They answer different questions: the header says how much is left after the call you just made; this endpoint says how much you have. An exhausted pool does not refuse this call — asking the balance spends nothing — so even with the pool empty it answers `is_available: false` rather than turning you away.",
   "docs.anthropic.title": "Anthropic Messages",
   "docs.anthropic.desc": "Compatible with /anthropic/v1/messages.",
+  "docs.gemini.title": "Gemini generateContent",
+  "docs.gemini.desc":
+    "Compatible with Gemini's generateContent and streamGenerateContent endpoints (the paths are below). The clients that only speak Gemini — the Google SDKs, LangChain's ChatGoogleGenerativeAI, Gemini CLI — come in through this one.",
+  "docs.gemini.line1":
+    "The request and the answer are both in Gemini's own shapes: contents / systemInstruction / generationConfig / tools, candidates / usageMetadata. The gateway translates in the middle; which dialect the upstream speaks is decided by the provider the administrator configured.",
+  "docs.gemini.endpoint": "Endpoint",
+  "docs.gemini.key": "Where the key goes",
+  "docs.gemini.keyValue":
+    "The x-goog-api-key header or the ?key= query parameter, which is what the Google SDKs do. Authorization: Bearer is accepted too.",
+  "docs.gemini.example":
+    "curl -X POST \"$PUBLIC_URL/v1beta/models/YOUR_MODEL_ID:generateContent\" \\\n  -H \"x-goog-api-key: $RELAYAB_KEY\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":\"Hello!\"}]}]}'",
+  "docs.gemini.streaming":
+    "On a stream: an upstream speaking the Responses protocol delivers the text piece by piece; a Chat Completions upstream has no shape in which it can, so the whole answer arrives at once — still a valid Gemini stream, just not word by word.",
+  "docs.gemini.limits":
+    "Two things are lost on the way, said up front: a thinkingConfig.thinkingBudget only translates exactly at one value (0, which means \"do not think\"); other budgets are dropped here — pin one in the administrator's protocol rules instead. safetySettings has no equivalent field in any other protocol, and is dropped too.",
   "docs.anthropic.line1": "The Anthropic SDK defaults to https://api.anthropic.com. Override baseURL to the value below.",
   "docs.anthropic.header": "Auth header (x-api-key, not Authorization)",
   "docs.anthropic.baseUrl": "Base URL (official SDK) / Base URL (AI SDK)",

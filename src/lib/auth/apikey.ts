@@ -69,6 +69,9 @@ export function parseBearer(authHeader: string | null | undefined): string | nul
  *      (including OnlyOffice's Anthropic template) send the key this way
  *   3. `?api_key=<key>` query param   — legacy OpenAI-style clients and some
  *      "OpenAI-compatible" integrations (e.g. OnlyOffice's OpenAI template)
+ *   4. `x-goog-api-key: <key>`        — the Google SDKs' convention, which is
+ *      what a Gemini client sends
+ *   5. `?key=<key>` query param       — the Gemini REST examples' convention
  *
  * Returns an `Authorization`-shaped string (`Bearer <key>`) so the result can
  * be fed straight into `authenticateBearer`, or `null` when no carrier is
@@ -90,6 +93,17 @@ export function resolveAuthHeader(req: Request): string | null {
   const queryKey = url.searchParams.get("api_key");
   if (queryKey && queryKey.length > 0) {
     return `Bearer ${queryKey}`;
+  }
+
+  // The Google carriers. Checked after the OpenAI ones so that a client which
+  // sends both does not silently pick the wrong one.
+  const xGoogKey = req.headers.get("x-goog-api-key");
+  if (xGoogKey && xGoogKey.trim().length > 0) {
+    return `Bearer ${xGoogKey.trim()}`;
+  }
+  const googleKey = url.searchParams.get("key");
+  if (googleKey && googleKey.length > 0) {
+    return `Bearer ${googleKey}`;
   }
 
   // No recognised carrier. Fall back to the raw Authorization header (if any)

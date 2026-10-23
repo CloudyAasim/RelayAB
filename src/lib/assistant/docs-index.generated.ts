@@ -80,6 +80,12 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
   },
   {
     surface: "user",
+    id: "gemini",
+    summary: "Gemini 兼容用法：/v1beta/models/{model}:generateContent",
+    keys: ["docs.gemini.title","docs.gemini.desc","docs.gemini.line1","docs.gemini.endpoint","docs.gemini.key","docs.gemini.keyValue","docs.gemini.example","docs.gemini.streaming","docs.gemini.limits"],
+  },
+  {
+    surface: "user",
     id: "responses",
     summary: "Responses 接口：什么时候用，和 chat/completions 的区别",
     keys: ["docs.responses.title","docs.responses.desc","docs.responses.line1","docs.responses.sameAsOpenai","docs.responses.example","docs.responses.alias"],

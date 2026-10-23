@@ -25,10 +25,11 @@ import { parseTextSpec, isTextProtocol, type TextProtocol, type TextSpec } from 
  * Gemini upstream reached through `/v1/chat/completions` is governed by the
  * `openai-chat` entry, because that is the vocabulary in the request.
  *
- * Which is also why there is no `gemini-generate` here. A preset for it was
- * offered until someone checked the route list and found there is no
- * `v1beta/models/*:generateContent` — so nothing would ever have selected it,
- * and offering it would have been a field that saves and does nothing.
+ * Which is also why `gemini-generate` belongs here even though its client
+ * speaks a different vocabulary. The spec governs the surface the *client*
+ * called, and a Gemini client calling `/v1beta/models/{model}:generateContent`
+ * is governed by the `gemini-generate` entry — the request it sent is in
+ * Gemini's vocabulary, whatever the upstream ends up being.
  */
 /** The two switches on the provider itself: which endpoints answer. */
 export type ProviderFaceId = "openai" | "anthropic";
@@ -37,6 +38,14 @@ export const SURFACES = [
   { id: "openai-chat", clientPath: "/v1/chat/completions", face: "openai" },
   { id: "openai-responses", clientPath: "/v1/responses", face: "openai" },
   { id: "anthropic-messages", clientPath: "/anthropic/v1/messages", face: "anthropic" },
+  // The Gemini surface. It belongs to the OpenAI face because that is the face
+  // whose providers can answer it: the request is translated into the pivot
+  // and then out to whatever dialect the upstream speaks.
+  {
+    id: "gemini-generate",
+    clientPath: "/v1beta/models/{model}:generateContent",
+    face: "openai",
+  },
 ] as const satisfies ReadonlyArray<{ id: string; clientPath: string; face: ProviderFaceId }>;
 
 export type SurfaceId = (typeof SURFACES)[number]["id"];

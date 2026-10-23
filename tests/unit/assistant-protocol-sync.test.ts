@@ -105,11 +105,15 @@ describe("the assistant only offers protocols the editor offers", () => {
   });
 
   it("no preset the editor will not offer is recommended to the model", () => {
-    // `gemini-generate` is still a preset and has no route that would ever
-    // select it. The editor removed it from the picker; the tool must not put
-    // it back in the model's hands.
-    expect(CONFIGURABLE_PROTOCOLS).not.toContain("gemini-generate" as never);
+    // `gemini-generate` was a preset the editor did not offer, because no
+    // route selected it. The endpoint exists now, so the editor offers it and
+    // the tool may recommend it — and the tool still walks the configurable
+    // list rather than every label, so a preset the editor dropped would stay
+    // out of the model's hands.
+    expect(CONFIGURABLE_PROTOCOLS).toContain("gemini-generate" as never);
     expect(Object.keys(TEXT_PROTOCOL_LABELS)).toContain("gemini-generate");
+    const body = toolBody("listTextProtocolsTool");
+    expect(body).toMatch(/CONFIGURABLE_PROTOCOLS\.map\(/);
   });
 
   it("each protocol says which endpoint it governs and which toggle gates it", () => {

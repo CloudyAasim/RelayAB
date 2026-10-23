@@ -173,17 +173,19 @@ describe("the assistant can read the text protocol", () => {
     }
   });
 
-  it("and refuses a preset nothing could ever select", async () => {
-    // `gemini-generate` is a real protocol and the right answer the day this
-    // gateway serves `v1beta/models/*:generateContent` — which it does not.
-    // Handing it out would be the same lie the editor stopped telling.
+  it("and hands out a preset that something can select", async () => {
+    // `gemini-generate` was refused here for as long as there was no
+    // `v1beta/models/*:generateContent` — handing it out would have been the
+    // same lie the editor stopped telling. The endpoint exists now, so the
+    // preset is handed out, and it says which endpoint it governs.
     const result = await executeTool(
       "get_text_spec_reference",
       JSON.stringify({ what: "presets", protocol: "gemini-generate" }),
       { user: admin } as never,
     );
-    expect(result.ok).toBe(false);
+    expect(result.ok).toBe(true);
     expect(result.content).toContain("gemini-generate");
+    expect(result.content).toContain("/v1beta/models/{model}:generateContent");
   });
 });
 
@@ -239,10 +241,20 @@ describe("the user documentation names every public endpoint", () => {
         if (entry.isDirectory()) walk(child);
         else if (entry.name === "route.ts") {
           const rest = child.replace(/^src\/app\/api\//, "").replace(/\/route\.ts$/, "");
-          // The public surface is the two proxy prefixes; everything else
+          // The public surface is the proxy prefixes; everything else
           // under /api is the dashboard's own API.
           if (rest.startsWith("v1/")) out.push(`/${rest}`);
           else if (rest.startsWith("anthropic/")) out.push(`/${rest}`);
+          // The Gemini surface. It was missing here, and a public endpoint the
+          // guard does not look at is a public endpoint nobody has to document.
+          //
+          // The route is a catch-all, so the derived segment is the Next.js
+          // one — which is not the path a client calls. The public shape is
+          // two paths, and that is what has to be written down.
+          else if (rest.startsWith("v1beta/")) {
+            out.push("/v1beta/models/{model}:generateContent");
+            out.push("/v1beta/models/{model}:streamGenerateContent");
+          }
         }
       }
     };

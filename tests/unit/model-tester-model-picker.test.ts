@@ -26,6 +26,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { CONFIGURABLE_PROTOCOLS } from "@/lib/protocol/text-protocols";
+import { SURFACES } from "@/lib/protocol/text-specs";
 
 const ROOT = process.cwd();
 const read = (...p: string[]) => readFileSync(join(ROOT, ...p), "utf-8");
@@ -189,7 +190,11 @@ describe("the page holding the shared state is a client component", () => {
 });
 
 describe("unrelated protocol config is untouched", () => {
-  it("the configurable protocol list is still the three the gateway serves", () => {
-    expect(CONFIGURABLE_PROTOCOLS).toHaveLength(3);
+  it("the configurable protocol list is one entry per surface the gateway serves", () => {
+    // It was three, for as long as there were three surfaces. The Gemini
+    // endpoint made a fourth, and the list follows the surfaces rather than
+    // carrying a number of its own.
+    expect(CONFIGURABLE_PROTOCOLS).toHaveLength(SURFACES.length);
+    expect(CONFIGURABLE_PROTOCOLS).toContain("gemini-generate");
   });
 });

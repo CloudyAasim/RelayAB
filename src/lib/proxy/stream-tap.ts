@@ -39,8 +39,7 @@ export interface SseTapOptions {
 export function ssePassthrough(
   source: ReadableStream<Uint8Array>,
   opts: SseTapOptions,
-): ReadableStream<Uint8Array> {
-  const decoder = new TextDecoder();
+): ReadableStream<Uint8Array> {  const decoder = new TextDecoder();
   const reader = source.getReader();
   let pending = "";
   let settled = false;
@@ -118,6 +117,107 @@ export function ssePassthrough(
         /* the source may already be gone */
       }
       await settleOnce("cancelled");
+    },
+  });
+}
+
+/**
+ * Rewrite an SSE stream's lines as they go by.
+ *
+ * The difference from {@link ssePassthrough}: that one *watches* the bytes and
+ * forwards them untouched, this one *replaces* them. It is what a surface
+ * needs when the client asked for one dialect and the upstream answered in
+ * another — the frames have to change shape on the way out.
+ *
+ * `map` is called once per complete line, without its trailing newline, and
+ * returns the line(s) that replace it. `null` drops the line; a string
+ * replaces it with itself plus the newline; an array replaces it with several.
+ *
+ * **The settlement is the source's, not this one's.** The stream being
+ * rewritten settles its own usage when it ends, and this wrapper only reads
+ * from it — so the billing still happens exactly once, when the upstream
+ * finishes. Nothing here bills anything.
+ */
+export function sseRewrite(
+  source: ReadableStream<Uint8Array>,
+  opts: {
+    map: (line: string) => string | string[] | null;
+    /**
+     * Called once, after the last line has been mapped.
+     *
+     * It may return lines of its own, which is how a surface sends the final
+     * frame of a stream — the one carrying the usage and the reason it
+     * stopped — when the upstream had no such frame to rewrite.
+     */
+    onEnd?: () => string | string[] | null;
+    signal?: AbortSignal;
+  },
+): ReadableStream<Uint8Array> {
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  const reader = source.getReader();
+  let pending = "";
+
+  const emit = (controller: ReadableStreamDefaultController<Uint8Array>, line: string): void => {
+    // The blank line is the frame separator, and it is the frame's structure
+    // rather than its content: dropping it would run every frame into one.
+    if (line.trim().length === 0) {
+      controller.enqueue(encoder.encode("\n"));
+      return;
+    }
+    const mapped = opts.map(line);
+    if (mapped === null) return;
+    const lines = Array.isArray(mapped) ? mapped : [mapped];
+    for (const out of lines) {
+      controller.enqueue(encoder.encode(`${out}\n`));
+    }
+  };
+
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      let result: ReadableStreamReadResult<Uint8Array>;
+      try {
+        result = await reader.read();
+      } catch (err) {
+        controller.error(err);
+        return;
+      }
+
+      if (result.done) {
+        pending += decoder.decode();
+        if (pending) {
+          emit(controller, pending);
+          pending = "";
+        }
+        const tail = opts.onEnd?.();
+        if (tail) {
+          const lines = Array.isArray(tail) ? tail : [tail];
+          for (const out of lines) {
+            controller.enqueue(encoder.encode(`${out}\n`));
+          }
+          // The closing frame needs its separator too, or the last frame runs
+          // into nothing and a client waiting for a blank line waits forever.
+          controller.enqueue(encoder.encode("\n"));
+        }
+        controller.close();
+        return;
+      }
+
+      pending += decoder.decode(result.value, { stream: true });
+      let newline = pending.indexOf("\n");
+      while (newline !== -1) {
+        emit(controller, pending.slice(0, newline));
+        pending = pending.slice(newline + 1);
+        newline = pending.indexOf("\n");
+      }
+    },
+
+    async cancel(reason) {
+      try {
+        await reader.cancel(reason);
+      } catch {
+        /* the source may already be gone */
+      }
     },
   });
 }

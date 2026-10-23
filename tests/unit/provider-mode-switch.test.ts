@@ -147,14 +147,16 @@ describe("the advanced half is a list, one entry per interface", () => {
       "openai-chat",
       "openai-responses",
       "anthropic-messages",
+      "gemini-generate",
     ]);
-    // There is no `/v1beta/models/*:generateContent` here, so offering a
-    // `gemini-generate` entry would be a field that saves and does nothing:
-    // nothing would ever select it. The preset is kept below the picker, not
-    // deleted — it is the right answer the day that endpoint exists.
-    expect(SURFACES.some((s) => s.id === ("gemini-generate" as string))).toBe(false);
+    // The Gemini surface exists now — `/v1beta/models/{model}:generateContent`
+    // is a route the gateway serves — so a `gemini-generate` entry is a rule
+    // that something selects, and it belongs in the picker.
+    expect(SURFACES.some((s) => s.id === "gemini-generate")).toBe(true);
     const protocols = read("src", "lib", "protocol", "text-protocols.ts");
-    expect(protocols).toMatch(/CONFIGURABLE_PROTOCOLS = \[\s*"openai-chat",\s*"openai-responses",\s*"anthropic-messages",\s*\]/);
+    expect(protocols).toMatch(
+      /CONFIGURABLE_PROTOCOLS = \[\s*"openai-chat",\s*"openai-responses",\s*"anthropic-messages",\s*"gemini-generate",\s*\]/,
+    );
     // The rules list no longer reads that list: a row *is* a surface, so it
     // renders whatever SURFACES declares. A second list of "what can be
     // configured" is the thing that drifted.
@@ -194,18 +196,22 @@ describe("the advanced half is a list, one entry per interface", () => {
     expect(specForSurface(readTextSpecs({}), "openai-chat")).toBeNull();
   });
 
-  it("gemini drops out of the picker, because nothing would select it", () => {
-    // The rule this file was corrected by: an option nothing can select is a
-    // lie, and a lie in a configuration UI costs more than the option is worth.
+  it("gemini is in the picker, because something selects it now", () => {
+    // The rule this file was corrected by still stands: an option nothing can
+    // select is a lie, and a lie in a configuration UI costs more than the
+    // option is worth. The endpoint is what changed — `/v1beta/models/{model}:
+    // generateContent` exists, so the preset is offered rather than kept in
+    // reserve.
+    //
     // Asserted on the list itself, not on a comment about it.
     const protocols = read("src", "lib", "protocol", "text-protocols.ts");
-    // Exactly the three surfaces, no more. `[^]]*` so the match cannot run past
-    // the closing bracket into the presets further down the file.
     expect(protocols).toMatch(
-      /CONFIGURABLE_PROTOCOLS = \[\s*"openai-chat",\s*"openai-responses",\s*"anthropic-messages",\s*\] as const;/,
+      /CONFIGURABLE_PROTOCOLS = \[\s*"openai-chat",\s*"openai-responses",\s*"anthropic-messages",\s*"gemini-generate",\s*\] as const;/,
     );
-    // The preset itself is kept, and says why it is not offered.
-    expect(protocols).toMatch(/rather than deleted: it is the right answer the day that endpoint exists/);
+    // And the route that selects it is really there.
+    expect(read("src", "app", "api", "v1beta", "models", "[...path]", "route.ts")).toContain(
+      "proxyGeminiGenerate",
+    );
   });
 
   it("two entries for one protocol is refused, because one of them never runs", () => {

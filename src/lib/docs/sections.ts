@@ -44,6 +44,9 @@ const USER_SECTION_IDS = [
   "search",
   "openai",
   "anthropic",
+  // The Gemini surface. Its own chapter: a client that speaks Gemini needs
+  // to find how to call it, and "OpenAI-compatible" is not where it looks.
+  "gemini",
   "responses",
   "models",
   // The balance, as a chapter of its own. It used to sit at the bottom of the
@@ -148,6 +151,7 @@ const USER_LABEL_KEYS = [
   "docs.nav.search",
   "docs.nav.openai",
   "docs.nav.anthropic",
+  "docs.nav.gemini",
   "docs.nav.responses",
   "docs.nav.models",
   "docs.nav.credits",
@@ -189,6 +193,7 @@ const CHAPTER_ANSWER_KEYS: Readonly<Record<string, string>> = {
   search: "docs.chapter.answers.search",
   openai: "docs.chapter.answers.openai",
   anthropic: "docs.chapter.answers.anthropic",
+  gemini: "docs.chapter.answers.gemini",
   responses: "docs.chapter.answers.responses",
   models: "docs.chapter.answers.models",
   credits: "docs.chapter.answers.credits",

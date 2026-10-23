@@ -460,6 +460,48 @@ console.log(msg.content);`}
     );
   }
 
+  if (section === "gemini") {
+    return (
+      <Card>
+        <CardHeader
+          title={
+            <span className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-muted-foreground" />
+              {t("docs.gemini.title")}
+            </span>
+          }
+          description={t("docs.gemini.desc")}
+        />
+        <div className="space-y-3 text-xs text-foreground/90 sm:space-y-4 sm:text-sm">
+          <p>{t("docs.gemini.line1")}</p>
+          {/* The path template is code, not prose: `{model}` here is the URL
+              parameter, and it is written as a literal so the reader sees the
+              shape the endpoint really has. */}
+          <CodeBlock
+            label={t("docs.gemini.endpoint")}
+            value={`POST /v1beta/models/{model}:generateContent
+POST /v1beta/models/{model}:streamGenerateContent`}
+          />
+          <CodeBlock
+            label={t("docs.gemini.key")}
+            value={t("docs.gemini.keyValue")}
+          />
+          <CodeBlock
+            label={t("docs.gemini.example")}
+            value={`curl -X POST "${baseUrl}/v1beta/models/YOUR_MODEL_ID:generateContent" \\
+  -H "x-goog-api-key: $RELAYAB_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"contents":[{"role":"user","parts":[{"text":"Hello!"}]}]}'`}
+          />
+          <p className="text-xs text-muted-foreground">{t("docs.gemini.streaming")}</p>
+          <p className="rounded-md border border-border bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">
+            {t("docs.gemini.limits")}
+          </p>
+        </div>
+      </Card>
+    );
+  }
+
   if (section === "responses") {
     return (
       <Card>
