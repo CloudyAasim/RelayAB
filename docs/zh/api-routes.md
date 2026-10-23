@@ -258,6 +258,10 @@ Content-Type: application/json
 `input_tokens` / `output_tokens`。代理两种都会识别，内部统一记录为
 `promptTokens` / `completionTokens`。
 
+**流式**：客户端带 `stream: true` 时，网关会向上游要流，把上游的帧翻译成客户端
+要的那一套（Responses / Chat Completions / Gemini 各有自己的帧形状，见
+`src/lib/protocol/stream-frames.ts`），文字逐块到达 —— 转换不会把流变成一次性返回。
+
 ---
 
 ### 1.3 `GET /v1/models`

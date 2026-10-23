@@ -158,57 +158,85 @@ export function sseRewrite(
   const reader = source.getReader();
   let pending = "";
 
-  const emit = (controller: ReadableStreamDefaultController<Uint8Array>, line: string): void => {
+  /**
+   * Hand one line over, and say whether anything was handed over.
+   *
+   * The answer matters: a line the mapper has no use for is dropped, and a
+   * pull that dropped *every* line it read would leave the consumer waiting
+   * for bytes that never come.
+   */
+  const emit = (
+    controller: ReadableStreamDefaultController<Uint8Array>,
+    line: string,
+  ): boolean => {
     // The blank line is the frame separator, and it is the frame's structure
     // rather than its content: dropping it would run every frame into one.
     if (line.trim().length === 0) {
       controller.enqueue(encoder.encode("\n"));
-      return;
+      return true;
     }
     const mapped = opts.map(line);
-    if (mapped === null) return;
+    if (mapped === null) return false;
     const lines = Array.isArray(mapped) ? mapped : [mapped];
     for (const out of lines) {
       controller.enqueue(encoder.encode(`${out}\n`));
     }
+    return true;
   };
 
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
-      let result: ReadableStreamReadResult<Uint8Array>;
-      try {
-        result = await reader.read();
-      } catch (err) {
-        controller.error(err);
-        return;
-      }
-
-      if (result.done) {
-        pending += decoder.decode();
-        if (pending) {
-          emit(controller, pending);
-          pending = "";
+      /**
+       * Keep reading until there is something to hand over.
+       *
+       * A pull that enqueues nothing is not followed by another pull: the
+       * stream waits for the next read request, and the consumer is waiting
+       * for the very bytes this pull was supposed to produce. So the read
+       * loop continues until a line survives the mapping (or the source ends).
+       *
+       * That is not a corner case: an upstream that sends its frames one at a
+       * time puts the usage frame in a chunk of its own, and the usage frame
+       * is one the mapper has no use for.
+       */
+      for (;;) {
+        let result: ReadableStreamReadResult<Uint8Array>;
+        try {
+          result = await reader.read();
+        } catch (err) {
+          controller.error(err);
+          return;
         }
-        const tail = opts.onEnd?.();
-        if (tail) {
-          const lines = Array.isArray(tail) ? tail : [tail];
-          for (const out of lines) {
-            controller.enqueue(encoder.encode(`${out}\n`));
+
+        if (result.done) {
+          pending += decoder.decode();
+          if (pending) {
+            emit(controller, pending);
+            pending = "";
           }
-          // The closing frame needs its separator too, or the last frame runs
-          // into nothing and a client waiting for a blank line waits forever.
-          controller.enqueue(encoder.encode("\n"));
+          const tail = opts.onEnd?.();
+          if (tail) {
+            const lines = Array.isArray(tail) ? tail : [tail];
+            for (const out of lines) {
+              controller.enqueue(encoder.encode(`${out}\n`));
+            }
+            // The closing frame needs its separator too, or the last frame runs
+            // into nothing and a client waiting for a blank line waits forever.
+            controller.enqueue(encoder.encode("\n"));
+          }
+          controller.close();
+          return;
         }
-        controller.close();
-        return;
-      }
 
-      pending += decoder.decode(result.value, { stream: true });
-      let newline = pending.indexOf("\n");
-      while (newline !== -1) {
-        emit(controller, pending.slice(0, newline));
-        pending = pending.slice(newline + 1);
-        newline = pending.indexOf("\n");
+        pending += decoder.decode(result.value, { stream: true });
+        let newline = pending.indexOf("\n");
+        let produced = false;
+        while (newline !== -1) {
+          const line = pending.slice(0, newline);
+          pending = pending.slice(newline + 1);
+          newline = pending.indexOf("\n");
+          if (emit(controller, line)) produced = true;
+        }
+        if (produced) return;
       }
     },
 

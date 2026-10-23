@@ -176,7 +176,7 @@ describe("responsesToChatRequest", () => {
     expect(out.messages).toEqual([{ role: "user", content: "hi" }]);
   });
 
-  it("honours max_output_tokens and leaves the request buffered upstream", () => {
+  it("honours max_output_tokens and carries the stream flag through", () => {
     const out = responsesToChatRequest({
       model: "m",
       input: "hi",
@@ -184,8 +184,16 @@ describe("responsesToChatRequest", () => {
       stream: true,
     } as never);
     expect(out.max_tokens).toBe(4096);
-    // The chat hop is buffered on purpose: the route replays the buffered
-    // `response` object as SSE for the client.
+    // The chat hop used to be buffered on purpose — the route replayed the
+    // buffered `response` object as SSE for the client. It is not any more:
+    // the upstream's frames are translated into the pivot's on the way
+    // through, so a client that asked for a stream gets the text as it
+    // arrives instead of one whole answer at the end.
+    expect(out.stream).toBe(true);
+  });
+
+  it("and leaves a request that did not ask for a stream buffered", () => {
+    const out = responsesToChatRequest({ model: "m", input: "hi" } as never);
     expect(out.stream).toBe(false);
   });
 

@@ -338,6 +338,7 @@ Two implementation details:
 
 - The request body format determines the target path. The chat proxy always emits a chat request body, so it must hit `/chat/completions`; the path must not be changed just because a provider is tagged with a different format, or a chat request body would be sent to the Responses endpoint (this caused a 400 regression historically).
 - For a provider with `kind === "anthropic"` whose `upstreamFormat` is still the default `responses`, `effectiveUpstreamFormat()` handles it at runtime as the Anthropic protocol, so it is not misused by `/v1/chat/completions`.
+- **The stream travels too**: when the client asks for a stream, the gateway asks the upstream for one and translates its frames into the client's shape (`src/lib/protocol/stream-frames.ts`), so all three client surfaces arrive piece by piece against all three upstream dialects.
 
 ### 7.4 Model Mapping Conventions
 

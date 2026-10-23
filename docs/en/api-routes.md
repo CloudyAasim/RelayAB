@@ -277,6 +277,12 @@ Chat Completions uses `prompt_tokens` / `completion_tokens`; Responses and Anthr
 `input_tokens` / `output_tokens`. The relay understands both and records them
 internally as `promptTokens` / `completionTokens`.
 
+**Streaming**: when the client sends `stream: true`, the gateway asks the upstream for a
+stream and translates its frames into the shape the client asked for (Responses, Chat
+Completions and Gemini each have their own frame shapes — see
+`src/lib/protocol/stream-frames.ts`), so the text arrives piece by piece. A conversion
+does not turn a stream into one whole answer.
+
 ---
 
 ### 1.3 `GET /v1/models`

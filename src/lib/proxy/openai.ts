@@ -27,10 +27,11 @@ import { extractCacheBuckets, type CacheBuckets } from "../quota/rates";
 import { shouldRejectBeforeRequest } from "../quota/calculator";
 import { proxyAnthropicMessage } from "./anthropic";
 import { settleUsage } from "./billing";
-import { ssePassthrough } from "./stream-tap";
+import { ssePassthrough, sseRewrite } from "./stream-tap";
 import { providerFaces, type ApiKey, type Provider, type User } from "../db/types";
 import { applyParameterPolicy } from "../protocol/parameter-policy";
 import { readTextSpecs, specForSurface, activeSpecFor } from "../protocol/text-specs";
+import { pivotFrameMapper, chatFrameMapper, readStreamFacts } from "../protocol/stream-frames";
 import {
   responsesToGeminiRequest,
   geminiToResponsesResponse,
@@ -353,7 +354,10 @@ export function responsesToChatRequest(req: ResponseAPIRequest): ChatCompletionR
     // Responses counts output tokens separately; Chat Completions calls the
     // same ceiling `max_tokens`. Either spelling the client used is honoured.
     max_tokens: (req.max_output_tokens ?? (req as { max_tokens?: number }).max_tokens) ?? 1024,
-    stream: false,
+    // The stream flag travels: a client that asked for a stream gets one, and
+    // the upstream's frames are translated into the pivot's rather than
+    // arriving as one whole answer at the end.
+    stream: req.stream === true,
   } as ChatCompletionRequest;
 
   const tools = responsesToolsToChatTools(req.tools);
@@ -516,6 +520,8 @@ export function chatToResponsesRequest(
 
   const out: Record<string, unknown> = { model: chatReq.model, input };
   if (instructions.length > 0) out.instructions = instructions.join("\n\n");
+  // The stream flag travels: a client that asked for a stream gets one.
+  if (chatReq.stream === true) out.stream = true;
 
   const maxTokens = chatReq.max_completion_tokens ?? chatReq.max_tokens;
   if (typeof maxTokens === "number") out.max_output_tokens = maxTokens;
@@ -671,7 +677,9 @@ export function responsesToAnthropicRequest(req: ResponseAPIRequest): Record<str
     ...(system ? { system } : {}),
     ...(typeof req.temperature === "number" ? { temperature: req.temperature } : {}),
     ...(typeof req.top_p === "number" ? { top_p: req.top_p } : {}),
-    stream: false,
+    // The stream flag travels: the upstream's frames are translated rather
+    // than arriving as one whole answer at the end.
+    stream: req.stream === true,
   };
 }
 
@@ -901,6 +909,21 @@ export async function proxyChatCompletion(args: {
     });
     if (!viaPivot.ok) {
       return { ok: false, status: viaPivot.status, error: viaPivot.error };
+    }
+    // The pivot speaks Responses; the client asked for Chat chunks. The
+    // frames are translated on the way out.
+    if (viaPivot.body) {
+      const mapper = chatFrameMapper(req.model);
+      return {
+        ok: true,
+        status: 200,
+        body: sseRewrite(viaPivot.body, {
+          map: mapper.map,
+          onEnd: mapper.onEnd,
+          signal,
+        }),
+        contentType: "text/event-stream; charset=utf-8",
+      };
     }
     return {
       ok: true,
@@ -1564,6 +1587,22 @@ async function proxyResponsesViaChat(args: {
   if (!chatResult.ok) {
     return { ok: false, status: chatResult.status, error: chatResult.error };
   }
+  // The upstream answered in Chat's dialect; the pivot speaks Responses'. The
+  // frames are translated on the way through, so the client sees the text as
+  // it arrives instead of waiting for the whole answer.
+  if (chatResult.body) {
+    const mapper = pivotFrameMapper(req.model);
+    return {
+      ok: true,
+      status: 200,
+      body: sseRewrite(chatResult.body, {
+        map: mapper.map,
+        onEnd: mapper.onEnd,
+        signal,
+      }),
+      contentType: "text/event-stream; charset=utf-8",
+    };
+  }
   return {
     ok: true,
     status: 200,
@@ -1592,6 +1631,20 @@ async function proxyResponsesViaAnthropic(args: {
   });
   if (!result.ok) {
     return { ok: false, status: result.status, error: result.error };
+  }
+  // The upstream answered in Anthropic's events; the pivot speaks Responses'.
+  if (result.body) {
+    const mapper = pivotFrameMapper(req.model);
+    return {
+      ok: true,
+      status: 200,
+      body: sseRewrite(result.body, {
+        map: mapper.map,
+        onEnd: mapper.onEnd,
+        signal,
+      }),
+      contentType: "text/event-stream; charset=utf-8",
+    };
   }
   return {
     ok: true,
@@ -1637,9 +1690,10 @@ async function proxyResponsesViaGemini(args: {
   }
 
   const upstreamModel = provider.modelMapping[req.model];
+  const wantStream = req.stream === true;
   const upstreamUrl = deps?.upstreamUrlFor
     ? deps.upstreamUrlFor(provider)
-    : defaultGeminiUrl(provider, upstreamModel);
+    : defaultGeminiUrl(provider, upstreamModel, wantStream);
   const upstreamKey = decryptSecret(provider.encryptedApiKey);
 
   // The Responses surface's policy, applied before the conversion: the spec
@@ -1697,6 +1751,22 @@ async function proxyResponsesViaGemini(args: {
     };
   }
 
+  // The frames arrive as they are produced. Guard on the content type so an
+  // upstream that ignores the streaming endpoint and answers with plain JSON
+  // still takes the buffered path below.
+  if (wantStream && response.body && isEventStream(response)) {
+    return streamGeminiUpstream({
+      upstream: response,
+      apiKey,
+      provider,
+      user,
+      model: req.model,
+      upstreamModel,
+      inputText: pivotInputText(req.input),
+      signal,
+    });
+  }
+
   const body = await response.json();
   const pivot = geminiToResponsesResponse(body, req.model);
   const usage = (pivot.usage ?? {}) as Record<string, unknown>;
@@ -1717,10 +1787,148 @@ async function proxyResponsesViaGemini(args: {
   return { ok: true, status: 200, data: pivot };
 }
 
-function defaultGeminiUrl(provider: Provider, upstreamModel: string): string {
+/**
+ * Read a Gemini stream and write the pivot's frames.
+ *
+ * The usage rides on the last chunk rather than in a frame of its own, so the
+ * settlement reads it out of the frames as they go by — and the frames
+ * themselves are translated on the way to the client.
+ */
+function streamGeminiUpstream(args: {
+  upstream: Response;
+  apiKey: ApiKey;
+  provider: Provider;
+  user: User;
+  model: string;
+  upstreamModel: string;
+  /** Best-effort prompt text, for the estimate fallback. */
+  inputText: string;
+  signal?: AbortSignal;
+}): ProxyResult {
+  const { upstream, apiKey, provider, user, model, upstreamModel, inputText, signal } = args;
+  if (!upstream.body) {
+    return {
+      ok: false,
+      status: 502,
+      error: { code: "upstream_error", message: "Upstream returned an empty stream" },
+    };
+  }
+
+  let usage: StreamUsage = {
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+    cache: { read: 0, write: 0, reported: false },
+  };
+  let sawUsage = false;
+  let outputText = "";
+
+  const consumeLine = (line: string): void => {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) return;
+    const payload = trimmed.slice(5).trim();
+    if (!payload || payload === "[DONE]") return;
+    try {
+      const facts = readStreamFacts(JSON.parse(payload));
+      if (facts.inputTokens !== undefined || facts.outputTokens !== undefined) {
+        const promptTokens = facts.inputTokens ?? usage.promptTokens;
+        const completionTokens = facts.outputTokens ?? usage.completionTokens;
+        usage = {
+          promptTokens,
+          completionTokens,
+          totalTokens: promptTokens + completionTokens,
+          cache: usage.cache,
+        };
+        sawUsage = true;
+      }
+      if (facts.text) outputText += facts.text;
+    } catch {
+      // A partial or non-JSON keep-alive frame — nothing to do.
+    }
+  };
+
+  const settled = ssePassthrough(upstream.body, {
+    signal,
+    onLine: consumeLine,
+    settle: async () => {
+      const billingMode: "usage" | "estimated" = sawUsage ? "usage" : "estimated";
+      if (!sawUsage) {
+        console.warn(
+          `[relayab] gemini stream for model=${model} ended without usage; estimating tokens`,
+        );
+      }
+      await settleUsage({
+        apiKey,
+        provider,
+        user,
+        model,
+        upstreamModel,
+        promptTokens: sawUsage ? usage.promptTokens : estimateTokensFromText(inputText),
+        completionTokens: sawUsage ? usage.completionTokens : estimateTokensFromText(outputText),
+        cache: sawUsage ? usage.cache : { read: 0, write: 0, reported: false },
+        billingMode,
+      });
+    },
+  });
+
+  const mapper = pivotFrameMapper(model);
+  return {
+    ok: true,
+    status: 200,
+    body: sseRewrite(settled, { map: mapper.map, onEnd: mapper.onEnd, signal }),
+    contentType: "text/event-stream; charset=utf-8",
+  };
+}
+
+function defaultGeminiUrl(provider: Provider, upstreamModel: string, stream: boolean): string {
   const base = provider.baseUrl ?? "https://generativelanguage.googleapis.com/v1beta";
   const cleanBase = base.replace(/\/+$/, "");
-  return `${cleanBase}/models/${encodeURIComponent(upstreamModel)}:generateContent`;
+  // Google sends SSE only when asked for it with `alt=sse`; without it the
+  // streaming endpoint answers with a JSON array of chunks.
+  return stream
+    ? `${cleanBase}/models/${encodeURIComponent(upstreamModel)}:streamGenerateContent?alt=sse`
+    : `${cleanBase}/models/${encodeURIComponent(upstreamModel)}:generateContent`;
+}
+
+/**
+ * The prompt's text, for the estimate fallback.
+ *
+ * The pivot's input comes in two shapes — a plain string, and a list of items
+ * whose content is either a string or a list of typed blocks — and the estimate
+ * needs all of them.
+ */
+function pivotInputText(input: unknown): string {
+  if (typeof input === "string") return input;
+  if (!Array.isArray(input)) return "";
+  const parts: string[] = [];
+  for (const item of input) {
+    if (!item || typeof item !== "object") continue;
+    const entry = item as Record<string, unknown>;
+    if (typeof entry.text === "string") {
+      parts.push(entry.text);
+      continue;
+    }
+    const content = entry.content;
+    if (typeof content === "string") {
+      parts.push(content);
+      continue;
+    }
+    if (!Array.isArray(content)) continue;
+    for (const block of content) {
+      if (typeof block === "string") {
+        parts.push(block);
+        continue;
+      }
+      if (
+        block &&
+        typeof block === "object" &&
+        typeof (block as { text?: unknown }).text === "string"
+      ) {
+        parts.push((block as { text: string }).text);
+      }
+    }
+  }
+  return parts.join(" ");
 }
 
 function defaultResponsesUrl(provider: Provider): string {

@@ -338,6 +338,8 @@ Session 由 iron-session 放在 cookie 里，**不落库**。
 
 - 请求体格式决定目标路径。Chat 代理发出的永远是 Chat 请求体，所以它必须打 `/chat/completions`；不能因为 Provider 标了别的格式就改路径，否则会把 Chat 请求体发到 Responses 端点（历史上出过这个 400 回归）。
 - `kind === "anthropic"` 的 Provider 若 `upstreamFormat` 仍是默认的 `responses`，运行时由 `effectiveUpstreamFormat()` 按 Anthropic 协议处理，避免被 `/v1/chat/completions` 误用。
+- **流式也跟着走**：客户端要流时，网关向上游要流，把上游的帧翻译成客户端要的那一套
+  （`src/lib/protocol/stream-frames.ts`），所以三个客户端面在三种上游方言下都是逐块到达。
 
 ### 7.4 模型映射规范
 
