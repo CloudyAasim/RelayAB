@@ -613,6 +613,49 @@ export function geminiToResponsesResponse(
   body: unknown,
   model: string,
 ): Record<string, unknown> {
+  /**
+   * Google answers the streaming endpoint with a JSON **array** of chunks when
+   * `alt=sse` does not arrive — the frames, but not as SSE. Treating that as
+   * an empty answer would be the worst kind of wrong: a 200 with no text in it.
+   * So the array is merged into the one answer it stands for.
+   */
+  if (Array.isArray(body)) {
+    const parts: GeminiPart[] = [];
+    let finishReason: string | undefined;
+    let meta: Record<string, unknown> | undefined;
+    let responseId: string | undefined;
+    let modelVersion: string | undefined;
+
+    for (const chunk of body) {
+      if (!isPlainObject(chunk)) continue;
+      const candidate = Array.isArray(chunk.candidates) ? chunk.candidates : undefined;
+      const first = candidate?.[0];
+      const content = isPlainObject(first) ? first.content : undefined;
+      const chunkParts = isPlainObject(content) && Array.isArray(content.parts) ? content.parts : [];
+      for (const part of chunkParts) {
+        if (isPlainObject(part) && typeof part.text === "string" && part.text) {
+          parts.push({ text: part.text });
+        }
+      }
+      if (isPlainObject(first) && typeof first.finishReason === "string") {
+        finishReason = first.finishReason;
+      }
+      if (isPlainObject(chunk.usageMetadata)) meta = chunk.usageMetadata;
+      if (typeof chunk.responseId === "string") responseId = chunk.responseId;
+      if (typeof chunk.modelVersion === "string") modelVersion = chunk.modelVersion;
+    }
+
+    return geminiToResponsesResponse(
+      {
+        candidates: [{ content: { role: "model", parts }, finishReason: finishReason ?? "STOP" }],
+        usageMetadata: meta,
+        ...(responseId ? { responseId } : {}),
+        ...(modelVersion ? { modelVersion } : {}),
+      },
+      model,
+    );
+  }
+
   const root = isPlainObject(body) ? body : {};
   const candidates = Array.isArray(root.candidates) ? root.candidates : [];
   const candidate = isPlainObject(candidates[0]) ? (candidates[0] as Record<string, unknown>) : {};

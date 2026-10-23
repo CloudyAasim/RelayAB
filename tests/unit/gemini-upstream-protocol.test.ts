@@ -264,6 +264,29 @@ describe("Gemini's answer, in the pivot's shape", () => {
     ]);
   });
 
+  it("merges the JSON array the streaming endpoint sends without alt=sse", () => {
+    // Google's streaming endpoint answers with a JSON **array** of chunks when
+    // `alt=sse` does not arrive. Treating that as an empty answer would be the
+    // worst kind of wrong: a 200 with no text in it.
+    const pivot = geminiToResponsesResponse(
+      [
+        { candidates: [{ content: { role: "model", parts: [{ text: "he" }] } }] },
+        {
+          candidates: [
+            {
+              content: { role: "model", parts: [{ text: "llo" }] },
+              finishReason: "STOP",
+            },
+          ],
+          usageMetadata: { promptTokenCount: 12, candidatesTokenCount: 30, totalTokenCount: 42 },
+        },
+      ],
+      "client-m",
+    );
+    expect(pivot.output_text).toBe("hello");
+    expect(pivot.usage).toEqual({ input_tokens: 12, output_tokens: 30, total_tokens: 42 });
+  });
+
   it("keeps the model's own reasoning apart from its answer", () => {
     const pivot = geminiToResponsesResponse(
       {
