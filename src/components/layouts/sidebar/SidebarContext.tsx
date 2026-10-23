@@ -9,14 +9,29 @@
  *   - `setOpen`       : setter
  *   - `toggleSidebar` : flips state
  *
- * State is persisted in a cookie (`sidebar_state`) so it survives reloads,
- * matching new-api and shadcn/ui defaults.
+ * ## Two rules, and which one wins
+ *
+ * 1. **What the user chose wins.** Pressing the toggle stores the choice in a
+ *    cookie, and that choice survives reloads, full page loads and
+ *    cross-segment navigations.
+ *
+ * 2. **The viewport fills in what the user has not decided.** With no stored
+ *    choice, a window too narrow for the full panel gets the icon rail and a
+ *    wide one gets the panel.
+ *
+ * The order matters, and getting it wrong is what produced the bug this file
+ * used to have: the viewport rule ran on **every** mount and overwrote the
+ * stored choice, so collapsing the rail and reloading brought it straight
+ * back. Since switching between route groups triggers a full page load in the
+ * App Router, the rail appeared to expand on its own whenever a link crossed
+ * that boundary — "sometimes", because only some links do.
  */
 import {
   createContext,
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -30,7 +45,7 @@ interface SidebarContextValue {
   /**
    * True when the rail renders icon-only.
    *
-   * Never true on mobile: there the sidebar is a full 256px drawer, so it
+   * Never true on mobile: there the sidebar is a full-width drawer, so it
    * always shows labels even though `state` may be "collapsed" (the viewport
    * rule marks anything under 1280px collapsed).
    */
@@ -44,15 +59,33 @@ interface SidebarContextValue {
 
 const SidebarContext = createContext<SidebarContextValue | null>(null);
 
-const COOKIE_NAME = "relayab_sidebar_state";
-const COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
+/**
+ * The user's own choice, and only the user's.
+ *
+ * A separate cookie from the one the viewport rule used to write: that one
+ * held the *default* for the current window size, so reading it back as a
+ * choice would pin the rail to whatever the window happened to be last time.
+ */
+const PREF_COOKIE = "relayab_sidebar_pref";
+const PREF_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
 
 /**
- * Viewport width at which the expanded rail (256px) still leaves a comfortable
+ * `useLayoutEffect` on the client, `useEffect` on the server.
+ *
+ * The server cannot know the window's width, so the panel's width is decided
+ * on the client — and it has to be decided **before the first paint**. With a
+ * plain effect the browser painted the expanded panel and corrected it a frame
+ * later, which is what made the rail look like it changed state by itself.
+ */
+const useIsomorphicLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
+/**
+ * Viewport width at which the expanded rail (240px) still leaves a comfortable
  * content column.
  *
  * `lg` (1024px) is where the rail stops being a drawer, but 1024px minus a
- * 256px rail is too tight to read a table in — so between `lg` and `xl` the
+ * 240px rail is too tight to read a table in — so between `lg` and `xl` the
  * sidebar defaults to collapsed.
  */
 const EXPAND_MIN_VIEWPORT = 1280;
@@ -68,16 +101,20 @@ export function sidebarStateForViewport(viewportWidth: number): SidebarState {
   return viewportWidth >= EXPAND_MIN_VIEWPORT ? "expanded" : "collapsed";
 }
 
-function readCookieState(): SidebarState {
-  if (typeof document === "undefined") return "expanded";
-  const m = document.cookie.match(new RegExp(`(?:^|;\\s*)${COOKIE_NAME}=([^;]+)`));
-  if (!m) return "expanded";
-  return decodeURIComponent(m[1]) === "collapsed" ? "collapsed" : "expanded";
+/** The choice the user made, or null if they have not made one. */
+export function readSidebarPreference(): SidebarState | null {
+  if (typeof document === "undefined") return null;
+  const m = document.cookie.match(new RegExp(`(?:^|;\\s*)${PREF_COOKIE}=([^;]+)`));
+  if (!m) return null;
+  const value = decodeURIComponent(m[1]);
+  if (value === "collapsed") return "collapsed";
+  if (value === "expanded") return "expanded";
+  return null;
 }
 
-function writeCookieState(state: SidebarState): void {
+function writeSidebarPreference(state: SidebarState): void {
   if (typeof document === "undefined") return;
-  document.cookie = `${COOKIE_NAME}=${state}; path=/; max-age=${COOKIE_MAX_AGE}; SameSite=Lax`;
+  document.cookie = `${PREF_COOKIE}=${state}; path=/; max-age=${PREF_MAX_AGE}; SameSite=Lax`;
 }
 
 export function SidebarProvider({
@@ -87,25 +124,25 @@ export function SidebarProvider({
   defaultOpen?: boolean;
   children: ReactNode;
 }) {
-  // SSR-safe initial state: rely on the prop on the server, the cookie on the client.
+  // SSR-safe initial state: rely on the prop on the server, the client's
+  // decision on the client (see below).
   const [state, setState] = useState<SidebarState>(
     defaultOpen ? "expanded" : "collapsed",
   );
-  const [open, setOpen] = useState<boolean>(defaultOpen);
+  // The drawer always starts shut. It is an overlay, and an overlay that
+  // opens by itself covers the page it is meant to sit beside.
+  const [open, setOpen] = useState<boolean>(false);
   const [isMobile, setIsMobile] = useState<boolean>(false);
 
-  // After hydration, adopt the cookie value so a reload restores the user's
-  // choice. The viewport rule below may override this on the next tick.
-  useEffect(() => {
-    const cookieState = readCookieState();
-    setState(cookieState);
-    setOpen(cookieState === "expanded");
+  // Rule 1 and rule 2, decided once, before anything is painted.
+  useIsomorphicLayoutEffect(() => {
+    const pref = readSidebarPreference();
+    const next = pref ?? sidebarStateForViewport(window.innerWidth);
+    setState(next);
   }, []);
 
-  // Fit-to-viewport rule: on load, and whenever the viewport crosses the
-  // threshold, pick the layout that actually fits. Within one size class a
-  // manual toggle wins — re-applying the rule on every resize event would
-  // silently undo the user's choice.
+  // When the window crosses the threshold the viewport decides again — unless
+  // the user has already said what they want.
   const fitsRef = useRef<boolean | null>(null);
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -113,10 +150,8 @@ export function SidebarProvider({
       const fits = window.innerWidth >= EXPAND_MIN_VIEWPORT;
       if (fitsRef.current === fits) return;
       fitsRef.current = fits;
-      const next = sidebarStateForViewport(window.innerWidth);
-      setState(next);
-      setOpen(next === "expanded");
-      writeCookieState(next);
+      if (readSidebarPreference()) return;
+      setState(sidebarStateForViewport(window.innerWidth));
     };
     evaluate();
     window.addEventListener("resize", evaluate);
@@ -140,16 +175,14 @@ export function SidebarProvider({
   }, []);
 
   const toggleSidebar = useCallback(() => {
-    setState((prev) => {
-      const next: SidebarState = prev === "expanded" ? "collapsed" : "expanded";
-      writeCookieState(next);
-      setOpen(next === "expanded");
-      return next;
-    });
-  }, []);
+    const next: SidebarState = state === "expanded" ? "collapsed" : "expanded";
+    writeSidebarPreference(next);
+    setState(next);
+  }, [state]);
 
-  // Icon-only mode is a desktop concept. The mobile drawer is always 256px
-  // wide, so it keeps its labels even when `state` reads "collapsed".
+  // Icon-only mode is a desktop concept. The mobile drawer is always the
+  // panel's full width, so it keeps its labels even when `state` reads
+  // "collapsed".
   const collapsed = state === "collapsed" && !isMobile;
 
   const value = useMemo<SidebarContextValue>(

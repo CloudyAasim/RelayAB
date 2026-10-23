@@ -5,6 +5,7 @@ import { LogOut, Menu, Settings, ChevronDown, LayoutDashboard, Palette } from "l
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover";
+import { SIDEBAR_CONTROL_MOTION } from "./sidebar";
 import { cn } from "@/lib/utils";
 import { logoutAction } from "@/app/(auth)/logout-action";
 import { useSidebar } from "./sidebar";
@@ -41,7 +42,7 @@ export function AppHeader({ username, displayName, role }: AppHeaderProps) {
         <Button
           size="icon"
           variant="ghost"
-          className="rounded-lg"
+          className={cn("rounded-lg", SIDEBAR_CONTROL_MOTION)}
           onClick={() => setOpen(!open)}
           aria-label={t("nav.toggleSidebar")}
         >
@@ -109,7 +110,9 @@ export function UserMenu({
           type="button"
           aria-label={t("nav.user.menu")}
           className={cn(
-            "rounded-lg border border-border bg-card text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
+            "rounded-lg border border-border bg-card text-sm font-medium text-foreground",
+            SIDEBAR_CONTROL_MOTION,
+            "hover:bg-accent hover:text-accent-foreground",
             // The panel's footer is a column of rows, and these two sit in it
             // like the nav items above: the same width in the open panel
             // (`w-full`) and the same 40px in the icon rail (`w-10`).

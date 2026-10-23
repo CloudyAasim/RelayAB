@@ -24,6 +24,7 @@ import {
   SidebarMenuButton,
   SidebarInset,
   useSidebar,
+  SIDEBAR_LABEL_MOTION,
 } from "./sidebar";
 import { AppHeader, UserMenu } from "./AppHeader";
 import { useT } from "@/components/i18n/I18nProvider";
@@ -143,17 +144,6 @@ function SidebarShell({ role, username, displayName, children }: AuthenticatedLa
   const { collapsed } = useSidebar();
   const sections = role === "user" ? USER_NAV : ADMIN_NAV;
 
-  let pageTitle: string | undefined;
-  for (const section of sections) {
-    for (const item of section.items) {
-      if (isNavItemActive(pathname, item.href, { exact: item.exact })) {
-        pageTitle = t(item.titleKey ?? item.labelKey);
-        break;
-      }
-    }
-    if (pageTitle) break;
-  }
-
   return (
     <div className="flex min-h-screen w-full flex-1">
       {/*
@@ -177,7 +167,8 @@ function SidebarShell({ role, username, displayName, children }: AuthenticatedLa
                 fades away with the rail rather than blinking out first. */}
             <span
               className={cn(
-                "truncate font-semibold tracking-tight transition-[max-width,opacity] duration-300 ease-sidebar motion-reduce:transition-none",
+                "truncate font-semibold tracking-tight",
+                SIDEBAR_LABEL_MOTION,
                 collapsed ? "max-w-0 opacity-0" : "max-w-[120px] opacity-100 delay-150",
               )}
             >
@@ -193,13 +184,15 @@ function SidebarShell({ role, username, displayName, children }: AuthenticatedLa
         </SidebarHeader>
 
         <SidebarContent>
-          {/* Where you are. The panel is the only chrome now, so this is
-              where the page's name belongs. */}
-          {pageTitle && !collapsed && (
-            <div className="px-3 pb-2 pt-1 text-sm font-semibold text-foreground">
-              {pageTitle}
-            </div>
-          )}
+          {/*
+            No page name here.
+
+            The panel used to repeat the current page's name above the
+            navigation — "概览" over a list whose top row was also "概览",
+            with that row highlighted. The selected row already says where you
+            are; saying it twice is how a panel ends up looking like it was
+            assembled from two pieces.
+          */}
           {sections.map((section, idx) => (
             <SidebarGroup key={`${section.labelKey}-${idx}`} label={t(section.labelKey)}>
               <SidebarMenu>

@@ -17,3 +17,8 @@ export {
   SidebarMenuItem,
   SidebarMenuButton,
 } from "./Sidebar";
+export {
+  SIDEBAR_CONTROL_MOTION,
+  SIDEBAR_LABEL_MOTION,
+  SIDEBAR_FADE_MOTION,
+} from "./motion";

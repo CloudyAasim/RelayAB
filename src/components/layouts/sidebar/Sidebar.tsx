@@ -5,6 +5,11 @@ import { type ReactNode } from "react";
 import Link, { useLinkStatus } from "next/link";
 import { Loader2, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useSidebar } from "./SidebarContext";
+import {
+  SIDEBAR_CONTROL_MOTION,
+  SIDEBAR_FADE_MOTION,
+  SIDEBAR_LABEL_MOTION,
+} from "./motion";
 import { useT } from "@/components/i18n/I18nProvider";
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/Tooltip";
 
@@ -93,7 +98,7 @@ export function SidebarHeader({ children, className }: { children: ReactNode; cl
   return (
     <div
       className={cn(
-        "flex h-14 items-center gap-2 border-b border-sidebar-border px-4 transition-[padding] duration-300 ease-sidebar motion-reduce:transition-none",
+        "flex h-14 items-center gap-2 border-b border-sidebar-border px-4",
         className,
       )}
     >
@@ -140,7 +145,11 @@ export function SidebarRail() {
       type="button"
       aria-label="Toggle sidebar"
       onClick={toggleSidebar}
-      className="absolute inset-y-0 right-0 hidden w-1 cursor-w-resize items-center justify-center rounded-full bg-transparent transition-colors hover:bg-sidebar-border lg:flex xl:hidden"
+      className={cn(
+        "absolute inset-y-0 right-0 hidden w-1 cursor-w-resize items-center justify-center rounded-full bg-transparent",
+        SIDEBAR_CONTROL_MOTION,
+        "hover:bg-sidebar-border lg:flex xl:hidden",
+      )}
     />
   );
 }
@@ -168,7 +177,9 @@ export function SidebarToggle({ className }: { className?: string }) {
         // (`w-full`) and the same 40px in the icon rail (`w-10`). Two
         // narrower buttons at the foot of a column of full-width rows is
         // what made the panel look like it was assembled from two pieces.
-        "flex shrink-0 items-center rounded-lg text-sidebar-foreground/70 transition-[width,height,background-color,color] duration-300 ease-sidebar hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring motion-reduce:transition-none",
+        "flex shrink-0 items-center rounded-lg text-sidebar-foreground/70",
+        SIDEBAR_CONTROL_MOTION,
+        "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
         collapsed ? "h-8 w-10 justify-center" : "h-8 w-full gap-3 pl-3 pr-2.5 text-sm font-medium",
         className,
       )}
@@ -179,14 +190,16 @@ export function SidebarToggle({ className }: { className?: string }) {
         <PanelLeftOpen
           aria-hidden
           className={cn(
-            "absolute h-4 w-4 transition-opacity duration-300 motion-reduce:transition-none",
+            "absolute h-4 w-4",
+            SIDEBAR_FADE_MOTION,
             collapsed ? "opacity-100" : "opacity-0",
           )}
         />
         <PanelLeftClose
           aria-hidden
           className={cn(
-            "absolute h-4 w-4 transition-opacity duration-300 motion-reduce:transition-none",
+            "absolute h-4 w-4",
+            SIDEBAR_FADE_MOTION,
             collapsed ? "opacity-0" : "opacity-100",
           )}
         />
@@ -195,7 +208,8 @@ export function SidebarToggle({ className }: { className?: string }) {
           the same way the nav labels and the brand wordmark do. */}
       <span
         className={cn(
-          "truncate transition-[max-width,opacity] duration-300 ease-sidebar motion-reduce:transition-none",
+          "truncate",
+          SIDEBAR_LABEL_MOTION,
           collapsed ? "max-w-0 opacity-0" : "max-w-[120px] opacity-100 delay-150",
         )}
       >
@@ -256,7 +270,7 @@ export function SidebarMenuButton({
   const { collapsed, isMobile, setOpen } = useSidebar();
   const baseClass = cn(
     "group flex w-full items-center gap-3 rounded-lg py-2 pl-3 pr-3 text-sm font-medium",
-    "transition-[padding,background-color,color] duration-300 ease-sidebar hover:duration-150 motion-reduce:transition-none",
+    SIDEBAR_CONTROL_MOTION,
     "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
     // The current page is the one row in the rail that carries the accent
     // colour, and it holds it on hover as well - otherwise the row changes
@@ -279,7 +293,8 @@ export function SidebarMenuButton({
       )}
       <span
         className={cn(
-          "truncate transition-[max-width,opacity] duration-300 ease-sidebar motion-reduce:transition-none",
+          "truncate",
+          SIDEBAR_LABEL_MOTION,
           collapsed ? "max-w-0 opacity-0" : "max-w-[180px] opacity-100 delay-150",
         )}
       >
