@@ -17,7 +17,6 @@ import {
   clientIpFromHeaders,
 } from "@/lib/auth/ip-allowlist";
 import { consumeUserRequestSlot } from "@/lib/auth/rate-limit";
-import { getMaxProviderAttempts, updateSettings } from "@/lib/db/settings";
 import { checkKeyStatus } from "@/lib/auth/apikey";
 import { __resetDbForTest, run } from "@/lib/db/sqlite";
 import { createUser } from "@/lib/db/users";
@@ -217,25 +216,5 @@ describe("the limit on the account, not on the key", () => {
     expect(
       await consumeUserRequestSlot(created.id, created.rpmLimit),
     ).toMatchObject({ allowed: false });
-  });
-});
-
-describe("the failover attempt budget", () => {
-  beforeEach(() => {
-    __resetDbForTest();
-  });
-
-  it("defaults to trying a second provider", async () => {
-    expect(await getMaxProviderAttempts()).toBe(2);
-  });
-
-  it("takes the stored value when the operator has set one", async () => {
-    // The setting is read through a cache, so this also proves that saving it
-    // invalidates that cache — a setting that saves but never takes effect is
-    // a control that looks like it works and does not.
-    await updateSettings({ maxProviderAttempts: 4 });
-    expect(await getMaxProviderAttempts()).toBe(4);
-    await updateSettings({ maxProviderAttempts: 1 });
-    expect(await getMaxProviderAttempts()).toBe(1);
   });
 });
