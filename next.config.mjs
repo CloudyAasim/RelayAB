@@ -156,6 +156,8 @@ const baseConfig = {
     return [
       { source: "/v1/:path*", destination: "/api/v1/:path*" },
       { source: "/anthropic/:path*", destination: "/api/anthropic/:path*" },
+      // The Gemini surface: `/v1beta/models/{model}:generateContent`.
+      { source: "/v1beta/:path*", destination: "/api/v1beta/:path*" },
     ];
   },
 
