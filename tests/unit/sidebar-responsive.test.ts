@@ -152,8 +152,15 @@ describe("sidebar: collapsed rail layout & motion", () => {
 
   it("slides the drawer off the edge including the 8px it stands off it", () => {
     // Otherwise 8px of the panel would stay on screen when it is closed.
-    expect(sidebar).toContain("-translate-x-[calc(-100%_-_0.5rem)]");
-    expect(sidebar).not.toContain('"-translate-x-full"');
+    //
+    // The sign matters, and the failure is silent: `-translate-x-[calc(-100%…)]`
+    // is Tailwind's *negative modifier* applied to an already-negative value,
+    // so it multiplies by -1 and slides the drawer **right** — it parked the
+    // closed drawer in the middle of the screen, on top of the content,
+    // instead of off the left edge. The negative belongs inside the brackets,
+    // the way `translate-x-[-50%]` does it in ui/Modal.tsx.
+    expect(sidebar).toContain("translate-x-[calc(-100%_-_0.5rem)]");
+    expect(sidebar).not.toContain("-translate-x-[calc(");
   });
 
   it("keeps the footer one column in both states", () => {

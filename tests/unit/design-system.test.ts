@@ -159,3 +159,41 @@ describe("the page header", () => {
     expect(source).toMatch(/text-muted-foreground/);
   });
 });
+
+/**
+ * Tailwind's negative modifier and a negative value inside the brackets do not
+ * cancel out — they multiply.
+ *
+ * `-translate-x-[calc(-100%_-_0.5rem)]` means "the negative of
+ * `translate-x-[calc(-100% - 0.5rem)]`", which is `+100% + 0.5rem`: the panel
+ * slides **right**. The mobile drawer was closed with that class and parked in
+ * the middle of the screen, on top of the content, instead of off the left
+ * edge — a bug nothing in the test suite could see, because the assertions
+ * were on the class *name* and the name looks right.
+ *
+ * The negative belongs inside the brackets (`translate-x-[-50%]`,
+ * `translate-x-[calc(-100%_-_0.5rem)]`), where it is the value itself.
+ */
+describe("arbitrary values", () => {
+  const SRC = join(ROOT, "src");
+
+  it("never combines the negative modifier with a negative inside the brackets", () => {
+    // The class has to *start* with the modifier: `-translate-x-[…]`.
+    // `translate-x-[-50%]` is fine — there the minus is part of the value.
+    const offending = /(?:^|[\s"'`])-(?:[a-z]+-)+[a-z-]+-\[[^\]]*-\d/g;
+
+    const hits: string[] = [];
+    for (const file of filesIn(SRC)) {
+      const source = readFileSync(file, "utf-8");
+      for (const match of source.matchAll(offending)) {
+        hits.push(`${file.replace(ROOT, "")}: ${match[0].trim()}`);
+      }
+    }
+
+    expect(
+      hits,
+      "a negative modifier on an already-negative arbitrary value flips the sign:\n" +
+        hits.join("\n"),
+    ).toEqual([]);
+  });
+});

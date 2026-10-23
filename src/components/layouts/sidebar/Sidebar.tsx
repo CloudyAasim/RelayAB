@@ -68,10 +68,17 @@ export function Sidebar({ children }: { children: ReactNode }) {
           // Closed on mobile: slide the whole panel off the left edge
           // **including** the 8px it stands off it, or 8px of it would stay
           // on screen.
+          //
+          // The sign belongs INSIDE the brackets. A negative modifier
+          // (`-translate-x-…`) applied to an already-negative value does not
+          // cancel out — it multiplies by -1, and the closed drawer slid
+          // *right*, into the middle of the screen on top of the content,
+          // instead of off the left edge. `translate-x-[-50%]` in
+          // ui/Modal.tsx has the same shape and is right for the same reason.
           isMobile
             ? open
               ? "translate-x-0"
-              : "-translate-x-[calc(-100%_-_0.5rem)]"
+              : "translate-x-[calc(-100%_-_0.5rem)]"
             : "",
           collapsed && "lg:w-[64px]",
         )}
