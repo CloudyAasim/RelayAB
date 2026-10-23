@@ -126,7 +126,7 @@ This means:
    - **Base URL** - the upstream API root address
    - **API key** - the upstream API key (stored encrypted)
    - **Priority** - the lower the number, the higher the priority
-   - **Upstream format** - `Responses` (default) / `Chat` / `Messages`
+   - **Upstream format** - `Responses` (default) / `Chat` / `Messages` / `Gemini`
    - **Model Mapping** - client model name → upstream model name; an identity mapping is recommended
 
 ### 4.2 Test a Provider

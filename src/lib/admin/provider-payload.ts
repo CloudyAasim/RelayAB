@@ -79,11 +79,11 @@ export interface ProviderPayload {
   headers?: Record<string, string>;
   openaiEnabled: boolean;
   /**
-   * The OpenAI face's dialect — or `"anthropic"`, which means the OpenAI
+   * The upstream's own protocol — or `"anthropic"`, which means the OpenAI
    * surfaces are served **by translation** because the vendor only speaks
    * Anthropic.
    */
-  upstreamFormat: "responses" | "chat" | "anthropic";
+  upstreamFormat: "responses" | "chat" | "anthropic" | "gemini";
   anthropicEnabled: boolean;
   anthropicBaseUrl: string | null;
   modelMapping: Record<string, string>;
@@ -189,11 +189,23 @@ export function buildProviderPayload(
  * that never had flags keeps its old meaning: Anthropic only.
  */
 export function facesFromProvider(provider: ProviderRecord): ProviderFacesValue {
-  const format = provider.upstreamFormat ?? "responses";
-  const anthropicOnly = format === "anthropic";
+  const stored = provider.upstreamFormat ?? "responses";
+  /**
+   * A row created for Anthropic says so in its vendor type, whatever the
+   * stored dialect says.
+   *
+   * The form reports the **effective** dialect, not the stored one, so the
+   * value written back is the one the engine acts on. Two traps close with
+   * that: a row typed "anthropic" whose stored dialect still read "responses"
+   * (which is what a new Anthropic row used to look like), and a row whose
+   * stored dialect read "anthropic" while its vendor type said something
+   * else — the engine would have called it Anthropic and the operator would
+   * have read the dropdown as saying otherwise.
+   */
+  const anthropicOnly = stored === "anthropic" || provider.kind === "anthropic";
   return {
     openaiEnabled: provider.openaiEnabled ?? !anthropicOnly,
-    upstreamFormat: format,
+    upstreamFormat: anthropicOnly ? "anthropic" : stored,
     anthropicEnabled: provider.anthropicEnabled ?? anthropicOnly,
     anthropicBaseUrl: provider.anthropicBaseUrl ?? "",
   };

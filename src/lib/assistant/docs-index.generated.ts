@@ -174,7 +174,7 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     surface: "admin",
     id: "routes",
     summary: "路由规则：一个模型名会走到哪个上游",
-    keys: ["admin.docs.routes.title","admin.docs.routes.desc","admin.docs.routes.col.endpoint","admin.docs.routes.col.base","admin.docs.routes.col.format","admin.docs.routes.r1.endpoint","admin.docs.routes.r1.base","admin.docs.routes.r1.format","admin.docs.routes.r2.endpoint","admin.docs.routes.r2.base","admin.docs.routes.r2.format","admin.docs.routes.r3.endpoint","admin.docs.routes.r3.base","admin.docs.routes.r3.format"],
+    keys: ["admin.docs.routes.title","admin.docs.routes.desc","admin.docs.routes.col.endpoint","admin.docs.routes.col.base","admin.docs.routes.col.format","admin.docs.routes.r1.endpoint","admin.docs.routes.r1.base","admin.docs.routes.r1.format","admin.docs.routes.r2.endpoint","admin.docs.routes.r2.base","admin.docs.routes.r2.format","admin.docs.routes.r3.endpoint","admin.docs.routes.r3.base","admin.docs.routes.r3.format","admin.docs.routes.r4.endpoint","admin.docs.routes.r4.base","admin.docs.routes.r4.format"],
   },
   {
     surface: "admin",

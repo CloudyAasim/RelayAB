@@ -66,7 +66,7 @@ export interface CreateProviderInput {
   enabled?: boolean;
   priority?: number;
   headers?: Record<string, string>;
-  upstreamFormat?: "responses" | "chat" | "anthropic";
+  upstreamFormat?: "responses" | "chat" | "anthropic" | "gemini";
   /** OpenAI-side face (Responses/Chat). Defaults to on. */
   openaiEnabled?: boolean;
   /** Anthropic Messages face, sharing this provider's key and models. */
@@ -96,7 +96,7 @@ export interface UpdateProviderInput {
   enabled?: boolean;
   priority?: number;
   headers?: Record<string, string>;
-  upstreamFormat?: "responses" | "chat" | "anthropic";
+  upstreamFormat?: "responses" | "chat" | "anthropic" | "gemini";
   openaiEnabled?: boolean;
   anthropicEnabled?: boolean;
   anthropicBaseUrl?: string | null;

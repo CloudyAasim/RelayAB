@@ -58,9 +58,14 @@ Content-Type: application/json
 **Upstream behaviour**:
 this endpoint always sends a request body in **Chat Completions format**, so it forwards
 to a fixed upstream path, `<provider.baseUrl>/chat/completions`. A provider's
-`upstreamFormat` does not change this path (that would send a Chat body to the
-Responses endpoint). Providers with `upstreamFormat = "anthropic"` are excluded
-from this endpoint.
+`upstreamFormat = "responses"` does not change this path (that would send a Chat body to
+the Responses endpoint).
+
+Providers with `upstreamFormat = "anthropic"` or `"gemini"` are **not** excluded: their
+upstream does not speak Chat Completions at all, so the gateway converts the request into
+the Responses shape, hands it to the Responses path (which converts it again into the
+vendor's dialect) and converts the answer back into a Chat structure. A provider with
+`upstreamFormat = "responses"` still gets the Chat body posted as above.
 
 **Error body** (applies to every `/v1/*` endpoint, including all the public proxy
 ones below):
@@ -263,6 +268,9 @@ Or use the array form:
 - Provider with `upstreamFormat = "anthropic"` (or `kind = "anthropic"`) → converted to
   an Anthropic Messages request and sent to `<baseUrl>/v1/messages`, then converted back
   into the Responses structure.
+- Provider with `upstreamFormat = "gemini"` → converted to a Gemini request and sent to
+  `<baseUrl>/models/<model>:generateContent` (the key travels in `x-goog-api-key`),
+  then the `candidates` are converted back into the Responses structure.
 
 **Usage field compatibility**: different upstreams name their usage fields differently.
 Chat Completions uses `prompt_tokens` / `completion_tokens`; Responses and Anthropic use

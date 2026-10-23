@@ -224,7 +224,7 @@ routing and rotation, ordered by `priority`.
 | `modelMapping` | `model_mapping` | TEXT NOT NULL DEFAULT `'{}'` | Client model → actual upstream model, as a JSON object. An identity mapping is recommended |
 | `modelConfigs` | `model_configs` | TEXT NOT NULL DEFAULT `'{}'` | Optional per-model configuration, as a JSON object — see §3.1 |
 | `headers` | `headers` | TEXT NOT NULL DEFAULT `'{}'` | Optional extra request headers (e.g. Azure's `api-version`), as a JSON object |
-| `upstreamFormat` | `upstream_format` | TEXT NOT NULL DEFAULT `'responses'` | `"responses" \| "chat" \| "anthropic"`, the native upstream protocol. **Legacy read-only value**: it describes the OpenAI-side format; which surfaces a provider actually serves is decided by the two `*Enabled` flags below |
+| `upstreamFormat` | `upstream_format` | TEXT NOT NULL DEFAULT `'responses'` | `"responses" \| "chat" \| "anthropic" \| "gemini"`, the upstream's native protocol. `responses` / `chat` are served natively by the OpenAI side; `anthropic` / `gemini` mean the upstream speaks only that protocol and the OpenAI side is served by the gateway translating |
 | `openaiEnabled` | `openai_enabled` | INTEGER NOT NULL DEFAULT 1 | Whether this provider serves the OpenAI-facing endpoints (`/v1/chat/completions`, `/v1/responses`) |
 | `anthropicEnabled` | `anthropic_enabled` | INTEGER NOT NULL DEFAULT 0 | Whether this provider **also** serves the Anthropic Messages surface (`/anthropic/v1/messages`, `/v1/messages`) |
 | `anthropicBaseUrl` | `anthropic_base_url` | TEXT NULL | Base URL for the Anthropic face. `NULL` = derive it from `base_url` (one trailing `/v1` is stripped). Set it explicitly when the vendor's Anthropic endpoint is a sub-path, e.g. `https://api.deepseek.com/anthropic` |
@@ -246,7 +246,7 @@ routing and rotation, ordered by `priority`.
 > | `openaiEnabled` | whether the OpenAI-side endpoints use this provider |
 > | `anthropicEnabled` | whether the Anthropic Messages surface uses this provider |
 > | `anthropicBaseUrl` | the Anthropic-side base URL (derived from `base_url` when NULL) |
-> | `upstreamFormat` | the OpenAI-side native format — `responses` (native) or `chat` |
+> | `upstreamFormat` | the OpenAI side's native format — `responses` / `chat` natively, `anthropic` / `gemini` by the gateway's translation |
 >
 > See [architecture.md §7](architecture.md#7-upstream-providers-and-model-mapping)
 > for how the faces interact during routing.

@@ -308,7 +308,7 @@ admin sees when granting access must be exactly the ceiling the user can consume
   },
   modelConfigs: { /* optional context length / output cap / billing parameters */ },
   headers: { /* optional extra request headers */ },
-  upstreamFormat: "responses" | "chat" | "anthropic",
+  upstreamFormat: "responses" | "chat" | "anthropic" | "gemini",
   enabled: true,
   priority: 1,                    // lower numbers are picked first
 }
@@ -329,9 +329,10 @@ differ and must not substitute for one another:
 
 | Client request | Upstream path | Provider selection rule |
 |---|---|---|
-| `POST /v1/chat/completions` | `<baseUrl>/chat/completions` | Exclude Anthropic-protocol providers; otherwise take the first by ascending `priority` |
-| `POST /v1/responses` | `<baseUrl>/responses` | Same as above. If the matched provider uses the `chat` / `anthropic` protocol, convert the request first, then call its corresponding endpoint, and finally convert the response back into the Responses shape |
+| `POST /v1/chat/completions` | `<baseUrl>/chat/completions` | Exclude Anthropic-protocol providers; otherwise take the first by ascending `priority`. A provider speaking Anthropic or Gemini is reached through the Responses pivot instead (Chat → Responses → the vendor's dialect) |
+| `POST /v1/responses` | `<baseUrl>/responses` | Same as above. If the matched provider uses the `chat` / `anthropic` / `gemini` protocol, convert the request first, then call its corresponding endpoint, and finally convert the response back into the Responses shape |
 | `POST /anthropic/v1/messages` | `<baseUrl>/v1/messages` | Prefer `upstreamFormat === "anthropic"`, then `kind === "anthropic"`, then `kind === "custom-openai"` |
+| `POST /v1beta/models/<model>:generateContent` | `<baseUrl>/models/<model>:generateContent` | The same providers as `/v1/responses` — a Gemini upstream goes through the same conversion chain |
 
 Two implementation details:
 

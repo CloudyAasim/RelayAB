@@ -38,9 +38,11 @@ describe("the providers page stays a server component", () => {
     //
     // `translated` is the third answer the OpenAI badge can give — a row whose
     // OpenAI side is served by the gateway's translation has no upstream
-    // dialect to name — so the label set grew with the fact it reports.
+    // dialect to name — so the label set grew with the fact it reports. It
+    // grew again when Gemini became an upstream dialect: there are now two
+    // translated dialects, and they are not the same one.
     expect(PAGE).toMatch(
-      /labels: \{\s*none: string;\s*hasRule: string;\s*openaiSide: string;\s*anthropicSide: string;[\s\S]{0,320}parkedRules: \(n: number\) => string;\s*chat: string;\s*responses: string;[\s\S]{0,160}translated: string;\s*\};/,
+      /labels: \{\s*none: string;\s*hasRule: string;\s*openaiSide: string;\s*anthropicSide: string;[\s\S]{0,320}parkedRules: \(n: number\) => string;\s*chat: string;\s*responses: string;[\s\S]{0,200}translatedAnthropic: string;\s*translatedGemini: string;\s*\};/,
     );
     expect(PAGE).toMatch(/<InterfaceCell[\s\S]{0,400}labels=\{\{/);
   });
@@ -63,11 +65,13 @@ describe("the interface column says what is served, not what was typed", () => {
     expect(PAGE).toMatch(
       /labels\.openaiSide<\/Badge>|openaiSide[\s\S]{0,400}openaiFormatLabel/,
     );
-    // Three dialects, three answers. The third one is new and it is the one
-    // that used to be a lie: a row served by the gateway's translation has no
-    // upstream dialect, so the badge says so instead of naming "Responses".
+    // Four dialects, four answers. The third and fourth are the translated
+    // ones, and they used to be a lie: a row served by the gateway's
+    // translation has no upstream dialect of its own, so the badge says which
+    // one it is translated into rather than naming "Responses" — a request the
+    // gateway never makes.
     expect(PAGE).toMatch(
-      /openai\?\.format === "anthropic"\s*\?\s*labels\.translated\s*:\s*openai\?\.format === "chat"\s*\?\s*labels\.chat\s*:\s*labels\.responses/,
+      /openai\?\.format === "anthropic"\s*\?\s*labels\.translatedAnthropic\s*:\s*openai\?\.format === "gemini"\s*\?\s*labels\.translatedGemini\s*:\s*openai\?\.format === "chat"\s*\?\s*labels\.chat\s*:\s*labels\.responses/,
     );
   });
 

@@ -1145,8 +1145,9 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
           baseUrl: { type: "string", description: "上游 base URL，例如 https://api.minimaxi.com/v1" },
           upstreamFormat: {
             type: "string",
-            enum: ["responses", "chat", "anthropic"],
-            description: "上游接口风格，默认 responses",
+            enum: ["responses", "chat", "anthropic", "gemini"],
+            description:
+              "上游接口风格，默认 responses。anthropic 或 gemini 表示上游只说那种协议，OpenAI 侧由网关转换。",
           },
           priority: { type: "integer", description: "数值越小越优先" },
           modelMapping: {
@@ -1154,7 +1155,11 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
             description: "客户端模型名 → 上游模型名。新建时这张表就是全部，所以传完整的一份。",
             additionalProperties: { type: "string" },
           },
-          openaiEnabled: { type: "boolean", description: "OpenAI 协议面，上游说 chat/responses 时开" },
+          openaiEnabled: {
+            type: "boolean",
+            description:
+              "OpenAI 协议面。上游说 chat/responses 时是直连；上游说 anthropic/gemini 时表示由网关转换来服务。",
+          },
           anthropicEnabled: { type: "boolean", description: "Anthropic 协议面，上游说 /v1/messages 时开" },
           anthropicBaseUrl: {
             type: "string",
@@ -3514,8 +3519,18 @@ async function proposeProviderUpdate(
     patch.activeMode = args.activeMode;
   }
   if (typeof args.upstreamFormat === "string") {
-    if (args.upstreamFormat !== "chat" && args.upstreamFormat !== "responses") {
-      return fail('upstreamFormat 只能是 "chat" 或 "responses"。');
+    // The enum above has always offered "anthropic" and this check refused it:
+    // a value the tool advertises and then rejects is a proposal the
+    // administrator can never make. Both of them mean the same thing now —
+    // the upstream speaks a protocol the OpenAI side has to be translated
+    // into.
+    if (
+      args.upstreamFormat !== "chat" &&
+      args.upstreamFormat !== "responses" &&
+      args.upstreamFormat !== "anthropic" &&
+      args.upstreamFormat !== "gemini"
+    ) {
+      return fail('upstreamFormat 只能是 "chat"、"responses"、"anthropic" 或 "gemini"。');
     }
     // The trap worth naming: `responses` means /v1/responses reaches the vendor
     // untouched, but a /v1/chat/completions request still goes to

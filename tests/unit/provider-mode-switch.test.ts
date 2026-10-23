@@ -77,6 +77,27 @@ describe("which interfaces are on is the simple mode's business", () => {
     expect(FACES).toMatch(/admin\.providers\.faces\.noneWarning/);
   });
 
+  it("the dialect can be chosen unless the vendor type already says it", () => {
+    // A row typed "anthropic" speaks Anthropic, and the vendor type is what
+    // says so — a dropdown there would be a second place to say the same
+    // thing, and the two would drift.
+    //
+    // Every other row can be moved off whatever it was. That matters for the
+    // rows whose stored dialect reads "anthropic" while their type says
+    // something else: with the dropdown hidden they would be stuck there for
+    // good, with no way out of it.
+    const FACES = read("src", "app", "(admin)", "admin", "providers", "ProviderFacesField.tsx");
+    expect(FACES).toMatch(/const chooseDialect = kind !== "anthropic";/);
+    expect(FACES).toMatch(/openaiOn && chooseDialect/);
+    // And all four dialects are on offer: Responses, Chat, Anthropic Messages
+    // and Google's Gemini.
+    for (const value of ["responses", "chat", "anthropic", "gemini"]) {
+      expect(FACES, `the ${value} dialect is not on offer`).toMatch(
+        new RegExp(`<option value="${value}">`),
+      );
+    }
+  });
+
   it("advanced mode does not render it, so nothing on screen can contradict it", () => {
     // The two blocks are alternatives, not halves of one form. Rendering them
     // together is what let a switch say a set was off beside a list offering to

@@ -205,7 +205,7 @@ function checkKeyStatus({ key, user, requestedModel }): KeyValidationResult {
 | `modelMapping` | `model_mapping` | TEXT NOT NULL DEFAULT `'{}'` | 客户端模型 → 上游真实模型，JSON 对象文本。推荐恒等映射 |
 | `modelConfigs` | `model_configs` | TEXT NOT NULL DEFAULT `'{}'` | 可选的每模型配置，JSON 对象文本 —— 见 §3.1 |
 | `headers` | `headers` | TEXT NOT NULL DEFAULT `'{}'` | 可选的附加请求头（如 Azure 的 `api-version`），JSON 对象文本 |
-| `upstreamFormat` | `upstream_format` | TEXT NOT NULL DEFAULT `'responses'` | `"responses" \| "chat" \| "anthropic"`，上游原生协议。**遗留只读值**：它描述 OpenAI 侧的格式；一个 Provider 实际对外提供哪些协议面由下面两个 `*Enabled` 标志决定 |
+| `upstreamFormat` | `upstream_format` | TEXT NOT NULL DEFAULT `'responses'` | `"responses" \| "chat" \| "anthropic" \| "gemini"`，上游原生协议。`responses` / `chat` 由 OpenAI 侧直连；`anthropic` / `gemini` 表示上游只说那种协议，OpenAI 侧由网关转换来服务 |
 | `openaiEnabled` | `openai_enabled` | INTEGER NOT NULL DEFAULT 1 | 该 Provider 是否服务 OpenAI 侧端点（`/v1/chat/completions`、`/v1/responses`） |
 | `anthropicEnabled` | `anthropic_enabled` | INTEGER NOT NULL DEFAULT 0 | 该 Provider 是否**同时**提供 Anthropic Messages 协议面（`/anthropic/v1/messages`、`/v1/messages`） |
 | `anthropicBaseUrl` | `anthropic_base_url` | TEXT NULL | Anthropic 协议面的 base URL。`NULL` = 由 `base_url` 推导（会去掉一个结尾的 `/v1`）。当厂商的 Anthropic 端点是子路径时需显式设置，如 `https://api.deepseek.com/anthropic` |
@@ -226,7 +226,7 @@ function checkKeyStatus({ key, user, requestedModel }): KeyValidationResult {
 > | `openaiEnabled` | OpenAI 侧端点是否使用该 Provider |
 > | `anthropicEnabled` | Anthropic Messages 协议面是否使用该 Provider |
 > | `anthropicBaseUrl` | Anthropic 侧的 base URL（为 `NULL` 时由 `baseUrl` 推导） |
-> | `upstreamFormat` | OpenAI 侧的原生格式 —— `responses`（原生）或 `chat` |
+> | `upstreamFormat` | OpenAI 侧的原生格式 —— `responses` / `chat` 直连，`anthropic` / `gemini` 由网关转换 |
 >
 > 协议面在路由中如何协作见
 > [architecture.md §7](architecture.md#7-上游-provider-与模型映射)。

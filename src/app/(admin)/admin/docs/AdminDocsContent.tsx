@@ -152,12 +152,21 @@ export function AdminDocsContent({ section, t }: { section: AdminDocId; t: TFn }
                 <td className="py-2 pr-3 align-top text-xs">{t("admin.docs.routes.r2.base")}</td>
                 <td className="py-2 align-top text-xs">{t("admin.docs.routes.r2.format")}</td>
               </tr>
-              <tr>
+              <tr className="border-b border-border/60">
                 <td className="py-2 pr-3 align-top font-mono text-xs text-foreground">
                   {t("admin.docs.routes.r3.endpoint")}
                 </td>
                 <td className="py-2 pr-3 align-top text-xs">{t("admin.docs.routes.r3.base")}</td>
                 <td className="py-2 align-top text-xs">{t("admin.docs.routes.r3.format")}</td>
+              </tr>
+              {/* A vendor that publishes Google's own API: the base is not an
+                  OpenAI-compatible one, and the format says so. */}
+              <tr>
+                <td className="py-2 pr-3 align-top font-mono text-xs text-foreground">
+                  {t("admin.docs.routes.r4.endpoint")}
+                </td>
+                <td className="py-2 pr-3 align-top text-xs">{t("admin.docs.routes.r4.base")}</td>
+                <td className="py-2 align-top text-xs">{t("admin.docs.routes.r4.format")}</td>
               </tr>
             </tbody>
           </table>

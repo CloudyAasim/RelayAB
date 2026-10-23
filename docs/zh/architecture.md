@@ -309,7 +309,7 @@ Session 由 iron-session 放在 cookie 里，**不落库**。
   },
   modelConfigs: { /* 可选的上下文长度 / 输出上限 / 计费参数 */ },
   headers: { /* 可选的附加请求头 */ },
-  upstreamFormat: "responses" | "chat" | "anthropic",
+  upstreamFormat: "responses" | "chat" | "anthropic" | "gemini",
   enabled: true,
   priority: 1,                    // 数字小的优先被选中
 }
@@ -329,9 +329,10 @@ Session 由 iron-session 放在 cookie 里，**不落库**。
 
 | 客户端请求 | 上游路径 | Provider 选择规则 |
 |---|---|---|
-| `POST /v1/chat/completions` | `<baseUrl>/chat/completions` | 排除 Anthropic 协议的 Provider，其余按 `priority` 升序取第一个 |
-| `POST /v1/responses` | `<baseUrl>/responses` | 同上。若命中的 Provider 是 `chat` / `anthropic` 协议，先做请求转换，再调用它的对应端点，最后把响应转回 Responses 结构 |
+| `POST /v1/chat/completions` | `<baseUrl>/chat/completions` | 排除 Anthropic 协议的 Provider，其余按 `priority` 升序取第一个。命中的是 Anthropic / Gemini 协议的 Provider 时改走 Responses 枢轴（Chat → Responses → 上游方言） |
+| `POST /v1/responses` | `<baseUrl>/responses` | 同上。若命中的 Provider 是 `chat` / `anthropic` / `gemini` 协议，先做请求转换，再调用它的对应端点，最后把响应转回 Responses 结构 |
 | `POST /anthropic/v1/messages` | `<baseUrl>/v1/messages` | 优先 `upstreamFormat === "anthropic"`，其次 `kind === "anthropic"`，再其次 `kind === "custom-openai"` |
+| `POST /v1beta/models/<模型名>:generateContent` | `<baseUrl>/models/<模型名>:generateContent` | 与 `/v1/responses` 同一批 Provider（Gemini 上游走同一条转换链） |
 
 两个实现细节：
 

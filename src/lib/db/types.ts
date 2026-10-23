@@ -41,25 +41,34 @@ export const DEFAULT_TIMEZONE: Timezone = "shanghai";
 export const ProviderKindSchema = z.enum(["openai", "anthropic", "custom-openai", "azure"]);
 export type ProviderKind = z.infer<typeof ProviderKindSchema>;
 
-export const UpstreamFormatSchema = z.enum(["responses", "chat", "anthropic"]);
+/**
+ * The protocols a vendor's own API speaks.
+ *
+ * `responses` and `chat` are served natively by the OpenAI surfaces. The other
+ * two are not OpenAI-side protocols at all: they are the statement that **the
+ * OpenAI surfaces are served by translating**. A vendor that only publishes an
+ * Anthropic Messages endpoint — or Google's own Gemini endpoint — can still be
+ * called by an OpenAI client, because the gateway rewrites the request into
+ * that vendor's shape and the answer back.
+ *
+ * The Anthropic one used to be impossible: Anthropic-format rows were excluded
+ * from the OpenAI surfaces entirely, so a Claude model was invisible to an
+ * OpenAI SDK, a Responses client and a Gemini client. The conversion code was
+ * written and never called.
+ */
+export const UpstreamFormatSchema = z.enum(["responses", "chat", "anthropic", "gemini"]);
 export type UpstreamFormat = z.infer<typeof UpstreamFormatSchema>;
 
 /**
  * The protocols the OpenAI-facing side of a provider can be.
  *
- * `"anthropic"` is the odd one out: it is not an OpenAI-side protocol at all,
- * it is the statement that **the OpenAI surfaces are served by translating**.
- * A vendor that only publishes an Anthropic Messages endpoint can still be
- * called by an OpenAI client — the gateway rewrites the request into
- * Anthropic's shape and the answer back.
- *
- * It used to be impossible, because the Anthropic-format rows were excluded
- * from the OpenAI surfaces entirely: a Claude model was invisible to an
- * OpenAI SDK, a Responses client and a Gemini client. The conversion code
- * was written and never called.
+ * The same set as the upstream's own, and deliberately so: the face's format
+ * says which dialect the gateway speaks to the vendor in, and that is exactly
+ * what the upstream's format says. `"responses"` and `"chat"` are served
+ * natively; `"anthropic"` and `"gemini"` are served by translating.
  */
-export const OpenAIFaceFormatSchema = z.enum(["responses", "chat", "anthropic"]);
-export type OpenAIFaceFormat = z.infer<typeof OpenAIFaceFormatSchema>;
+export const OpenAIFaceFormatSchema = UpstreamFormatSchema;
+export type OpenAIFaceFormat = UpstreamFormat;
 
 // ---------------------------------------------------------------------------
 // User
@@ -423,15 +432,17 @@ export type PublicProvider = Omit<Provider, "encryptedApiKey">;
  *   { openai: null,                anthropic: { baseUrl: "https://…" } }  // Anthropic only
  *   { openai: { format: "responses" }, anthropic: null }                    // OpenAI only
  *   { openai: { format: "anthropic" }, anthropic: { baseUrl: "https://…" } } // by translation
+ *   { openai: { format: "gemini" },    anthropic: null }                    // by translation
  */
 export interface ProviderFaces {
   /**
    * Non-null when the provider serves `/v1/chat/completions` and `/v1/responses`.
    *
-   * `format: "anthropic"` means the OpenAI surfaces are served **by
-   * translation**: the gateway rewrites the request into Anthropic's shape and
-   * the answer back. It is the only way an Anthropic-only vendor is reachable
-   * from an OpenAI, Responses or Gemini client.
+   * `format: "anthropic"` and `format: "gemini"` mean the OpenAI surfaces are
+   * served **by translation**: the gateway rewrites the request into that
+   * vendor's shape and the answer back. It is the only way an Anthropic-only
+   * or a Gemini-only vendor is reachable from an OpenAI, Responses or Gemini
+   * client.
    */
   openai: { format: OpenAIFaceFormat } | null;
   /**
@@ -467,16 +478,24 @@ export function providerFaces(provider: Provider): ProviderFaces {
   const nativeAnthropic =
     provider.kind === "anthropic" || provider.upstreamFormat === "anthropic";
 
-  // The OpenAI side is served natively when the upstream speaks Responses or
-  // Chat Completions, and **by translation** when the upstream speaks
-  // Anthropic. The old code excluded the Anthropic rows from this face
-  // altogether, which is what made a Claude model invisible to an OpenAI
-  // client.
-  const openai = openaiOn
-    ? ({ format: nativeAnthropic ? "anthropic" : provider.upstreamFormat } as {
-        format: OpenAIFaceFormat;
-      })
-    : null;
+  /**
+   * Whether this vendor's own protocol is Gemini.
+   *
+   * Google publishes its own API, and it is not an OpenAI-compatible one: the
+   * endpoint is `POST {base}/models/{model}:generateContent` and the body is
+   * `contents`. A row that speaks it is reached by translating, the same way
+   * an Anthropic-native row is.
+   */
+  const nativeGemini = provider.upstreamFormat === "gemini";
+
+  // The dialect the gateway speaks to this vendor in — which is also the shape
+  // the OpenAI surfaces are served in. Responses and Chat are native; Anthropic
+  // and Gemini are **by translation**. The old code excluded the Anthropic rows
+  // from this face altogether, which is what made a Claude model invisible to
+  // an OpenAI client.
+  const dialect: OpenAIFaceFormat = nativeAnthropic ? "anthropic" : provider.upstreamFormat;
+
+  const openai = openaiOn ? { format: dialect } : null;
 
   const explicitAnthropicBase = provider.anthropicBaseUrl?.trim() ?? "";
   const derivedAnthropicBase = provider.baseUrl ? stripTrailingV1(provider.baseUrl) : "";
@@ -488,7 +507,13 @@ export function providerFaces(provider: Provider): ProviderFaces {
   // `upstreamFormat: "anthropic"` is itself a statement of protocol, so it
   // forces the face on. Without that, a legacy row whose flag got flipped off
   // would serve neither protocol and silently vanish from every surface.
-  const anthropic = nativeAnthropic || anthropicOn ? { baseUrl: anthropicBaseUrl } : null;
+  //
+  // A Gemini-native row is the exception: Google's base has no Anthropic
+  // endpoint under it, so the face needs a base URL of its own to exist at all.
+  const anthropic =
+    nativeAnthropic || (anthropicOn && (!nativeGemini || explicitAnthropicBase !== ""))
+      ? { baseUrl: anthropicBaseUrl }
+      : null;
 
   return { openai, anthropic };
 }

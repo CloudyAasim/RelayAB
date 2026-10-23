@@ -122,7 +122,7 @@
    - **Base URL** - 上游 API 根地址
    - **API Key** - 上游 API Key（加密存储）
    - **优先级** - 数字越小越优先
-   - **上游格式** - `responses`（默认）/ `chat` / `anthropic`
+   - **上游格式** - `responses`（默认）/ `chat` / `anthropic` / `gemini`
    - **模型映射** - 客户端模型名 → 上游模型名，建议用恒等映射
 
 ### 4.2 测试 Provider

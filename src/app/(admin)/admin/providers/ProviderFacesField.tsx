@@ -19,7 +19,7 @@ import { AlertCircle } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { useT } from "@/components/i18n/I18nProvider";
 
-export type OpenAIFaceFormat = "responses" | "chat";
+export type OpenAIFaceFormat = "responses" | "chat" | "gemini";
 
 /** `"anthropic"` is the legacy "Anthropic-only row" encoding. */
 export type UpstreamFormat = OpenAIFaceFormat | "anthropic";
@@ -64,12 +64,26 @@ export function ProviderFacesField({
    * what it is.
    */
   const nativeAnthropic = kind === "anthropic" || anthropicUpstream;
-  const openaiFormat: OpenAIFaceFormat = value.upstreamFormat === "chat" ? "chat" : "responses";
-  // The OpenAI side is no longer forced off for an Anthropic vendor: turning it
-  // on is how that vendor's models become reachable from an OpenAI client, and
-  // the gateway does the translating.
+  /** Whether this vendor's own protocol is Google's Gemini API. */
+  const nativeGemini = value.upstreamFormat === "gemini";
+  // The OpenAI side is no longer forced off for a vendor that speaks no
+  // OpenAI-compatible protocol: turning it on is how that vendor's models
+  // become reachable from an OpenAI client, and the gateway does the
+  // translating.
   const openaiOn = value.openaiEnabled;
   const noneOn = !openaiOn && !value.anthropicEnabled;
+  /** The OpenAI face is served by the gateway's own translation. */
+  const translated = nativeAnthropic || nativeGemini;
+  /**
+   * Whether the dialect can be chosen here.
+   *
+   * It cannot when the **vendor type** already says it — a row typed
+   * "anthropic" speaks Anthropic, and the type is the thing that decides it.
+   * It can otherwise, and it has to: a row whose stored dialect reads
+   * "anthropic" while its type says something else would otherwise be stuck
+   * on Anthropic with no way out of it.
+   */
+  const chooseDialect = kind !== "anthropic";
 
   return (
     <div className={className}>
@@ -86,7 +100,7 @@ export function ProviderFacesField({
               onChange={(e) =>
                 set({
                   openaiEnabled: e.target.checked,
-                  ...(nativeAnthropic ? {} : { upstreamFormat: openaiFormat }),
+                  ...(chooseDialect ? { upstreamFormat: value.upstreamFormat } : {}),
                 })
               }
             />
@@ -95,33 +109,48 @@ export function ProviderFacesField({
           <p className="mt-1 pl-6 text-xs text-muted-foreground">
             {t("admin.providers.faces.openai.hint")}
           </p>
-          {openaiOn && nativeAnthropic && (
-            /* An Anthropic vendor has no Responses endpoint to point at, so
-               there is no format to choose — the gateway translates. Saying
-               so is better than offering a dropdown whose choice is ignored. */
+          {openaiOn && translated && (
+            /* The upstream speaks a protocol the OpenAI side has to be
+               translated into. Saying so is better than offering a dropdown
+               whose choice would be ignored — and for Gemini the dropdown
+               stays, because Gemini *is* a choice: it names the upstream's
+               protocol, not the OpenAI side's. */
             <p className="mt-2 ml-6 rounded-md border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-              {t("admin.providers.faces.openai.translated")}
+              {t(
+                nativeAnthropic
+                  ? "admin.providers.faces.openai.translated"
+                  : "admin.providers.faces.openai.translatedGemini",
+              )}
             </p>
           )}
-          {openaiOn && !nativeAnthropic && (
+          {openaiOn && chooseDialect && (
             <div className="mt-2 pl-6">
               <p className="mb-1 text-xs font-medium text-foreground">
                 {t("admin.providers.format.label")}
               </p>
               <select
-                value={openaiFormat}
+                value={value.upstreamFormat}
                 onChange={(e) =>
-                  set({ upstreamFormat: e.target.value as OpenAIFaceFormat, openaiEnabled: true })
+                  set({
+                    upstreamFormat: e.target.value as UpstreamFormat,
+                    openaiEnabled: true,
+                  })
                 }
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               >
                 <option value="responses">{t("admin.providers.format.responses")}</option>
                 <option value="chat">{t("admin.providers.format.chat")}</option>
+                <option value="anthropic">{t("admin.providers.format.anthropic")}</option>
+                <option value="gemini">{t("admin.providers.format.gemini")}</option>
               </select>
               <p className="mt-1 text-xs text-muted-foreground">
-                {openaiFormat === "responses"
+                {value.upstreamFormat === "responses"
                   ? t("admin.providers.format.hint.responses")
-                  : t("admin.providers.format.hint.chat")}
+                  : value.upstreamFormat === "chat"
+                    ? t("admin.providers.format.hint.chat")
+                    : value.upstreamFormat === "anthropic"
+                      ? t("admin.providers.format.hint.anthropic")
+                      : t("admin.providers.format.hint.gemini")}
               </p>
             </div>
           )}

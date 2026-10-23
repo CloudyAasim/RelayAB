@@ -153,7 +153,25 @@ describe("creating and editing differ only where they must", () => {
     expect(buildProviderPayload({ ...values, faces }).upstreamFormat).toBe("anthropic");
   });
 
-  it("so turning the OpenAI side on for such a row survives the round trip", () => {
+  it("reports the effective dialect, so what is saved is what the engine acts on", () => {
+  // A row typed "anthropic" stores "responses" by default — that is the
+  // dialect of the OpenAI side, which such a row does not have. The form
+  // reports the effective one, so saving the row does not leave it saying
+  // something the engine will not act on.
+  const typed: ProviderRecord = {
+    name: "x",
+    kind: "anthropic",
+    baseUrl: null,
+    modelMapping: {},
+    modelConfigs: {},
+    enabled: true,
+    upstreamFormat: "responses",
+  };
+  expect(facesFromProvider(typed).upstreamFormat).toBe("anthropic");
+  expect(facesFromProvider(typed).anthropicEnabled).toBe(true);
+});
+
+it("so turning the OpenAI side on for such a row survives the round trip", () => {
     // The whole point of the round trip: an operator ticks "OpenAI side" on a
     // Claude-only vendor, saves, and the row still says "translate" instead of
     // quietly becoming a Responses upstream.

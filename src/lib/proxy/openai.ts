@@ -31,6 +31,10 @@ import { ssePassthrough } from "./stream-tap";
 import { providerFaces, type ApiKey, type Provider, type User } from "../db/types";
 import { applyParameterPolicy } from "../protocol/parameter-policy";
 import { readTextSpecs, specForSurface, activeSpecFor } from "../protocol/text-specs";
+import {
+  responsesToGeminiRequest,
+  geminiToResponsesResponse,
+} from "../protocol/gemini";
 
 
 // ---------------------------------------------------------------------------
@@ -855,9 +859,10 @@ export async function proxyChatCompletion(args: {
   }
 
   // 2. Pick a provider that supports this model.
-  // Anthropic-format providers cannot accept a Chat Completions body, so they
-  // are only eligible for the /anthropic endpoint — and for the other
-  // surfaces they are reached by translation, which is handled further down.
+  // A provider whose upstream speaks something other than Chat Completions
+  // cannot accept a Chat Completions body, so it is eligible for the
+  // /anthropic endpoint and for the other surfaces **by translation**, which
+  // is handled further down.
   const providers = (await findProvidersForModel(req.model)).filter(
     (p) => providerFaces(p).openai !== null,
   );
@@ -870,12 +875,23 @@ export async function proxyChatCompletion(args: {
   }
   const provider = providers[0];
 
-  // A provider whose upstream speaks Anthropic is reached by translating:
-  // the request becomes a Responses request, the Responses proxy turns that
-  // into an Anthropic one, and the answer comes back the same way. A Chat
-  // Completions body sent straight to an Anthropic endpoint would be refused
-  // by the upstream.
-  if (providerFaces(provider).openai?.format === "anthropic") {
+  /**
+   * A provider whose upstream speaks a protocol the Chat Completions body
+   * cannot be sent to is reached by translating: the request becomes a
+   * Responses request, the Responses proxy turns that into the vendor's own
+   * dialect, and the answer comes back the same way. A Chat Completions body
+   * sent straight to an Anthropic or Gemini endpoint would be refused by the
+   * upstream.
+   *
+   * A **Responses** upstream is deliberately not in this list. It has a
+   * `/chat/completions` endpoint or it has not, and which one is the
+   * operator's configuration to make: the Chat face has always posted a Chat
+   * Completions body there, and switching it to the Responses endpoint would
+   * change which endpoint a working deployment uses — and cost it the
+   * incremental stream it has today.
+   */
+  const dialect = providerFaces(provider).openai?.format;
+  if (dialect === "anthropic" || dialect === "gemini") {
     const viaPivot = await proxyOpenAIResponse({
       req: chatToResponsesRequest(req) as Parameters<typeof proxyOpenAIResponse>[0]["req"],
       apiKey,
@@ -1140,6 +1156,11 @@ export async function proxyOpenAIResponse(args: {
     // Anthropic's shape and the answer rewritten back — which is what lets a
     // Claude model answer a Responses client (and, through it, a Gemini one).
     return proxyResponsesViaAnthropic({ req, apiKey, user, signal, deps });
+  }
+  if (format === "gemini") {
+    // The upstream speaks Google's own Gemini API. Same idea, one dialect
+    // further out: `contents` in, `candidates` out.
+    return proxyResponsesViaGemini({ req, apiKey, user, signal, deps });
   }
   return proxyResponsesNative({ req, apiKey, user, signal, deps, provider });
 }
@@ -1577,6 +1598,129 @@ async function proxyResponsesViaAnthropic(args: {
     status: 200,
     data: anthropicToResponsesResponse(result.data as AnthropicMessageResponse, req),
   };
+}
+
+/**
+ * Serve a Responses API request from a provider that speaks Google's Gemini
+ * API, by converting the request and the response.
+ *
+ * The endpoint is `POST {base}/models/{model}:generateContent` and the key
+ * travels in `x-goog-api-key` — the carrier the Google SDKs use, and the one
+ * the Gemini client face already accepts.
+ *
+ * The answer comes back whole rather than in frames: this path asks for
+ * `generateContent`, not `streamGenerateContent`. A client that asked for a
+ * stream still gets one — the route synthesises the frames from the buffered
+ * answer, exactly as it does for a Chat Completions upstream.
+ */
+async function proxyResponsesViaGemini(args: {
+  req: ResponseAPIRequest;
+  apiKey: ApiKey;
+  user: User;
+  signal?: AbortSignal;
+  deps?: ProxyDeps;
+}): Promise<ProxyResult> {
+  const { req, apiKey, user, signal, deps } = args;
+  const fetchImpl = deps?.fetchImpl ?? fetch;
+
+  const providers = await findOpenAIProvidersForModel(req.model);
+  const provider = providers[0];
+  if (!provider) {
+    return {
+      ok: false,
+      status: 400,
+      error: {
+        code: "model_not_mapped",
+        message: `No provider configured for model '${req.model}'`,
+      },
+    };
+  }
+
+  const upstreamModel = provider.modelMapping[req.model];
+  const upstreamUrl = deps?.upstreamUrlFor
+    ? deps.upstreamUrlFor(provider)
+    : defaultGeminiUrl(provider, upstreamModel);
+  const upstreamKey = decryptSecret(provider.encryptedApiKey);
+
+  // The Responses surface's policy, applied before the conversion: the spec
+  // says what this vendor calls things, and the conversion is downstream of it.
+  const { body: policed } = applyParameterPolicy(
+    { ...req },
+    activeSpecFor(provider, "openai-responses") ?? undefined,
+  );
+
+  const geminiRequest = responsesToGeminiRequest(policed);
+
+  let response: Response;
+  try {
+    response = await fetchImpl(upstreamUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": upstreamKey,
+      },
+      body: JSON.stringify(geminiRequest),
+    });
+  } catch (err) {
+    await recordFailureResponses({
+      apiKey,
+      provider,
+      model: req.model,
+      upstreamModel,
+      error: err,
+    });
+    return {
+      ok: false,
+      status: 502,
+      error: { code: "upstream_error", message: String(err) },
+    };
+  }
+
+  if (!response.ok) {
+    const text = await response.text();
+    const detail = `${upstreamUrl} -> HTTP ${response.status}: ${text.slice(0, 500)}`;
+    console.error(`[relayab] gemini upstream failure: ${detail}`);
+    await recordFailureResponses({
+      apiKey,
+      provider,
+      model: req.model,
+      upstreamModel,
+      error: detail,
+    });
+    return {
+      ok: false,
+      status: 502,
+      error: {
+        code: "upstream_error",
+        message: upstreamRefusal(response.status, detail),
+      },
+    };
+  }
+
+  const body = await response.json();
+  const pivot = geminiToResponsesResponse(body, req.model);
+  const usage = (pivot.usage ?? {}) as Record<string, unknown>;
+  const promptTokens = Number(usage.input_tokens ?? 0);
+  const completionTokens = Number(usage.output_tokens ?? 0);
+
+  await settleUsage({
+    apiKey,
+    provider,
+    user,
+    model: req.model,
+    upstreamModel,
+    promptTokens,
+    completionTokens,
+    cache: extractCacheBuckets(usage),
+  });
+
+  return { ok: true, status: 200, data: pivot };
+}
+
+function defaultGeminiUrl(provider: Provider, upstreamModel: string): string {
+  const base = provider.baseUrl ?? "https://generativelanguage.googleapis.com/v1beta";
+  const cleanBase = base.replace(/\/+$/, "");
+  return `${cleanBase}/models/${encodeURIComponent(upstreamModel)}:generateContent`;
 }
 
 function defaultResponsesUrl(provider: Provider): string {

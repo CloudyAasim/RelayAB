@@ -80,7 +80,8 @@ function InterfaceCell({
     chat: string;
     responses: string;
     /** The OpenAI face is served by the gateway's own translation. */
-    translated: string;
+    translatedAnthropic: string;
+    translatedGemini: string;
   };
 }) {
   const { openai, anthropic } = faces;
@@ -112,16 +113,19 @@ function InterfaceCell({
   /**
    * The OpenAI face's dialect, in the words the table uses.
    *
-   * Three answers, not two: a row whose OpenAI side is served by the gateway's
-   * own translation has no upstream dialect at all, and printing "Responses"
-   * for it would describe a request the gateway never makes.
+   * Four answers, not two: a row served by the gateway's translation has no
+   * upstream dialect of its own to name — it is Anthropic's or Gemini's — and
+   * printing "Responses" for it would describe a request the gateway never
+   * makes.
    */
   const openaiFormatLabel =
     openai?.format === "anthropic"
-      ? labels.translated
-      : openai?.format === "chat"
-        ? labels.chat
-        : labels.responses;
+      ? labels.translatedAnthropic
+      : openai?.format === "gemini"
+        ? labels.translatedGemini
+        : openai?.format === "chat"
+          ? labels.chat
+          : labels.responses;
 
   /**
    * Simple's answer, in simple's own words: the faces it configures.
@@ -265,7 +269,8 @@ export default async function ProvidersPage() {
                         parkedRules: (n: number) => t("admin.providers.table.parkedRules", { n }),
                         chat: t("admin.providers.format.short.chat"),
                         responses: t("admin.providers.format.short.responses"),
-                        translated: t("admin.providers.format.short.translated"),
+                        translatedAnthropic: t("admin.providers.format.short.translatedAnthropic"),
+                        translatedGemini: t("admin.providers.format.short.translatedGemini"),
                       }}
                     />
                   </TD>

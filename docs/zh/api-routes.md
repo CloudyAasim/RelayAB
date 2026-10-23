@@ -57,9 +57,13 @@ Content-Type: application/json
 
 **上游行为**：
 本端点发出的**永远是 Chat Completions 格式**的请求体，因此固定转发到上游的
-`<provider.baseUrl>/chat/completions`。Provider 的 `upstreamFormat` 不会改变这个路径
-（否则会把 Chat 请求体发到 Responses 端点）。`upstreamFormat = "anthropic"` 的
-Provider 会被本端点排除。
+`<provider.baseUrl>/chat/completions`。Provider 的 `upstreamFormat = "responses"`
+不会改变这个路径（否则会把 Chat 请求体发到 Responses 端点）。
+
+`upstreamFormat` 为 `"anthropic"` 或 `"gemini"` 的 Provider **不会**被本端点排除：
+它们的上游根本不说 Chat Completions，所以网关先把请求转成 Responses 形状、
+交给 Responses 那条链路（再转成上游的方言），最后把答案转回 Chat 结构。
+`upstreamFormat = "responses"` 的 Provider 则仍按上面那条路径直发。
 
 **错误响应体**（`/v1/*` 全部适用，含下面所有公开代理端点）：
 ```json
@@ -245,6 +249,9 @@ Content-Type: application/json
   再把 Chat 响应转回上面的 Responses 结构。
 - Provider 为 `upstreamFormat = "anthropic"`（或 `kind = "anthropic"`）→ 转成
   Anthropic Messages 请求调用 `<baseUrl>/v1/messages`，再转回 Responses 结构。
+- Provider 为 `upstreamFormat = "gemini"` → 转成 Gemini 请求调用
+  `<baseUrl>/models/<模型名>:generateContent`（密钥走 `x-goog-api-key`），
+  再把 `candidates` 转回 Responses 结构。
 
 **用量字段兼容**：不同上游对 usage 的命名不同。Chat Completions 用
 `prompt_tokens` / `completion_tokens`，Responses 与 Anthropic 用
