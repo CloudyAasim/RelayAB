@@ -1408,7 +1408,7 @@ function ReasoningCombobox({
   const [custom, setCustom] = useState(isCustom);
   useEffect(() => {
     if (typed !== "" && !options.includes(typed)) setCustom(true);
-  }, [typed, options.join(" ")]);
+  }, [typed, options.join("\u0000")]);
 
   return (
     <>
