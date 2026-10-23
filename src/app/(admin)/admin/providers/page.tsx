@@ -79,6 +79,8 @@ function InterfaceCell({
     parkedRules: (n: number) => string;
     chat: string;
     responses: string;
+    /** The OpenAI face is served by the gateway's own translation. */
+    translated: string;
   };
 }) {
   const { openai, anthropic } = faces;
@@ -108,6 +110,20 @@ function InterfaceCell({
     : SURFACES.filter((s) => hasRule(s.id)).length;
 
   /**
+   * The OpenAI face's dialect, in the words the table uses.
+   *
+   * Three answers, not two: a row whose OpenAI side is served by the gateway's
+   * own translation has no upstream dialect at all, and printing "Responses"
+   * for it would describe a request the gateway never makes.
+   */
+  const openaiFormatLabel =
+    openai?.format === "anthropic"
+      ? labels.translated
+      : openai?.format === "chat"
+        ? labels.chat
+        : labels.responses;
+
+  /**
    * Simple's answer, in simple's own words: the faces it configures.
    *
    * The format rides on the OpenAI badge because that is where the form puts it
@@ -123,9 +139,7 @@ function InterfaceCell({
           {openai && (
             <Badge tone="info">
               {labels.openaiSide}
-              <span className="ml-1 opacity-70">
-                · {openai.format === "chat" ? labels.chat : labels.responses}
-              </span>
+              <span className="ml-1 opacity-70">· {openaiFormatLabel}</span>
             </Badge>
           )}
           {anthropic && <Badge tone="orange">{labels.anthropicSide}</Badge>}
@@ -251,6 +265,7 @@ export default async function ProvidersPage() {
                         parkedRules: (n: number) => t("admin.providers.table.parkedRules", { n }),
                         chat: t("admin.providers.format.short.chat"),
                         responses: t("admin.providers.format.short.responses"),
+                        translated: t("admin.providers.format.short.translated"),
                       }}
                     />
                   </TD>

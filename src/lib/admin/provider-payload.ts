@@ -78,7 +78,12 @@ export interface ProviderPayload {
   enabled: boolean;
   headers?: Record<string, string>;
   openaiEnabled: boolean;
-  upstreamFormat: "responses" | "chat";
+  /**
+   * The OpenAI face's dialect — or `"anthropic"`, which means the OpenAI
+   * surfaces are served **by translation** because the vendor only speaks
+   * Anthropic.
+   */
+  upstreamFormat: "responses" | "chat" | "anthropic";
   anthropicEnabled: boolean;
   anthropicBaseUrl: string | null;
   modelMapping: Record<string, string>;
@@ -148,8 +153,17 @@ export function buildProviderPayload(
     enabled,
     ...(parseHeaders(headers) ? { headers: parseHeaders(headers) } : {}),
     openaiEnabled: faces.openaiEnabled,
-    // "anthropic" is the legacy single-face encoding and is rewritten on save.
-    upstreamFormat: faces.upstreamFormat === "anthropic" ? "responses" : faces.upstreamFormat,
+    /**
+     * "anthropic" is kept, not rewritten.
+     *
+     * It used to be rewritten to "responses" on save, because at the time the
+     * value could only mean "this row is Anthropic-only" — a fact the two
+     * flags already said. Now it also says *how* the OpenAI face is served:
+     * an Anthropic-format row whose OpenAI side is on is served **by
+     * translation**, and rewriting it would silently turn the next request
+     * into a Responses body pointed at an Anthropic-only upstream.
+     */
+    upstreamFormat: faces.upstreamFormat,
     anthropicEnabled: faces.anthropicEnabled,
     anthropicBaseUrl: faces.anthropicBaseUrl || null,
     modelMapping,
@@ -165,15 +179,21 @@ export function buildProviderPayload(
 /**
  * Read a stored row back into form values.
  *
- * Legacy rows (`upstreamFormat: "anthropic"`) read as "Anthropic only"; saving
- * rewrites them into the two-flag shape.
+ * A row whose upstream speaks Anthropic keeps saying so: its `upstreamFormat`
+ * stays `"anthropic"` and the Anthropic side is on. That is what lets the
+ * operator turn the OpenAI side on for such a row and have it mean "the
+ * gateway translates" rather than "point the next request at a Responses
+ * endpoint this vendor does not have".
+ *
+ * The face flags are still read from the row when it has them, so an old row
+ * that never had flags keeps its old meaning: Anthropic only.
  */
 export function facesFromProvider(provider: ProviderRecord): ProviderFacesValue {
   const format = provider.upstreamFormat ?? "responses";
   const anthropicOnly = format === "anthropic";
   return {
     openaiEnabled: provider.openaiEnabled ?? !anthropicOnly,
-    upstreamFormat: anthropicOnly ? "responses" : format,
+    upstreamFormat: format,
     anthropicEnabled: provider.anthropicEnabled ?? anthropicOnly,
     anthropicBaseUrl: provider.anthropicBaseUrl ?? "",
   };

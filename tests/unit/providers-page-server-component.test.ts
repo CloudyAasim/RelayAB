@@ -35,8 +35,12 @@ describe("the providers page stays a server component", () => {
     // The parked-count label is a function, not a template: the count is only
     // knowable inside the cell, and the server's `t` is the one thing that knows
     // how to substitute `{n}`. The window spans the doc comment deliberately.
+    //
+    // `translated` is the third answer the OpenAI badge can give — a row whose
+    // OpenAI side is served by the gateway's translation has no upstream
+    // dialect to name — so the label set grew with the fact it reports.
     expect(PAGE).toMatch(
-      /labels: \{\s*none: string;\s*hasRule: string;\s*openaiSide: string;\s*anthropicSide: string;[\s\S]{0,320}parkedRules: \(n: number\) => string;\s*chat: string;\s*responses: string;\s*\};/,
+      /labels: \{\s*none: string;\s*hasRule: string;\s*openaiSide: string;\s*anthropicSide: string;[\s\S]{0,320}parkedRules: \(n: number\) => string;\s*chat: string;\s*responses: string;[\s\S]{0,160}translated: string;\s*\};/,
     );
     expect(PAGE).toMatch(/<InterfaceCell[\s\S]{0,400}labels=\{\{/);
   });
@@ -57,7 +61,13 @@ describe("the interface column says what is served, not what was typed", () => {
     expect(PAGE).toMatch(/\{labels\.openaiSide\}/);
     expect(PAGE).toMatch(/\{labels\.anthropicSide\}/);
     expect(PAGE).toMatch(
-      /labels\.openaiSide<\/Badge>|openaiSide[\s\S]{0,160}openai\.format === "chat"/,
+      /labels\.openaiSide<\/Badge>|openaiSide[\s\S]{0,400}openaiFormatLabel/,
+    );
+    // Three dialects, three answers. The third one is new and it is the one
+    // that used to be a lie: a row served by the gateway's translation has no
+    // upstream dialect, so the badge says so instead of naming "Responses".
+    expect(PAGE).toMatch(
+      /openai\?\.format === "anthropic"\s*\?\s*labels\.translated\s*:\s*openai\?\.format === "chat"\s*\?\s*labels\.chat\s*:\s*labels\.responses/,
     );
   });
 

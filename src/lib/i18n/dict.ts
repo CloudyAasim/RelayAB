@@ -442,6 +442,8 @@ const zhCN: Dict = {
   "docs.openai.header": "认证头",
   "docs.openai.example": "curl 示例",
   "docs.openai.modelListHint": "想知道你能用哪些模型？GET {baseUrl}/models，参考你的密钥关联的模型映射。",
+  "docs.openai.anyVendor":
+    "厂商不必原生支持 OpenAI 协议：只要模型在目录里（GET /v1/models），哪怕厂商只提供 Anthropic 端点，这一套接口照样调得通 —— 网关会把请求转成 Anthropic 的形状再发出去，答案再转回来。转换会让流式回答变成一次性返回。",
   "docs.openai.errors.title": "错误",
   "docs.openai.errors.body":
     "失败响应的形状和 OpenAI 一致，可以直接按 OpenAI 的方式处理。",
@@ -494,6 +496,8 @@ const zhCN: Dict = {
     "流式：上游是 Responses 协议时，文字是逐块到达的；上游是 Chat Completions 协议时，它没有能逐块说的形状，于是整段回答一次送到 —— 仍然是合法的 Gemini 流，但不是逐字的。",
   "docs.gemini.limits":
     "两处会掉信息，说在前面：thinkingConfig.thinkingBudget 只有一个取值能原样翻译（0，等于「不要思考」），别的预算值在这里丢掉 —— 要固定预算，在管理员的协议规则里写死；safetySettings 没有别的协议有对应字段，也丢掉。",
+  "docs.gemini.anyVendor":
+    "厂商只提供 Anthropic 端点也能用这一套 Gemini 接口，网关负责转换。代价是流式回答会整段送到，而不是逐块。",
   "docs.anthropic.line1": "Anthropic SDK 默认走 https://api.anthropic.com，需要手动把 baseURL 改成下面的值。",
   "docs.anthropic.baseUrl": "Base URL（官方 SDK）/ Base URL（AI SDK）",
   "docs.anthropic.baseUrl.official": "官方 Anthropic SDK：Base URL 写到 /anthropic（SDK 自己会追加 /v1/messages）",
@@ -742,12 +746,15 @@ const zhCN: Dict = {
   "admin.providers.format.short.responses": "Responses",
   "admin.providers.format.short.chat": "Chat",
   "admin.providers.format.short.anthropic": "Messages",
+  "admin.providers.format.short.translated": "网关转换",
   "admin.providers.format.hint.responses":
     "客户端调 /v1/responses 时原样送到上游，不转换。注意：客户端调 /v1/chat/completions 时仍然发往 <API 地址>/chat/completions，上游若只提供 Responses 端点就会 404。",
   "admin.providers.format.hint.chat":
     "客户端调 /v1/responses 时，网关先把请求降级成 Chat Completions 发给上游，再把响应转回 Responses。",
   "admin.providers.faces.openai.label": "OpenAI 侧 — /v1/chat/completions、/v1/responses",
   "admin.providers.faces.openai.hint": "关闭后这条 Provider 不响应 /v1/chat/completions 与 /v1/responses。",
+  "admin.providers.faces.openai.translated":
+    "上游只提供 Anthropic 端点，所以 OpenAI 侧没有格式可选：勾上这一项表示「由网关转换」来服务 OpenAI / Responses / Gemini 客户端。转换会让流式回答变成一次性返回。",
   "admin.providers.faces.anthropic.label": "Anthropic Messages 侧 — /v1/messages、/anthropic/v1/messages",
   "admin.providers.faces.anthropic.hint": "关闭后这条 Provider 不响应 /v1/messages 与 /anthropic/v1/messages。",
   "admin.providers.faces.anthropic.baseUrl": "Anthropic 基址",
@@ -898,6 +905,8 @@ const zhCN: Dict = {
   "admin.docs.add.step4": "模型映射填上游真实模型名，与 OpenAI 那条保持一致（恒等映射）。",
   "admin.docs.add.why": "为什么不推荐 Anthropic 模板：模板会预填 api.anthropic.com 的基址和一串 Claude 模型名，接入第三方厂商时这两项都必须改，漏改一项的症状就是 404。",
   "admin.docs.add.note": "两条 Provider 不要映射相同的客户端模型名；各管各的协议，互不干扰。",
+  "admin.docs.add.translate":
+    "只提供 Anthropic 端点的厂商也能被 OpenAI / Responses / Gemini 客户端调用：在那种 Provider 上打开 OpenAI 侧，网关会负责协议转换（请求转成 Anthropic 的形状，答案再转回来）。转换会让流式回答变成一次性返回；向量与重排没有 Anthropic 对应端点，那种 Provider 接不了这两个接口。",
   "admin.docs.routes.openai": "/v1/chat/completions、/v1/responses → 上游 OpenAI 兼容基址，例如 https://api.minimaxi.com/v1",
   "admin.docs.routes.anthropic": "/anthropic/v1/messages → 上游 Anthropic 兼容基址，例如 https://api.minimaxi.com/anthropic",
   "admin.docs.mapping.title": "模型映射",
@@ -1891,6 +1900,8 @@ const en: Dict = {
   "docs.openai.header": "Auth header",
   "docs.openai.example": "curl example",
   "docs.openai.modelListHint": "Curious which models your key can reach? GET {baseUrl}/models — the response is filtered by your key's whitelist.",
+  "docs.openai.anyVendor":
+    "The vendor does not have to speak OpenAI natively: if the model is in the catalogue (GET /v1/models), this endpoint works for it even when the vendor only publishes an Anthropic endpoint — the gateway rewrites the request into Anthropic's shape and the answer back. The translation makes a streamed answer arrive in one piece.",
   "docs.openai.errors.title": "Errors",
   "docs.openai.errors.body":
     "Failures use OpenAI's own shape, so an OpenAI client can handle them without special-casing this service.",
@@ -1944,6 +1955,8 @@ const en: Dict = {
     "On a stream: an upstream speaking the Responses protocol delivers the text piece by piece; a Chat Completions upstream has no shape in which it can, so the whole answer arrives at once — still a valid Gemini stream, just not word by word.",
   "docs.gemini.limits":
     "Two things are lost on the way, said up front: a thinkingConfig.thinkingBudget only translates exactly at one value (0, which means \"do not think\"); other budgets are dropped here — pin one in the administrator's protocol rules instead. safetySettings has no equivalent field in any other protocol, and is dropped too.",
+  "docs.gemini.anyVendor":
+    "A vendor that only publishes an Anthropic endpoint can be called through these Gemini endpoints as well — the gateway does the conversion. The price is that a streamed answer arrives in one piece instead of in chunks.",
   "docs.anthropic.line1": "The Anthropic SDK defaults to https://api.anthropic.com. Override baseURL to the value below.",
   "docs.anthropic.header": "Auth header (x-api-key, not Authorization)",
   "docs.anthropic.baseUrl": "Base URL (official SDK) / Base URL (AI SDK)",
@@ -2194,12 +2207,15 @@ const en: Dict = {
   "admin.providers.format.short.responses": "Responses",
   "admin.providers.format.short.chat": "Chat",
   "admin.providers.format.short.anthropic": "Messages",
+  "admin.providers.format.short.translated": "gateway translation",
   "admin.providers.format.hint.responses":
     "A client calling /v1/responses is forwarded as sent. Note: /v1/chat/completions still posts to <API URL>/chat/completions, so an upstream that only serves Responses will 404.",
   "admin.providers.format.hint.chat":
     "A client calling /v1/responses is downgraded to Chat Completions on the way up, and the reply is converted back to Responses.",
   "admin.providers.faces.openai.label": "OpenAI side — /v1/chat/completions, /v1/responses",
   "admin.providers.faces.openai.hint": "Turn off to stop this provider answering /v1/chat/completions and /v1/responses.",
+  "admin.providers.faces.openai.translated":
+    "This upstream only publishes an Anthropic endpoint, so the OpenAI side has no format to choose: turning it on means the gateway translates for OpenAI / Responses / Gemini clients. The translation makes a streamed answer arrive in one piece.",
   "admin.providers.faces.anthropic.label": "Anthropic Messages side — /v1/messages, /anthropic/v1/messages",
   "admin.providers.faces.anthropic.hint": "Turn off to stop this provider answering /v1/messages and /anthropic/v1/messages.",
   "admin.providers.faces.anthropic.baseUrl": "Anthropic base URL",
@@ -2353,6 +2369,8 @@ const en: Dict = {
   "admin.docs.add.step4": "Fill the model mapping with real upstream model names, matching the OpenAI provider (identity mapping).",
   "admin.docs.add.why": "Why not the Anthropic template: it pre-fills api.anthropic.com and a list of Claude model names. For a third-party vendor both are wrong, and forgetting either one shows up as a 404.",
   "admin.docs.add.note": "Do not map the same client model name in both providers; each owns its own protocol.",
+  "admin.docs.add.translate":
+    "A vendor that only publishes an Anthropic endpoint can still be called by OpenAI / Responses / Gemini clients: turn the OpenAI side on for such a provider and the gateway does the conversion (the request becomes Anthropic's shape, the answer comes back the same way). The conversion makes a streamed answer arrive in one piece. Embeddings and rerank have no Anthropic equivalent, so such a provider cannot serve them.",
   "admin.docs.routes.openai": "/v1/chat/completions, /v1/responses → the upstream OpenAI-compatible base, e.g. https://api.minimaxi.com/v1",
   "admin.docs.routes.anthropic": "/anthropic/v1/messages → the upstream Anthropic-compatible base, e.g. https://api.minimaxi.com/anthropic",
   "admin.docs.mapping.title": "Model mapping",

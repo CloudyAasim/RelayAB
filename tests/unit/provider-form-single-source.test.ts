@@ -128,7 +128,15 @@ describe("creating and editing differ only where they must", () => {
     expect(asEdit(none).textSpecs).toEqual([]);
   });
 
-  it("a legacy anthropic row is rewritten into the two-flag shape", () => {
+  it("a legacy anthropic row keeps saying its upstream speaks Anthropic", () => {
+    // The old behaviour rewrote `upstreamFormat: "anthropic"` into
+    // `"responses"` on save. That was harmless while the value could only mean
+    // "this row is Anthropic-only" — a fact the two flags already carried.
+    //
+    // It is not harmless now. The value also says *how* the OpenAI face is
+    // served: an Anthropic-format row with the OpenAI side on is served by
+    // translation, and rewriting it would point the next request at a
+    // `/v1/responses` endpoint this vendor does not have.
     const legacy: ProviderRecord = {
       name: "x",
       kind: "anthropic",
@@ -141,9 +149,28 @@ describe("creating and editing differ only where they must", () => {
     const faces = facesFromProvider(legacy);
     expect(faces.anthropicEnabled).toBe(true);
     expect(faces.openaiEnabled).toBe(false);
-    expect(
-      buildProviderPayload({ ...values, faces }).upstreamFormat,
-    ).toBe("responses");
+    expect(faces.upstreamFormat).toBe("anthropic");
+    expect(buildProviderPayload({ ...values, faces }).upstreamFormat).toBe("anthropic");
+  });
+
+  it("so turning the OpenAI side on for such a row survives the round trip", () => {
+    // The whole point of the round trip: an operator ticks "OpenAI side" on a
+    // Claude-only vendor, saves, and the row still says "translate" instead of
+    // quietly becoming a Responses upstream.
+    const legacy: ProviderRecord = {
+      name: "x",
+      kind: "anthropic",
+      baseUrl: "https://api.anthropic.com/v1",
+      modelMapping: {},
+      modelConfigs: {},
+      enabled: true,
+      upstreamFormat: "anthropic",
+    };
+    const faces = { ...facesFromProvider(legacy), openaiEnabled: true };
+    const body = buildProviderPayload({ ...values, kind: "anthropic", faces });
+    expect(body.openaiEnabled).toBe(true);
+    expect(body.upstreamFormat).toBe("anthropic");
+    expect(body.kind).toBe("anthropic");
   });
 
   it("headers round-trip through the form's text representation", () => {

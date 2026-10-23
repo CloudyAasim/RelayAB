@@ -141,9 +141,20 @@ export async function proxyEmbeddings(args: {
     return { ok: false, status: http.status, error: { code: http.code, message: http.message } };
   }
 
-  const providers = (await findProvidersForModel(req.model)).filter(
-    (p) => providerFaces(p).openai !== null,
-  );
+  /**
+   * Only a provider whose OpenAI face is served **natively** can serve
+   * embeddings.
+   *
+   * The Anthropic Messages protocol has no embeddings endpoint, and there is no
+   * translation for one — the gateway can rewrite a text request into
+   * Anthropic's shape, but there is nothing to rewrite a vector into. So a
+   * row whose OpenAI face is served by translation is not a candidate here,
+   * even though it is a perfectly good candidate for `/v1/chat/completions`.
+   */
+  const providers = (await findProvidersForModel(req.model)).filter((p) => {
+    const face = providerFaces(p).openai;
+    return face !== null && face.format !== "anthropic";
+  });
   if (providers.length === 0) {
     return {
       ok: false,

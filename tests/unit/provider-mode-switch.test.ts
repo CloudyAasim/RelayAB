@@ -57,10 +57,21 @@ describe("which interfaces are on is the simple mode's business", () => {
     // This predates the two modes and is the actual answer to "can one provider
     // take OpenAI-compatible and Anthropic calls": one row, two faces, one key
     // and one model table shared between them.
+    //
+    // The OpenAI side used to be forced off for an Anthropic vendor
+    // (`value.openaiEnabled && !legacyAnthropicOnly`), which made the checkbox a
+    // control that could not be moved: ticking it changed the stored flag and
+    // nothing else. Now the two are genuinely independent, and for an
+    // Anthropic vendor the OpenAI side means "the gateway translates" — the
+    // only way a Claude model is reachable from an OpenAI client.
     const FACES = read("src", "app", "(admin)", "admin", "providers", "ProviderFacesField.tsx");
     expect(FACES).toMatch(/openaiEnabled: boolean;/);
     expect(FACES).toMatch(/anthropicEnabled: boolean;/);
-    expect(FACES).toMatch(/const openaiOn = value\.openaiEnabled && !legacyAnthropicOnly;/);
+    expect(FACES).toMatch(/const openaiOn = value\.openaiEnabled;/);
+    expect(FACES).not.toMatch(/!legacyAnthropicOnly/);
+    // And the panel says what turning it on means for such a vendor, rather
+    // than offering a format dropdown whose choice would be ignored.
+    expect(FACES).toMatch(/admin\.providers\.faces\.openai\.translated/);
     // "Neither on" is warned about, which is only worth doing because "both on"
     // is legitimate.
     expect(FACES).toMatch(/admin\.providers\.faces\.noneWarning/);

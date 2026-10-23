@@ -110,6 +110,11 @@ export function AdminDocsContent({ section, t }: { section: AdminDocId; t: TFn }
           {t("admin.docs.add.why")}
         </p>
         <p className="mt-2 text-xs text-muted-foreground">{t("admin.docs.add.note")}</p>
+        {/* The other direction: a vendor that only speaks Anthropic is still
+            reachable from the OpenAI side, because the gateway translates. */}
+        <p className="mt-3 rounded-md border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+          {t("admin.docs.add.translate")}
+        </p>
       </Card>
     );
   }

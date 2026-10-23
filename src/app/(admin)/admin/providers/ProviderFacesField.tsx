@@ -34,20 +34,41 @@ export interface ProviderFacesValue {
 export function ProviderFacesField({
   value,
   onChange,
+  kind,
   className,
 }: {
   value: ProviderFacesValue;
   onChange: (value: ProviderFacesValue) => void;
+  /**
+   * The provider's vendor type.
+   *
+   * It decides what the OpenAI side *means* for this row: a vendor that only
+   * publishes an Anthropic endpoint has no Responses endpoint to point at, so
+   * turning the OpenAI side on for it means **the gateway translates**.
+   */
+  kind: string;
   className?: string;
 }) {
   const t = useT();
   const set = (patch: Partial<ProviderFacesValue>) => onChange({ ...value, ...patch });
 
-  // Rows written before faces existed store "anthropic" here; they show up as
-  // "Anthropic only" and are rewritten into the two-flag shape on save.
-  const legacyAnthropicOnly = value.upstreamFormat === "anthropic";
+  // A row whose upstream speaks Anthropic says so in one of two ways, and both
+  // are still in the wild: `upstreamFormat: "anthropic"` (the older
+  // encoding) and `kind: "anthropic"` (the vendor type).
+  const anthropicUpstream = value.upstreamFormat === "anthropic";
+  /**
+   * Whether this vendor's own protocol is Anthropic.
+   *
+   * `kind` is the primary carrier; the `upstreamFormat` half is the older
+   * encoding, kept so that a row written before `kind` existed still says
+   * what it is.
+   */
+  const nativeAnthropic = kind === "anthropic" || anthropicUpstream;
   const openaiFormat: OpenAIFaceFormat = value.upstreamFormat === "chat" ? "chat" : "responses";
-  const openaiOn = value.openaiEnabled && !legacyAnthropicOnly;
+  // The OpenAI side is no longer forced off for an Anthropic vendor: turning it
+  // on is how that vendor's models become reachable from an OpenAI client, and
+  // the gateway does the translating.
+  const openaiOn = value.openaiEnabled;
   const noneOn = !openaiOn && !value.anthropicEnabled;
 
   return (
@@ -63,7 +84,10 @@ export function ProviderFacesField({
               className="mt-0.5"
               checked={openaiOn}
               onChange={(e) =>
-                set({ openaiEnabled: e.target.checked, upstreamFormat: openaiFormat })
+                set({
+                  openaiEnabled: e.target.checked,
+                  ...(nativeAnthropic ? {} : { upstreamFormat: openaiFormat }),
+                })
               }
             />
             <span>{t("admin.providers.faces.openai.label")}</span>
@@ -71,7 +95,15 @@ export function ProviderFacesField({
           <p className="mt-1 pl-6 text-xs text-muted-foreground">
             {t("admin.providers.faces.openai.hint")}
           </p>
-          {openaiOn && (
+          {openaiOn && nativeAnthropic && (
+            /* An Anthropic vendor has no Responses endpoint to point at, so
+               there is no format to choose — the gateway translates. Saying
+               so is better than offering a dropdown whose choice is ignored. */
+            <p className="mt-2 ml-6 rounded-md border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+              {t("admin.providers.faces.openai.translated")}
+            </p>
+          )}
+          {openaiOn && !nativeAnthropic && (
             <div className="mt-2 pl-6">
               <p className="mb-1 text-xs font-medium text-foreground">
                 {t("admin.providers.format.label")}

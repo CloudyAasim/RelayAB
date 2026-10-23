@@ -449,6 +449,172 @@ export function chatToResponsesResponse(
 }
 
 /**
+ * Convert a Chat Completions request into a Responses API request.
+ *
+ * The other direction of the pair that already exists, and it exists for the
+ * same reason: a provider that only speaks Anthropic can serve an OpenAI
+ * client, but only if the request can be carried into the shape the gateway
+ * speaks internally first.
+ *
+ * The system prompt moves to `instructions` (the Responses way of saying it),
+ * a tool result becomes a `function_call_output` item, and a tool call
+ * becomes a `function_call` item — so an agent loop survives the trip.
+ */
+export function chatToResponsesRequest(
+  chatReq: ChatCompletionRequest,
+): Record<string, unknown> {
+  const input: unknown[] = [];
+  const instructions: string[] = [];
+
+  // The declared type of `messages` is narrower than what a client actually
+  // sends: a tool result carries `tool_call_id`, an assistant turn carries
+  // `tool_calls`. The runtime shape is the one that matters here.
+  const messages = (chatReq.messages ?? []) as ChatMessage[];
+
+  for (const message of messages) {
+    const role = String(message.role ?? "user");
+    const text = chatContentToText(message.content);
+
+    if (role === "system" || role === "developer") {
+      if (text) instructions.push(text);
+      continue;
+    }
+
+    // A tool result is the answer to a call the model made. In the Responses
+    // shape that is its own item, not a message.
+    if (role === "tool" || role === "function") {
+      input.push({
+        type: "function_call_output",
+        call_id: String(message.tool_call_id ?? `call_${input.length}`),
+        output: text,
+      });
+      continue;
+    }
+
+    if (role === "assistant" && Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
+      for (const call of message.tool_calls) {
+        input.push({
+          type: "function_call",
+          call_id: call.id,
+          name: call.function?.name ?? "",
+          arguments: call.function?.arguments ?? "{}",
+        });
+      }
+      if (!text) continue;
+    }
+
+    const assistant = role === "assistant";
+    input.push({
+      role: assistant ? "assistant" : "user",
+      content: [{ type: assistant ? "output_text" : "input_text", text }],
+    });
+  }
+
+  const out: Record<string, unknown> = { model: chatReq.model, input };
+  if (instructions.length > 0) out.instructions = instructions.join("\n\n");
+
+  const maxTokens = chatReq.max_completion_tokens ?? chatReq.max_tokens;
+  if (typeof maxTokens === "number") out.max_output_tokens = maxTokens;
+  if (typeof chatReq.temperature === "number") out.temperature = chatReq.temperature;
+  if (typeof chatReq.top_p === "number") out.top_p = chatReq.top_p;
+  if (typeof chatReq.stop === "string" || Array.isArray(chatReq.stop)) out.stop = chatReq.stop;
+
+  if (Array.isArray(chatReq.tools) && chatReq.tools.length > 0) {
+    out.tools = chatReq.tools;
+  }
+  if (chatReq.tool_choice !== undefined) out.tool_choice = chatReq.tool_choice;
+
+  return out;
+}
+
+/**
+ * The text of a Chat message's content, whatever shape it arrives in.
+ */
+function chatContentToText(content: ChatContent | undefined): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((block) => {
+      if (typeof block === "string") return block;
+      if (block && typeof block === "object" && typeof block.text === "string") {
+        return block.text;
+      }
+      return "";
+    })
+    .filter(Boolean)
+    .join("");
+}
+
+/**
+ * Convert a Responses API object back into a Chat Completions answer.
+ *
+ * The mirror of {@link chatToResponsesResponse}: what the OpenAI SDK expects
+ * to read, which is a `choices` array rather than an `output` array.
+ */
+export function responsesToChatResponse(
+  body: unknown,
+  originalReq: ChatCompletionRequest,
+): Record<string, unknown> {
+  const root = (body ?? {}) as Record<string, unknown>;
+  const output = Array.isArray(root.output) ? root.output : [];
+
+  let text = "";
+  const toolCalls: unknown[] = [];
+  for (const item of output) {
+    if (!item || typeof item !== "object") continue;
+    const entry = item as Record<string, unknown>;
+
+    if (entry.type === "message") {
+      for (const block of Array.isArray(entry.content) ? entry.content : []) {
+        if (block && typeof block === "object" && typeof (block as { text?: unknown }).text === "string") {
+          text += (block as { text: string }).text;
+        }
+      }
+      continue;
+    }
+
+    if (entry.type === "function_call") {
+      toolCalls.push({
+        id: String(entry.call_id ?? `call_${toolCalls.length}`),
+        type: "function",
+        function: {
+          name: String(entry.name ?? ""),
+          arguments:
+            typeof entry.arguments === "string" ? entry.arguments : JSON.stringify(entry.arguments ?? {}),
+        },
+      });
+    }
+  }
+
+  const usage = (root.usage ?? {}) as Record<string, unknown>;
+  const promptTokens = Number(usage.input_tokens ?? 0);
+  const completionTokens = Number(usage.output_tokens ?? 0);
+
+  return {
+    id: root.id ?? `chatcmpl-${Date.now()}`,
+    object: "chat.completion",
+    created: Number(root.created_at ?? Math.floor(Date.now() / 1000)),
+    model: root.model ?? originalReq.model,
+    choices: [
+      {
+        index: 0,
+        message: {
+          role: "assistant",
+          content: text,
+          ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+        },
+        finish_reason: toolCalls.length > 0 ? "tool_calls" : "stop",
+      },
+    ],
+    usage: {
+      prompt_tokens: promptTokens,
+      completion_tokens: completionTokens,
+      total_tokens: Number(usage.total_tokens ?? promptTokens + completionTokens),
+    },
+  };
+}
+
+/**
  * Convert a Responses API request to the Anthropic Messages format.
  * Used when the selected provider only speaks the Anthropic protocol.
  */
@@ -690,7 +856,8 @@ export async function proxyChatCompletion(args: {
 
   // 2. Pick a provider that supports this model.
   // Anthropic-format providers cannot accept a Chat Completions body, so they
-  // are only eligible for the /anthropic endpoint.
+  // are only eligible for the /anthropic endpoint — and for the other
+  // surfaces they are reached by translation, which is handled further down.
   const providers = (await findProvidersForModel(req.model)).filter(
     (p) => providerFaces(p).openai !== null,
   );
@@ -702,6 +869,30 @@ export async function proxyChatCompletion(args: {
     };
   }
   const provider = providers[0];
+
+  // A provider whose upstream speaks Anthropic is reached by translating:
+  // the request becomes a Responses request, the Responses proxy turns that
+  // into an Anthropic one, and the answer comes back the same way. A Chat
+  // Completions body sent straight to an Anthropic endpoint would be refused
+  // by the upstream.
+  if (providerFaces(provider).openai?.format === "anthropic") {
+    const viaPivot = await proxyOpenAIResponse({
+      req: chatToResponsesRequest(req) as Parameters<typeof proxyOpenAIResponse>[0]["req"],
+      apiKey,
+      user,
+      signal,
+      deps,
+    });
+    if (!viaPivot.ok) {
+      return { ok: false, status: viaPivot.status, error: viaPivot.error };
+    }
+    return {
+      ok: true,
+      status: 200,
+      data: responsesToChatResponse(viaPivot.data, req),
+    };
+  }
+
   const upstreamModel = provider.modelMapping[req.model];
 
   // 3. Resolve the upstream URL.
@@ -943,6 +1134,12 @@ export async function proxyOpenAIResponse(args: {
   const format = providerFaces(provider).openai?.format;
   if (format === "chat") {
     return proxyResponsesViaChat({ req, apiKey, user, signal, deps });
+  }
+  if (format === "anthropic") {
+    // The upstream speaks Anthropic Messages. The request is rewritten into
+    // Anthropic's shape and the answer rewritten back — which is what lets a
+    // Claude model answer a Responses client (and, through it, a Gemini one).
+    return proxyResponsesViaAnthropic({ req, apiKey, user, signal, deps });
   }
   return proxyResponsesNative({ req, apiKey, user, signal, deps, provider });
 }

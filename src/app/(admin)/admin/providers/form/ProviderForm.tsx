@@ -70,7 +70,7 @@ export function ProviderForm({
         columns the proxy routes on and cannot be derived from the rules.
       */}
       {mode === "simple" ? (
-        <ProviderFacesField value={values.faces} onChange={setFaces} />
+        <ProviderFacesField value={values.faces} onChange={setFaces} kind={values.kind} />
       ) : (
         <ProviderInterfacesList textSpecs={values.textSpecs} onTextSpecsChange={setTextSpecs} />
       )}

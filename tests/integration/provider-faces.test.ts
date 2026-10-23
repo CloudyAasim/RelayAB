@@ -178,21 +178,39 @@ describe("providerFaces", () => {
     });
   });
 
-  it("treats a legacy upstreamFormat=anthropic row as Anthropic-only", () => {
+  it("treats a legacy upstreamFormat=anthropic row as Anthropic-native", () => {
+    // The row's upstream speaks Anthropic, so the OpenAI face is served **by
+    // translation** — the format says which way the gateway has to talk to the
+    // vendor, not just which faces exist.
+    //
+    // It used to be `openai: null`, and the OpenAI checkbox was forced off in
+    // the editor to match. That made the switch a lie: the row could store
+    // `openaiEnabled: true` and the proxy would still refuse to serve the
+    // OpenAI surfaces, so a Claude model stayed invisible to an OpenAI client
+    // even though the configuration claimed otherwise.
     expect(
       providerFaces(row({ upstreamFormat: "anthropic", baseUrl: "https://api.agnes-ai.cn" })),
     ).toEqual({
-      openai: null,
+      openai: { format: "anthropic" },
       anthropic: { baseUrl: "https://api.agnes-ai.cn" },
     });
   });
 
-  it("treats a legacy kind=anthropic row as Anthropic-only", () => {
+  it("treats a legacy kind=anthropic row as Anthropic-native too", () => {
+    // `kind` is the primary carrier: a row created for Anthropic has always
+    // been `kind: "anthropic"`, whatever its `upstreamFormat` says.
     const faces = providerFaces(
       row({ kind: "anthropic", anthropicEnabled: true, openaiEnabled: false }),
     );
     expect(faces.openai).toBeNull();
     expect(faces.anthropic).not.toBeNull();
+    // With the OpenAI side on, the same row serves the OpenAI surfaces by
+    // translation — the vendor has no Responses endpoint to point at.
+    const translated = providerFaces(
+      row({ kind: "anthropic", anthropicEnabled: true, openaiEnabled: true }),
+    );
+    expect(translated.openai).toEqual({ format: "anthropic" });
+    expect(translated.anthropic).not.toBeNull();
   });
 
   it("exposes both faces on one row", () => {

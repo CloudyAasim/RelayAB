@@ -70,7 +70,7 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     surface: "user",
     id: "openai",
     summary: "OpenAI 兼容用法：chat/completions、鉴权、示例",
-    keys: ["docs.openai.title","docs.openai.desc","docs.openai.line1","docs.openai.sharesBase","docs.openai.baseUrl","docs.openai.header","docs.openai.example","docs.openai.modelListHint","docs.openai.errors.title","docs.openai.errors.body","docs.openai.errors.shapeLabel","docs.openai.errors.typeHint","docs.openai.errors.quotaTip","docs.openai.errors.balanceHint"],
+    keys: ["docs.openai.title","docs.openai.desc","docs.openai.line1","docs.openai.sharesBase","docs.openai.baseUrl","docs.openai.header","docs.openai.example","docs.openai.modelListHint","docs.openai.anyVendor","docs.openai.errors.title","docs.openai.errors.body","docs.openai.errors.shapeLabel","docs.openai.errors.typeHint","docs.openai.errors.quotaTip","docs.openai.errors.balanceHint"],
   },
   {
     surface: "user",
@@ -82,7 +82,7 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     surface: "user",
     id: "gemini",
     summary: "Gemini 兼容用法：/v1beta/models/{model}:generateContent",
-    keys: ["docs.gemini.title","docs.gemini.desc","docs.gemini.line1","docs.gemini.endpoint","docs.gemini.key","docs.gemini.keyValue","docs.gemini.example","docs.gemini.streaming","docs.gemini.limits"],
+    keys: ["docs.gemini.title","docs.gemini.desc","docs.gemini.line1","docs.gemini.endpoint","docs.gemini.key","docs.gemini.keyValue","docs.gemini.example","docs.gemini.streaming","docs.gemini.limits","docs.gemini.anyVendor"],
   },
   {
     surface: "user",
@@ -168,7 +168,7 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     surface: "admin",
     id: "faces",
     summary: "OpenAI 面与 Anthropic 面：分别接哪些模型、为什么要分",
-    keys: ["admin.docs.add.title","admin.docs.add.desc","admin.docs.add.step1","admin.docs.add.step2","admin.docs.add.step3","admin.docs.add.step4","admin.docs.add.why","admin.docs.add.note"],
+    keys: ["admin.docs.add.title","admin.docs.add.desc","admin.docs.add.step1","admin.docs.add.step2","admin.docs.add.step3","admin.docs.add.step4","admin.docs.add.why","admin.docs.add.note","admin.docs.add.translate"],
   },
   {
     surface: "admin",

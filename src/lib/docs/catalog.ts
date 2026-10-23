@@ -159,6 +159,16 @@ export async function buildModelCatalog(): Promise<ModelCatalog> {
 
   for (const provider of providers) {
     const faces = providerFaces(provider);
+    /**
+     * The protocol the vendor actually speaks.
+     *
+     * A row created for Anthropic stores `upstreamFormat: "responses"` — the
+     * OpenAI face's dialect — while its upstream answers in Anthropic's shape.
+     * Printing the stored value there told the reader "this model speaks
+     * Responses" about a model that cannot.
+     */
+    const nativeAnthropic =
+      provider.kind === "anthropic" || provider.upstreamFormat === "anthropic";
     const faceNames: string[] = [
       ...(faces.openai ? ["openai"] : []),
       ...(faces.anthropic ? ["anthropic"] : []),
@@ -216,7 +226,7 @@ export async function buildModelCatalog(): Promise<ModelCatalog> {
           baseUrl: provider.baseUrl ?? null,
           priority: provider.priority,
           enabled: provider.enabled,
-          upstreamFormat: provider.upstreamFormat,
+          upstreamFormat: nativeAnthropic ? "anthropic" : provider.upstreamFormat,
           endpoint: null,
         },
         // Chat models are their own upstream name unless a mapping says

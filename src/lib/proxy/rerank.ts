@@ -135,9 +135,16 @@ export async function proxyRerank(args: {
     return { ok: false, status: http.status, error: { code: http.code, message: http.message } };
   }
 
-  const providers = (await findProvidersForModel(req.model)).filter(
-    (p) => providerFaces(p).openai !== null,
-  );
+  /**
+   * Only a provider whose OpenAI face is served **natively** can serve a
+   * rerank: the Anthropic Messages protocol has no rerank endpoint, and there
+   * is nothing to translate one into. A row served by translation is still a
+   * fine candidate for `/v1/chat/completions` — just not for this.
+   */
+  const providers = (await findProvidersForModel(req.model)).filter((p) => {
+    const face = providerFaces(p).openai;
+    return face !== null && face.format !== "anthropic";
+  });
   if (providers.length === 0) {
     return {
       ok: false,

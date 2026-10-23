@@ -45,14 +45,20 @@ export const UpstreamFormatSchema = z.enum(["responses", "chat", "anthropic"]);
 export type UpstreamFormat = z.infer<typeof UpstreamFormatSchema>;
 
 /**
- * Protocols the OpenAI-facing side of a provider can speak.
+ * The protocols the OpenAI-facing side of a provider can be.
  *
- * `"anthropic"` is deliberately NOT part of this enum: the Anthropic Messages
- * protocol is a separate *face* of a provider (see `providerFaces`), not a
- * third choice for the OpenAI side. The legacy value `upstreamFormat:
- * "anthropic"` is still accepted on read so pre-existing rows keep working.
+ * `"anthropic"` is the odd one out: it is not an OpenAI-side protocol at all,
+ * it is the statement that **the OpenAI surfaces are served by translating**.
+ * A vendor that only publishes an Anthropic Messages endpoint can still be
+ * called by an OpenAI client — the gateway rewrites the request into
+ * Anthropic's shape and the answer back.
+ *
+ * It used to be impossible, because the Anthropic-format rows were excluded
+ * from the OpenAI surfaces entirely: a Claude model was invisible to an
+ * OpenAI SDK, a Responses client and a Gemini client. The conversion code
+ * was written and never called.
  */
-export const OpenAIFaceFormatSchema = z.enum(["responses", "chat"]);
+export const OpenAIFaceFormatSchema = z.enum(["responses", "chat", "anthropic"]);
 export type OpenAIFaceFormat = z.infer<typeof OpenAIFaceFormatSchema>;
 
 // ---------------------------------------------------------------------------
@@ -416,9 +422,17 @@ export type PublicProvider = Omit<Provider, "encryptedApiKey">;
  *   { openai: { format: "chat" },  anthropic: { baseUrl: "https://…" } }
  *   { openai: null,                anthropic: { baseUrl: "https://…" } }  // Anthropic only
  *   { openai: { format: "responses" }, anthropic: null }                    // OpenAI only
+ *   { openai: { format: "anthropic" }, anthropic: { baseUrl: "https://…" } } // by translation
  */
 export interface ProviderFaces {
-  /** Non-null when the provider serves `/v1/chat/completions` and `/v1/responses`. */
+  /**
+   * Non-null when the provider serves `/v1/chat/completions` and `/v1/responses`.
+   *
+   * `format: "anthropic"` means the OpenAI surfaces are served **by
+   * translation**: the gateway rewrites the request into Anthropic's shape and
+   * the answer back. It is the only way an Anthropic-only vendor is reachable
+   * from an OpenAI, Responses or Gemini client.
+   */
   openai: { format: OpenAIFaceFormat } | null;
   /**
    * Non-null when the provider serves the Anthropic Messages surface.
@@ -434,7 +448,6 @@ function stripTrailingV1(url: string): string {
 }
 
 export function providerFaces(provider: Provider): ProviderFaces {
-  const anthropicFormat = provider.upstreamFormat === "anthropic";
   const defaults = defaultFaceFlags(provider.kind, provider.upstreamFormat);
 
   // `openaiEnabled`/`anthropicEnabled` are always set on rows that went through
@@ -443,12 +456,27 @@ export function providerFaces(provider: Provider): ProviderFaces {
   const openaiOn = provider.openaiEnabled ?? defaults.openaiEnabled;
   const anthropicOn = provider.anthropicEnabled ?? defaults.anthropicEnabled;
 
-  // `"anthropic"` is not a valid OpenAI-side format, so such a row can never
-  // serve the OpenAI endpoints even if a flag was left on.
-  const openai =
-    openaiOn && !anthropicFormat
-      ? ({ format: provider.upstreamFormat } as { format: OpenAIFaceFormat })
-      : null;
+  /**
+   * Whether this vendor's own protocol is Anthropic.
+   *
+   * `kind` is the primary carrier — a row created for Anthropic has always
+   * been `kind: "anthropic"`. The `upstreamFormat` half is the older
+   * encoding, kept so that a row written before the kind existed still says
+   * what it is.
+   */
+  const nativeAnthropic =
+    provider.kind === "anthropic" || provider.upstreamFormat === "anthropic";
+
+  // The OpenAI side is served natively when the upstream speaks Responses or
+  // Chat Completions, and **by translation** when the upstream speaks
+  // Anthropic. The old code excluded the Anthropic rows from this face
+  // altogether, which is what made a Claude model invisible to an OpenAI
+  // client.
+  const openai = openaiOn
+    ? ({ format: nativeAnthropic ? "anthropic" : provider.upstreamFormat } as {
+        format: OpenAIFaceFormat;
+      })
+    : null;
 
   const explicitAnthropicBase = provider.anthropicBaseUrl?.trim() ?? "";
   const derivedAnthropicBase = provider.baseUrl ? stripTrailingV1(provider.baseUrl) : "";
@@ -460,7 +488,7 @@ export function providerFaces(provider: Provider): ProviderFaces {
   // `upstreamFormat: "anthropic"` is itself a statement of protocol, so it
   // forces the face on. Without that, a legacy row whose flag got flipped off
   // would serve neither protocol and silently vanish from every surface.
-  const anthropic = anthropicFormat || anthropicOn ? { baseUrl: anthropicBaseUrl } : null;
+  const anthropic = nativeAnthropic || anthropicOn ? { baseUrl: anthropicBaseUrl } : null;
 
   return { openai, anthropic };
 }
