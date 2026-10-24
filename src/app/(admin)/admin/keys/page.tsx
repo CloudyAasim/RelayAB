@@ -4,7 +4,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { listAllApiKeys } from "@/lib/db/keys";
 import { listUsers } from "@/lib/db/users";
 import { Card } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
+import { KeyStatusBadge } from "@/components/keys/KeyStatusBadge";
 import {
   Table,
   THead,
@@ -103,9 +103,10 @@ export default async function KeysPage() {
                     </TD>
                     <TD className="text-muted-foreground">{formatDate(k.expiresAt, timeZone)}</TD>
                     <TD>
-                      <Badge tone={k.forceDisabled === true ? "orange" : k.enabled ? "success" : "neutral"}>
-                        {k.forceDisabled === true ? t("admin.keys.status.forceDisabled") : k.enabled ? t("dashboard.status.enabled") : t("dashboard.status.disabled")}
-                      </Badge>
+                      {/* The same badge the user's own page draws, so a key
+                          cannot read one way here and another way there — and
+                          so an expired key says so here too. */}
+                      <KeyStatusBadge apiKey={k} />
                     </TD>
                     <TD className="text-right">
                       <KeyActions apiKey={k} />

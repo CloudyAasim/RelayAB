@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
-import { Badge, StatusDot } from "@/components/ui/Badge";
 import { LegacyModal as Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
 import { Switch } from "@/components/ui/Switch";
@@ -86,6 +85,10 @@ export function UserKeyActions({
       }
       setEnabled(newEnabled);
       setMenuOpen(false);
+      // The Status column and the "active keys" card are server-rendered, so
+      // they only catch up when the server is asked again. Without this the row
+      // would keep saying "enabled" for a key that was just switched off.
+      router.refresh();
     } catch {
       alert(t("common.failed"));
     } finally {
@@ -112,22 +115,10 @@ export function UserKeyActions({
 
   return (
     <div className="flex items-center gap-2">
-      {isForceDisabled ? (
-        <Badge tone="orange">
-          <StatusDot tone="orange" pulse={false} className="mr-1" />
-          {t("admin.keys.status.forceDisabled")}
-        </Badge>
-      ) : enabled ? (
-        <Badge tone="success">
-          <StatusDot tone="success" pulse={false} className="mr-1" />
-          {t("dashboard.status.enabled")}
-        </Badge>
-      ) : (
-        <Badge tone="neutral">
-          <StatusDot tone="neutral" pulse={false} className="mr-1" />
-          {t("dashboard.status.disabled")}
-        </Badge>
-      )}
+      {/* Only the menu lives here. The status is drawn once, in the Status
+          column — see `components/keys/KeyStatusBadge.tsx` — because a row
+          that says "enabled" in two columns, in two different colours, is one
+          fact told twice. */}
 
       <Button
         size="icon"

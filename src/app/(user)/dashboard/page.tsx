@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { Card, StatCard, CardHeader } from "@/components/ui/Card";
-import { Badge, StatusDot } from "@/components/ui/Badge";
+import { KeyStatusBadge } from "@/components/keys/KeyStatusBadge";
 import {
   Table,
   THead,
@@ -158,7 +158,11 @@ export default async function DashboardPage() {
                           {formatDate(k.expiresAt, timeZone)}
                         </TD>
                         <TD className="text-center">
-                          <StatusDot tone={k.enabled ? "success" : "danger"} />
+                          {/* The status, once. It used to be a bare dot here
+                              and a badge in the actions cell — the same fact
+                              twice in one row, and the two disagreed about a
+                              key that was switched off or forced off. */}
+                          <KeyStatusBadge apiKey={k} />
                         </TD>
                         <TD className="text-right">
                           <UserKeyActions apiKey={k} timeZone={timeZone} />
