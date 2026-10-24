@@ -47,7 +47,10 @@ const API_PATCH = read("src", "app", "api", "admin", "providers", "[id]", "route
 const API_POST = read("src", "app", "api", "admin", "providers", "route.ts");
 const DB = read("src", "lib", "db", "providers.ts");
 const SQLITE = read("src", "lib", "db", "sqlite.ts");
-const OPENAI = read("src", "lib", "proxy", "openai.ts");
+const OPENAI = [
+  read("src", "lib", "proxy", "dialects", "chat.ts"),
+  read("src", "lib", "proxy", "dialects", "responses.ts"),
+].join("\n");
 const ANTHROPIC = read("src", "lib", "proxy", "anthropic.ts");
 
 const spec = (protocol: string) => JSON.stringify(protocolPreset(protocol as never));

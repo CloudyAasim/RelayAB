@@ -20,8 +20,8 @@ import { describe, it, expect } from "vitest";
 import {
   chatToResponsesRequest,
   responsesToChatRequest,
-  responsesToAnthropicRequest,
-} from "@/lib/proxy/openai";
+} from "@/lib/proxy/converters/chat";
+import { responsesToAnthropicRequest } from "@/lib/proxy/converters/anthropic";
 import { responsesToGeminiRequest } from "@/lib/protocol/gemini";
 
 const DATA_URL = "data:image/png;base64,AAAB";

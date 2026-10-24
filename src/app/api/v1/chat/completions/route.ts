@@ -10,7 +10,7 @@
  */
 import { authenticateBearer, reasonToHttp, resolveAuthHeader } from "@/lib/auth/apikey";
 import { proxyError } from "@/lib/proxy/errors";
-import { proxyChatCompletion } from "@/lib/proxy/openai";
+import { proxyChatCompletion } from "@/lib/proxy/chat";
 import { proxyResultToResponse } from "@/lib/proxy/respond";
 import { validateChatBody } from "@/lib/proxy/validate";
 import type { ApiKey } from "@/lib/db/types";

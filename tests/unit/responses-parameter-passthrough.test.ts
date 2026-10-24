@@ -12,9 +12,12 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { responsesToChatRequest } from "@/lib/proxy/openai";
+import { responsesToChatRequest } from "@/lib/proxy/converters/chat";
 
-const SOURCE = readFileSync(join(process.cwd(), "src", "lib", "proxy", "openai.ts"), "utf-8");
+const SOURCE = readFileSync(
+  join(process.cwd(), "src", "lib", "proxy", "converters", "chat.ts"),
+  "utf-8",
+);
 
 const convert = (req: Record<string, unknown>) =>
   responsesToChatRequest({ model: "m", input: "hi", ...req } as never) as Record<string, unknown>;

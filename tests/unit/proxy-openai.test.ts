@@ -11,7 +11,7 @@ import { createUser, getUserById } from "@/lib/db/users";
 import { createProvider, updateProvider } from "@/lib/db/providers";
 import { listUsageByKey, aggregateByKey } from "@/lib/db/usage";
 import { generateApiKey, sha256Hex } from "@/lib/crypto/hashing";
-import { proxyChatCompletion } from "@/lib/proxy/openai";
+import { proxyChatCompletion } from "@/lib/proxy/chat";
 import type { ApiKey } from "@/lib/db/types";
 
 /**

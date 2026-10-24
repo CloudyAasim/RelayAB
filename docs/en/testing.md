@@ -35,7 +35,7 @@ sample**, not an exhaustive index — run `ls tests/unit/` for the full list.
 | **Concurrency** | `tests/unit/concurrency.test.ts` |
 | **Login throttling** | `tests/unit/login-throttle.test.ts` |
 | **Security hardening** | `tests/unit/security-hardening.test.ts` |
-| `proxy/openai` | `tests/unit/proxy-openai.test.ts`, `proxy-openai-stream.test.ts` |
+| `proxy/chat`, `proxy/responses` | `tests/unit/proxy-openai.test.ts`, `proxy-openai-stream.test.ts` |
 | `proxy/anthropic` | `tests/unit/proxy-anthropic.test.ts`, `proxy-anthropic-stream.test.ts`, `proxy-anthropic-thinking.test.ts` |
 | **Streaming edge cases** | `tests/unit/proxy-stream-disconnect.test.ts`, `proxy-strip-stream-options.test.ts`, `stream-stopgap.test.ts` |
 | **Responses protocol conversion** | `tests/unit/proxy-responses-conversion.test.ts` |

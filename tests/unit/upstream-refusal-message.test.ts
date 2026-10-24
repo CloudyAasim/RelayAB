@@ -14,7 +14,7 @@
  * the shapes a real vendor produces, plus the ones that must not get through.
  */
 import { describe, it, expect } from "vitest";
-import { upstreamRefusal } from "@/lib/proxy/openai";
+import { upstreamRefusal } from "@/lib/proxy/errors";
 
 describe("what the client is told when the vendor refuses", () => {
   it("carries the vendor's message, which is the only place the answer is", () => {

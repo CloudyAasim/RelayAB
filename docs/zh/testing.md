@@ -35,7 +35,7 @@ pnpm type-check && pnpm build
 | **并发** | `tests/unit/concurrency.test.ts` |
 | **登录限流** | `tests/unit/login-throttle.test.ts` |
 | **安全加固** | `tests/unit/security-hardening.test.ts` |
-| `proxy/openai` | `tests/unit/proxy-openai.test.ts`、`proxy-openai-stream.test.ts` |
+| `proxy/chat`、`proxy/responses` | `tests/unit/proxy-openai.test.ts`、`proxy-openai-stream.test.ts` |
 | `proxy/anthropic` | `tests/unit/proxy-anthropic.test.ts`、`proxy-anthropic-stream.test.ts`、`proxy-anthropic-thinking.test.ts` |
 | **流式边界情况** | `tests/unit/proxy-stream-disconnect.test.ts`、`proxy-strip-stream-options.test.ts`、`stream-stopgap.test.ts` |
 | **Responses 协议转换** | `tests/unit/proxy-responses-conversion.test.ts` |

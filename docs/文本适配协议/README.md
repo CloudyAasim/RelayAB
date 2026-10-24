@@ -235,4 +235,4 @@
 | 列表校验 | `validateTextSpecs` — `src/lib/protocol/text-specs.ts` |
 | 写入校验 | `textSpecs` 的 `superRefine` — `src/app/api/admin/providers/route.ts`（新建）与 `src/app/api/admin/providers/[id]/route.ts`（修改） |
 | 后台编辑器 | `src/app/(admin)/admin/providers/ProviderInterfacesList.tsx`（服务商编辑器的「高级模式」） |
-| 代理接入 | `src/lib/proxy/openai.ts`、`src/lib/proxy/anthropic.ts` |
+| 代理接入 | `src/lib/proxy/chat.ts`、`src/lib/proxy/responses.ts`、`src/lib/proxy/anthropic.ts` |

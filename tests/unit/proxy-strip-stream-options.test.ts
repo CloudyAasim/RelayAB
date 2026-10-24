@@ -8,7 +8,7 @@ import { __resetDbForTest } from "@/lib/db/sqlite";
 import { createApiKey } from "@/lib/db/keys";
 import { createUser, getUserById } from "@/lib/db/users";
 import { createProvider } from "@/lib/db/providers";
-import { proxyChatCompletion } from "@/lib/proxy/openai";
+import { proxyChatCompletion } from "@/lib/proxy/chat";
 import { proxyAnthropicMessage } from "@/lib/proxy/anthropic";
 
 const chatBody = () =>

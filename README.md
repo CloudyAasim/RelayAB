@@ -348,7 +348,8 @@ RelayAB/
 │       ├── auth/         认证（session / api key）
 │       ├── crypto/       加密（secrets / hashing / password）
 │       ├── db/           持久化（users / keys / providers / usage）
-│       ├── proxy/        上游代理（openai / anthropic / gemini / responses 枢轴）
+│       ├── proxy/        上游代理：客户端面（chat / responses）、上游方言（dialects/）、
+│       │                 协议转换器（converters/）、枢轴（pivot.ts）
 │       ├── protocol/     协议转换与流帧改写（Responses 是内部枢轴）
 │       ├── media/        媒体适配协议：spec 解析 + 通用引擎
 │       ├── search/       搜索适配协议：spec 解析 + 通用引擎

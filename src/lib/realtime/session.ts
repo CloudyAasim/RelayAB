@@ -33,11 +33,8 @@
  * back cannot tell a silent model from a broken gateway.
  */
 
-import {
-  proxyResponsesViaDialect,
-  type ProxyDeps,
-  type ProxyResult,
-} from "../proxy/openai";
+import { proxyResponsesViaDialect } from "../proxy/pivot";
+import type { ProxyDeps, ProxyResult } from "../proxy/types";
 import type { ApiKey, Provider, User } from "../db/types";
 import {
   contentPartAdded,

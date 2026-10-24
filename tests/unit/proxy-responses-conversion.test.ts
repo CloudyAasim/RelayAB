@@ -14,7 +14,7 @@
  * client's agent loop.
  */
 import { describe, it, expect } from "vitest";
-import { responsesToChatRequest, chatToResponsesResponse } from "@/lib/proxy/openai";
+import { responsesToChatRequest, chatToResponsesResponse } from "@/lib/proxy/converters/chat";
 
 /** A request body shaped like the one Codex CLI sends. */
 const CODEX_BODY = {

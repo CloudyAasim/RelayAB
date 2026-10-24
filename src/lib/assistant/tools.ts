@@ -85,7 +85,7 @@ import type { DocPage } from "../docs/custom";
 import { NO_CREDENTIAL_MESSAGE, type AccountCredential } from "./credentials";
 import { executeMediaRequest, resultItems } from "../media/handler";
 import { buildModelCatalog } from "../docs/catalog";
-import { proxyChatCompletion } from "../proxy/openai";
+import { proxyChatCompletion } from "../proxy/chat";
 import { getAssistantArtifact } from "../db/assistant-artifacts";
 import type { ArtifactKind } from "../db/assistant-artifacts";
 import type { MessageAttachment } from "./schema";

@@ -28,12 +28,8 @@ import { findAnthropicProvidersForModel } from "@/lib/db/providers";
 import { checkKeyStatus, reasonToHttp } from "@/lib/auth/apikey";
 import { shouldRejectBeforeRequest } from "@/lib/quota/calculator";
 import { proxyAnthropicMessage, type AnthropicRequest } from "./anthropic";
-import {
-  proxyResponsesViaDialect,
-  type ProxyDeps,
-  type ProxyResult,
-  type ResponseAPIRequest,
-} from "./openai";
+import { proxyResponsesViaDialect } from "./pivot";
+import type { ProxyDeps, ProxyResult, ResponseAPIRequest } from "./types";
 import {
   anthropicToResponsesRequest,
   responsesToAnthropicResponse,

@@ -63,7 +63,9 @@ describe("the engine honours it, not the screen", () => {
     // A fourth call site using `specForSurface` directly would be a request
     // answering from a configuration the operator had switched off.
     for (const file of [
-      "src/lib/proxy/openai.ts",
+      "src/lib/proxy/dialects/chat.ts",
+      "src/lib/proxy/dialects/responses.ts",
+      "src/lib/proxy/dialects/gemini.ts",
       "src/lib/proxy/anthropic.ts",
     ]) {
       const src = read(...file.split("/"));

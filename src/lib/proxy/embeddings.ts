@@ -27,7 +27,7 @@ import { checkKeyStatus, reasonToHttp } from "../auth/apikey";
 import { shouldRejectBeforeRequest } from "../quota/calculator";
 import { settleUsage } from "./billing";
 import { providerFaces, type ApiKey, type Provider, type User } from "../db/types";
-import type { ProxyDeps, ProxyResult } from "./openai";
+import type { ProxyDeps, ProxyResult } from "./types";
 
 export interface EmbeddingsRequest {
   model: string;

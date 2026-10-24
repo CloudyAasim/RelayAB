@@ -17,7 +17,7 @@ import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth/session";
 import { resolveToolCredential } from "@/lib/assistant/credentials";
 import { consumeAssistantTurn } from "@/lib/assistant/rate-limit";
-import { proxyChatCompletion } from "@/lib/proxy/openai";
+import { proxyChatCompletion } from "@/lib/proxy/chat";
 import { findOpenAIProvidersForModel, findProvidersForModel } from "@/lib/db/providers";
 import { applyParameterPolicy } from "@/lib/protocol/parameter-policy";
 import { readTextSpecs, specForSurface } from "@/lib/protocol/text-specs";

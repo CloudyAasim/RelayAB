@@ -38,7 +38,7 @@
  * that had nothing to say.
  */
 
-import type { ResponseAPIRequest } from "../proxy/openai";
+import type { ResponseAPIRequest } from "../proxy/types";
 
 /** The error types the Realtime protocol defines. */
 export type RealtimeErrorType =

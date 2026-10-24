@@ -147,7 +147,12 @@ describe("cache pricing: blank is not zero", () => {
 });
 
 describe("cache pricing: the parsers read what the vendors send", () => {
-  const OPENAI = read("src", "lib", "proxy", "openai.ts");
+  const OPENAI = [
+    read("src", "lib", "proxy", "dialects", "chat.ts"),
+    read("src", "lib", "proxy", "dialects", "responses.ts"),
+    read("src", "lib", "proxy", "dialects", "gemini.ts"),
+    read("src", "lib", "proxy", "dialects", "shared.ts"),
+  ].join("\n");
   const ANTHROPIC = read("src", "lib", "proxy", "anthropic.ts");
   const BILLING = read("src", "lib", "proxy", "billing.ts");
 

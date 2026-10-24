@@ -19,7 +19,7 @@ import { createApiKey } from "@/lib/db/keys";
 import { createUser, getUserById } from "@/lib/db/users";
 import { createProvider, updateProvider } from "@/lib/db/providers";
 import { listUsageByKey } from "@/lib/db/usage";
-import { proxyChatCompletion } from "@/lib/proxy/openai";
+import { proxyChatCompletion } from "@/lib/proxy/chat";
 import { proxyAnthropicMessage } from "@/lib/proxy/anthropic";
 
 async function setup(opts: { cachedInputCost?: number; cacheWriteCost?: number } = {}) {

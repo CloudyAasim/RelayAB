@@ -32,7 +32,10 @@ const SPEC = readFileSync(join(ROOT, "src", "lib", "protocol", "text-spec.ts"), 
 const MAPPING = readFileSync(join(ROOT, "src", "lib", "protocol", "text-spec-mapping.ts"), "utf-8");
 const POLICY = readFileSync(join(ROOT, "src", "lib", "protocol", "parameter-policy.ts"), "utf-8");
 const ROUTE = readFileSync(join(ROOT, "src", "app", "api", "admin", "providers", "[id]", "route.ts"), "utf-8");
-const OPENAI = readFileSync(join(ROOT, "src", "lib", "proxy", "openai.ts"), "utf-8");
+const OPENAI = [
+  readFileSync(join(ROOT, "src", "lib", "proxy", "dialects", "chat.ts"), "utf-8"),
+  readFileSync(join(ROOT, "src", "lib", "proxy", "dialects", "responses.ts"), "utf-8"),
+].join("\n");
 const ANTHROPIC = readFileSync(join(ROOT, "src", "lib", "proxy", "anthropic.ts"), "utf-8");
 
 describe("the document is in the repository, not in somebody's head", () => {
@@ -64,7 +67,8 @@ describe("every mechanism the document names is in the code", () => {
       "src/app/api/admin/providers/[id]/route.ts",
       "src/app/api/admin/providers/route.ts",
       "src/app/(admin)/admin/providers/ProviderInterfacesList.tsx",
-      "src/lib/proxy/openai.ts",
+      "src/lib/proxy/chat.ts",
+      "src/lib/proxy/responses.ts",
       "src/lib/proxy/anthropic.ts",
     ]) {
       expect(DOC, `${path} is named but the file is not there`).toContain(path);

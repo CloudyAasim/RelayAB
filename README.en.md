@@ -403,7 +403,8 @@ RelayAB/
 │       ├── auth/         authentication (session / api key)
 │       ├── crypto/       encryption (secrets / hashing / password)
 │       ├── db/           persistence (users / keys / providers / usage)
-│       ├── proxy/        upstream proxy (openai / anthropic / gemini / the Responses pivot)
+│       ├── proxy/        upstream proxy: client surfaces (chat / responses), upstream
+│       │                 dialects (dialects/), protocol converters (converters/), the pivot
 │       ├── protocol/     protocol translation and stream-frame rewriting (Responses is the pivot)
 │       ├── media/        media adapter protocol: spec parsing + general engine
 │       ├── search/       search adapter protocol: spec parsing + general engine

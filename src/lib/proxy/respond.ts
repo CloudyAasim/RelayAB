@@ -23,7 +23,7 @@
  * events.
  */
 import { NextResponse } from "next/server";
-import type { ProxyResult } from "./openai";
+import type { ProxyResult } from "./types";
 import { proxyError, quotaHeaders } from "./errors";
 import type { User } from "@/lib/db/types";
 

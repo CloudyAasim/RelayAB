@@ -25,7 +25,8 @@
  * send `x-goog-api-key`, and the REST examples put the key in `?key=`. Both
  * are accepted here, alongside the usual ones — see `resolveAuthHeader`.
  */
-import { proxyOpenAIResponse, type ProxyDeps, type ProxyResult } from "./openai";
+import { proxyOpenAIResponse } from "./responses";
+import type { ProxyDeps, ProxyResult } from "./types";
 import { sseRewrite } from "./stream-tap";
 import {
   geminiToResponsesRequest,

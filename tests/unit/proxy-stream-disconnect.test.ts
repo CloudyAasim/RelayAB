@@ -13,7 +13,7 @@ import { createApiKey } from "@/lib/db/keys";
 import { createUser, getUserById } from "@/lib/db/users";
 import { createProvider } from "@/lib/db/providers";
 import { listUsageByKey } from "@/lib/db/usage";
-import { proxyChatCompletion } from "@/lib/proxy/openai";
+import { proxyChatCompletion } from "@/lib/proxy/chat";
 
 /** Two content chunks and a usage frame, so a mid-stream cut has data to bill. */
 const CHAT_SSE = [

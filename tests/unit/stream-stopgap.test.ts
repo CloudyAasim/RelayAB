@@ -11,7 +11,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { proxyResultToResponse } from "@/lib/proxy/respond";
-import type { ProxyResult } from "@/lib/proxy/openai";
+import type { ProxyResult } from "@/lib/proxy/types";
 
 function bufferedChat(): ProxyResult {
   return {

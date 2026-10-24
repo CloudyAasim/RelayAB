@@ -10,7 +10,7 @@
  */
 import { authenticateBearer, reasonToHttp, resolveAuthHeader } from "@/lib/auth/apikey";
 import { proxyError } from "@/lib/proxy/errors";
-import { proxyOpenAIResponse } from "@/lib/proxy/openai";
+import { proxyOpenAIResponse } from "@/lib/proxy/responses";
 import { proxyResultToResponse } from "@/lib/proxy/respond";
 import { validateResponsesBody } from "@/lib/proxy/validate";
 import type { ApiKey } from "@/lib/db/types";

@@ -10,7 +10,7 @@ import { __resetDbForTest } from "@/lib/db/sqlite";
 import { createApiKey } from "@/lib/db/keys";
 import { createUser, getUserById } from "@/lib/db/users";
 import { createProvider } from "@/lib/db/providers";
-import { proxyChatCompletion } from "@/lib/proxy/openai";
+import { proxyChatCompletion } from "@/lib/proxy/chat";
 import { listUsageByKey } from "@/lib/db/usage";
 
 async function setup(): Promise<{ key: Awaited<ReturnType<typeof createApiKey>>["key"]; user: NonNullable<Awaited<ReturnType<typeof getUserById>>> }> {

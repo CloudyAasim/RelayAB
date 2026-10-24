@@ -16,7 +16,7 @@ import { createApiKey } from "@/lib/db/keys";
 import { createUser, getUserById } from "@/lib/db/users";
 import { createProvider } from "@/lib/db/providers";
 import { listUsageByKey } from "@/lib/db/usage";
-import { proxyOpenAIResponse } from "@/lib/proxy/openai";
+import { proxyOpenAIResponse } from "@/lib/proxy/responses";
 
 const SSE_BODY = [
   "event: response.created",

@@ -6,7 +6,8 @@
  * Path: /anthropic/v1/messages
  * Upstream: Anthropic-compatible Provider (kind="anthropic")
  *
- * Behavior mirrors `proxy/openai.ts` with these differences:
+ * Behavior mirrors the OpenAI client surfaces (`proxy/chat.ts`, `proxy/responses.ts`)
+ * with these differences:
  *   - Uses `max_tokens` (required by Anthropic).
  *   - Returns a "messages" response shape.
  *   - Provider selection: any Provider with `kind="anthropic"` that maps
