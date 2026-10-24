@@ -133,7 +133,6 @@ export function UserKeyActions({
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
         title={label}
-        description={t("common.actions")}
       >
         <div className="space-y-2">
           <Button

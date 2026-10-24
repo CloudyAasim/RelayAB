@@ -55,7 +55,6 @@ export default async function DashboardPage() {
       <SectionPageLayout.Title>
         {t("dashboard.welcome", { name: fullUser?.displayName ?? sessionUser.username })}
       </SectionPageLayout.Title>
-      <SectionPageLayout.Description>{t("dashboard.subtitle")}</SectionPageLayout.Description>
       <SectionPageLayout.Actions>
         <CreateKeyButton allocation={allocation} />
       </SectionPageLayout.Actions>
@@ -104,7 +103,6 @@ export default async function DashboardPage() {
           <Card>
             <CardHeader
               title={t("dashboard.apiKeys.title")}
-              description={t("dashboard.apiKeys.description")}
             />
             {keys.length === 0 ? (
               <EmptyState

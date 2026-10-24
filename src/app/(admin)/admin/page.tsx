@@ -71,9 +71,11 @@ export default async function AdminOverviewPage() {
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t("admin.overview.title")}</SectionPageLayout.Title>
-      <SectionPageLayout.Description>
-        {t("admin.overview.description")}
-      </SectionPageLayout.Description>
+      {/*
+        No description under the title. The four tiles below say what this
+        page is — 用量、用户、密钥 — and saying it twice is the kind of
+        sentence a reader stops reading.
+      */}
       <SectionPageLayout.Content>
         {/* Stat row */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -88,21 +90,18 @@ export default async function AdminOverviewPage() {
             value={formatNumber(keys.length)}
             icon={<KeyRound className="h-4 w-4" />}
             tone="info"
-            hint={`${keys.filter((k) => k.enabled).length} ${t("dashboard.stat.activeKeys").toLowerCase()}`}
           />
           <StatCard
             label={t("admin.stat.providers")}
             value={formatNumber(providers.length)}
             icon={<Server className="h-4 w-4" />}
             tone="success"
-            hint={`${providers.filter((p) => p.enabled).length} ${t("dashboard.status.enabled")}`}
           />
           <StatCard
             label={t("admin.stat.tokens")}
             value={formatNumber(aggTotals.totalTokens)}
             icon={<Activity className="h-4 w-4" />}
             tone="warning"
-            hint={t("admin.stat.tokensHint")}
           />
         </div>
 

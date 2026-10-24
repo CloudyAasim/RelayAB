@@ -58,7 +58,6 @@ export function UserActions({ user: serverUser }: { user: PublicUser }) {
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
         title={serverUser.username}
-        description={t("common.actions")}
       >
         <div className="space-y-2">
           <Button

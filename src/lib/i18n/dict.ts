@@ -122,9 +122,7 @@ const zhCN: Dict = {
   "dashboard.stat.activeKeys": "已启用密钥",
   "dashboard.stat.tokensUsed": "已用词元",
   "dashboard.stat.creditsUsed": "积分用量",
-  "dashboard.subtitle": "管理你的接口密钥、查看用量、阅读接入文档。",
   "dashboard.apiKeys.title": "接口密钥",
-  "dashboard.apiKeys.description": "你个人访问上游 AI 接口的密钥。",
   "dashboard.apiKeys.empty.title": "还没有密钥",
   "dashboard.apiKeys.empty.description": "点击上面的「新建接口密钥」自己创建一个吧。",
   "dashboard.recentActivity.title": "最近活动",
@@ -188,7 +186,6 @@ const zhCN: Dict = {
 
   // ===== Settings page (password change) =====
   "settings.title": "账号设置",
-  "settings.subtitle": "在这里修改你的登录密码。",
   "settings.profile.title": "个人资料",
   "settings.profile.desc": "显示名会出现在右上角的用户菜单里，随时可以修改。",
   "settings.displayName.label": "显示名",
@@ -235,7 +232,7 @@ const zhCN: Dict = {
 
   // ===== Docs page =====
   "docs.title": "接入文档",
-  "docs.intro": "用任何 OpenAI / Anthropic 兼容的客户端即可调用本服务，下面给出示例与可复制的 URL。",
+  "docs.intro": "用任何 OpenAI / Anthropic 兼容的客户端即可调用本服务。",
   "docs.help.contactAdmin": "还有疑问？联系你的管理员。",
   // ===== 接入文档导航（多页）=====
   "docs.nav.start": "开始使用",
@@ -629,7 +626,7 @@ const zhCN: Dict = {
   "admin.overview.usageTotalCredits": "总积分用量",
   "admin.overview.usageActiveKeys": "活跃 / 全部密钥",
   "admin.overview.recentUsage": "最近请求",
-  "admin.overview.recentUsageDesc": "最近的调用记录。计费方式为「估算」表示流式请求结束时上游没有返回用量帧，词元数按文本长度推算（约 4 字符 1 词元）。缓存列显示上游报告的提示缓存命中与写入——「—」表示这家上游根本不报缓存，不是命中率为零。",
+  "admin.overview.recentUsageDesc": "计费方式为「估算」表示流式请求结束时上游没有返回用量帧，词元数按文本长度推算（约 4 字符 1 词元）。缓存列显示上游报告的提示缓存命中与写入——「—」表示这家上游根本不报缓存，不是命中率为零。",
   "admin.overview.recentUsageEmpty": "暂无调用记录",
   "admin.overview.usageCache": "缓存",
   "admin.overview.usageCacheHint": "上游提示缓存的词元数。读是省下来的，写是要付的。",
@@ -642,7 +639,6 @@ const zhCN: Dict = {
   "admin.stat.providers": "提供商",
   "admin.stat.requests": "请求数",
   "admin.stat.tokens": "词元用量",
-  "admin.stat.tokensHint": "全部密钥累计",
   "admin.dailyUsage.title": "每日用量（最近 7 天）",
   "admin.providers.title": "提供商管理",
   "admin.providers.empty.title": "还没有配置提供商",
@@ -672,7 +668,6 @@ const zhCN: Dict = {
 
 
   // ===== Admin Users: allocation editor =====
-  "admin.users.description": "在这里新建用户，并配置每个用户的可用额度。",
   "admin.users.allocation.title": "用户额度配置",
   "admin.users.allocation.desc": "为每个账号分配积分总额与可访问的模型。积分属于账号：该账号下的所有密钥共用这一份，用完即全部停止。",
   "admin.users.allocation.quota": "账号积分池",
@@ -721,7 +716,7 @@ const zhCN: Dict = {
   "admin.keys.title": "接口密钥",
   // ===== Media providers (declarative adapter protocol) =====
   "admin.mediaProviders.title": "媒体供应商",
-  "admin.mediaProviders.description": "用声明式适配协议接入图片 / 视频 / 语音 / 音乐供应商。新增或调整供应商只需改这里，保存即生效，无需改代码或重新部署。",
+  "admin.mediaProviders.description": "新增或调整供应商只需改这里，保存即生效，无需改代码或重新部署。",
   "admin.mediaProviders.new": "新增供应商",
   "admin.mediaProviders.edit": "编辑",
   "admin.mediaProviders.empty": "还没有媒体供应商。",
@@ -838,7 +833,6 @@ const zhCN: Dict = {
   "admin.searchProviders.title": "搜索提供商",
   "admin.searchProviders.description":
     "网页搜索的后端。站点没有配置任何搜索提供商时，回退到环境变量里配置的搜索后端。",
-  "admin.searchProviders.summary": "助手的网页搜索走哪几个服务、按次怎么计价。",
   "admin.searchProviders.new": "新增搜索提供商",
   "admin.searchProviders.formDesc": "填写后端类型、地址和密钥。SearXNG 只需要地址；Tavily 和 Brave 需要 API 密钥。",
   "admin.searchProviders.empty": "还没有搜索提供商",
@@ -938,7 +932,7 @@ const zhCN: Dict = {
 
   // ===== Admin docs (admin-only) =====
   "admin.docs.title": "管理员文档",
-  "admin.docs.subtitle": "本页只对管理员开放。内容是上游 Provider 配置、额度计量与故障排查的速查，面向日常运维。",
+  "admin.docs.subtitle": "本页只对管理员开放，是日常运维的速查。",
   "admin.docs.provider.title": "上游 Provider 配置",
   "admin.docs.provider.desc": "字段职责不同，不要互相替代。新建和编辑用的是同一份表单，改哪边都一样。",
   "admin.docs.provider.kind": "协议家族（kind）：anthropic 表示这条 Provider 说 Anthropic Messages 协议。",
@@ -1541,16 +1535,11 @@ const zhCN: Dict = {
   // it matters — what changing something here actually does. A page whose
   // only label is its title makes the reader guess; these are the sentences
   // that answer "what am I looking at, and what happens if I touch it".
-  "usage.description": "每一次请求的用量、消耗与明细。数字来自用量日志，可能有轻微延迟。",
-  "dashboard.models.description":
-    "用你自己的密钥对本网关的模型发一次真实请求，走的是和客户端完全相同的路径。",
-  "admin.overview.description": "这个部署现在的用量、用户与密钥概况。",
-  "admin.providers.description":
-    "上游模型供应商：决定哪些模型可被调用、怎么转发、每家怎么计价。",
-  "admin.keys.description": "给账号签发网关密钥；密钥只显示一次，丢失只能重建。",
-  "admin.settings.description": "对外公开的接口地址，以及文档站的名字、公告与章节。",
-  "admin.modelNotes.description":
-    "给每个模型写一份说明：上下文窗口、输出上限、思考等级和价格；助手与用户文档都会读它。",
+  "usage.description": "数字来自用量日志，可能有轻微延迟。",
+  "dashboard.models.description": "走的是和客户端完全相同的路径。",
+  "admin.providers.description": "决定哪些模型可被调用、每家怎么计价。",
+  "admin.keys.description": "密钥只显示一次，丢失只能重建。",
+  "admin.modelNotes.description": "助手与用户文档都会读它。",
   "admin.mediaProviders.empty.description":
     "图片、视频、语音、音乐的上游供应商都写在这里；点击右上角「新增供应商」加一个，客户端才能用上对应的模型。",
   "admin.providers.empty.description":
@@ -1650,9 +1639,7 @@ const en: Dict = {
   "dashboard.stat.activeKeys": "Active Keys",
   "dashboard.stat.tokensUsed": "Tokens Used",
   "dashboard.stat.creditsUsed": "Credits Used",
-  "dashboard.subtitle": "Manage your API keys, track usage, and read the integration docs.",
   "dashboard.apiKeys.title": "API keys",
-  "dashboard.apiKeys.description": "Your personal keys for accessing upstream AI APIs.",
   "dashboard.apiKeys.empty.title": "No keys yet",
   "dashboard.apiKeys.empty.description": "Click \"Create API Key\" above to mint your first one.",
   "dashboard.recentActivity.title": "Recent Activity",
@@ -1716,7 +1703,6 @@ const en: Dict = {
 
   // ===== Settings page (password change) =====
   "settings.title": "Account Settings",
-  "settings.subtitle": "Change your login password here.",
   "settings.profile.title": "Profile",
   "settings.profile.desc": "Your display name shows in the top-right user menu and can be changed at any time.",
   "settings.displayName.label": "Display name",
@@ -1763,7 +1749,7 @@ const en: Dict = {
 
   // ===== Docs page =====
   "docs.title": "Integration Docs",
-  "docs.intro": "Any OpenAI- or Anthropic-compatible client works against this service. Below are the URLs and examples you need.",
+  "docs.intro": "Any OpenAI- or Anthropic-compatible client works against this service.",
   "docs.help.contactAdmin": "Questions? Contact your admin.",
   // ===== Integration docs navigation (multi-page) =====
   "docs.nav.start": "Getting started",
@@ -2163,7 +2149,7 @@ const en: Dict = {
   "admin.overview.usageTotalCredits": "Total credits",
   "admin.overview.usageActiveKeys": "Active / total keys",
   "admin.overview.recentUsage": "Recent requests",
-  "admin.overview.recentUsageDesc": "Latest calls. A billing mode of \"estimated\" means the stream ended without an upstream usage frame, so tokens were derived from text length (roughly 4 characters per token). The cache column shows what the upstream reported against its prompt cache — a dash means it reports no cache at all, not a zero hit rate.",
+  "admin.overview.recentUsageDesc": "A billing mode of \"estimated\" means the stream ended without an upstream usage frame, so tokens were derived from text length (roughly 4 characters per token). The cache column shows what the upstream reported against its prompt cache — a dash means it reports no cache at all, not a zero hit rate.",
   "admin.overview.recentUsageEmpty": "No requests recorded yet",
   "admin.overview.usageCache": "Cache",
   "admin.overview.usageCacheHint": "Tokens the upstream reported against its prompt cache. A read is a saving; a write is a cost.",
@@ -2176,7 +2162,6 @@ const en: Dict = {
   "admin.stat.providers": "Providers",
   "admin.stat.requests": "Requests",
   "admin.stat.tokens": "Tokens used",
-  "admin.stat.tokensHint": "Across all keys",
   "admin.dailyUsage.title": "Daily Usage (Last 7 Days)",
   "admin.providers.title": "Providers",
   "admin.providers.empty.title": "No providers configured",
@@ -2206,7 +2191,6 @@ const en: Dict = {
 
 
   // ===== Admin Users: allocation editor =====
-  "admin.users.description": "Create users and configure per-user quotas.",
   "admin.users.allocation.title": "User Quota Allocation",
   "admin.users.allocation.desc": "Grant each account a credit pool and pick the models it may call. The pool belongs to the account: every key it holds draws from that one balance, and when it runs out they all stop.",
   "admin.users.allocation.quota": "Account credit pool",
@@ -2255,7 +2239,7 @@ const en: Dict = {
   "admin.keys.title": "API keys",
   // ===== Media providers (declarative adapter protocol) =====
   "admin.mediaProviders.title": "Media providers",
-  "admin.mediaProviders.description": "Bring on image / video / speech / music vendors through the declarative adapter protocol. Adding or tweaking a vendor is a change here — it takes effect on save, with no code change and no redeploy.",
+  "admin.mediaProviders.description": "Adding or tweaking a vendor is a change here — it takes effect on save, with no code change and no redeploy.",
   "admin.mediaProviders.new": "New provider",
   "admin.mediaProviders.edit": "Edit",
   "admin.mediaProviders.empty": "No media providers yet.",
@@ -2372,8 +2356,6 @@ const en: Dict = {
   "admin.searchProviders.title": "Search providers",
   "admin.searchProviders.description":
     "Backends for web search. With no providers configured, the search backend in the environment variables is the fallback.",
-  "admin.searchProviders.summary":
-    "Which services the assistant searches through, and what each call costs.",
   "admin.searchProviders.new": "Add search provider",
   "admin.searchProviders.formDesc": "Pick the backend type, address and key. SearXNG needs only an address; Tavily and Brave need an API key.",
   "admin.searchProviders.empty": "No search providers yet",
@@ -2475,7 +2457,7 @@ const en: Dict = {
 
   // ===== Admin docs (admin-only) =====
   "admin.docs.title": "Admin Docs",
-  "admin.docs.subtitle": "Visible to admins only. A working reference for upstream provider setup, metering and troubleshooting.",
+  "admin.docs.subtitle": "Visible to admins only. A working reference for day-to-day operations.",
   "admin.docs.provider.title": "Upstream provider setup",
   "admin.docs.provider.desc": "Fields with distinct jobs — they are not interchangeable. Create and edit use the same form, so a change lands either way.",
   "admin.docs.provider.kind": "Protocol family (kind): anthropic means this provider speaks the Anthropic Messages protocol.",
@@ -3098,18 +3080,13 @@ const en: Dict = {
   // One sentence under each page's title: what the page is for, and — where
   // it matters — what changing something here actually does.
   "usage.description":
-    "Usage, cost and the detail behind every request. The numbers come from the usage log, so they can lag by a moment.",
-  "dashboard.models.description":
-    "Send a real request to this gateway's models with your own key — the same path a client would take.",
-  "admin.overview.description": "What this deployment is doing right now: usage, users and keys.",
+    "The numbers come from the usage log, so they can lag by a moment.",
+  "dashboard.models.description": "The same path a client would take.",
   "admin.providers.description":
-    "The upstream providers: which models exist, how requests are forwarded, and what each one costs.",
+    "Which models exist, and what each provider costs.",
   "admin.keys.description":
-    "Issue gateway keys for accounts. A key is shown once — if it is lost, it has to be replaced.",
-  "admin.settings.description":
-    "The public API address, plus the docs site's name, announcement and chapters.",
-  "admin.modelNotes.description":
-    "A note per model — context window, output cap, reasoning levels and price. The assistant and the user docs read them.",
+    "A key is shown once — if it is lost, it has to be replaced.",
+  "admin.modelNotes.description": "The assistant and the user docs read them.",
   "admin.mediaProviders.empty.description":
     "The upstream providers for images, video, speech and music live here. Add one and the client can use the matching models.",
   "admin.providers.empty.description":

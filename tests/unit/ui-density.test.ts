@@ -145,19 +145,97 @@ describe("a table too wide for a phone drops its quiet columns", () => {
   });
 });
 
-describe("the stat tile is as tall as its three lines", () => {
+describe("the stat tile is as tall as its two lines", () => {
   const card = read("src", "components", "ui", "Card.tsx");
 
   it("the label and the icon share one line", () => {
     // Aligned to the top, the label sat at the top edge of a 32px icon with
     // 16 pixels of nothing under it, and the tile read as taller than the
-    // three lines it held.
+    // lines it held.
     expect(card).toContain('className="flex items-center justify-between gap-2"');
   });
 
-  it("and the gaps between the three lines are the tight ones", () => {
+  it("and the gaps between the two lines are the tight ones", () => {
     expect(card).toContain('className="mt-1 text-xl font-semibold');
     expect(card).toContain("sm:mt-2 sm:text-2xl");
     expect(card).not.toContain("sm:mt-3");
+  });
+
+  it("and it is a label and a number — nothing else", () => {
+    // It used to take a `hint` and a `trend`, and every page that used them
+    // paid for a line of small text under a number the number already
+    // answered: 「8」 with 「8 已启用密钥」 under it, while the page said the
+    // same thing again in the panel below.
+    //
+    // A tile that needs a caption to explain itself is a card that wants two
+    // fields, not a caption.
+    expect(card).not.toMatch(/\bhint\??:/);
+    expect(card).not.toMatch(/\btrend\??:/);
+    expect(card).not.toContain("trendClass");
+  });
+});
+
+/**
+ * Let the layout say it.
+ *
+ * A caption under a title, a second line under a number, a note that repeats
+ * the column beside it — each one is a sentence the reader has to read to
+ * learn nothing the screen had not already shown. The rule is narrow on
+ * purpose: a line stays when it says something the layout cannot show (why a
+ * value is what it is, what happens if you touch it, what a badge means).
+ */
+describe("the layout says it, so the page does not", () => {
+  /** The pages whose content names itself — the tiles, the cards, the table. */
+  const SELF_NAMING_PAGES: [string, string][] = [
+    ["src", "app", "(admin)", "admin", "page.tsx"],
+    ["src", "app", "(admin)", "admin", "users", "page.tsx"],
+    ["src", "app", "(admin)", "admin", "settings", "page.tsx"],
+    ["src", "app", "(admin)", "admin", "search", "page.tsx"],
+    ["src", "app", "(user)", "dashboard", "page.tsx"],
+    ["src", "app", "(user)", "dashboard", "settings", "page.tsx"],
+  ];
+
+  for (const parts of SELF_NAMING_PAGES) {
+    it(`${parts.join("/")} carries no description under its title`, () => {
+      const source = read(...parts);
+      expect(
+        source,
+        "the layout already names this page's content — the sentence under the " +
+          "title says it a second time",
+      ).not.toContain("SectionPageLayout.Description");
+    });
+  }
+
+  it("an action menu does not describe itself as a menu of actions", () => {
+    // The modal's body is a list of buttons. A description reading 「操作」
+    // above it tells the reader nothing the buttons do not.
+    for (const parts of [
+      ["src", "app", "(admin)", "admin", "users", "UserActions.tsx"],
+      ["src", "app", "(admin)", "admin", "keys", "KeyActions.tsx"],
+      ["src", "app", "(user)", "dashboard", "UserKeyActions.tsx"],
+    ]) {
+      const source = read(...parts);
+      expect(source, `${parts.join("/")} describes its menu of actions`).not.toContain(
+        'description={t("common.actions")}',
+      );
+    }
+  });
+
+  it("and the dictionary has no key left over for the sentences that went", () => {
+    // A removed sentence whose key stayed is a trap: the next page that
+    // reaches for it gets text nobody remembers approving.
+    const dict = read("src", "lib", "i18n", "dict.ts");
+    for (const key of [
+      "dashboard.subtitle",
+      "admin.overview.description",
+      "admin.users.description",
+      "admin.searchProviders.summary",
+      "admin.settings.description",
+      "settings.subtitle",
+      "dashboard.apiKeys.description",
+      "admin.stat.tokensHint",
+    ]) {
+      expect(dict, `"${key}" is no longer used by anything`).not.toContain(`"${key}":`);
+    }
   });
 });

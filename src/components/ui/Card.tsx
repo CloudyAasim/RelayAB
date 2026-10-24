@@ -138,13 +138,20 @@ CardFooter.displayName = "CardFooter";
 /**
  * StatCard — small stat card for dashboard overviews.
  * Responsive: stacks on narrow screens, side-by-side on wider.
+ *
+ * **A label and a number. Nothing else.**
+ *
+ * It used to take a `hint` and a `trend` as well, and every page that used
+ * them paid for a line of small text under a number that the number already
+ * answered — 「8」 with 「8 已启用密钥」 beneath it, while the page said the
+ * same thing again in the panel below. So the props are gone: a tile that
+ * needs a second line to explain itself is a card that wants two fields, not
+ * a caption.
  */
 interface StatCardProps extends HTMLAttributes<HTMLDivElement> {
   label: string;
   value: string | number;
-  hint?: string;
   icon?: ReactNode;
-  trend?: { value: string; direction: "up" | "down" | "flat" };
   tone?: "neutral" | "primary" | "success" | "warning" | "danger" | "info" | "orange";
 }
 
@@ -158,18 +165,10 @@ const iconToneClass: Record<NonNullable<StatCardProps["tone"]>, string> = {
   orange: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
 };
 
-const trendClass: Record<"up" | "down" | "flat", string> = {
-  up: "text-success",
-  down: "text-destructive",
-  flat: "text-muted-foreground",
-};
-
 function StatCard({
   label,
   value,
-  hint,
   icon,
-  trend,
   tone = "neutral",
   className,
   ...rest
@@ -190,7 +189,7 @@ function StatCard({
 
         They used to be aligned to the top, which left the label sitting at
         the top edge of a 32px icon with 16 pixels of nothing under it — the
-        tile read as taller than the three lines it held.
+        tile read as taller than the two lines it holds.
       */}
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs uppercase tracking-wider text-muted-foreground sm:text-xs">
@@ -210,17 +209,6 @@ function StatCard({
       <div className="mt-1 text-xl font-semibold tracking-tight text-foreground sm:mt-2 sm:text-2xl">
         {value}
       </div>
-      {(hint || trend) && (
-        <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground sm:text-xs">
-          {trend && (
-            <span className={cn("font-medium", trendClass[trend.direction])}>
-              {trend.direction === "up" ? "↑" : trend.direction === "down" ? "↓" : "→"}{" "}
-              {trend.value}
-            </span>
-          )}
-          {hint && <span>{hint}</span>}
-        </div>
-      )}
     </div>
   );
 }

@@ -124,9 +124,8 @@ export default async function SearchAdminPage() {
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t("admin.searchProviders.title")}</SectionPageLayout.Title>
-      <SectionPageLayout.Description>
-        {t("admin.searchProviders.summary")}
-      </SectionPageLayout.Description>
+      {/* No description: the table below is titled, and the rule that matters
+          is said in the box above it. */}
       <SectionPageLayout.Actions>
         <CreateSearchProviderButton templates={TEMPLATE_OPTIONS} />
       </SectionPageLayout.Actions>

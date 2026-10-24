@@ -120,7 +120,6 @@ export function KeyActions({ apiKey }: { apiKey: ApiKey }) {
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
         title={apiKey.label}
-        description={t("common.actions")}
       >
         <div className="space-y-2">
           {effectiveStatus === "force_disabled" ? (

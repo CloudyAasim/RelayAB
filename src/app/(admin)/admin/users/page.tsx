@@ -53,7 +53,8 @@ export default async function UsersPage() {
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t("admin.users.title")}</SectionPageLayout.Title>
-      <SectionPageLayout.Description>{t("admin.users.description")}</SectionPageLayout.Description>
+      {/* No description: the button above and the allocation card below say
+          what this page is for. */}
       <SectionPageLayout.Actions>
         <CreateUserButton />
       </SectionPageLayout.Actions>
