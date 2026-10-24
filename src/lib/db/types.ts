@@ -193,6 +193,24 @@ export type PublicApiKey = ApiKey;
 // ---------------------------------------------------------------------------
 
 /**
+ * What a model row is for.
+ *
+ * The gateway serves several kinds of model call off the same key: a
+ * conversation, an embedding, a re-rank, a moderation. They are all rows of
+ * the same table, and a list of names alone cannot tell a vector model from a
+ * chat model — which matters exactly where the choice is made: the
+ * administrator's model whitelist for an account.
+ *
+ * It is declared rather than guessed from the name. A vendor that calls its
+ * embedding model `text-embedding-3-large` and one that calls it `bge-m3`
+ * are the same kind of model, and no pattern of names gets that right for
+ * every vendor.
+ */
+export const MODEL_PURPOSES = ["chat", "embedding", "rerank", "moderation"] as const;
+export const ModelPurposeSchema = z.enum(MODEL_PURPOSES);
+export type ModelPurpose = z.infer<typeof ModelPurposeSchema>;
+
+/**
  * Model configuration including context length, output length, and credit cost.
  */
 export const ModelConfigSchema = z.object({
@@ -202,6 +220,15 @@ export const ModelConfigSchema = z.object({
   clientId: z.string(),
   /** Display name */
   displayName: z.string().optional(),
+  /**
+   * What this model is for.
+   *
+   * "chat" is the default because that is what a row written before this field
+   * existed is: a model that answers. It is a claim about the past, not about
+   * every model — a vector or a re-rank model has to say so, or it will be
+   * filed under the conversation models and read as one.
+   */
+  purpose: ModelPurposeSchema.default("chat"),
   /** Context window size (input tokens) */
   contextLength: z.number().int().positive().default(128000),
   /** Maximum output tokens */
@@ -300,6 +327,8 @@ export const ModelConfigPatchSchema = z.object({
   upstreamId: z.string(),
   clientId: z.string(),
   displayName: z.string().optional(),
+  /** Absent means "leave it as it is" — a patch that does not mention it must not re-file a model. */
+  purpose: ModelPurposeSchema.optional(),
   contextLength: z.number().int().positive().optional(),
   maxOutputTokens: z.number().int().positive().optional(),
   inputCost: z.number().nonnegative().optional(),

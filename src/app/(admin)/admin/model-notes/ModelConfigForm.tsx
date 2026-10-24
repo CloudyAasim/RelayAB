@@ -23,14 +23,14 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
-import { useT } from "@/components/i18n/I18nProvider";
-import { sanitizeLevelList } from "@/lib/providers/reasoning-levels";
+import { useT } from "@/components/i18n/I18nProvider";import { sanitizeLevelList } from "@/lib/providers/reasoning-levels";
 import {
   modelConfigPayload,
   rowProblem,
   rowSummary,
   type ModelConfigRow,
 } from "@/lib/admin/model-config";
+import type { ModelPurpose } from "@/lib/db/types";
 
 const num = (v: string, fallback: number): number => {
   const n = Number(v);
@@ -240,6 +240,34 @@ export function ModelConfigForm({ rows }: { rows: ModelConfigRow[] }) {
                             {t("admin.modelConfig.clientIdHint")}
                           </p>
                         </div>
+                        {row.gatewayEditable && (
+                          <div>
+                            <label className="block text-sm font-medium text-foreground">
+                              {t("admin.modelConfig.purpose")}
+                            </label>
+                            <select
+                              value={row.purpose ?? "chat"}
+                              onChange={(e) =>
+                                update(index, { purpose: e.target.value as ModelPurpose })
+                              }
+                              className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              <option value="chat">{t("admin.modelConfig.purpose.chat")}</option>
+                              <option value="embedding">
+                                {t("admin.modelConfig.purpose.embedding")}
+                              </option>
+                              <option value="rerank">
+                                {t("admin.modelConfig.purpose.rerank")}
+                              </option>
+                              <option value="moderation">
+                                {t("admin.modelConfig.purpose.moderation")}
+                              </option>
+                            </select>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {t("admin.modelConfig.purposeHint")}
+                            </p>
+                          </div>
+                        )}
                       </div>
 
                       {row.gatewayEditable ? (

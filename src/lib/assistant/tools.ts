@@ -35,6 +35,7 @@ import { SEARCH_TEMPLATES } from "../search/templates";
 import { readSearchProtocolDoc } from "../docs/search-protocol-doc";
 import { readTextProtocolDoc } from "../docs/text-protocol-doc";
 import { getProviderById, listProviders } from "../db/providers";
+import { MODEL_PURPOSES } from "../db/types";
 import { collectVoiceCatalogue } from "../media/voices";
 import { listUsers, getUserById } from "../db/users";
 import { getAssistantCredential } from "../db/assistant-keys";
@@ -623,6 +624,13 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
               properties: {
                 displayName: { type: "string" },
                 upstreamId: { type: "string" },
+                purpose: {
+                  type: "string",
+                  enum: ["chat", "embedding", "rerank", "moderation"],
+                  description:
+                    "这个模型是做什么用的：chat（对话）、embedding（向量）、rerank（重排）、moderation（审核）。\n" +
+                    "决定它在管理员给账号授权时归到哪一组 —— 不设就是对话模型。",
+                },
                 contextLength: { type: "integer", description: "上下文长度（输入 token 上限）" },
                 maxOutputTokens: { type: "integer" },
                 reasoningLevels: {
@@ -968,6 +976,13 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
           summary: { type: "string", description: "一句话说明这次变更的目的" },
           displayName: { type: "string" },
           upstreamId: { type: "string" },
+          purpose: {
+            type: "string",
+            enum: ["chat", "embedding", "rerank", "moderation"],
+            description:
+              "这个模型是做什么用的：chat（对话）、embedding（向量）、rerank（重排）、moderation（审核）。\n" +
+              "决定它在管理员给账号授权时归到哪一组 —— 设就是对话模型。",
+          },
           contextLength: { type: "integer", description: "上下文长度（输入 token 上限）" },
           maxOutputTokens: { type: "integer" },
           reasoningLevels: {
@@ -2665,6 +2680,21 @@ export function buildModelConfigPatch(args: Record<string, unknown>):
   }
   if (typeof args.upstreamId === "string" && args.upstreamId.trim()) {
     patch.upstreamId = args.upstreamId.trim();
+  }
+
+  /**
+   * The purpose, as one of the four words the model row understands.
+   *
+   * Not a free-text field: a purpose nobody recognises is a model filed
+   * nowhere, and the field exists to answer "which group does this belong
+   * to" — which has exactly four answers.
+   */
+  if (args.purpose !== undefined) {
+    const purpose = typeof args.purpose === "string" ? args.purpose.trim() : "";
+    if (!(MODEL_PURPOSES as readonly string[]).includes(purpose)) {
+      return { error: `用途必须是 ${MODEL_PURPOSES.join(" / ")} 之一。` };
+    }
+    patch.purpose = purpose;
   }
 
   // The levels are words, not a number. This used to sit in the numeric loop,

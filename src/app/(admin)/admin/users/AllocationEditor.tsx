@@ -52,6 +52,12 @@ function groupLabel(t: (key: string) => string, kind: ModelGroupKind): string {
   switch (kind) {
     case "chat":
       return t("admin.users.allocation.group.chat");
+    case "embedding":
+      return t("admin.users.allocation.group.embedding");
+    case "rerank":
+      return t("admin.users.allocation.group.rerank");
+    case "moderation":
+      return t("admin.users.allocation.group.moderation");
     case "image":
       return t("admin.users.allocation.group.image");
     case "video":

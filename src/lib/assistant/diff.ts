@@ -237,6 +237,7 @@ const MODEL_DIFF_FIELDS: ReadonlyArray<{ key: string; label: string }> = [
   { key: "enabled", label: "启用" },
   { key: "upstreamId", label: "上游模型名" },
   { key: "displayName", label: "显示名" },
+  { key: "purpose", label: "用途" },
   { key: "contextLength", label: "上下文" },
   { key: "maxOutputTokens", label: "最大输出" },
   { key: "reasoningLevels", label: "思考等级" },

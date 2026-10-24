@@ -15,7 +15,10 @@ import { groupAllowedModels, groupModelsByKind } from "@/lib/admin/model-groups"
 import type { Provider } from "@/lib/db/types";
 import type { MediaProvider, MediaSpec } from "@/lib/media/spec";
 
-function provider(modelMapping: Record<string, string>): Provider {
+function provider(
+  modelMapping: Record<string, string>,
+  modelConfigs: Record<string, unknown> = {},
+): Provider {
   return {
     id: "p1",
     name: "Chat vendor",
@@ -23,7 +26,7 @@ function provider(modelMapping: Record<string, string>): Provider {
     baseUrl: "https://api.example.com/v1",
     encryptedApiKey: "encrypted",
     modelMapping,
-    modelConfigs: {},
+    modelConfigs,
     enabled: true,
     priority: 1,
     headers: {},
@@ -161,6 +164,58 @@ describe("grouping the models by kind", () => {
     // every model of its capability), `image-01` by the spec that names it.
     expect(groups.find((g) => g.kind === "image")?.models).toEqual(["image-01"]);
     expect(groups.find((g) => g.kind === "video")?.models).toEqual(["video-01"]);
+  });
+});
+
+describe("a model that is not a conversation model", () => {
+  it("is filed under the purpose the operator declared", () => {
+    // A vector model and a conversation model are both rows of the same
+    // table, and only the operator knows which is which — so the grouping asks
+    // the row, not the name.
+    const groups = groupModelsByKind(
+      [
+        provider(
+          { "MiniMax-M3": "MiniMax-M3", "text-embedding-3-small": "text-embedding-3-small" },
+          {
+            "text-embedding-3-small": {
+              upstreamId: "text-embedding-3-small",
+              clientId: "text-embedding-3-small",
+              purpose: "embedding",
+            },
+          },
+        ),
+      ],
+      [],
+    );
+    expect(groups.map((g) => g.kind)).toEqual(["chat", "embedding"]);
+    expect(groups.find((g) => g.kind === "chat")?.models).toEqual(["MiniMax-M3"]);
+    expect(groups.find((g) => g.kind === "embedding")?.models).toEqual([
+      "text-embedding-3-small",
+    ]);
+  });
+
+  it("keeps every kind of non-conversation model in its own group", () => {
+    const groups = groupModelsByKind(
+      [
+        provider(
+          { a: "a", b: "b", c: "c" },
+          {
+            a: { upstreamId: "a", clientId: "a", purpose: "embedding" },
+            b: { upstreamId: "b", clientId: "b", purpose: "rerank" },
+            c: { upstreamId: "c", clientId: "c", purpose: "moderation" },
+          },
+        ),
+      ],
+      [],
+    );
+    expect(groups.map((g) => g.kind)).toEqual(["embedding", "rerank", "moderation"]);
+  });
+
+  it("files a row that declares nothing under the conversation models", () => {
+    // A row written before the field existed is a conversation model — that is
+    // what the rows were for.
+    const groups = groupModelsByKind([provider({ "MiniMax-M3": "MiniMax-M3" })], []);
+    expect(groups.map((g) => g.kind)).toEqual(["chat"]);
   });
 });
 

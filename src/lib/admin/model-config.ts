@@ -20,7 +20,7 @@
  * *are* the provider's values, which is what keeps the documentation from
  * contradicting the gateway.
  */
-import { ModelConfigSchema, type Provider } from "@/lib/db/types";
+import { ModelConfigSchema, type ModelPurpose, type Provider } from "@/lib/db/types";
 import type { MediaProvider } from "@/lib/media/spec";
 
 export interface ModelNoteInput {
@@ -77,6 +77,17 @@ export interface ModelConfigRow {
    * refuses a disable or accepts it and thinks anyway.
    */
   thinkingSwitchSupported: boolean;
+  /**
+   * What this model is for.
+   *
+   * A conversation model unless the operator says otherwise — which is the
+   * only way a vector, a re-rank or a moderation model can be told apart from
+   * one that answers, in the account's model whitelist and in the catalogue.
+   *
+   * Absent on a media row: a media model is grouped by its capability, and
+   * calling it a conversation model would be a lie.
+   */
+  purpose?: ModelPurpose;
   inputCost: number;
   outputCost: number;
   /**
@@ -187,6 +198,8 @@ function chatRow(
     reasoningEffortSupported?: boolean;
     /** The same, for the thinking switch. Absent means "leave it as it is". */
     thinkingSwitchSupported?: boolean;
+    /** What this model is for. Absent means "leave it as it is". */
+    purpose?: ModelPurpose;
     inputCost?: number;
     outputCost?: number;
     cachedInputCost?: number;
@@ -219,6 +232,10 @@ function chatRow(
     // written before the field existed has not declared anything, and reading
     // that as "cannot be switched off" would grey a working control.
     thinkingSwitchSupported: cfg?.thinkingSwitchSupported !== false,
+    // What this model is for. A row written before the field existed is a
+    // conversation model — that is what the rows were for — and a vector or
+    // re-rank model has to say so.
+    purpose: cfg?.purpose ?? "chat",
     inputCost: cfg?.inputCost ?? DEFAULTS.inputCost,
     outputCost: cfg?.outputCost ?? DEFAULTS.outputCost,
     // Spread, not `?? 0`: a cache nobody priced must read back as blank,
@@ -279,6 +296,8 @@ export interface ModelConfigPayload {
     reasoningEffortSupported?: boolean;
     /** The same, for the thinking switch. Absent means "leave it as it is". */
     thinkingSwitchSupported?: boolean;
+    /** What this model is for. Absent means "leave it as it is". */
+    purpose?: ModelPurpose;
     inputCost?: number;
     outputCost?: number;
     /** `null` = clear the price, because this route merges and absent means keep. */
@@ -326,6 +345,10 @@ export function modelConfigPayload(rows: readonly ModelConfigRow[]): ModelConfig
         // cleared box would be unable to clear anything.
         cachedInputCost: r.cachedInputCost ?? null,
         cacheWriteCost: r.cacheWriteCost ?? null,
+        // Always sent: this route merges, so an absent field reads as "keep the
+        // stored purpose" — and a row whose purpose was never set reads as a
+        // conversation model, which is what it was.
+        purpose: r.purpose,
         enabled: r.enabled,
       })),
     notes,
@@ -352,6 +375,7 @@ export function validateModelConfigPayload(
       outputCost: m.outputCost,
       cachedInputCost: m.cachedInputCost,
       cacheWriteCost: m.cacheWriteCost,
+      purpose: m.purpose,
       enabled: m.enabled,
     });
     if (!parsed.success) {

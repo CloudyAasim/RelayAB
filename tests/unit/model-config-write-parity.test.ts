@@ -86,6 +86,12 @@ const FIELD_SAMPLES: Record<string, unknown> = {
   cacheWriteCost: 1.25,
   reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
   /**
+   * Not the default: a sample of "chat" would pass against a write path that
+   * kept the key and dropped the value — which is exactly the failure that
+   * files a vector model under the conversation models.
+   */
+  purpose: "embedding",
+  /**
    * `false` rather than `true` on purpose: the sample has to prove a write path
    * carries the field that switches a control *off*, which is the one that
    * matters. A `true` sample would pass against a schema that quietly ignored

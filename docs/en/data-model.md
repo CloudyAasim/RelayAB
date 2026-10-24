@@ -261,6 +261,7 @@ routing and rotation, ordered by `priority`.
 | `upstreamId` | string | — | The upstream model ID |
 | `clientId` | string | — | The client-facing alias |
 | `displayName` | string | — | Optional display name |
+| `purpose` | `"chat" \| "embedding" \| "rerank" \| "moderation"` | `chat` | **What this model is for.** The gateway serves conversations, embeddings, re-ranking and moderation off the same key, and they are rows of the same table — names alone cannot tell them apart, and the administrator's model whitelist groups by this. The default is `chat` because the field did not exist before, and every older row is a conversation model |
 | `contextLength` | positive int | `128000` | Context window in input tokens |
 | `maxOutputTokens` | positive int | `8192` | Maximum output tokens |
 | `inputCost` | number ≥ 0 | `0` | Credits per 1M input tokens |

@@ -241,6 +241,7 @@ function checkKeyStatus({ key, user, requestedModel }): KeyValidationResult {
 | `upstreamId` | string | — | 上游模型 ID |
 | `clientId` | string | — | 面向客户端的别名 |
 | `displayName` | string | — | 可选展示名 |
+| `purpose` | `"chat" \| "embedding" \| "rerank" \| "moderation"` | `chat` | 这个模型**是做什么用的**。网关在同一把密钥上服务对话、向量、重排、审核几种调用，它们是同一张表里的行，光看名字分不出来 —— 管理员给账号授权时那一栏要靠它分组。默认 `chat` 是因为这一栏以前不存在，老的行都是对话模型 |
 | `contextLength` | positive int | `128000` | 上下文窗口（输入 token 数） |
 | `maxOutputTokens` | positive int | `8192` | 最大输出 token 数 |
 | `inputCost` | number ≥ 0 | `0` | 每 1M 输入 token 的积分 |

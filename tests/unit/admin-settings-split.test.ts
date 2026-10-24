@@ -50,6 +50,9 @@ const row = (over: Partial<ModelConfigRow> = {}): ModelConfigRow => ({
   gatewayEditable: true,
   upstreamId: "M3",
   displayName: "M3",
+  // What this model is for. A conversation model, like every row that
+  // predates the field.
+  purpose: "chat",
   contextLength: 200000,
   maxOutputTokens: 8192,
   // What the vendor published, or what the operator declared beside the window.
@@ -225,11 +228,17 @@ describe("what a row is allowed to offer", () => {
         "maxOutputTokens",
         "outputCost",
         "providerId",
+        "purpose",
         "upstreamId",
       ].sort(),
     );
     expect(out.models[0].cachedInputCost).toBeNull();
     expect(out.models[0].cacheWriteCost).toBeNull();
+    // The purpose always travels too: this route merges, so an absent field
+    // reads as "keep the stored purpose" — and a vector model that silently
+    // reverted to being a conversation model would be filed in the wrong group
+    // of the account's model list.
+    expect(out.models[0].purpose).toBe("chat");
   });
 
   it("a zero cache price is a price, not an absence", () => {

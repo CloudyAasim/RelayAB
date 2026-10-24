@@ -109,7 +109,7 @@ describe("what the assistant offers and what the apply path carries", () => {
       toolDefinitions(true).find(
         (t) => t.function.name === "propose_model_config_update",
       )?.function.parameters.properties ?? {}
-    ) as Record<string, { type?: string; items?: { type?: string } }>;
+    ) as Record<string, { type?: string; items?: { type?: string }; enum?: string[] }>;
 
     for (const field of Object.keys(properties).filter(
       (f) => !ENVELOPE.has(f),
@@ -122,10 +122,15 @@ describe("what the assistant offers and what the apply path carries", () => {
             // anything else gets a string, which a numeric field will reject —
             // correctly, and for a reason that has nothing to do with parity.
             spec?.type === "number" || spec?.type === "integer"
-            ? 1
-            : spec?.type === "boolean"
-              ? true
-              : "x";
+              ? 1
+              : spec?.type === "boolean"
+                ? true
+                : // An enumerated field is handed one of its own values: the
+                  // point of the comparison is that the field survives the
+                  // apply, not that the schema accepts every string.
+                  Array.isArray(spec?.enum) && typeof spec.enum[0] === "string"
+                    ? spec.enum[0]
+                    : "x";
       const parsed = ModelConfigPatchSchema.safeParse({
         upstreamId: "u",
         clientId: "c",

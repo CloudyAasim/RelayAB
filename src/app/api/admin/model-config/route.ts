@@ -133,6 +133,11 @@ export async function POST(req: Request): Promise<Response> {
         // must not quietly hand back a control the operator had switched off.
         thinkingSwitchSupported:
           entry.thinkingSwitchSupported ?? existing?.thinkingSwitchSupported ?? true,
+        // Same reasoning one line up. This one decides which group the model is
+        // filed under in the account's model whitelist, so an edit that does not
+        // mention it must not quietly file a vector model under the
+        // conversation models.
+        purpose: entry.purpose ?? existing?.purpose ?? "chat",
         inputCost: entry.inputCost ?? existing?.inputCost ?? 0,
         outputCost: entry.outputCost ?? existing?.outputCost ?? 0,
         enabled: entry.enabled ?? existing?.enabled ?? true,

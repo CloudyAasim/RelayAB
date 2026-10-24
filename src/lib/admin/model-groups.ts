@@ -39,6 +39,9 @@ import { specServingModel } from "@/lib/media/spec";
 /** The kinds a model can be grouped under. */
 export type ModelGroupKind =
   | "chat"
+  | "embedding"
+  | "rerank"
+  | "moderation"
   | "image"
   | "video"
   | "tts"
@@ -60,6 +63,9 @@ export interface ModelGroup {
  */
 const GROUP_ORDER: readonly ModelGroupKind[] = [
   "chat",
+  "embedding",
+  "rerank",
+  "moderation",
   "image",
   "video",
   "tts",
@@ -118,7 +124,11 @@ export function groupModelsByKind(
 
   for (const provider of providers) {
     for (const model of Object.keys(provider.modelMapping)) {
-      add("chat", model);
+      // What this model is for is declared, not guessed from its name: a
+      // vector model and a conversation model are both rows of the same table,
+      // and only the operator knows which is which.
+      const declared = provider.modelConfigs?.[model]?.purpose;
+      add(declared ?? "chat", model);
     }
   }
 
