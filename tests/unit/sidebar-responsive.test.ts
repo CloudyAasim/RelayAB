@@ -137,7 +137,11 @@ describe("sidebar: collapsed rail layout & motion", () => {
   });
 
   it("fits its content: 240px open, 64px shut", () => {
-    expect(sidebar).toContain("flex w-[240px] flex-col");
+    // The open width is a variable rather than a literal, because the account
+    // menu at the foot of this panel has to be exactly as wide as the column
+    // it hangs off — and two places spelling the number is how they drift
+    // apart. The number itself lives in globals.css.
+    expect(sidebar).toContain("flex w-[var(--sidebar-panel-width)] flex-col");
     expect(sidebar).toContain('collapsed && "lg:w-[64px]"');
   });
 
@@ -145,7 +149,9 @@ describe("sidebar: collapsed rail layout & motion", () => {
     // One object, two presentations: the drawer is the desktop panel —
     // same width, same rounded corners, same shadow, same interior — only
     // an overlay. It used to be a 288px hard-edged slab.
-    expect(sidebar).toContain("fixed left-0 top-2 bottom-2 z-50 ml-2 flex w-[240px]");
+    expect(sidebar).toContain(
+      "fixed left-0 top-2 bottom-2 z-50 ml-2 flex w-[var(--sidebar-panel-width)]",
+    );
     expect(sidebar).toContain("rounded-lg border border-sidebar-border");
     expect(sidebar).toContain("shadow-float");
   });

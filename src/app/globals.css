@@ -102,6 +102,20 @@
   --sidebar-border: oklch(0.861 0.008 241.7);
   --sidebar-ring: oklch(0.518 0.114 243.3);
 
+  /*
+   * The width of the expanded panel — the rail on the desktop and the drawer
+   * on a phone.
+   *
+   * It is a variable because two places have to agree on it: the panel itself,
+   * and the account menu that hangs off the panel's footer button. The menu
+   * is as wide as the button it belongs to, and the button is as wide as the
+   * panel's content column — so the menu's width is the panel's width minus
+   * the footer's padding. Spell the number twice and the two drift apart the
+   * first time the panel is resized, and the menu is a few pixels wider than
+   * the column it sits in.
+   */
+  --sidebar-panel-width: 240px;
+
   /* Five series, far enough apart to tell apart at a glance. */
   --chart-1: oklch(0.518 0.114 243.3);
   --chart-2: oklch(0.558 0.144 51.9);

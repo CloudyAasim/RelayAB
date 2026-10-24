@@ -141,10 +141,32 @@ export function UserMenu({
       </PopoverTrigger>
 
       <PopoverContent
-        side={variant === "mini" ? "top" : "bottom"}
-        align={variant === "mini" ? "start" : "end"}
+        /*
+         * Where the menu opens depends on where the button is, and the two
+         * cases are opposites:
+         *
+         * - The **panel** variant sits at the *bottom* of the rail or of the
+         *   phone's drawer — a column that ends at the bottom of the screen.
+         *   So its menu opens **upwards**, and it hangs off the button's
+         *   **left** edge: the button is the width of the panel's content
+         *   column, and a menu wider than that column (it was, by 8px, when
+         *   the panel was 240px and the menu 224px) ends up hanging over the
+         *   button's left edge and reads as belonging to nothing. The menu is
+         *   now exactly as wide as the column it belongs to.
+         * - The **full** variant is the narrow-screen bar's button: top right
+         *   of the screen. Its menu drops **downwards** and hangs off the
+         *   right edge, which is the edge it is anchored to.
+         * - The **mini** variant is the 64px icon rail: a 40px button with
+         *   nothing beside it, so the menu opens upwards and starts at the
+         *   button's left edge.
+         */
+        side={variant === "full" ? "bottom" : "top"}
+        align={variant === "full" ? "end" : "start"}
         sideOffset={8}
-        className="w-56 p-0"
+        className={cn(
+          variant === "full" ? "w-56" : "w-[calc(var(--sidebar-panel-width)-1.5rem)]",
+          "p-0",
+        )}
       >
             <div className="border-b border-border px-4 py-3">
               <p className="truncate text-sm font-medium">{name}</p>

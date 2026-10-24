@@ -54,7 +54,7 @@ export function Sidebar({ children }: { children: ReactNode }) {
         className={cn(
           // Mobile: the same floating panel as the desktop, only as an overlay.
           // It does not get its own shape — one object, two presentations.
-          "fixed left-0 top-2 bottom-2 z-50 ml-2 flex w-[240px] flex-col overflow-hidden rounded-lg border border-sidebar-border bg-sidebar text-sidebar-foreground shadow-float transition-[width,transform] duration-300 ease-sidebar motion-reduce:transition-none lg:sticky lg:bottom-auto lg:h-[calc(100vh-1rem)] lg:my-2 lg:translate-x-0",
+          "fixed left-0 top-2 bottom-2 z-50 ml-2 flex w-[var(--sidebar-panel-width)] flex-col overflow-hidden rounded-lg border border-sidebar-border bg-sidebar text-sidebar-foreground shadow-float transition-[width,transform] duration-300 ease-sidebar motion-reduce:transition-none lg:sticky lg:bottom-auto lg:h-[calc(100vh-1rem)] lg:my-2 lg:translate-x-0",
           // Two load-bearing details for the desktop rail:
           //
           //   `lg:top-2` — a sticky box is placed by its **border box**, so
