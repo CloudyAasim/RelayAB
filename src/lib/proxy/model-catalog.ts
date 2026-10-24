@@ -20,6 +20,7 @@ import { listProviders } from "@/lib/db/providers";
 import { listMediaProviders } from "@/lib/db/media-providers";
 import { modelAllowedFor } from "@/lib/auth/model-access";
 import type { MediaProvider, MediaSpec } from "@/lib/media/spec";
+import { specServingModel } from "@/lib/media/spec";
 
 export interface OpenAIModelEntry {
   id: string;
@@ -89,25 +90,6 @@ export function openAIModelList(ids: string[], createdAt: number): OpenAIModelEn
     created: createdAt,
     owned_by: "relayab",
   }));
-}
-
-/**
- * The spec that will actually serve a client model, mirroring the selection the
- * request path performs.
- *
- * A provider can hold specs of several capabilities (AgnesCN has an image spec
- * and a video spec), so "the provider's first spec" is not an answer: it labelled
- * a video model as `image.generate`. Prefer the spec that names the model, then
- * an unscoped spec (which serves every model of its capability), then fall back
- * to the first spec for models no spec claims — which validation already warns
- * about.
- */
-export function specServingModel(provider: MediaProvider, clientModel: string): MediaSpec | undefined {
-  return (
-    provider.specs.find((spec) => spec.models?.includes(clientModel)) ??
-    provider.specs.find((spec) => !spec.models || spec.models.length === 0) ??
-    provider.specs[0]
-  );
 }
 
 /**

@@ -417,6 +417,33 @@ export interface MediaProvider {
 
 export type PublicMediaProvider = Omit<MediaProvider, "encryptedApiKey">;
 
+/**
+ * The spec that will actually serve a client model, mirroring the selection the
+ * request path performs.
+ *
+ * A provider can hold specs of several capabilities (AgnesCN has an image spec
+ * and a video spec), so "the provider's first spec" is not an answer: it labelled
+ * a video model as `image.generate`. Prefer the spec that names the model, then
+ * an unscoped spec (which serves every model of its capability), then fall back
+ * to the first spec for models no spec claims — which validation already warns
+ * about.
+ *
+ * It lives here, in the protocol module, because two places need it — the model
+ * catalogue and the administrator's model picker — and they must never answer
+ * differently. A module that reached for it through the catalogue would drag
+ * the database layer (and `revalidateTag` with it) into the browser bundle.
+ */
+export function specServingModel(
+  provider: MediaProvider,
+  clientModel: string,
+): MediaSpec | undefined {
+  return (
+    provider.specs.find((spec) => spec.models?.includes(clientModel)) ??
+    provider.specs.find((spec) => !spec.models || spec.models.length === 0) ??
+    provider.specs[0]
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Validation
 // ---------------------------------------------------------------------------

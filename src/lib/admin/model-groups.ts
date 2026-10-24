@@ -34,7 +34,7 @@
  */
 import type { Provider } from "@/lib/db/types";
 import type { MediaCapability, MediaProvider } from "@/lib/media/spec";
-import { specServingModel } from "@/lib/proxy/model-catalog";
+import { specServingModel } from "@/lib/media/spec";
 
 /** The kinds a model can be grouped under. */
 export type ModelGroupKind =
@@ -147,4 +147,26 @@ export function groupModelsByKind(
 /** The flat list of every grouped model, for the count and the empty check. */
 export function groupedModelIds(groups: ModelGroup[]): string[] {
   return groups.flatMap((group) => group.models);
+}
+
+/**
+ * The models an account was granted, grouped by kind.
+ *
+ * Two lists come back: the granted models that the catalogue still knows
+ * about, grouped as usual, and the ones it does not — a model that was taken
+ * out of the catalogue after it was granted still has to be shown, because the
+ * account can call it.
+ */
+export function groupAllowedModels(
+  allowedModels: string[],
+  groups: ModelGroup[],
+): { groups: ModelGroup[]; others: string[] } {
+  const known = new Set(groups.flatMap((group) => group.models));
+  const used: ModelGroup[] = [];
+  for (const group of groups) {
+    const models = group.models.filter((model) => allowedModels.includes(model));
+    if (models.length > 0) used.push({ kind: group.kind, models });
+  }
+  const others = allowedModels.filter((model) => !known.has(model)).sort();
+  return { groups: used, others };
 }

@@ -11,7 +11,7 @@
  * picker and the catalogue can never disagree about what a model is.
  */
 import { describe, it, expect } from "vitest";
-import { groupModelsByKind } from "@/lib/admin/model-groups";
+import { groupAllowedModels, groupModelsByKind } from "@/lib/admin/model-groups";
 import type { Provider } from "@/lib/db/types";
 import type { MediaProvider, MediaSpec } from "@/lib/media/spec";
 
@@ -161,5 +161,36 @@ describe("grouping the models by kind", () => {
     // every model of its capability), `image-01` by the spec that names it.
     expect(groups.find((g) => g.kind === "image")?.models).toEqual(["image-01"]);
     expect(groups.find((g) => g.kind === "video")?.models).toEqual(["video-01"]);
+  });
+});
+
+describe("the models an account was granted", () => {
+  const groups = groupModelsByKind(
+    [provider({ "MiniMax-M3": "MiniMax-M3", "agnes-2.5": "agnes-2.5" })],
+    [mediaProvider(["image-01"], [spec("image.generate", ["image-01"])])],
+  );
+
+  it("are grouped by kind, keeping only the granted ones", () => {
+    const { groups: used } = groupAllowedModels(["MiniMax-M3", "image-01"], groups);
+    expect(used.map((g) => g.kind)).toEqual(["chat", "image"]);
+    expect(used[0].models).toEqual(["MiniMax-M3"]);
+    expect(used[1].models).toEqual(["image-01"]);
+  });
+
+  it("keep a model the catalogue no longer knows about", () => {
+    // It was granted before it was taken out of the catalogue, and the
+    // account can still call it — so it has to be shown somewhere.
+    const { groups: used, others } = groupAllowedModels(
+      ["MiniMax-M3", "retired-model"],
+      groups,
+    );
+    expect(used.map((g) => g.kind)).toEqual(["chat"]);
+    expect(others).toEqual(["retired-model"]);
+  });
+
+  it("say nothing when the account has none", () => {
+    const { groups: used, others } = groupAllowedModels([], groups);
+    expect(used).toEqual([]);
+    expect(others).toEqual([]);
   });
 });
