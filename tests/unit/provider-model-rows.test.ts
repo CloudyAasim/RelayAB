@@ -52,6 +52,11 @@ describe("rowsFromProvider", () => {
         // take an effort. A row predating the flag must not come back declaring
         // the opposite, which would grey a working control out on upgrade.
         reasoningEffortSupported: true,
+        // A row written before the field existed reads back as a conversation
+        // model: that is what those rows were, and reading a vector model back
+        // as a chat one would file it in the wrong group of the account's
+        // model list.
+        purpose: "chat",
         inputCost: 12,
         outputCost: 34,
       },
@@ -139,6 +144,11 @@ describe("rowsToPayload", () => {
       reasoningLevels: [],
       inputCost: 12,
       outputCost: 34,
+      // Written back even though this form does not edit it. The form replaces
+      // the whole model table, so a purpose that was not carried would be lost
+      // on every save — and the purpose is declared on the model notes page,
+      // so nobody would come here to set it again.
+      purpose: "chat",
     });
   });
 
@@ -165,6 +175,9 @@ describe("rowsToPayload", () => {
       upstreamId: "up",
       enabled: true,
       reasoningLevels: [],
+      // `purpose` is not a number, so "blank means let the default apply" does
+      // not apply to it — it is always written, exactly like `reasoningLevels`.
+      purpose: "chat",
     });
   });
 

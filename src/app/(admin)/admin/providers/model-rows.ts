@@ -9,6 +9,7 @@
  */
 
 import type { ModelEntryFacts } from "@/lib/providers/upstream";
+import type { ModelPurpose } from "@/lib/db/types";
 
 export interface ProviderModelRow {
   /** React key only — never a user-editable value. */
@@ -28,6 +29,15 @@ export interface ProviderModelRow {
    * assistant's settings form has to treat them differently.
    */
   reasoningEffortSupported: boolean;
+  /**
+   * What this model is for.
+   *
+   * Carried here rather than edited here: the purpose is declared on the model
+   * notes page, and this form writes the whole model table back — so a row that
+   * dropped it would quietly file a vector model under the conversation models
+   * every time somebody saved the provider.
+   */
+  purpose: ModelPurpose;
   inputCost: number;
   outputCost: number;
   /**
@@ -62,6 +72,9 @@ export function newModelRow(partial: Partial<Omit<ProviderModelRow, "id">> = {})
     // added before this field existed keeps a live dropdown rather than one
     // switched off by an upgrade it never opted into.
     reasoningEffortSupported: true,
+    // A new row assumes it answers — the same claim the rest of this form
+    // makes. The purpose is declared on the model notes page.
+    purpose: "chat",
     inputCost: 0,
     outputCost: 0,
     ...partial,
@@ -80,6 +93,8 @@ interface StoredModelConfig {
   reasoningLevels?: string[];
   /** Absent on rows written before the field existed; false means the vendor ignores it. */
   reasoningEffortSupported?: boolean;
+  /** What this model is for. Absent on rows written before the field existed. */
+  purpose?: ModelPurpose;
 }
 
 /**
@@ -108,6 +123,10 @@ export function rowsFromProvider(
       // before this existed, and a row that predates a flag must not come back
       // from the database claiming the model does not take an effort.
       reasoningEffortSupported: config.reasoningEffortSupported !== false,
+      // What this model is for. A row written before the field existed is a
+      // conversation model, and a vector model that came back as one would be
+      // filed in the wrong group of the account's model list.
+      purpose: config.purpose ?? "chat",
       inputCost: config.inputCost ?? 0,
       outputCost: config.outputCost ?? 0,
       // Not `?? 0`: a row whose cache was never priced has to read back as
@@ -155,6 +174,11 @@ export function rowsToPayload(rows: ProviderModelRow[]): {
     // effort dropdown somebody had switched off, and it must not write a
     // redundant `true` over a row that never had the field either.
     if (row.reasoningEffortSupported === false) config.reasoningEffortSupported = false;
+    // Always written, both ways: this form replaces the whole model table, so
+    // a purpose that was not carried would quietly file a vector model under
+    // the conversation models — and this form is not where the purpose is
+    // declared, so nobody would be editing it here.
+    config.purpose = row.purpose ?? "chat";
     modelConfigs[clientId] = config;
   }
 
