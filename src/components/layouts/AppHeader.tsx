@@ -34,21 +34,28 @@ interface AppHeaderProps {
  */
 export function AppHeader({ username, displayName, role }: AppHeaderProps) {
   const t = useT();
-  const { open, setOpen, isMobile } = useSidebar();
+  const { open, setOpen } = useSidebar();
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-background px-4 sm:px-6 lg:hidden">
-      {isMobile && (
-        <Button
-          size="icon"
-          variant="ghost"
-          className={cn("rounded-lg", SIDEBAR_CONTROL_MOTION, "h-11 w-11 sm:h-10 sm:w-10")}
-          onClick={() => setOpen(!open)}
-          aria-label={t("nav.toggleSidebar")}
-        >
-          <Menu className="h-5 w-5" />
-        </Button>
-      )}
+      {/*
+        The way back to the navigation, and it is here **always**.
+
+        The bar itself is `lg:hidden`, so it only exists below 1024px — exactly
+        where the sidebar is a drawer. Asking `isMobile` as well was redundant,
+        and it cost the button on the first paint: `isMobile` is decided in an
+        effect, so until the script runs the phone had a header with no way
+        into the navigation at all.
+      */}
+      <Button
+        size="icon"
+        variant="ghost"
+        className={cn("rounded-lg", SIDEBAR_CONTROL_MOTION, "h-11 w-11 sm:h-10 sm:w-10")}
+        onClick={() => setOpen(!open)}
+        aria-label={t("nav.toggleSidebar")}
+      >
+        <Menu className="h-5 w-5" />
+      </Button>
 
       <Link href="/" className="font-semibold tracking-tight text-foreground">
         RelayAB

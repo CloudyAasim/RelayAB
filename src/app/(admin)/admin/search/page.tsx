@@ -175,10 +175,15 @@ export default async function SearchAdminPage() {
                   <TH>{t("admin.searchProviders.name")}</TH>
                   <TH>{t("admin.searchProviders.serviceId")}</TH>
                   <TH>{t("admin.searchProviders.kind")}</TH>
-                  <TH>{t("admin.searchProviders.baseUrl")}</TH>
-                  <TH>{t("admin.searchProviders.priority")}</TH>
+                  {/* Nine columns is the widest table in the app, so three of
+                      them step aside as the screen narrows: the endpoint (a
+                      long URL, and the edit form has it), the priority (a
+                      tie-breaker number) and the protocol badge (a statement
+                      about conformance, also in the edit form). */}
+                  <TH className="hidden xl:table-cell">{t("admin.searchProviders.baseUrl")}</TH>
+                  <TH className="hidden lg:table-cell">{t("admin.searchProviders.priority")}</TH>
                   <TH>{t("admin.searchProviders.creditsPerCall")}</TH>
-                  <TH>{t("admin.searchProviders.spec")}</TH>
+                  <TH className="hidden lg:table-cell">{t("admin.searchProviders.spec")}</TH>
                   <TH>{t("dashboard.table.status")}</TH>
                   <TH className="w-40 text-right">{t("common.actions")}</TH>
                 </TR>
@@ -198,7 +203,7 @@ export default async function SearchAdminPage() {
                     <TD>
                       <Badge tone="primary">{kindLabel(t, p.kind)}</Badge>
                     </TD>
-                    <TD className="text-muted-foreground">
+                    <TD className="hidden xl:table-cell text-muted-foreground">
                       <code className="text-xs">
                         {p.baseUrl || t("admin.searchProviders.defaultEndpoint")}
                       </code>
@@ -206,11 +211,11 @@ export default async function SearchAdminPage() {
                         <div className="mt-1 text-xs">{t("admin.searchProviders.keySet")}</div>
                       )}
                     </TD>
-                    <TD className="text-muted-foreground">{p.priority}</TD>
+                    <TD className="hidden lg:table-cell text-muted-foreground">{p.priority}</TD>
                     <TD className="text-muted-foreground">
                       {p.creditsPerCall}
                     </TD>
-                    <TD>
+                    <TD className="hidden lg:table-cell">
                       {p.spec ? (
                         <SpecBadge drift={specDrift(p.spec)} t={t} />
                       ) : (

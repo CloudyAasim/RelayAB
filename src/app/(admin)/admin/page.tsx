@@ -106,7 +106,7 @@ export default async function AdminOverviewPage() {
           />
         </div>
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <div className="mt-6 grid items-start gap-6 lg:grid-cols-2">
           <Card>
             <CardHeader
               title={
@@ -161,16 +161,16 @@ export default async function AdminOverviewPage() {
                 </span>
               }
             />
-            <div className="space-y-3">
-              <UsageRow
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Metric
                 label={t("admin.overview.usageTotalTokens")}
                 value={formatNumber(aggTotals.totalTokens)}
               />
-              <UsageRow
+              <Metric
                 label={t("admin.overview.usageTotalCredits")}
                 value={formatNumber(aggTotals.creditsUsed / 1000)}
               />
-              <UsageRow
+              <Metric
                 label={t("admin.overview.usageActiveKeys")}
                 value={`${keys.filter((k) => k.enabled).length} / ${keys.length}`}
               />
@@ -201,11 +201,16 @@ export default async function AdminOverviewPage() {
               <THead>
                 <TR>
                   <TH>{t("dashboard.table.time")}</TH>
-                  <TH>{t("admin.keys.create.user")}</TH>
+                  {/* The two quietest columns go first on a narrow screen, the
+                      same way the account's own key table does it: seven
+                      columns on a phone is a row of crumbs and a sideways
+                      scroll, and neither of these is what the operator came
+                      to read. */}
+                  <TH className="hidden sm:table-cell">{t("admin.keys.create.user")}</TH>
                   <TH>{t("docs.models.title")}</TH>
                   <TH className="text-right">{t("admin.overview.usageTotalTokens")}</TH>
                   <TH className="text-right">{t("admin.overview.usageTotalCredits")}</TH>
-                  <TH className="text-right">{t("admin.overview.usageCache")}</TH>
+                  <TH className="hidden xl:table-cell text-right">{t("admin.overview.usageCache")}</TH>
                   <TH>{t("admin.overview.billingMode")}</TH>
                 </TR>
               </THead>
@@ -215,7 +220,7 @@ export default async function AdminOverviewPage() {
                     <TD className="whitespace-nowrap text-muted-foreground">
                       {formatDate(row.createdAt, timeZone)}
                     </TD>
-                    <TD className="font-mono text-xs">
+                    <TD className="hidden sm:table-cell font-mono text-xs">
                       {userLabelById.get(row.userId) ?? row.userId}
                     </TD>
                     <TD className="font-mono text-xs">{row.model}</TD>
@@ -225,7 +230,7 @@ export default async function AdminOverviewPage() {
                     <TD className="text-right">
                       {row.status === "success" ? formatNumber(row.creditsUsed / 1000) : "—"}
                     </TD>
-                    <TD className="text-right text-xs">
+                    <TD className="hidden xl:table-cell text-right text-xs">
                       {row.cachedPromptTokens || row.cacheWriteTokens ? (
                         <span title={t("admin.overview.usageCacheHint")}>
                           {row.cacheWriteTokens
@@ -257,11 +262,23 @@ export default async function AdminOverviewPage() {
   );
 }
 
-function UsageRow({ label, value }: { label: string; value: string }) {
+/**
+ * One figure, with its name above it.
+ *
+ * These were three bordered boxes in a row. A border inside the card's own
+ * border is a box in a box, and each box held a single line of text in 42
+ * pixels — with the name pinned to the far left of the card and the figure to
+ * the far right, so on a full-width card the two were most of a screen apart
+ * and the space between them was nothing.
+ *
+ * The name now sits on top of the figure, in the width the figure needs, and
+ * nothing is boxed.
+ */
+function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between rounded-md border border-border bg-card px-3 py-2.5">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <span className="font-mono text-sm font-medium text-foreground">{value}</span>
+    <div>
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="mt-1 font-mono text-lg font-medium text-foreground">{value}</div>
     </div>
   );
 }

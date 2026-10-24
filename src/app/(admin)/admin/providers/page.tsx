@@ -240,7 +240,10 @@ export default async function ProvidersPage() {
               <TR>
                 <TH>{t("admin.providers.create.name")}</TH>
                 <TH>{t("admin.providers.table.interfaces")}</TH>
-                <TH>{t("admin.providers.create.baseUrl")}</TH>
+                {/* The address is the longest string in the row, and on a
+                    narrow screen it is the one the operator can read again in
+                    the edit form. The interfaces are what the list is for. */}
+                <TH className="hidden lg:table-cell">{t("admin.providers.create.baseUrl")}</TH>
                 <TH>{t("admin.providers.table.models")}</TH>
                 <TH>{t("dashboard.table.status")}</TH>
                 <TH className="w-56 text-right">{t("common.actions")}</TH>
@@ -274,7 +277,7 @@ export default async function ProvidersPage() {
                       }}
                     />
                   </TD>
-                  <TD className="text-muted-foreground">
+                  <TD className="hidden lg:table-cell text-muted-foreground">
                     <code className="text-xs">{p.baseUrl || "—"}</code>
                   </TD>
                   <TD className="text-muted-foreground">

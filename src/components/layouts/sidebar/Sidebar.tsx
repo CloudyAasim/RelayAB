@@ -70,9 +70,19 @@ export function Sidebar({ children }: { children: ReactNode }) {
           //   so the whole panel scrolled with the page instead of staying
           //   put. Releasing the bottom edge lets `top` alone govern.
           //
-          // Closed on mobile: slide the whole panel off the left edge
-          // **including** the 8px it stands off it, or 8px of it would stay
-          // on screen.
+          // The drawer is **closed in CSS**, not in JavaScript.
+          //
+          // `isMobile` is decided in an effect, so the server's markup and the
+          // first paint both have it `false` — and a `fixed` panel with no
+          // transform sits on top of the page. On a phone that is a 240px slab
+          // of navigation lying over the content, on every load, until the
+          // script arrives; with no script at all it never goes away.
+          //
+          // So the closed state is the default, and the desktop breakpoint
+          // (which the panel already carries: `lg:translate-x-0`) puts it back.
+          // The open drawer is the only exception, and it is the only
+          // translate class applied at a time — two of them on one element
+          // would be a coin toss over which one wins.
           //
           // The sign belongs INSIDE the brackets. A negative modifier
           // (`-translate-x-…`) applied to an already-negative value does not
@@ -80,11 +90,7 @@ export function Sidebar({ children }: { children: ReactNode }) {
           // *right*, into the middle of the screen on top of the content,
           // instead of off the left edge. `translate-x-[-50%]` in
           // ui/Modal.tsx has the same shape and is right for the same reason.
-          isMobile
-            ? open
-              ? "translate-x-0"
-              : "translate-x-[calc(-100%_-_0.5rem)]"
-            : "",
+          open ? "translate-x-0" : "translate-x-[calc(-100%_-_0.5rem)]",
           collapsed && "lg:w-[64px]",
         )}
       >

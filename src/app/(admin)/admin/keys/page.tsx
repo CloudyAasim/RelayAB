@@ -76,8 +76,12 @@ export default async function KeysPage() {
                   <TH>{t("admin.keys.create.label")}</TH>
                   <TH>{t("admin.keys.create.user")}</TH>
                   <TH>{t("admin.keys.table.ownerPool")}</TH>
-                  <TH>{t("admin.keys.table.modelScope")}</TH>
-                  <TH>{t("admin.keys.create.expiresAt")}</TH>
+                  {/* The two quietest columns step aside on a narrow screen.
+                      Seven of them on a phone is a row of crumbs and a sideways
+                      scroll — and neither of these is what the operator came
+                      to read. The pattern is the account's own key table's. */}
+                  <TH className="hidden xl:table-cell">{t("admin.keys.table.modelScope")}</TH>
+                  <TH className="hidden lg:table-cell">{t("admin.keys.create.expiresAt")}</TH>
                   <TH>{t("dashboard.table.status")}</TH>
                   <TH className="w-20 text-right">{t("common.actions")}</TH>
                 </TR>
@@ -96,12 +100,14 @@ export default async function KeysPage() {
                     <TD className="text-muted-foreground">
                       {ownerPoolLabel(userById.get(k.userId))}
                     </TD>
-                    <TD className="text-muted-foreground">
+                    <TD className="hidden xl:table-cell text-muted-foreground">
                       {k.allowedModels.length > 0
                         ? k.allowedModels.join(", ")
                         : t("dashboard.table.inheritsAccount")}
                     </TD>
-                    <TD className="text-muted-foreground">{formatDate(k.expiresAt, timeZone)}</TD>
+                    <TD className="hidden lg:table-cell text-muted-foreground">
+                      {formatDate(k.expiresAt, timeZone)}
+                    </TD>
                     <TD>
                       {/* The same badge the user's own page draws, so a key
                           cannot read one way here and another way there — and

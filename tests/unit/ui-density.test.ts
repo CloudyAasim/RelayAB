@@ -1,0 +1,154 @@
+/**
+ * tests/unit/ui-density.test.ts
+ *
+ * How much room a thing takes, against how much it has to say.
+ *
+ * The complaint this file answers is not "the colours are wrong" — it is that
+ * a screen has parts that are mostly empty and parts that hold far too much,
+ * and that the second kind pushes the first kind off a small screen.
+ *
+ * Four rules, each one a defect that was actually shipped:
+ *
+ *   1. **A card's content does not draw a second border.** A row inside a card
+ *      that carries its own border is a box in a box, and it reads as one more
+ *      surface where there was one.
+ *   2. **A card does not get taller because its neighbour is tall.** Two cards
+ *      side by side stretch to the taller one, so the shorter one ends up with
+ *      a pane of empty space inside it.
+ *   3. **The drawer is closed without JavaScript.** `isMobile` is decided in an
+ *      effect, so the first paint — and any page with no script at all — drew
+ *      the panel `fixed` and untransformed, straight over the content.
+ *   4. **A table that is too wide for a phone drops its quiet columns.** Seven
+ *      columns on a 375px screen is a row of crumbs and a sideways scroll.
+ */
+import { describe, it, expect } from "vitest";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
+
+const ROOT = process.cwd();
+const read = (...parts: string[]) => readFileSync(join(ROOT, ...parts), "utf-8");
+
+function filesIn(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) out.push(...filesIn(full));
+    else if (entry.endsWith(".tsx")) out.push(full);
+  }
+  return out;
+}
+
+const APP_FILES = filesIn(join(ROOT, "src", "app"));
+
+describe("a card's content does not draw a second border", () => {
+  it("the overview's usage figures are a plain grid", () => {
+    // They were three bordered boxes in a row: a border inside the card's own
+    // border, one line of text in 42 pixels, and the name pinned to the far
+    // left of the card with the figure pinned to the far right.
+    const overview = read("src", "app", "(admin)", "admin", "page.tsx");
+    expect(overview).not.toContain("rounded-md border border-border");
+    expect(overview).toContain("function Metric(");
+    expect(overview).toMatch(/grid gap-4 sm:grid-cols-3/);
+  });
+});
+
+describe("a card does not get taller because its neighbour is tall", () => {
+  it("the overview's two cards keep their own heights", () => {
+    const overview = read("src", "app", "(admin)", "admin", "page.tsx");
+    expect(overview).toContain("mt-6 grid items-start gap-6 lg:grid-cols-2");
+  });
+});
+
+describe("the drawer is closed without JavaScript", () => {
+  const sidebar = read("src", "components", "layouts", "sidebar", "Sidebar.tsx");
+  const header = read("src", "components", "layouts", "AppHeader.tsx");
+
+  it("the closed state is the default, and the open drawer is the exception", () => {
+    // `isMobile` is decided in an effect. The server's markup and the first
+    // paint both have it `false`, and a `fixed` panel with no transform sits on
+    // top of the page — a 240px slab of navigation over the content, on every
+    // load, until the script arrives. With no script it never goes away.
+    expect(sidebar).toContain(
+      'open ? "translate-x-0" : "translate-x-[calc(-100%_-_0.5rem)]"',
+    );
+    // The transform is not behind an `isMobile` branch any more.
+    expect(sidebar).not.toMatch(/isMobile\s*\n\s*\?\s*open/);
+  });
+
+  it("and the way back into the navigation is there before the script runs", () => {
+    // The bar is `lg:hidden`, so it only exists below 1024px — exactly where
+    // the sidebar is a drawer. Asking `isMobile` as well was redundant, and
+    // it cost the button on the first paint: a phone had a header with no way
+    // into the navigation at all.
+    expect(header).not.toContain("{isMobile && (");
+    expect(header).toContain('onClick={() => setOpen(!open)}');
+  });
+});
+
+describe("a table too wide for a phone drops its quiet columns", () => {
+  /**
+   * Every table header in the app, and how many columns it has.
+   *
+   * The rule is about the widest ones only: below six columns a row is still
+   * a row. Above it, something has to give, and the something is the column
+   * nobody came to read.
+   */
+  function tableHeads(): { file: string; columns: number; hidden: number }[] {
+    const out: { file: string; columns: number; hidden: number }[] = [];
+    for (const file of APP_FILES) {
+      const source = readFileSync(file, "utf-8");
+      for (const match of source.matchAll(/<THead>([\s\S]*?)<\/THead>/g)) {
+        const head = match[1];
+        out.push({
+          file: file.replace(ROOT, ""),
+          columns: (head.match(/<TH\b/g) ?? []).length,
+          hidden: (head.match(/hidden\b/g) ?? []).length,
+        });
+      }
+    }
+    return out;
+  }
+
+  it("every table over six columns hides at least one of them on a small screen", () => {
+    const wide = tableHeads().filter((t) => t.columns > 6);
+    // Something to check — otherwise the rule below is vacuous.
+    expect(wide.length, "no table wide enough to need the rule").toBeGreaterThan(0);
+    const offenders = wide.filter((t) => t.hidden === 0).map((t) => `${t.file}: ${t.columns} columns`);
+    expect(
+      offenders,
+      "a table this wide needs a column that steps aside on a phone:\n" + offenders.join("\n"),
+    ).toEqual([]);
+  });
+
+  it("the admin overview's usage table gives up its two quiet columns", () => {
+    const overview = read("src", "app", "(admin)", "admin", "page.tsx");
+    expect(overview).toContain('className="hidden sm:table-cell"');
+    expect(overview).toContain('className="hidden xl:table-cell text-right"');
+  });
+
+  it("and so do the admin keys table and the providers table", () => {
+    const keys = read("src", "app", "(admin)", "admin", "keys", "page.tsx");
+    expect(keys).toContain('className="hidden xl:table-cell"');
+    expect(keys).toContain('className="hidden lg:table-cell"');
+
+    const providers = read("src", "app", "(admin)", "admin", "providers", "page.tsx");
+    expect(providers).toContain('className="hidden lg:table-cell"');
+  });
+});
+
+describe("the stat tile is as tall as its three lines", () => {
+  const card = read("src", "components", "ui", "Card.tsx");
+
+  it("the label and the icon share one line", () => {
+    // Aligned to the top, the label sat at the top edge of a 32px icon with
+    // 16 pixels of nothing under it, and the tile read as taller than the
+    // three lines it held.
+    expect(card).toContain('className="flex items-center justify-between gap-2"');
+  });
+
+  it("and the gaps between the three lines are the tight ones", () => {
+    expect(card).toContain('className="mt-1 text-xl font-semibold');
+    expect(card).toContain("sm:mt-2 sm:text-2xl");
+    expect(card).not.toContain("sm:mt-3");
+  });
+});

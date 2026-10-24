@@ -185,7 +185,14 @@ function StatCard({
       )}
       {...rest}
     >
-      <div className="flex items-start justify-between gap-2">
+      {/*
+        The label and the icon share one line, and the icon is centred on it.
+
+        They used to be aligned to the top, which left the label sitting at
+        the top edge of a 32px icon with 16 pixels of nothing under it — the
+        tile read as taller than the three lines it held.
+      */}
+      <div className="flex items-center justify-between gap-2">
         <span className="text-xs uppercase tracking-wider text-muted-foreground sm:text-xs">
           {label}
         </span>
@@ -200,11 +207,11 @@ function StatCard({
           </span>
         )}
       </div>
-      <div className="mt-2 text-xl font-semibold tracking-tight text-foreground sm:mt-3 sm:text-2xl">
+      <div className="mt-1 text-xl font-semibold tracking-tight text-foreground sm:mt-2 sm:text-2xl">
         {value}
       </div>
       {(hint || trend) && (
-        <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground sm:mt-1.5 sm:text-xs">
+        <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground sm:text-xs">
           {trend && (
             <span className={cn("font-medium", trendClass[trend.direction])}>
               {trend.direction === "up" ? "↑" : trend.direction === "down" ? "↓" : "→"}{" "}
