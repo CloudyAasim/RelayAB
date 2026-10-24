@@ -134,6 +134,15 @@ describe("a table too wide for a phone drops its quiet columns", () => {
     const providers = read("src", "app", "(admin)", "admin", "providers", "page.tsx");
     expect(providers).toContain('className="hidden lg:table-cell"');
   });
+
+  it("and the search providers table waits for a genuinely wide window", () => {
+    // Nine columns. At 1280px they did not fit, and the browser squeezed the
+    // headers until 「优先级」 was three characters stacked vertically and
+    // 「每次调用积分」 was five — a header row 120 pixels tall with vertical
+    // words in it. The endpoint and the priority now wait for 2xl.
+    const search = read("src", "app", "(admin)", "admin", "search", "page.tsx");
+    expect(search).toContain('className="hidden 2xl:table-cell"');
+  });
 });
 
 describe("the stat tile is as tall as its three lines", () => {

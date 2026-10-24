@@ -23,7 +23,8 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
-import { useT } from "@/components/i18n/I18nProvider";import { sanitizeLevelList } from "@/lib/providers/reasoning-levels";
+import { useT } from "@/components/i18n/I18nProvider";
+import { MarkdownText } from "@/components/i18n/MarkdownText";import { sanitizeLevelList } from "@/lib/providers/reasoning-levels";
 import {
   modelConfigPayload,
   rowProblem,
@@ -237,7 +238,7 @@ export function ModelConfigForm({ rows }: { rows: ModelConfigRow[] }) {
                             {row.clientId}
                           </div>
                           <p className="mt-1 text-xs text-muted-foreground">
-                            {t("admin.modelConfig.clientIdHint")}
+                            <MarkdownText text={t("admin.modelConfig.clientIdHint")} />
                           </p>
                         </div>
                         {row.gatewayEditable && (

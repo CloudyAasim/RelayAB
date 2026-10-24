@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { useT } from "@/components/i18n/I18nProvider";
+import { MarkdownText } from "@/components/i18n/MarkdownText";
 import type { ProseUserDocId } from "@/lib/docs/sections";
 import {
   Link2,
@@ -149,7 +150,9 @@ export function DocsContent({
               value={`{ "query": "智谱 bigmodel 图像生成 API 文档", "limit": 5, "service": "searxng" }`}
             />
             <p className="text-xs text-muted-foreground">{t("docs.search.requestHint")}</p>
-            <p className="text-xs text-muted-foreground">{t("docs.search.serviceHint")}</p>
+            <p className="text-xs text-muted-foreground">
+              <MarkdownText text={t("docs.search.serviceHint")} />
+            </p>
 
             <h3 className="text-sm font-semibold">{t("docs.search.responseTitle")}</h3>
             <CodeBlock
@@ -179,13 +182,13 @@ x-ratelimit-unit: credits`}
             <p className="text-xs text-muted-foreground">{t("docs.search.balanceHint")}</p>
 
             <p className="rounded-md border border-border bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">
-              {t("docs.search.billing")}
+              <MarkdownText text={t("docs.search.billing")} />
             </p>
             <p className="rounded-md border border-border bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">
               {t("docs.search.note")}
             </p>
             <p className="rounded-md border border-border bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">
-              {t("docs.search.assistant")}
+              <MarkdownText text={t("docs.search.assistant")} />
             </p>
             {/*
               The rule that will bite a user who configures their own service
@@ -193,7 +196,7 @@ x-ratelimit-unit: credits`}
               described — not only in the error they get later.
             */}
             <p className="rounded-md border border-border bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">
-              {t("docs.search.ownServiceNote")}
+              <MarkdownText text={t("docs.search.ownServiceNote")} />
             </p>
           </div>
         </Card>
@@ -235,7 +238,9 @@ x-ratelimit-unit: credits`}
   ]
 }`}
             />
-            <p className="text-xs text-muted-foreground">{t("docs.search.servicesHint")}</p>
+            <p className="text-xs text-muted-foreground">
+              <MarkdownText text={t("docs.search.servicesHint")} />
+            </p>
           </div>
         </Card>
 
@@ -310,10 +315,10 @@ x-ratelimit-unit: credits`}
 } }`}
           />
           <p className="text-xs text-muted-foreground">
-            {t("docs.openai.errors.typeHint")}
+            <MarkdownText text={t("docs.openai.errors.typeHint")} />
           </p>
           <p className="text-xs text-amber-600 dark:text-amber-400">
-            {t("docs.openai.errors.quotaTip")}
+            <MarkdownText text={t("docs.openai.errors.quotaTip")} />
           </p>
           <p className="text-xs text-muted-foreground">{t("docs.openai.errors.balanceHint")}</p>
         </div>
@@ -350,7 +355,9 @@ x-ratelimit-unit: credits`}
   "used": 12345,
   "remaining": 487655 }`}
           />
-          <p className="text-xs text-muted-foreground">{t("docs.credits.availHint")}</p>
+          <p className="text-xs text-muted-foreground">
+            <MarkdownText text={t("docs.credits.availHint")} />
+          </p>
           <p className="text-xs text-muted-foreground">{t("docs.credits.snapshotHint")}</p>
 
           <h3 className="pt-2 text-sm font-semibold">{t("docs.credits.ccswitchTitle")}</h3>
@@ -374,9 +381,15 @@ x-ratelimit-unit: credits`}
   }
 })`}
           />
-          <p className="text-xs text-muted-foreground">{t("docs.credits.ccswitchIsValid")}</p>
-          <p className="text-xs text-muted-foreground">{t("docs.credits.ccswitchScale")}</p>
-          <p className="text-xs text-muted-foreground">{t("docs.credits.ccswitchBaseUrl")}</p>
+          <p className="text-xs text-muted-foreground">
+            <MarkdownText text={t("docs.credits.ccswitchIsValid")} />
+          </p>
+          <p className="text-xs text-muted-foreground">
+            <MarkdownText text={t("docs.credits.ccswitchScale")} />
+          </p>
+          <p className="text-xs text-muted-foreground">
+            <MarkdownText text={t("docs.credits.ccswitchBaseUrl")} />
+          </p>
 
           <h3 className="pt-2 text-sm font-semibold">{t("docs.credits.headersTitle")}</h3>
           <p className="text-xs text-muted-foreground">{t("docs.credits.headersHint")}</p>
@@ -386,7 +399,9 @@ x-ratelimit-unit: credits`}
 x-ratelimit-remaining: 487655  # 剩余，下限为 0，不会出现负数
 x-ratelimit-unit: credits      # 单位；账号按 token 计量时这里就是 tokens`}
           />
-          <p className="text-xs text-muted-foreground">{t("docs.credits.headersVsEndpoint")}</p>
+          <p className="text-xs text-muted-foreground">
+            <MarkdownText text={t("docs.credits.headersVsEndpoint")} />
+          </p>
         </div>
       </Card>
     );
@@ -500,7 +515,7 @@ POST /v1beta/models/{model}:streamGenerateContent`}
           />
           <p className="text-xs text-muted-foreground">{t("docs.gemini.streaming")}</p>
           <p className="rounded-md border border-border bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">
-            {t("docs.gemini.limits")}
+            <MarkdownText text={t("docs.gemini.limits")} />
           </p>
           <p className="text-xs text-muted-foreground">{t("docs.gemini.anyVendor")}</p>
           {/*

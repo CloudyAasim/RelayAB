@@ -37,6 +37,26 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/**
+ * Inline spans only — no block wrapper.
+ *
+ * The block renderer above wraps its output in `<p>`, which is right for a
+ * document and wrong for a sentence dropped into a paragraph: a `<p>` inside a
+ * `<p>` is not a thing, and the browser closes the outer one and starts again.
+ *
+ * This is what a dictionary string wants. The dictionary carries markdown in a
+ * few places — `**emphasis**` and `` `code` `` — and the panels that show those
+ * strings used to print the markers verbatim, because a `<p>` prints what it is
+ * given. The reader saw `**here is the important part**` with the asterisks
+ * still on it.
+ *
+ * It escapes before it emits anything, exactly like the block renderer, so a
+ * string cannot introduce markup that runs.
+ */
+export function inlineMarkdownToHtml(text: string): string {
+  return renderInline(text);
+}
+
 /** Inline spans, applied after escaping so nothing can inject markup. */
 function renderInline(text: string): string {
   const codes: string[] = [];

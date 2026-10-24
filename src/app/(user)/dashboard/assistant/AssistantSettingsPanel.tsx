@@ -26,6 +26,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useT } from "@/components/i18n/I18nProvider";
+import { MarkdownText } from "@/components/i18n/MarkdownText";
 import { ModelCombobox } from "./ModelCombobox";
 import { cn } from "@/lib/utils";
 import {
@@ -859,7 +860,7 @@ export function AssistantSettingsPanel({
               // to go instead. Without the second half the user is left looking
               // for the setting that does it.
               <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                {t("assistant.settings.reasoningNotSupported")}
+                <MarkdownText text={t("assistant.settings.reasoningNotSupported")} />
               </p>
             ) : (
               <>
@@ -873,7 +874,7 @@ export function AssistantSettingsPanel({
                   default gets the opposite, and nothing on screen says so.
                 */}
                 <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                  {t("assistant.settings.reasoningDefaultIsNotOff")}
+                  <MarkdownText text={t("assistant.settings.reasoningDefaultIsNotOff")} />
                 </p>
               </>
             )}
@@ -918,7 +919,7 @@ export function AssistantSettingsPanel({
             <p className="font-mono text-xs text-muted-foreground">thinking.type</p>
             {switchUnsupported ? (
               <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                {t("assistant.settings.thinkingSwitchNotSupported")}
+                <MarkdownText text={t("assistant.settings.thinkingSwitchNotSupported")} />
               </p>
             ) : (
               <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">

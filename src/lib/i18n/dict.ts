@@ -837,7 +837,7 @@ const zhCN: Dict = {
   "admin.settings.title": "系统设置",
   "admin.searchProviders.title": "搜索提供商",
   "admin.searchProviders.description":
-    "网页搜索的后端。站点可以配多个搜索服务，用哪一个由调用方自己点名，没有默认的那一个：客户端在请求里带 service 字段（目录在 GET /v1/search/services），助手那边由每个账号在设置里选。只有一个能用时它就是唯一能用的；有多个而调用方没点名，请求会直接失败并列出可选的那几个。没有配置任何提供商时，回退到环境变量里的搜索后端。",
+    "网页搜索的后端。站点没有配置任何搜索提供商时，回退到环境变量里配置的搜索后端。",
   "admin.searchProviders.summary": "助手的网页搜索走哪几个服务、按次怎么计价。",
   "admin.searchProviders.new": "新增搜索提供商",
   "admin.searchProviders.formDesc": "填写后端类型、地址和密钥。SearXNG 只需要地址；Tavily 和 Brave 需要 API 密钥。",
@@ -2371,7 +2371,7 @@ const en: Dict = {
   "admin.settings.title": "Settings",
   "admin.searchProviders.title": "Search providers",
   "admin.searchProviders.description":
-    "Backends for web search. A site can run several search services, and the caller names the one it wants — there is no default: a client names it with the `service` field (the list is at GET /v1/search/services), and in the assistant each account picks one in its own settings. With only one usable service, that is the only one; with several and no name given, the request fails and lists the options. With no providers configured, the search backend in the environment variables is the fallback.",
+    "Backends for web search. With no providers configured, the search backend in the environment variables is the fallback.",
   "admin.searchProviders.summary":
     "Which services the assistant searches through, and what each call costs.",
   "admin.searchProviders.new": "Add search provider",

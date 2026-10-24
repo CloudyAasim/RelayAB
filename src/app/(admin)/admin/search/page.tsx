@@ -38,6 +38,7 @@ import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/components/ui/Tab
 import { Badge } from "@/components/ui/Badge";
 import { SectionPageLayout } from "@/components/layouts";
 import { getT } from "@/lib/i18n/server";
+import { MarkdownText } from "@/components/i18n/MarkdownText";
 import { CreateSearchProviderButton } from "./CreateSearchProviderButton";
 import { SearchProviderActions } from "./SearchProviderActions";
 import { EnvFallbackPrice } from "./EnvFallbackPrice";
@@ -141,10 +142,16 @@ export default async function SearchAdminPage() {
           offer several, and the one that answers is the one somebody chose:
           the client by name, the person in their own settings. So the panel
           does not mark one as "the one that serves"; it says who chooses.
+
+          The sentence carries `**…**` around the part that matters, and it
+          used to reach the reader as literal asterisks — this was a `<p>` and
+          the dictionary is plain text. The markdown renderer the docs panel
+          already uses is what turns it into emphasis, and it escapes its
+          input before it emits any markup.
         */}
-        <p className="mb-4 rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
-          {t("admin.searchProviders.noDefault")}
-        </p>
+        <div className="mb-4 rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+          <MarkdownText text={t("admin.searchProviders.noDefault")} />
+        </div>
 
         {/*
           The one thing the table cannot say on its own.
@@ -175,13 +182,18 @@ export default async function SearchAdminPage() {
                   <TH>{t("admin.searchProviders.name")}</TH>
                   <TH>{t("admin.searchProviders.serviceId")}</TH>
                   <TH>{t("admin.searchProviders.kind")}</TH>
-                  {/* Nine columns is the widest table in the app, so three of
-                      them step aside as the screen narrows: the endpoint (a
-                      long URL, and the edit form has it), the priority (a
-                      tie-breaker number) and the protocol badge (a statement
-                      about conformance, also in the edit form). */}
-                  <TH className="hidden xl:table-cell">{t("admin.searchProviders.baseUrl")}</TH>
-                  <TH className="hidden lg:table-cell">{t("admin.searchProviders.priority")}</TH>
+                  {/* Nine columns is the widest table in the app, and at 1280px
+                      they did not fit: the browser squeezed the headers until
+                      「优先级」 was three characters stacked vertically and
+                      「每次调用积分」 was five — a header row 120 pixels tall
+                      with vertical words in it.
+
+                      So the endpoint (a long URL, and the edit form has it)
+                      and the priority (a tie-breaker number) wait for a
+                      genuinely wide window. The rest fits in 800 pixels, which
+                      is what a 1280px screen has left after the rail. */}
+                  <TH className="hidden 2xl:table-cell">{t("admin.searchProviders.baseUrl")}</TH>
+                  <TH className="hidden 2xl:table-cell">{t("admin.searchProviders.priority")}</TH>
                   <TH>{t("admin.searchProviders.creditsPerCall")}</TH>
                   <TH className="hidden lg:table-cell">{t("admin.searchProviders.spec")}</TH>
                   <TH>{t("dashboard.table.status")}</TH>
@@ -203,7 +215,7 @@ export default async function SearchAdminPage() {
                     <TD>
                       <Badge tone="primary">{kindLabel(t, p.kind)}</Badge>
                     </TD>
-                    <TD className="hidden xl:table-cell text-muted-foreground">
+                    <TD className="hidden 2xl:table-cell text-muted-foreground">
                       <code className="text-xs">
                         {p.baseUrl || t("admin.searchProviders.defaultEndpoint")}
                       </code>
@@ -211,7 +223,7 @@ export default async function SearchAdminPage() {
                         <div className="mt-1 text-xs">{t("admin.searchProviders.keySet")}</div>
                       )}
                     </TD>
-                    <TD className="hidden lg:table-cell text-muted-foreground">{p.priority}</TD>
+                    <TD className="hidden 2xl:table-cell text-muted-foreground">{p.priority}</TD>
                     <TD className="text-muted-foreground">
                       {p.creditsPerCall}
                     </TD>

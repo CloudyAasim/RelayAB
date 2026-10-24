@@ -23,6 +23,7 @@ import {
   Search,
 } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui/Card";
+import { MarkdownText } from "@/components/i18n/MarkdownText";
 import { ProtocolReference } from "@/components/docs/ProtocolReference";
 import { SpecCheckReference } from "@/components/docs/SpecCheckReference";
 import type { AdminDocId, TFn } from "@/lib/docs/sections";
@@ -255,15 +256,27 @@ export function AdminDocsContent({ section, t }: { section: AdminDocId; t: TFn }
             title={
               <CardTitle icon={<Search className="h-4 w-4" />}>{t("admin.docs.search.title")}</CardTitle>
             }
-            description={t("admin.docs.search.desc")}
+            description={<MarkdownText text={t("admin.docs.search.desc")} />}
           />
           <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
-            <li>{t("admin.docs.search.arch")}</li>
-            <li>{t("admin.docs.search.config")}</li>
-            <li>{t("admin.docs.search.panel")}</li>
-            <li>{t("admin.docs.search.security")}</li>
-            <li>{t("admin.docs.search.assistant")}</li>
-            <li>{t("admin.docs.search.trouble")}</li>
+            <li>
+              <MarkdownText text={t("admin.docs.search.arch")} />
+            </li>
+            <li>
+              <MarkdownText text={t("admin.docs.search.config")} />
+            </li>
+            <li>
+              <MarkdownText text={t("admin.docs.search.panel")} />
+            </li>
+            <li>
+              <MarkdownText text={t("admin.docs.search.security")} />
+            </li>
+            <li>
+              <MarkdownText text={t("admin.docs.search.assistant")} />
+            </li>
+            <li>
+              <MarkdownText text={t("admin.docs.search.trouble")} />
+            </li>
           </ul>
         </Card>
         <Card>
