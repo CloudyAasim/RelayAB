@@ -186,7 +186,7 @@ describe("the stat tile is as tall as its two lines", () => {
  */
 describe("the layout says it, so the page does not", () => {
   /** The pages whose content names itself — the tiles, the cards, the table. */
-  const SELF_NAMING_PAGES: [string, string][] = [
+  const SELF_NAMING_PAGES: string[][] = [
     ["src", "app", "(admin)", "admin", "page.tsx"],
     ["src", "app", "(admin)", "admin", "users", "page.tsx"],
     ["src", "app", "(admin)", "admin", "settings", "page.tsx"],
