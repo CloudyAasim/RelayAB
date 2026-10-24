@@ -137,8 +137,8 @@ master-key rotation) see [docs/en/deployment.md](docs/en/deployment.md).
 ## Features
 
 > This section is the **current whole, organized by capability** — not a
-> version-by-version changelog. The history lives in
-> `上下文/02-版本时间线.md` and `上下文/08-平台迁移与近期变更.md`.
+> version-by-version changelog. The history is in `git log`; the detailed
+> specification of each capability is in [`docs/en/`](docs/en/README.md).
 
 ### 1. Five client surfaces, one gateway
 
@@ -155,7 +155,7 @@ inside the gateway is the Responses shape, and the upstream's own format can be
 any of `responses` / `chat` / `anthropic` / `gemini`. A vendor that only speaks
 Anthropic natively is reachable by OpenAI and Gemini clients (the gateway
 translates, and the reverse works too); **streamed requests arrive chunk by
-chunk** in all three dialects, not read to the end and handed over at once.
+chunk** in all four dialects, not read to the end and handed over at once.
 
 The Anthropic face has a third way of being served, chosen by the operator: the
 vendor speaks Anthropic itself (`native`), the gateway speaks for it
