@@ -136,21 +136,77 @@ master-key rotation) see [docs/en/deployment.md](docs/en/deployment.md).
 
 ## Features
 
+> This section is the **current whole, organized by capability** — not a
+> version-by-version changelog. The history lives in
+> `上下文/02-版本时间线.md` and `上下文/08-平台迁移与近期变更.md`.
+
+### 1. Five client surfaces, one gateway
+
+| Client surface | Endpoint | Auth |
+| --- | --- | --- |
+| OpenAI Chat Completions | `POST /v1/chat/completions` | `Authorization: Bearer sk-relay-…` |
+| OpenAI Responses | `POST /v1/responses` | same |
+| OpenAI Realtime | `GET /v1/realtime` (WebSocket upgrade) | same |
+| Anthropic Messages | `POST /anthropic/v1/messages` (alias `/v1/messages`) | same, or `x-api-key` |
+| Google Gemini | `POST /v1beta/models/{model}:generateContent` (`:streamGenerateContent`) | `x-goog-api-key` or `?key=` |
+
+**The client surface and the upstream dialect do not have to match**: the pivot
+inside the gateway is the Responses shape, and the upstream's own format can be
+any of `responses` / `chat` / `anthropic` / `gemini`. A vendor that only speaks
+Anthropic natively is reachable by OpenAI and Gemini clients (the gateway
+translates, and the reverse works too); **streamed requests arrive chunk by
+chunk** in all three dialects, not read to the end and handed over at once.
+
+The Anthropic face has a third way of being served, chosen by the operator: the
+vendor speaks Anthropic itself (`native`), the gateway speaks for it
+(`translated`), or the face is switched off.
+
+### 2. Model calls that are not conversations
+
+| Endpoint | Purpose | Billing |
+| --- | --- | --- |
+| `POST /v1/embeddings` | Embeddings | input tokens only |
+| `POST /v1/rerank` | Re-ranking (Cohere and Jina dialects) | input + the output the upstream reports |
+| `POST /v1/moderations` | Content moderation | input (the upstream reports no usage, so it is estimated) |
+| `POST /v1/audio/translations` | Speech translation | per item |
+| `GET /v1/models` | Model catalogue (source, context length, price) | — |
+| `GET /v1/credits` | Balance and availability | — |
+
+### 3. Media (images / video / speech / music)
+
+Endpoints: `/v1/images/{generations,edits}`, `/v1/videos/generations`,
+`/v1/audio/{speech,transcriptions,music}`, `/v1/audio/voices`.
+
+**Adding a media vendor is a JSON edit in the admin panel** — the media adapter
+protocol is a declarative spec (auth, path, request/response mapping, error
+rules, async polling) that a general engine executes. The full protocol is in
+[docs/模型适配协议/README.md](docs/模型适配协议/README.md), with an offline judge
+(`pnpm spec-check`, also available as a single HTML file you can hand to
+somebody else).
+
+### 4. Web search
+
+`POST /v1/search` (a fixed price per call; a failed search is not charged) and
+`GET /v1/search/services` (the service catalogue). Search backends are
+declarative specs too: the full protocol is in
+[docs/搜索适配协议/README.md](docs/搜索适配协议/README.md), judged by
+`pnpm search-spec-check`.
+
+### 5. Text adapter protocol
+
+Each compatibility surface (OpenAI / Anthropic / Gemini) can carry its own
+parameter rules (which fields to accept, how to rename them, what to drop), in
+the provider's `textSpecs` — again, no code change and no redeploy. The full
+protocol is in [docs/文本适配协议/README.md](docs/文本适配协议/README.md).
+
+### 6. Accounts, keys and credits
+
 - **Multi-user with roles** (admin / user); passwords stored as bcrypt hashes
   (**one-way, irreversible**)
-- **Welcome page**: `/` is a public introduction page — it explains what the
-  service is, gives a copyable endpoint URL, and offers one button into the
-  console. Unauthenticated visitors are no longer bounced straight to the login page
 - **Credits belong to the account** (controlled by the admin): the admin assigns
   a total credit amount and the set of accessible models; **all keys under that
   account share that one pool**, and once it is exhausted everything stops.
   Creating more keys does not grant more quota
-- **Self-service for regular users**: create / rename / enable / disable / delete
-  keys under `/dashboard` without involving the admin
-- **Self-service password change**: at `/dashboard/settings` — enter the current
-  password, then the new one twice
-- **User-friendly docs page**: `/dashboard/docs` presents the public URL and
-  OpenAI / Anthropic compatible examples as copyable code blocks
 - **Multiple API keys per user**, each independently configurable:
   - expiry (absolute timestamp)
   - enabled / disabled (toggle at any time)
@@ -159,12 +215,27 @@ master-key rotation) see [docs/en/deployment.md](docs/en/deployment.md).
   `Authorization: Bearer sk-relay-...`
 - **Upstream provider keys** are encrypted with AES-256-GCM before being stored in
   the database — **losing the master key means the data is permanently unusable**
-- **Supported protocols**:
-  - OpenAI Chat Completions (`/v1/chat/completions`)
-  - OpenAI Responses API (`/v1/responses`, including automatic Chat / Anthropic conversion)
-  - Anthropic Messages (`/anthropic/v1/messages`)
-  - Model mapping (client model → real upstream model; an identity mapping is recommended)
-- **Admin panel** + **user dashboard** + usage statistics
+- **Self-service for regular users**: create / rename / enable / disable / delete
+  keys under `/dashboard`, change their password, read their usage
+
+### 7. The AI assistant (`/dashboard/assistant`)
+
+A conversational operations assistant with 36 tools: look up users and usage,
+read and edit documentation pages, diagnose provider configuration, test models,
+generate images / video / speech, transcribe audio, search the web and fetch
+pages — plus **proposals that need approval** (change a provider, change model
+configuration, add a media or search provider: a proposal only takes effect
+once a human confirms it, and it can be withdrawn). The assistant can read all
+three protocol documents directly.
+
+### 8. Administration and observability
+
+- **Admin panel** (`/admin`): users, keys, providers (with both protocol faces
+  and the Anthropic face's third state), model configuration and prices, media
+  providers, search providers, usage statistics, system settings
+- **Usage statistics** (`/dashboard/usage`, `/admin/usage`): balance on top,
+  scope filters (by key / model / provider), metric switching, bar charts and
+  detail tables; per-user timezone (UTC / Shanghai)
 - **Multilingual UI**: Chinese (default) / English, one click to switch in the
   footer, preference stored in the `relayab_locale` cookie
 - **Fully local development loop**: an embedded Vercel REST API emulator (no
@@ -179,8 +250,9 @@ master-key rotation) see [docs/en/deployment.md](docs/en/deployment.md).
 | Authentication | iron-session 8 + bcryptjs (work factor 12) |
 | Encryption | AES-256-GCM (Node `crypto`) + bcryptjs |
 | Upstream AI | hand-written protocol translation over `fetch` |
+| Realtime | hand-written RFC 6455 frame layer (`src/lib/ws/*`) + a custom server (`server.mjs`) that takes the WebSocket upgrade |
 | Testing | Vitest + Playwright |
-| Deployment | systemd + nginx (config shipped in `deploy/`) |
+| Deployment | systemd + nginx, or Dokku (config shipped in `deploy/`) |
 | UI | Tailwind CSS 3 + hand-written components |
 
 ## Quick start
@@ -316,9 +388,10 @@ pnpm build               # Next.js production build
 
 ```
 RelayAB/
+├── server.mjs           custom server: takes the /v1/realtime WebSocket upgrade, hands the rest to Next
 ├── deploy/              self-hosting config (systemd / nginx / env template)
-├── docs/                technical documentation
-├── scripts/             operations scripts (bootstrap / reset / rotate)
+├── docs/                technical documentation (including the three adapter protocols)
+├── scripts/             operations scripts (bootstrap / reset / rotate / spec-check)
 ├── src/
 │   ├── app/             Next.js App Router pages and routes
 │   │   ├── (auth)/login login page
@@ -330,7 +403,13 @@ RelayAB/
 │       ├── auth/         authentication (session / api key)
 │       ├── crypto/       encryption (secrets / hashing / password)
 │       ├── db/           persistence (users / keys / providers / usage)
-│       ├── proxy/        upstream proxy (openai / anthropic)
+│       ├── proxy/        upstream proxy (openai / anthropic / gemini / the Responses pivot)
+│       ├── protocol/     protocol translation and stream-frame rewriting (Responses is the pivot)
+│       ├── media/        media adapter protocol: spec parsing + general engine
+│       ├── search/       search adapter protocol: spec parsing + general engine
+│       ├── realtime/     the realtime surface (Realtime protocol and session); ws/ is its frame layer
+│       ├── assistant/    the AI assistant (tools and proposals)
+│       ├── docs/         documentation pages and reading the protocol documents
 │       ├── quota/        quota (credits / rates / calculator)
 │       └── config.ts     environment variables
 ├── tests/               unit / integration / e2e

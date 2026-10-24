@@ -138,13 +138,16 @@ Session 由 iron-session 放在 cookie 里，**不落库**。
 |---|---|---|
 | `/v1/chat/completions` | POST | OpenAI Chat Completions 兼容 |
 | `/v1/responses` | POST | OpenAI Responses 兼容，含 Chat / Anthropic 自动转换 —— 见 §7.3 |
+| `/v1/realtime` | GET | OpenAI Realtime（**WebSocket 升级**），由自定义服务器接管 —— 见 §4.4 |
 | `/v1/models` | GET | OpenAI 兼容（返回允许的模型） |
 | `/v1/messages` | POST | Anthropic Messages，走 OpenAI 面向路径 |
 | `/anthropic/v1/messages` | POST | Anthropic 兼容 |
+| `/v1beta/models/{model}:generateContent` | POST | Google Gemini 客户端面 |
 | `/healthz` | GET | 健康检查（无需鉴权） |
 
 > 媒体端点（`/v1/images/*`、`/v1/videos/generations`、`/v1/audio/*`）见
 > [api-routes.md §2.6](./api-routes.md#26-媒体端点图片--视频--语音--音乐)。
+> 向量 / 重排 / 审核 / 搜索端点见 [api-routes.md §1.6](./api-routes.md#16-其它模型调用端点)。
 
 ### 4.2 管理 API（用 Session 鉴权）
 
@@ -193,6 +196,34 @@ Session 由 iron-session 放在 cookie 里，**不落库**。
 其余变死代码」这种静默情况。
 
 与聊天 provider 是两套独立实体：请求形状、参数、计费单位都不同（媒体按「件」计费）。
+
+### 4.4 实时面（WebSocket）
+
+`/v1/realtime` 是**一条长连接上的事件协议**，不是一问一答。它**不走 Next 的路由**：
+路由处理器拿不到升级请求的 socket（socket 归运行时所有），所以升级请求由仓库根目录的
+自定义服务器 `server.mjs` 接管 —— 它只搬字节，不懂协议。
+
+```
+客户端 ──WebSocket──▶ nginx ──▶ server.mjs ──▶ 桥接（应用内）
+                                          │              ├─ 帧层（src/lib/ws）
+                                          │              ├─ 会话（src/lib/realtime）
+                                          │              └─ 枢轴：Realtime ⇄ Responses
+                                          └──── 帧 ────────┘
+```
+
+三处设计要点（都是实测得来的，不是推的）：
+
+1. **会话与服务器同进程**，不是走 HTTP 跳转。Next.js 只要有中间件就会缓冲每个请求的
+   请求体（路径被排除也不行），而实时会话的请求体就是客户端的帧、永远不结束 ——
+   走 HTTP 会死锁（处理函数等一个只有客户端离开才结束的体，客户端等一个永远不会来的
+   101）。桥接由 `src/instrumentation.ts` 在应用启动时装到 `globalThis` 上，服务器取用。
+2. **公开路径上没有路由文件**。Next 会把自己的 upgrade 钩子注册到同一台服务器上，
+   路径一旦被它匹配上就会 `socket.end()` —— 那正是握手中途的 socket。普通 HTTP 请求
+   由服务器答 `426 Upgrade Required`。
+3. **帧层自写**（`src/lib/ws/frames.ts`，RFC 6455）：仓库里没有 `ws` 依赖；Node 24
+   自带的 `WebSocket` 客户端只解决「连上游」那一半，「解客户端的帧」仍要自己写。
+
+---
 
 ## 5. 加密与安全
 

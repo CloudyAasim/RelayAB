@@ -129,13 +129,17 @@ See [`api-routes.md`](./api-routes.md) for the full definition. Summary:
 |---|---|---|
 | `/v1/chat/completions` | POST | OpenAI Chat Completions compatible |
 | `/v1/responses` | POST | OpenAI Responses compatible, including automatic Chat / Anthropic conversion — see §7.3 |
+| `/v1/realtime` | GET | OpenAI Realtime (**WebSocket upgrade**), taken over by the custom server — see §4.4 |
 | `/v1/models` | GET | OpenAI-compatible (returns the permitted models) |
 | `/v1/messages` | POST | Anthropic Messages, on the OpenAI-facing path |
 | `/anthropic/v1/messages` | POST | Anthropic-compatible |
+| `/v1beta/models/{model}:generateContent` | POST | The Google Gemini client surface |
 | `/healthz` | GET | Health check (no authentication) |
 
 > Media endpoints (`/v1/images/*`, `/v1/videos/generations`, `/v1/audio/*`) are
 > documented in [api-routes.md §2.6](api-routes.md#26-media-endpoints-image--video--speech--music).
+> The embeddings / rerank / moderation / search endpoints are in
+> [api-routes.md §1.6](api-routes.md#16-the-other-model-call-endpoints).
 
 ### 4.2 Admin APIs (authenticated with a session)
 
@@ -190,6 +194,41 @@ not allowed.
 
 This is a separate entity from a chat provider: the request shape, parameters, and
 billing unit are all different (media is billed per item).
+
+### 4.4 The realtime surface (WebSocket)
+
+`/v1/realtime` is **an event protocol over one long-lived connection**, not a
+request/response call. It does **not** go through a Next.js route: a route
+handler cannot see the socket an upgrade arrived on (the runtime owns it), so
+the upgrade is taken over by the custom server at the repository root
+(`server.mjs`) — which moves bytes and knows nothing about the protocol.
+
+```
+client ──WebSocket──▶ nginx ──▶ server.mjs ──▶ bridge (inside the app)
+                                           │              ├─ frame layer (src/lib/ws)
+                                           │              ├─ session (src/lib/realtime)
+                                           │              └─ pivot: Realtime ⇄ Responses
+                                           └──── frames ──┘
+```
+
+Three design points (all of them measured, not reasoned):
+
+1. **The session lives in the same process as the server**, not behind an HTTP
+   hop. Next.js buffers the request body of every request when a middleware
+   exists (even for paths the matcher excludes), and a realtime session's body is
+   the client's frames, which never ends — so an HTTP hop deadlocks (the handler
+   waits for a body that only ends when the client leaves; the client waits for
+   a `101` that never comes). The bridge is put on `globalThis` by
+   `src/instrumentation.ts` when the application starts, and the server picks it
+   up.
+2. **There is deliberately no route file at the public path.** Next registers
+   its own upgrade hook on the same server, and if it matches the path it ends
+   the socket — which is the socket the handshake is happening on. An ordinary
+   HTTP request is answered with `426 Upgrade Required` by the server.
+3. **The frame layer is hand-written** (`src/lib/ws/frames.ts`, RFC 6455): the
+   repository has no `ws` dependency, and Node 24's built-in `WebSocket` client
+   only solves the "connect to the upstream" half — reading the client's frames
+   still has to be written.
 
 ## 5. Encryption and Security
 

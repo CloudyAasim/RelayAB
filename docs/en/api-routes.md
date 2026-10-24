@@ -389,6 +389,36 @@ work too. These paths are rewritten to `/api/v1beta/*` by `next.config.mjs` —
 **the rewrite layer has to be committed along with the route** when a public
 path changes.
 
+### 1.8 The realtime surface (WebSocket)
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /v1/realtime?model={model}` | A realtime session (WebSocket upgrade) |
+
+Realtime is **an event protocol over one long-lived connection**, not a
+request/response call. The client sends events (`session.update` to change the
+session's settings, `conversation.item.create` to put what the user said into the
+conversation, `response.create` to ask for an answer) and the server sends
+events back (`response.output_text.delta` as the text arrives, ending with
+`response.done`, which carries the usage).
+
+**This endpoint is taken over by the custom server** (`server.mjs`), not by a
+Next.js route — a route handler cannot see the socket an upgrade arrived on (the
+runtime owns it). So it deliberately has **no `/api/...` route file**: an
+ordinary HTTP request gets `426 Upgrade Required`, with an `Upgrade: websocket`
+header.
+
+The pivot inside the gateway is the Responses shape: realtime events become a
+Responses request, the upstream may answer in any dialect, and the answer comes
+back as realtime events — so **a vendor that only speaks OpenAI-compatible
+protocols is reachable by a realtime client too**. **Text only**: the audio
+events (`input_audio_buffer.*`) and the audio modality get an explicit error
+event rather than being dropped quietly.
+
+Auth uses the customer key (`Authorization: Bearer sk-relay-…`; `x-api-key` is
+accepted too). No model → `400 missing_model`; no provider maps that model →
+`400 model_not_mapped`.
+
 ---
 
 ## 2. Admin API (session authentication)

@@ -359,6 +359,29 @@ OpenAI 自己的形状，所以客户端不用为它们写第二套解析。
 这些端点由 `next.config.mjs` 里的 rewrite 指向 `/api/v1beta/*` —— **改公开路径
 时 rewrite 那一层也要一起提交**。
 
+### 1.8 实时面（WebSocket）
+
+| 端点 | 用途 |
+| --- | --- |
+| `GET /v1/realtime?model={model}` | Realtime 会话（WebSocket 升级） |
+
+Realtime 是**一条长连接上的事件协议**，不是一问一答。客户端发事件
+（`session.update` 改会话设置、`conversation.item.create` 把用户说的话放进会话、
+`response.create` 让模型回答），服务端回事件（`response.output_text.delta`
+逐段回来，最后是带用量的 `response.done`）。
+
+**这个端点由自定义服务器接管**（`server.mjs`），不是 Next 的路由 —— 路由处理器拿不到
+升级请求的 socket（socket 归运行时所有）。所以它**故意没有 `/api/...` 路由文件**：
+普通 HTTP 请求会得到 `426 Upgrade Required`，带 `Upgrade: websocket` 头。
+
+网关内部以 Responses 为枢轴：Realtime 事件变成一个 Responses 请求，上游用什么方言
+答都行，答案再变回 Realtime 事件 —— 所以**只提供 OpenAI 兼容接口的厂商也能被
+Realtime 客户端调到**。**只服务文本**：音频事件（`input_audio_buffer.*`）与 audio
+模态会收到明确的 error 事件，而不是被悄悄丢掉。
+
+鉴权用客户 Key（`Authorization: Bearer sk-relay-…`，也收 `x-api-key`）。缺模型 →
+`400 missing_model`；没有服务商映射这个模型 → `400 model_not_mapped`。
+
 ---
 
 ## 2. 管理 API（Session 鉴权）

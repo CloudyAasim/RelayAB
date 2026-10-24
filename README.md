@@ -120,26 +120,84 @@ Redis/Valkey，没有端口，没有密码，没有内存淘汰导致数据消�
 
 ## 功能
 
-- **多用户 + 角色**（admin / user），密码 bcrypt 散列存储（**单向不可逆**）
-- **欢迎页**：`/` 是公开的介绍页——说明服务是什么、给出可复制的接口地址、一个按钮进入控制台。未登录访客不再被直接弹到登录页
-- **积分属于账号**（admin 控制）：管理员给账号分配积分总量与可访问模型；
-  该账号下的**所有 Key 共用这一份积分**，用完即全部停止。
-  多建 Key 不会多拿额度
-- **普通用户自助管理**：在 `/dashboard` 自己创建 / 重命名 / 启用停用 / 删除 Key，无需管理员介入
-- **普通用户自助改密**：`/dashboard/settings`，需先输入原密码，再输入两次新密码进行验证
-- **用户友好的文档页**：`/dashboard/docs`，把公网 URL 与 OpenAI / Anthropic 兼容示例以可复制代码块形式呈现
-- **每用户多把 API Key**，每把可独立配置：
-  - 过期时间（绝对时间戳）
-  - 启用/禁用（随时切换）
-  - 模型收窄（可选，只能在账号白名单基础上收窄，不能放宽）
-- **客户 Key 格式** 兼容 OpenAI：`sk-relay-...`，HTTP `Authorization: Bearer sk-relay-...`
-- **上游 Provider Key** 用 AES-256-GCM 加密后存数据库，**主密钥丢失 = 数据永久不可用**
-- **兼容协议**：
-  - OpenAI Chat Completions（`/v1/chat/completions`）
-  - OpenAI Responses API（`/v1/responses`，含 Chat / Anthropic 协议自动转换）
-  - Anthropic Messages（`/anthropic/v1/messages`）
-  - 模型映射（客户端模型 → 上游真实模型，推荐恒等映射）
-- **管理后台** + **用户面板** + 用量统计
+> 这一节是**按能力**组织的现状全貌（不是按版本堆的变更流水）。
+> 变更历史在 `上下文/02-版本时间线.md` 与 `上下文/08-平台迁移与近期变更.md`。
+
+### 一、五种客户端面，一个网关
+
+| 客户端面 | 端点 | 鉴权 |
+| --- | --- | --- |
+| OpenAI Chat Completions | `POST /v1/chat/completions` | `Authorization: Bearer sk-relay-…` |
+| OpenAI Responses | `POST /v1/responses` | 同上 |
+| OpenAI Realtime | `GET /v1/realtime`（WebSocket 升级） | 同上 |
+| Anthropic Messages | `POST /anthropic/v1/messages`（别名 `/v1/messages`） | 同上，或 `x-api-key` |
+| Google Gemini | `POST /v1beta/models/{model}:generateContent`（`:streamGenerateContent`） | `x-goog-api-key` 或 `?key=` |
+
+**客户端面与上游方言不必相同**：网关内部以 Responses 形状为枢轴，上游原生格式可以是
+`responses` / `chat` / `anthropic` / `gemini` 四种中的任意一种。只提供 Anthropic 原生
+端点的厂商，OpenAI 与 Gemini 客户端也能调到它（由网关转换，反过来一样）；三种方言的
+**流式请求都逐块到达**，不是读到底一次性交出。
+
+Anthropic 面还有第三种服务方式由管理员选：厂商自己说 Anthropic（`native`）、厂商
+不说而由网关转换（`translated`）、或者这一面先关掉。
+
+### 二、对话之外的模型调用
+
+| 端点 | 用途 | 计费 |
+| --- | --- | --- |
+| `POST /v1/embeddings` | 向量化 | 只算输入 token |
+| `POST /v1/rerank` | 重排（Cohere / Jina 两种方言） | 输入 + 上游报出的输出 |
+| `POST /v1/moderations` | 内容审核 | 输入（上游不报用量，按估算） |
+| `POST /v1/audio/translations` | 语音翻译 | 按件 |
+| `GET /v1/models` | 模型目录（来源、上下文长度、单价） | — |
+| `GET /v1/credits` | 余额与可用性 | — |
+
+### 三、媒体能力（图片 / 视频 / 语音 / 音乐）
+
+端点：`/v1/images/{generations,edits}`、`/v1/videos/generations`、
+`/v1/audio/{speech,transcriptions,music}`、`/v1/audio/voices`。
+
+**加一个媒体供应商只改后台里的 JSON** —— 媒体适配协议是一份声明式 spec（鉴权、路径、
+请求/响应映射、错误规则、异步轮询），通用引擎照着执行。协议全文见
+[docs/模型适配协议/README.md](docs/模型适配协议/README.md)，配套离线校验器
+`pnpm spec-check`（也有单文件 HTML 版，可以直接发给别人）。
+
+### 四、网页搜索
+
+`POST /v1/search`（按次固定积分，失败不扣费）与 `GET /v1/search/services`（服务目录）。
+搜索后端同样是声明式 spec：协议全文见
+[docs/搜索适配协议/README.md](docs/搜索适配协议/README.md)，校验器 `pnpm search-spec-check`。
+
+### 五、文本适配协议
+
+每个兼容接口（OpenAI / Anthropic / Gemini）可以各写一份参数规则（认哪些字段、怎么
+改名、丢掉什么），写在服务商配置的 `textSpecs` 里 —— 同样不改代码、不重新部署。
+协议全文见 [docs/文本适配协议/README.md](docs/文本适配协议/README.md)。
+
+### 六、账号、密钥与额度
+
+- **多用户 + 角色**（admin / user），密码 bcrypt 散列（**单向不可逆**）
+- **积分属于账号**（admin 控制）：管理员给账号分配积分总量与可访问模型；该账号下的
+  **所有 Key 共用这一份积分**，用完即全部停止 —— 多建 Key 不会多拿额度
+- **每用户多把 API Key**，每把可独立配置：过期时间、启用/停用、模型收窄（只能在账号
+  白名单基础上收窄，不能放宽）
+- **客户 Key 格式**兼容 OpenAI：`sk-relay-…`；**上游 Provider Key** 用 AES-256-GCM
+  加密后存数据库（**主密钥丢失 = 数据永久不可用**）
+- **普通用户自助管理**：在 `/dashboard` 自己创建 / 重命名 / 启用停用 / 删除 Key、改密码
+
+### 七、AI 助手（`/dashboard/assistant`）
+
+对话式运维助手，带 36 个工具：查用户与用量、读与改文档页、诊断服务商配置、测模型、
+生成图片/视频/语音、转写音频、网页搜索与抓页，以及**带审批的提案**（改服务商、改
+模型配置、加媒体或搜索供应商 —— 提案要人确认才生效，且可撤回）。助手能直接读三份
+协议全文。
+
+### 八、管理与观测
+
+- **管理后台**（`/admin`）：用户、Key、服务商（含两种协议面与 Anthropic 面的第三态）、
+  模型配置与费率、媒体供应商、搜索服务商、用量统计、系统设置
+- **用量统计**（`/dashboard/usage`、`/admin/usage`）：余额置顶、统计范围（按密钥/模型/
+  供应商过滤）、指标切换、柱状图与明细表；每用户可选时区（UTC / 上海）
 - **界面多语言**：中文（默认）/ English，页脚一键切换，偏好记在 `relayab_locale` cookie
 - **本地开发闭环**：嵌入式 Vercel REST API emulator（无需独立进程、无需网络）
 
@@ -152,7 +210,8 @@ Redis/Valkey，没有端口，没有密码，没有内存淘汰导致数据消�
 | 认证 | iron-session 8 + bcryptjs（work factor 12） |
 | 加密 | AES-256-GCM（Node `crypto`）+ bcryptjs |
 | 上游 AI | 自写协议转换层（`src/lib/proxy/*`，基于 `fetch`） |
-| 部署 | systemd + nginx（配置见 `deploy/`） |
+| 实时面 | 自写 RFC 6455 帧层（`src/lib/ws/*`）+ 自定义服务器 `server.mjs`（接管 WebSocket 升级） |
+| 部署 | systemd + nginx，或 Dokku（配置见 `deploy/`） |
 | 测试 | Vitest + Playwright |
 | UI | Tailwind CSS 3 + 自写组件 |
 
@@ -274,9 +333,10 @@ pnpm build               # Next.js 生产构建
 
 ```
 RelayAB/
+├── server.mjs           自定义服务器：接管 /v1/realtime 的 WebSocket 升级，其余交给 Next
 ├── deploy/              自托管部署配置（systemd / nginx / env 模板）
-├── docs/                技术文档
-├── scripts/             运维脚本（bootstrap / reset / rotate）
+├── docs/                技术文档（含三份适配协议全文）
+├── scripts/             运维脚本（bootstrap / reset / rotate / spec-check）
 ├── src/
 │   ├── app/             Next.js App Router 页面与路由
 │   │   ├── (auth)/login 登录页
@@ -288,7 +348,13 @@ RelayAB/
 │       ├── auth/         认证（session / api key）
 │       ├── crypto/       加密（secrets / hashing / password）
 │       ├── db/           持久化（users / keys / providers / usage）
-│       ├── proxy/        上游代理（openai / anthropic）
+│       ├── proxy/        上游代理（openai / anthropic / gemini / responses 枢轴）
+│       ├── protocol/     协议转换与流帧改写（Responses 是内部枢轴）
+│       ├── media/        媒体适配协议：spec 解析 + 通用引擎
+│       ├── search/       搜索适配协议：spec 解析 + 通用引擎
+│       ├── realtime/     实时面（Realtime 协议与会话）；ws/ 是它的帧层
+│       ├── assistant/    AI 助手（工具与提案）
+│       ├── docs/         文档页与协议原文读取
 │       ├── quota/        配额（credits / rates / calculator）
 │       └── config.ts     环境变量
 ├── tests/               unit / integration / e2e
