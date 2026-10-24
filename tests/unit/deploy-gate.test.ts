@@ -64,6 +64,56 @@ describe("the host build does not type-check", () => {
   });
 });
 
+describe("a documentation-only commit does not reach the host", () => {
+  /**
+   * The host has 3.8 GiB of RAM and no swap, and a build there has taken the
+   * whole machine down four times — the fourth on a commit that changed
+   * nothing but Markdown. The cost of a deployment does not depend on the size
+   * of the change, so the change that should not pay for a rebuild is the one
+   * that changes no runtime bytes.
+   *
+   * The dangerous half of this is the *base*: diffing from the last commit
+   * that reached the host, rather than from the last run, is what keeps a
+   * skipped deployment from hiding code that still has to go out.
+   */
+  it("the verify job says whether a deployment is needed", () => {
+    expect(WORKFLOW).toMatch(/outputs:[\s\S]{0,300}deploy: \$\{\{ steps\.changes\.outputs\.deploy \}\}/);
+    expect(WORKFLOW).toMatch(/id:\s*changes/);
+  });
+
+  it("and the deploy job waits for that answer", () => {
+    const deployBlock = WORKFLOW.slice(WORKFLOW.indexOf("\n  deploy:"));
+    expect(deployBlock).toMatch(/if:.*needs\.verify\.outputs\.deploy == 'true'/);
+  });
+
+  it("the base is the last commit whose deploy job actually succeeded", () => {
+    // A run whose deploy was skipped deployed nothing. Using it as the base
+    // would let a skipped deployment hide code that still has to go out.
+    expect(WORKFLOW).toMatch(/select\(\.name=="deploy"\)/);
+    expect(WORKFLOW).toMatch(/"\$conclusion" = "success"/);
+  });
+
+  it("the diff has the history it needs", () => {
+    // A shallow clone does not contain the base commit, so the diff would be
+    // empty and everything would look like a documentation-only change.
+    const verifyBlock = WORKFLOW.slice(WORKFLOW.indexOf("\n  verify:"), WORKFLOW.indexOf("\n  deploy:"));
+    expect(verifyBlock).toMatch(/fetch-depth:\s*0/);
+  });
+
+  it("a protocol document is not documentation, because the application reads it", () => {
+    // The three protocol documents are rendered by the admin pages and read by
+    // the assistant's readers — they change what the running application
+    // serves, so changing them has to rebuild it.
+    for (const name of ["模型适配协议", "搜索适配协议", "文本适配协议"]) {
+      expect(WORKFLOW, `${name} is not excluded from the docs-only rule`).toContain(name);
+    }
+  });
+
+  it("and anything that is not Markdown always deploys", () => {
+    expect(WORKFLOW).toMatch(/non_doc=.*grep -v -E '\\\.md\$'/);
+  });
+});
+
 describe("the build has a memory ceiling", () => {
   it("the build stage caps its heap", () => {
     // Without a ceiling, the spike is decided by how much memory happens to

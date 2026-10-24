@@ -22,6 +22,9 @@ concurrency:
 
 permissions:
   contents: read
+  # Reading this workflow's own run history is what tells the deployment step
+  # which commit actually reached the host last.
+  actions: read
 
 jobs:
   # The gate.
@@ -41,9 +44,66 @@ jobs:
   verify:
     name: 类型检查与测试
     runs-on: ubuntu-latest
+    outputs:
+      # Whether this commit has to be deployed. `false` only when nothing but
+      # documentation changed — see the detection step.
+      deploy: ${{ steps.changes.outputs.deploy }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # The full history: the detection step diffs against the last commit
+          # that reached the host, and a shallow clone does not have it.
+          fetch-depth: 0
+
+      # A documentation-only commit does not need the host to rebuild.
+      #
+      # The host has 3.8 GiB of RAM and no swap, and a build there has taken
+      # the whole machine down four times — once on a commit that changed
+      # nothing but Markdown. The cost of a deployment does not depend on the
+      # size of the change, so a commit that only moves documentation is
+      # exactly the one that should not pay for a rebuild.
+      #
+      # The base is the last commit whose *deploy job* succeeded: a run whose
+      # deploy was skipped deployed nothing, so it is not a base. Diffing from
+      # the real base means a skipped deployment can never hide code that
+      # still has to go out.
+      - name: 检测是否只是文档改动
+        id: changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="${{ github.repository }}"
+          # The default is to deploy. Skipping a deployment that was needed is
+          # the one failure that matters here, so the answer starts at "yes" and
+          # is only taken away when the diff is *known* to be documentation.
+          echo "deploy=true" >> "$GITHUB_OUTPUT"
+          base=""
+          for run in $(gh api "repos/$repo/actions/workflows/deploy.yml/runs?branch=server&per_page=6" --jq '.[].id' || true); do
+            conclusion=$(gh api "repos/$repo/actions/runs/$run/jobs" --jq '[.jobs[] | select(.name=="deploy") | .conclusion] | .[0] // ""' || true)
+            if [ "$conclusion" = "success" ]; then
+              base=$(gh api "repos/$repo/actions/runs/$run" --jq '.head_sha' || true)
+              break
+            fi
+          done
+          if [ -z "$base" ]; then
+            echo "no previous deployment found — deploying"
+            exit 0
+          fi
+          changed=$(git diff --name-only "$base"..HEAD)
+          echo "base: $base"
+          echo "$changed"
+          # A Markdown file the running application reads at request time still
+          # has to be deployed: the three protocol documents are rendered by the
+          # admin pages and read by the assistant's readers.
+          runtime_read=$(printf '%s\n' "$changed" | grep -E '^docs/(模型适配协议|搜索适配协议|文本适配协议)/' || true)
+          non_doc=$(printf '%s\n' "$changed" | grep -v -E '\.md$' || true)
+          if [ -n "$non_doc" ] || [ -n "$runtime_read" ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          fi
 
       # The runner has no pnpm of its own. `corepack enable` reads the pin in
       # package.json ("packageManager": "pnpm@10.28.0"), so the runner installs
@@ -63,6 +123,8 @@ jobs:
 
   deploy:
     needs: verify
+    # A documentation-only commit does not reach the host. Everything else does.
+    if: needs.verify.result == 'success' && needs.verify.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
