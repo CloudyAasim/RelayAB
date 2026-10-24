@@ -34,7 +34,20 @@ EnvironmentFile=/opt/relayab/.env.production
 # have your deploy script write `git rev-parse --short HEAD`) on each release.
 Environment=RELAY_BUILD_ID=v178
 
-ExecStart=/usr/bin/node node_modules/next/dist/bin/next start -H 127.0.0.1 -p 3000
+# The custom server, not `next start`.
+#
+# The realtime surface (`/v1/realtime`) is a WebSocket, and a Next.js route
+# handler cannot see the socket an upgrade arrives on — the runtime owns it.
+# `server.mjs` takes the upgrade over and hands everything else to Next
+# unchanged, so it is the process that has to be started.
+#
+# The port and the address come from the environment because the custom server
+# has no command line of its own: PORT is the port to listen on, RELAYAB_HOST
+# the address to listen on.
+Environment=PORT=3000
+Environment=RELAYAB_HOST=127.0.0.1
+
+ExecStart=/usr/bin/node server.mjs
 
 Restart=always
 RestartSec=5

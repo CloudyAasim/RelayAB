@@ -92,6 +92,10 @@ COPY --from=build /app/.next ./.next
 COPY --from=build /app/public ./public
 COPY --from=build /app/package.json ./
 COPY --from=build /app/next.config.mjs ./
+# The custom server. `pnpm start` runs it, and it is what owns the WebSocket
+# surface (`/v1/realtime`) — `next start` alone cannot see the socket an
+# upgrade arrives on.
+COPY --from=build /app/server.mjs ./server.mjs
 # Not needed to resolve `@/*` — the bundler has already inlined it — but
 # `next start` reads it, and a config it cannot find is a warning on every boot.
 COPY --from=build /app/tsconfig.json ./
@@ -148,5 +152,5 @@ RUN mkdir -p /data /app/data
 # to 443 and everything worked.
 EXPOSE 443
 
-# What Procfile asked for: `pnpm start` → `next start`.
+# What Procfile asked for: `pnpm start` → `node server.mjs`.
 CMD ["pnpm", "start"]

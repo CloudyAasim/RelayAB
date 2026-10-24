@@ -52,7 +52,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "node server.mjs",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
     "test": "vitest run",

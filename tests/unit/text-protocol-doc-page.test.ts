@@ -266,6 +266,15 @@ describe("the user documentation names every public endpoint", () => {
         out.push(`/${extra}`);
       }
     }
+    // `/v1/realtime` is named outright rather than derived.
+    //
+    // It has no route file on purpose: the upgrade is taken over by the
+    // custom server, and a route file at that path would also match the
+    // upgrade — Next.js would resolve the rewrite, find the route, and end the
+    // socket, which is the socket the handshake is happening on. A public
+    // endpoint the guard cannot derive is a public endpoint nobody has to
+    // document, so it is listed here instead.
+    out.push("/v1/realtime");
     return [...new Set(out)].sort();
   }
 

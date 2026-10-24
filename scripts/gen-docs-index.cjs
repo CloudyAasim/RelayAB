@@ -286,6 +286,8 @@ const TITLES = {
   "user:anthropic": "Anthropic 兼容用法：/anthropic/v1/messages",
   "user:gemini": "Gemini 兼容用法：/v1beta/models/{model}:generateContent",
   "user:responses": "Responses 接口：什么时候用，和 chat/completions 的区别",
+  "user:realtime":
+    "Realtime 实时接口 /v1/realtime：WebSocket 怎么连、发什么事件、只服务文本",
   "user:models": "有哪些模型可用：模型名、上下文长度、计价",
   "user:credits": "额度余额：GET /v1/credits 怎么查、is_available、响应头里的额度",
   "user:sdks": "官方 SDK 接法：Python / Node / CLI",

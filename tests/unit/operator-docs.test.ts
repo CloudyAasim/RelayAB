@@ -240,6 +240,10 @@ describe("the integration guide renders what it says it renders", () => {
       "anthropic",
       "gemini",
       "responses",
+      // The realtime surface: a WebSocket with an event protocol on it. It has
+      // a branch of its own because a chapter that falls through to the last
+      // `if` renders the media page under someone else's heading.
+      "realtime",
       "models",
       "sdks",
       "media",
@@ -281,6 +285,7 @@ describe("the integration guide renders what it says it renders", () => {
       "openai",
       "anthropic",
       "responses",
+      "realtime",
       "models",
       "sdks",
       "media",
@@ -482,6 +487,11 @@ describe("the outline", () => {
       "anthropic",
       "gemini",
       "responses",
+      // The realtime surface has its own chapter, right after the Responses
+      // one it rides the same conversion chain as. It is listed here rather
+      // than left out because the outline is the list of chapters a reader
+      // can reach — an endpoint that is not in it is an endpoint nobody finds.
+      "realtime",
       "models",
       "credits",
       "sdks",

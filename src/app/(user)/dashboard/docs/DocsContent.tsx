@@ -17,6 +17,7 @@ import {
   Coins,
   Search,
   Layers,
+  Radio,
 } from "lucide-react";
 
 interface Props {
@@ -559,6 +560,54 @@ POST /v1beta/models/{model}:streamGenerateContent`}
   -d '{"model": "YOUR_MODEL_ID","input": "Hello!"}'`}
           />
           <p className="text-xs text-muted-foreground">{t("docs.responses.alias")}</p>
+        </div>
+      </Card>
+    );
+  }
+
+  if (section === "realtime") {
+    return (
+      <Card>
+        <CardHeader
+          title={
+            <span className="flex items-center gap-2">
+              <Radio className="h-4 w-4 text-muted-foreground" />
+              {t("docs.realtime.title")}
+            </span>
+          }
+          description={t("docs.realtime.desc")}
+        />
+        <div className="space-y-3 text-xs text-foreground/90 sm:space-y-4 sm:text-sm">
+          <p>{t("docs.realtime.line1")}</p>
+          <CodeBlock
+            label={t("docs.realtime.url")}
+            value={`${openaiBase.replace(/^http/, "ws")}/realtime?model=YOUR_MODEL_ID`}
+          />
+          <p className="text-xs text-muted-foreground">{t("docs.realtime.auth")}</p>
+          <p className="text-sm font-medium">{t("docs.realtime.eventsTitle")}</p>
+          <p className="text-xs text-muted-foreground">{t("docs.realtime.events")}</p>
+          <CodeBlock
+            label={t("docs.realtime.eventsTitle")}
+            value={`{"type":"session.update","session":{"modalities":["text"]}}
+{"type":"conversation.item.create","item":{"type":"message","role":"user","content":[{"type":"input_text","text":"Hello"}]}}
+{"type":"response.create"}`}
+          />
+          <p className="text-sm font-medium">{t("docs.realtime.answersTitle")}</p>
+          <p className="text-xs text-muted-foreground">{t("docs.realtime.answers")}</p>
+          <CodeBlock
+            label={t("docs.realtime.answersTitle")}
+            value={`{"type":"response.output_text.delta","delta":"Hi"}
+{"type":"response.done","response":{"usage":{"input_tokens":11,"output_tokens":22,"total_tokens":33}}}`}
+          />
+          <p className="rounded-md border border-border bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">
+            {t("docs.realtime.textOnly")}
+          </p>
+          <p className="rounded-md border border-border bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">
+            {t("docs.realtime.notHttp")}
+          </p>
+          <p className="rounded-md border border-border bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">
+            {t("docs.realtime.billing")}
+          </p>
         </div>
       </Card>
     );

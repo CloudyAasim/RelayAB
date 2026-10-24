@@ -48,6 +48,10 @@ const USER_SECTION_IDS = [
   // to find how to call it, and "OpenAI-compatible" is not where it looks.
   "gemini",
   "responses",
+  // The realtime surface. Its own chapter because it is a different kind of
+  // thing: a WebSocket with an event protocol on it, not a request that comes
+  // back with an answer. A client that speaks it needs to find how to connect.
+  "realtime",
   "models",
   // The balance, as a chapter of its own. It used to sit at the bottom of the
   // OpenAI chapter, which put "how much do I have" underneath "how to send a
@@ -153,6 +157,7 @@ const USER_LABEL_KEYS = [
   "docs.nav.anthropic",
   "docs.nav.gemini",
   "docs.nav.responses",
+  "docs.nav.realtime",
   "docs.nav.models",
   "docs.nav.credits",
   "docs.nav.sdks",
@@ -195,6 +200,7 @@ const CHAPTER_ANSWER_KEYS: Readonly<Record<string, string>> = {
   anthropic: "docs.chapter.answers.anthropic",
   gemini: "docs.chapter.answers.gemini",
   responses: "docs.chapter.answers.responses",
+  realtime: "docs.chapter.answers.realtime",
   models: "docs.chapter.answers.models",
   credits: "docs.chapter.answers.credits",
   sdks: "docs.chapter.answers.sdks",

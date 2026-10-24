@@ -92,6 +92,12 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
   },
   {
     surface: "user",
+    id: "realtime",
+    summary: "Realtime 实时接口 /v1/realtime：WebSocket 怎么连、发什么事件、只服务文本",
+    keys: ["docs.realtime.title","docs.realtime.desc","docs.realtime.line1","docs.realtime.url","docs.realtime.auth","docs.realtime.eventsTitle","docs.realtime.events","docs.realtime.answersTitle","docs.realtime.answers","docs.realtime.textOnly","docs.realtime.notHttp","docs.realtime.billing"],
+  },
+  {
+    surface: "user",
     id: "models",
     summary: "有哪些模型可用：模型名、上下文长度、计价",
     keys: ["docs.models.title","docs.models.desc","docs.models.line1","docs.models.line2","docs.models.line3","docs.cli.example","docs.models.paramsTitle","docs.models.params"],

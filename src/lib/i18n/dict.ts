@@ -244,6 +244,7 @@ const zhCN: Dict = {
   "docs.nav.anthropic": "Anthropic 兼容",
   "docs.nav.gemini": "Gemini 兼容",
   "docs.nav.responses": "Responses API",
+  "docs.nav.realtime": "Realtime",
   "docs.nav.models": "模型与密钥",
   "docs.nav.credits": "余额",
   "docs.nav.sdks": "代码示例",
@@ -428,6 +429,7 @@ const zhCN: Dict = {
   "docs.chapter.answers.anthropic": "这一章回答：怎么用 Anthropic 的方式发一次对话。",
   "docs.chapter.answers.gemini": "这一章回答：怎么用 Gemini 的方式发一次对话。",
   "docs.chapter.answers.responses": "这一章回答：怎么调 /v1/responses 这个端点。",
+  "docs.chapter.answers.realtime": "这一章回答：怎么用 WebSocket 接 /v1/realtime 这个实时端点。",
   "docs.chapter.answers.models": "这一章回答：有哪些模型，以及怎么挑。",
   "docs.chapter.answers.credits": "这一章回答：我还剩多少额度，程序怎么查。",
   "docs.chapter.answers.sdks": "这一章回答：现成的库怎么装、怎么用。",
@@ -440,6 +442,24 @@ const zhCN: Dict = {
   "docs.responses.example": "curl 示例",
   "docs.responses.alias":
     "别名：/v1/chat/completions/responses 同样可用。有些客户端把 Base URL 填成 Chat Completions 的地址、自己再拼上 /responses，请求就会落到这个别名上；它和 /v1/responses 行为完全一致。",
+  "docs.realtime.title": "OpenAI Realtime（WebSocket）",
+  "docs.realtime.desc": "兼容 /v1/realtime —— 一条长连接上的事件协议。",
+  "docs.realtime.line1":
+    "Realtime 不是一问一答：客户端和服务端在同一条 WebSocket 上互发事件，所以它要的是一个 WebSocket 客户端，不是 curl。它走的是 Responses 那条转换链 —— 管理员配好的任何对话厂商都能接。",
+  "docs.realtime.url": "连接地址",
+  "docs.realtime.auth": "认证头跟别处一样：Authorization: Bearer sk-relay-xxxx...",
+  "docs.realtime.eventsTitle": "客户端发什么",
+  "docs.realtime.events":
+    "三件事：session.update 改会话设置（instructions、modalities），conversation.item.create 把用户说的话放进会话，response.create 让模型回答。",
+  "docs.realtime.answersTitle": "服务端回什么",
+  "docs.realtime.answers":
+    "回答以 response.output_text.delta 逐段回来（和 Responses 一样是增量的），中间是 response.output_item.added、response.content_part.added 这类结构事件，最后是 response.done —— 用量就在这一个事件里。",
+  "docs.realtime.textOnly":
+    "只服务文本：这条桥接只说文本。音频事件（input_audio_buffer.*）和 audio 模态会收到一个明确的 error 事件，而不是被悄悄丢掉 —— 客户端能分清「模型没话说」和「这条路不通」。",
+  "docs.realtime.notHttp":
+    "用普通 HTTP 请求这个地址会拿到 426 Upgrade Required：这个端点是 WebSocket，不是普通的 HTTP 接口。",
+  "docs.realtime.billing":
+    "计费：每一轮按上游报出来的 token 计费，和 /v1/responses 同一张价格表、同一把密钥、同一套额度。",
   "docs.openai.title": "OpenAI Chat Completions",
   "docs.openai.desc": "兼容 /v1/chat/completions。",
   "docs.openai.line1": "按下面三步即可发起一次聊天补全请求：",
@@ -1733,6 +1753,7 @@ const en: Dict = {
   "docs.nav.anthropic": "Anthropic compatible",
   "docs.nav.gemini": "Gemini compatible",
   "docs.nav.responses": "Responses API",
+  "docs.nav.realtime": "Realtime",
   "docs.nav.models": "Models & keys",
   "docs.nav.credits": "Balance",
   "docs.nav.sdks": "Code samples",
@@ -1920,6 +1941,7 @@ const en: Dict = {
   "docs.chapter.answers.anthropic": "This chapter answers: how to send a conversation the Anthropic way.",
   "docs.chapter.answers.gemini": "This chapter answers: how to send a conversation the Gemini way.",
   "docs.chapter.answers.responses": "This chapter answers: how to call the /v1/responses endpoint.",
+  "docs.chapter.answers.realtime": "This chapter answers: how to call the /v1/realtime endpoint over a WebSocket.",
   "docs.chapter.answers.models": "This chapter answers: which models there are, and how to pick one.",
   "docs.chapter.answers.credits": "This chapter answers: how much is left, and how a program asks.",
   "docs.chapter.answers.sdks": "This chapter answers: how to install and use the ready-made libraries.",
@@ -1932,6 +1954,24 @@ const en: Dict = {
   "docs.responses.example": "curl example",
   "docs.responses.alias":
     "Alias: /v1/chat/completions/responses works too. Some clients are pointed at the Chat Completions base URL and append /responses themselves, so the request lands on this alias; it behaves exactly like /v1/responses.",
+  "docs.realtime.title": "OpenAI Realtime (WebSocket)",
+  "docs.realtime.desc": "Compatible with /v1/realtime — an event protocol over one long-lived connection.",
+  "docs.realtime.line1":
+    "Realtime is not a request/response call: the client and the server exchange events over the same WebSocket, so it needs a WebSocket client rather than curl. It rides the same conversion chain as Responses — any conversation vendor the administrator configured can serve it.",
+  "docs.realtime.url": "Connection URL",
+  "docs.realtime.auth": "The auth header is the same as everywhere else: Authorization: Bearer sk-relay-xxxx...",
+  "docs.realtime.eventsTitle": "What the client sends",
+  "docs.realtime.events":
+    "Three things: session.update changes the session's settings (instructions, modalities), conversation.item.create puts what the user said into the conversation, and response.create asks for an answer.",
+  "docs.realtime.answersTitle": "What the server sends back",
+  "docs.realtime.answers":
+    "The answer arrives as response.output_text.delta frames (incremental, like Responses), with structural events such as response.output_item.added and response.content_part.added in between, and it ends with response.done — the event that carries the usage.",
+  "docs.realtime.textOnly":
+    "Text only: this bridge speaks text. The audio events (input_audio_buffer.*) and the audio modality get an explicit error event rather than being dropped quietly — so a client can tell a model with nothing to say from a road that is closed.",
+  "docs.realtime.notHttp":
+    "An ordinary HTTP request to this path gets 426 Upgrade Required: this endpoint is a WebSocket, not a plain HTTP one.",
+  "docs.realtime.billing":
+    "Billing: each turn is billed on the tokens the upstream reported, from the same price table, the same key and the same quota as /v1/responses.",
   "docs.openai.title": "OpenAI Chat Completions",
   "docs.openai.desc": "Compatible with /v1/chat/completions.",
   "docs.openai.line1": "Send a request with three things:",

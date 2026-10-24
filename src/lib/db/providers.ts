@@ -281,6 +281,21 @@ export async function findOpenAIProvidersForModel(clientModel: string): Promise<
 }
 
 /**
+ * The OpenAI-facing providers for a model, read without the cache.
+ *
+ * The same rows as {@link findOpenAIProvidersForModel}, read the other way.
+ * The cached reader needs a request to live in — the cache is a request scope,
+ * and calling it outside one throws — and the realtime bridge is called from
+ * the custom server's upgrade handler, which is not a request. It is the one
+ * caller outside a request, and it is the reason this exists.
+ */
+export function findOpenAIProvidersForModelUncached(clientModel: string): Provider[] {
+  return readProviders(true).filter(
+    (p) => clientModel in p.modelMapping && providerFaces(p).openai !== null,
+  );
+}
+
+/**
  * Providers that can serve `clientModel` on the Anthropic Messages surface.
  *
  * The key, model mapping and model configs come from the same row as the
