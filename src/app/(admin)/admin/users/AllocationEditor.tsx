@@ -11,6 +11,7 @@ import { apiErrorMessage } from "@/lib/i18n/api-errors";
 import { formatCredits, formatCreditsFloor, formatCreditsCeil, formatNumber } from "@/lib/utils";
 import { CREDIT_SCALE } from "@/lib/quota/credits";
 import { formatUserIdentity } from "@/lib/user-identity";
+import type { ModelGroup, ModelGroupKind } from "@/lib/admin/model-groups";
 import type { PublicUser } from "@/lib/db/types";
 import { Settings2, Coins, ListChecks, KeyRound, Wallet } from "lucide-react";
 
@@ -38,14 +39,46 @@ function amountCeil(type: PublicUser["quotaType"], n: number): string {
   return type === "tokens" ? formatNumber(n) : formatCreditsCeil(n);
 }
 
+/**
+ * The heading of one model group.
+ *
+ * Written as literal `t()` calls rather than a template string: the i18n
+ * guard reads call sites, and a key it cannot see is a key nothing checks — a
+ * typo in it would render as the raw key on the page and no test would say so.
+ */
+function groupLabel(t: (key: string) => string, kind: ModelGroupKind): string {
+  switch (kind) {
+    case "chat":
+      return t("admin.users.allocation.group.chat");
+    case "image":
+      return t("admin.users.allocation.group.image");
+    case "video":
+      return t("admin.users.allocation.group.video");
+    case "tts":
+      return t("admin.users.allocation.group.tts");
+    case "stt":
+      return t("admin.users.allocation.group.stt");
+    case "translate":
+      return t("admin.users.allocation.group.translate");
+    case "music":
+      return t("admin.users.allocation.group.music");
+  }
+}
+
 interface Props {
   /** Password-hash-free projection — see UsersPage. */
   users: PublicUser[];
-  /** Client-visible model ids across all enabled providers. */
-  availableModels: string[];
+  /**
+   * The client-visible models across all enabled providers, grouped by kind.
+   *
+   * Grouped rather than flat: "give this account the image models" is the
+   * gesture people actually make, and a flat alphabet turns it into a reading
+   * exercise.
+   */
+  modelGroups: ModelGroup[];
 }
 
-export function AllocationEditor({ users, availableModels }: Props) {
+export function AllocationEditor({ users, modelGroups }: Props) {
   const t = useT();
   const [editing, setEditing] = useState<PublicUser | null>(null);
 
@@ -119,7 +152,7 @@ export function AllocationEditor({ users, availableModels }: Props) {
       {editing && (
         <AllocationModal
           user={editing}
-          availableModels={availableModels}
+          modelGroups={modelGroups}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
@@ -153,12 +186,12 @@ function Row({
 
 function AllocationModal({
   user,
-  availableModels,
+  modelGroups,
   onClose,
   onSaved,
 }: {
   user: PublicUser;
-  availableModels: string[];
+  modelGroups: ModelGroup[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -190,6 +223,18 @@ function AllocationModal({
       const next = new Set(prev);
       if (next.has(model)) next.delete(model);
       else next.add(model);
+      return next;
+    });
+  }
+
+  /** Select or clear every model in one group. */
+  function toggleGroup(models: string[], selected: boolean) {
+    setSelectedModels((prev) => {
+      const next = new Set(prev);
+      for (const model of models) {
+        if (selected) next.add(model);
+        else next.delete(model);
+      }
       return next;
     });
   }
@@ -323,26 +368,62 @@ function AllocationModal({
             <p className="text-xs text-muted-foreground">
               {t("admin.users.allocation.allModelsHint")}
             </p>
-          ) : availableModels.length === 0 ? (
+          ) : modelGroups.length === 0 ? (
             <p className="text-xs text-muted-foreground">
               {t("admin.users.allocation.noModelsConfigured")}
             </p>
           ) : (
-            <div className="grid max-h-56 grid-cols-1 gap-1.5 overflow-y-auto sm:grid-cols-2">
-              {availableModels.map((m) => (
-                <label
-                  key={m}
-                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedModels.has(m)}
-                    onChange={() => toggleModel(m)}
-                    className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
-                  />
-                  <code className="truncate font-mono text-xs">{m}</code>
-                </label>
-              ))}
+            /*
+             * One section per kind.
+             *
+             * The list used to be one flat alphabet, which made "give this
+             * account the image models" a reading exercise. Each group now
+             * carries its own heading and its own "select all" — the gesture
+             * people actually want is "the text ones" or "the image ones", not
+             * "these nine names".
+             */
+            <div className="max-h-64 space-y-3 overflow-y-auto pr-1">
+              {modelGroups.map((group) => {
+                const selectedCount = group.models.filter((m) => selectedModels.has(m)).length;
+                const allSelected = selectedCount === group.models.length;
+                return (
+                  <section key={group.kind} className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <h4 className="text-xs font-medium text-muted-foreground">
+                        {groupLabel(t, group.kind)}
+                        <span className="ml-1.5 font-normal text-muted-foreground/70">
+                          {selectedCount}/{group.models.length}
+                        </span>
+                      </h4>
+                      <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          checked={allSelected}
+                          onChange={() => toggleGroup(group.models, !allSelected)}
+                          className="h-3.5 w-3.5 rounded border-input text-primary focus:ring-ring"
+                        />
+                        {t("admin.users.allocation.groupSelectAll")}
+                      </label>
+                    </div>
+                    <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+                      {group.models.map((m) => (
+                        <label
+                          key={m}
+                          className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedModels.has(m)}
+                            onChange={() => toggleModel(m)}
+                            className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
+                          />
+                          <code className="truncate font-mono text-xs">{m}</code>
+                        </label>
+                      ))}
+                    </div>
+                  </section>
+                );
+              })}
             </div>
           )}
 

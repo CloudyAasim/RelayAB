@@ -102,7 +102,7 @@ export function openAIModelList(ids: string[], createdAt: number): OpenAIModelEn
  * to the first spec for models no spec claims — which validation already warns
  * about.
  */
-function specServingModel(provider: MediaProvider, clientModel: string): MediaSpec | undefined {
+export function specServingModel(provider: MediaProvider, clientModel: string): MediaSpec | undefined {
   return (
     provider.specs.find((spec) => spec.models?.includes(clientModel)) ??
     provider.specs.find((spec) => !spec.models || spec.models.length === 0) ??

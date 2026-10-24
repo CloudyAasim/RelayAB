@@ -23,6 +23,7 @@ import { SectionPageLayout } from "@/components/layouts";
 import { CreateUserButton } from "./CreateUserButton";
 import { UserActions } from "./UserActions";
 import { AllocationEditor } from "./AllocationEditor";
+import { groupModelsByKind } from "@/lib/admin/model-groups";
 import { Users as UsersIcon } from "lucide-react";
 
 export default async function UsersPage() {
@@ -42,12 +43,10 @@ export default async function UsersPage() {
   // Media models are authorized through the same per-account whitelist, so
   // they have to appear in the picker — otherwise an image model could never
   // be granted to a user.
-  const availableModels = Array.from(
-    new Set([
-      ...providers.flatMap((p) => Object.keys(p.modelMapping)),
-      ...mediaProviders.flatMap((p) => Object.keys(p.models)),
-    ]),
-  ).sort();
+  //
+  // The picker groups them by kind (text, image, video, speech, music), so the
+  // page hands it groups rather than one flat alphabet.
+  const modelGroups = groupModelsByKind(providers, mediaProviders);
 
   const publicUsers = users.map(toPublicUser);
 
@@ -112,7 +111,7 @@ export default async function UsersPage() {
             }
             description={t("admin.users.allocation.desc")}
           />
-          <AllocationEditor users={publicUsers} availableModels={availableModels} />
+          <AllocationEditor users={publicUsers} modelGroups={modelGroups} />
         </Card>
       </SectionPageLayout.Content>
     </SectionPageLayout>
