@@ -15,6 +15,21 @@ const CHAT = readFileSync(join(SRC, "app", "(user)", "dashboard", "assistant", "
 const ROOT_LAYOUT = readFileSync(join(SRC, "app", "layout.tsx"), "utf-8");
 const SHELL = readFileSync(join(SRC, "components", "layouts", "AuthenticatedLayout.tsx"), "utf-8");
 
+/** The class list of the element whose classes contain `needle`. */
+function classListWith(needle: string): string {
+  for (const match of CHAT.matchAll(/className="([^"]+)"/g)) {
+    if (match[1].includes(needle)) return match[1];
+  }
+  return "";
+}
+
+/** The class list of the first element after a marker in the source. */
+function classListAfter(marker: string): string {
+  const at = CHAT.indexOf(marker);
+  if (at < 0) return "";
+  return CHAT.slice(at).match(/className="([^"]+)"/)?.[1] ?? "";
+}
+
 describe("assistant: the chat fits the viewport", () => {
   it("declares a vh height before the dvh one, so an older browser still gets a height", () => {
     // `dvh` is the right unit on a phone - it follows the collapsing address bar
@@ -63,6 +78,28 @@ describe("assistant: the chat fits the viewport", () => {
     // `min-h-0` is what lets a flex child actually shrink below its content,
     // which is the difference between the list scrolling and the page growing.
     expect(CHAT).toContain("min-h-0 flex-1 overflow-y-auto");
+  });
+
+  it("keeps the top bar off the page edge, the way the composer keeps off the bottom edge", () => {
+    // The composer has `pb-2`: eight pixels between the input box and the
+    // bottom of the window. The top bar had nothing above it, so it sat flush
+    // against the app header on a phone and against the top of the window on a
+    // desktop - one column whose two edges did not agree with each other.
+    //
+    // The app header is `lg:hidden`, so the bar's top edge is a different
+    // thing on the two screens, and both of them looked wrong: on a phone the
+    // 「新对话 / 历史对话」 row was welded to the header above it, on a desktop
+    // it was welded to the top of the window.
+    const topBar = classListAfter("---- top bar:");
+    const composer = classListWith("shrink-0 bg-background");
+
+    const topGap = topBar.match(/\bpt-(\d+(?:\.\d+)?)\b/)?.[1];
+    const bottomGap = composer.match(/\bpb-(\d+(?:\.\d+)?)\b/)?.[1];
+
+    expect(topGap, "the top bar has no gap above it").toBeDefined();
+    expect(bottomGap, "the composer has no gap below it").toBeDefined();
+    // The same distance apart, not two distances somebody chose separately.
+    expect(topGap, "the two edges are not the same distance apart").toBe(bottomGap);
   });
 });
 

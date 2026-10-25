@@ -1179,7 +1179,12 @@ export function AssistantChat({
      */
     <div className="flex h-[calc(100vh-3.5rem)] h-[calc(100dvh-3.5rem)] flex-col lg:h-[100vh] lg:h-[100dvh]">
       {/* ---- top bar: a new chat on the left, what is answering on the right ---- */}
-      <div className="mx-auto flex w-full max-w-4xl shrink-0 items-center gap-2 border-b pb-2">
+      {/* `pt-2` mirrors the composer's `pb-2`: the composer keeps eight pixels
+          between the input box and the bottom of the window, and this bar used
+          to keep nothing between itself and the top of the page — flush against
+          the app header on a phone, flush against the top of the window on a
+          desktop. One column, two edges, the same distance apart. */}
+      <div className="mx-auto flex w-full max-w-4xl shrink-0 items-center gap-2 border-b pt-2 pb-2">
         <Button
           type="button"
           variant="ghost"
