@@ -82,7 +82,12 @@ export function AllocationSummary({
       </div>
 
       {/* Policy info */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      {/*
+        Two up on a phone too. Stacked, they were two 84-pixel panels between
+        the balance and the key list, each holding a label, a value and a
+        hint — and the page's actual keys started a third of a screen down.
+      */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-3">
         <Field
           icon={<ListChecks className="h-4 w-4" />}
           label={t("dashboard.allocation.modelWhitelist")}

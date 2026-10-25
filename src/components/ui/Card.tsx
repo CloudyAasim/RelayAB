@@ -190,6 +190,12 @@ function StatCard({
         They used to be aligned to the top, which left the label sitting at
         the top edge of a 32px icon with 16 pixels of nothing under it — the
         tile read as taller than the two lines it holds.
+
+        On a narrow screen the icon goes away altogether: it is decoration, and
+        a tile two-up on a phone is 160 pixels wide, where a 28-pixel chip
+        beside the label is a fifth of the row spent on something that says
+        nothing the label does not. The label's own line drops from 28 pixels
+        to 16, and with it the tile's height.
       */}
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs uppercase tracking-wider text-muted-foreground sm:text-xs">
@@ -198,7 +204,7 @@ function StatCard({
         {icon && (
           <span
             className={cn(
-              "flex h-7 w-7 shrink-0 items-center justify-center rounded-md sm:h-8 sm:w-8",
+              "hidden h-7 w-7 shrink-0 items-center justify-center rounded-md sm:flex sm:h-8 sm:w-8",
               iconToneClass[tone],
             )}
           >

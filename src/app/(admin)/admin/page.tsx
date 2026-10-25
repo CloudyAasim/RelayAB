@@ -78,7 +78,16 @@ export default async function AdminOverviewPage() {
       */}
       <SectionPageLayout.Content>
         {/* Stat row */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {/*
+          Two up from the first pixel, not one.
+
+          They were one column below `sm`, so on a phone four tiles stood in a
+          stack — 84 pixels each, 384 of them, and the page's real content
+          started below the fold. Two up is 160 pixels of the same four
+          numbers, and a tile is still wide enough for the largest figure on
+          the page.
+        */}
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
           <StatCard
             label={t("admin.stat.users")}
             value={formatNumber(users.length)}

@@ -51,8 +51,16 @@ describe("responsive UI: landing page invariants", () => {
 describe("responsive UI: dashboard invariants", () => {
   const dashboard = read("app/(user)/dashboard/page.tsx");
 
-  it("stats grid is responsive: 1 col → 2 col → 3 col", () => {
-    expect(dashboard).toMatch(/grid-cols-1[\s\S]+?sm:grid-cols-2[\s\S]+?lg:grid-cols-3/);
+  it("stats grid is responsive: 2 col → 2 col → 3 col", () => {
+    // It used to start at one column, so on a phone three tiles stood in a
+    // stack — 84 pixels each — and the balance panel, the policy panels and
+    // the key list were all below them. Two up is the difference between
+    // scrolling to the keys and scrolling past them.
+    expect(dashboard).toMatch(/grid-cols-2[\s\S]+?lg:grid-cols-3/);
+  });
+
+  it("and the third tile spans the row, because three do not divide by two", () => {
+    expect(dashboard).toContain("col-span-2 sm:col-span-1");
   });
 
   it("hides low-priority table columns on small screens", () => {

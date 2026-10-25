@@ -184,6 +184,29 @@ describe("the stat tile is as tall as its two lines", () => {
  * purpose: a line stays when it says something the layout cannot show (why a
  * value is what it is, what happens if you touch it, what a badge means).
  */
+describe("the phone layout is two up, not one", () => {
+  it("the overview's four figures stand two to a row", () => {
+    // One column below `sm` meant four tiles stood in a stack on a phone —
+    // 84 pixels each, 384 of them, and the page's real content started
+    // below the fold.
+    const overview = read("src", "app", "(admin)", "admin", "page.tsx");
+    expect(overview).toMatch(/grid grid-cols-2[^"]*lg:grid-cols-4/);
+  });
+
+  it("and so do the account's three", () => {
+    const dashboard = read("src", "app", "(user)", "dashboard", "page.tsx");
+    expect(dashboard).toMatch(/grid grid-cols-2[^"]*lg:grid-cols-3/);
+  });
+
+  it("and the tile drops its icon on a narrow screen", () => {
+    // A tile two-up on a phone is 160 pixels wide. A 28-pixel chip beside
+    // the label is a fifth of the row spent on decoration, and it is what
+    // made the label's own line 28 pixels tall instead of 16.
+    const card = read("src", "components", "ui", "Card.tsx");
+    expect(card).toMatch(/hidden h-7 w-7[^\n]*sm:flex/);
+  });
+});
+
 describe("the layout says it, so the page does not", () => {
   /** The pages whose content names itself — the tiles, the cards, the table. */
   const SELF_NAMING_PAGES: string[][] = [

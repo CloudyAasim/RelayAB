@@ -65,8 +65,17 @@ export default async function DashboardPage() {
           titled cards rather than as a pile of boxes that happen to touch.
         */}
         <div className="space-y-6">
-          {/* Stats row - responsive: 1 col → 2 cols → 3 cols */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">
+          {/* Stats row - responsive: 2 cols → 2 cols → 3 cols */}
+          {/*
+            Two up on a phone, like the admin overview's four.
+
+            One column meant three tiles stood in a stack before the balance
+            panel, and each of them was 84 pixels tall for a label and a
+            figure. The third tile spans the row because three do not divide
+            into two — and a tile wider than its neighbours reads as the
+            summary it is.
+          */}
+          <div className="grid grid-cols-2 gap-3 sm:gap-6 lg:grid-cols-3">
             <StatCard
               label={t("dashboard.stat.activeKeys")}
               value={formatNumber(keys.filter((k) => k.enabled).length)}
@@ -84,6 +93,7 @@ export default async function DashboardPage() {
               value={formatCredits(agg.creditsUsed)}
               icon={<Coins className="h-4 w-4" />}
               tone="orange"
+              className="col-span-2 sm:col-span-1"
             />
           </div>
 
