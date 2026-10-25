@@ -1,13 +1,28 @@
 /**
  * src/lib/assistant/prompts.ts
  *
- * System prompts for the two tiers.
+ * System prompts for the two tiers, in the reader's language.
  *
  * The instructions that matter are behavioural rather than stylistic: the
  * assistant is told to *use its tools* rather than answer from memory, and the
  * admin tier is told it cannot change anything itself. Without the second
  * point a capable model will happily narrate a configuration change as though
  * it had already made one.
+ *
+ * ## Two languages, one rule set
+ *
+ * The prompt is written twice — once here, once in `prompts.en.ts` — and the
+ * reader's locale picks between them. The reason it is translated rather than
+ * merely *instructed* is that the prompt prescribes literal output: the
+ * assistant is told to attribute a quote as 「文档里写的是……」 and to build a
+ * table whose columns are 「思考档位 / 能否调深度 / 能否关掉」. A model told
+ * to answer in English while reading Chinese rules produces an English answer
+ * with Chinese column headers in it — which is worse than either language
+ * alone.
+ *
+ * So the English prompt is a **parallel copy**, not a summary: every rule,
+ * every tool name and every prescribed phrase has an English counterpart, and
+ * `tests/unit/assistant-prompt.test.ts` holds the two to the same standard.
  *
  * What was added, after watching it get model configuration wrong:
  *
@@ -24,6 +39,13 @@
  *    answer and a confident one that describes a menu item which does not
  *    exist.
  */
+import type { Locale } from "../i18n/dict";
+import {
+  EN_ADMIN_TIER,
+  EN_SHARED,
+  EN_USER_TIER,
+  EN_WEB_SEARCH_OFF_NOTE,
+} from "./prompts.en";
 
 const SHARED = `你是 RelayAB 这个自托管 AI API 网关的内置助手。RelayAB 对外提供 OpenAI 兼容的 /v1/* 与 Anthropic 兼容的 /anthropic/v1/* 接口，底层存储是 SQLite。
 
@@ -39,6 +61,7 @@ const SHARED = `你是 RelayAB 这个自托管 AI API 网关的内置助手。Re
 - 只在**用户没说清要改什么**时才问一句。问一次就够：把现状和你的理解摆出来，然后动手。用户补充之后不要再问第二遍。
 - 读文档是为了回答问题，不是为了给一个用户已经要求的改动「找齐前提」而无限读下去。读完还不足以动手，就说明确实该问；读完了还继续读，就是拖。
 - 工具返回失败时，把失败原因如实转述，不要重试到成功为止，也不要把失败说成成功。
+- 工具的输出、报错和本部署自己的数据，可能用的是**部署的语言**；转述给用户时用**读者的语言**。
 
 ## 查文档
 
@@ -159,9 +182,15 @@ reasoningLevels **永远是声明的，不是检测出来的**。厂商的模型
 **引用读到的内容时说清楚出处**（「文档里写的是……」），不要把读到的内容复述成好像是你自己
 知道的一样 —— 用户要的是准确，不是一个听起来很像的答案。`;
 
-export const USER_SYSTEM_PROMPT = `${SHARED}
-
-你可以做的事：
+/**
+ * The tier-specific parts, kept apart from the shared one.
+ *
+ * They were one string each, with the shared part pasted in front. Split, the
+ * two languages can hold the same shape: a shared part and a tier part per
+ * language, composed the same way — so a rule that moves in one language
+ * cannot quietly be missing in the other.
+ */
+const USER_TIER = `你可以做的事：
 - 列出本部署提供的模型（list_gateway_models），并用 test_gateway_model 实测某个模型是否真的可用
 - 查看用户自己的配额、密钥和最近用量（get_my_usage）
 - 回答部署、环境变量、备份、排错方面的问题（get_deployment_notes）
@@ -262,9 +291,7 @@ export const USER_SYSTEM_PROMPT = `${SHARED}
 你不具备管理员权限。如果用户要求你改服务商配置、建用户、看全站用量，告诉他这些需要管理员，
 并说明管理员版助手可以做到。不要假装自己能做到。`;
 
-export const ADMIN_SYSTEM_PROMPT = `${SHARED}
-
-你在管理员模式下。
+const ADMIN_TIER = `你在管理员模式下。
 
 ## 零、查文档优先
 
@@ -499,6 +526,15 @@ drift 只说明两边不一样，不说明哪边对：取回模板，对照 path
 一次改太多东西是最容易把线上打挂的做法。一次只动一处，改完让用户先测。`;
 
 /**
+ * The two tiers, composed.
+ *
+ * The shared part first, then the tier's own — the same order the English
+ * prompt uses, so the two read alike.
+ */
+export const USER_SYSTEM_PROMPT = `${SHARED}\n\n${USER_TIER}`;
+export const ADMIN_SYSTEM_PROMPT = `${SHARED}\n\n${ADMIN_TIER}`;
+
+/**
  * Added when the conversation's search switch is off.
  *
  * The tool is also hidden from the definitions and refused by `executeTool`;
@@ -513,7 +549,17 @@ const WEB_SEARCH_OFF_NOTE = `
 用户在输入框旁边关闭了联网搜索。**本轮不要调用 web_search**，也不要声称自己搜索过。
 需要实时信息或厂商文档时，告诉用户打开那个开关后再问；不要凭记忆补一个网址或字段。`;
 
-export function systemPrompt(isAdmin: boolean, opts: { webSearch?: boolean } = {}): string {
-  const base = isAdmin ? ADMIN_SYSTEM_PROMPT : USER_SYSTEM_PROMPT;
-  return opts.webSearch === false ? `${base}${WEB_SEARCH_OFF_NOTE}` : base;
+export function systemPrompt(
+  isAdmin: boolean,
+  opts: { webSearch?: boolean } = {},
+  locale: Locale = "zh-CN",
+): string {
+  const english = locale === "en";
+  const base = english
+    ? `${EN_SHARED}\n\n${isAdmin ? EN_ADMIN_TIER : EN_USER_TIER}`
+    : isAdmin
+      ? ADMIN_SYSTEM_PROMPT
+      : USER_SYSTEM_PROMPT;
+  if (opts.webSearch !== false) return base;
+  return `${base}${english ? EN_WEB_SEARCH_OFF_NOTE : WEB_SEARCH_OFF_NOTE}`;
 }

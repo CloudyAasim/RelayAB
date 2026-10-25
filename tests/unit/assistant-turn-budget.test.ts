@@ -18,6 +18,8 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { DICTS } from "@/lib/i18n/dict";
 import {
   callSignature,
   MAX_HISTORY_MESSAGES,
@@ -176,8 +178,11 @@ describe("the guards behind it do not stop work", () => {
   it("and the ones that stay say so in the message the reader gets", () => {
     // A turn that ends on the clock has to say which clock, or it reads as the
     // assistant giving up.
-    expect(CHAT).toContain("这一轮已经跑了");
-    expect(CHAT).toContain("分钟");
+    expect(CHAT).toContain("assistant.message.turnTooLong");
+    expect(
+      DICTS["zh-CN"]["assistant.message.turnTooLong"],
+      "the notice does not say which clock",
+    ).toContain("分钟");
   });
 
   it("a tool result big enough to hold a vendor page is not cut", () => {

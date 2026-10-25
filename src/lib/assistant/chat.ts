@@ -39,6 +39,7 @@ import {
 import type { AssistantSettings, AssistantThread, MessageAttachment } from "./schema";
 import { modelParamsForRequest, type AssistantModelParams, type AssistantReasoningEffort } from "./config";
 import type { Locale } from "../i18n/dict";
+import { DEFAULT_LOCALE, translate } from "../i18n/dict";
 import type { DocPage } from "../docs/custom";
 import type { AuthedUser } from "../auth/session";
 import { TOOL_FAILURE_PREFIX } from "./tool-failure";
@@ -208,6 +209,8 @@ const HISTORY_BUDGET_TOKENS = 24_000;
 async function summariseDropped(args: {
   upstream: { model: string; baseUrl?: string; apiKey?: string; extraHeaders?: Record<string, string>; transport?: UpstreamTransport };
   dropped: Array<{ role: string; content: string }>;
+  /** The reader's language: the memo is read by the assistant that continues. */
+  locale?: Locale;
   onText?: (delta: string) => void;
 }): Promise<string | null> {
   const transcript = args.dropped
@@ -229,10 +232,13 @@ async function summariseDropped(args: {
       messages: [
         {
           role: "system",
-          content:
-            "你把一段对话压缩成备忘，供另一个助手继续这次对话。只保留后面还需要的事实：" +
-            "对方的要求与约束、已经确定的事、名字与数字、待办与未解决的问题、" +
-            "已经查到的结果。不要写客套话，不要编造没有的内容，不要评价。",
+          // In the reader's language: the memo is read by the assistant that
+          // carries the conversation on, and that assistant speaks the reader's
+          // language.
+          content: translate(
+            args.locale ?? DEFAULT_LOCALE,
+            "assistant.message.summariseInstruction",
+          ),
         },
         { role: "user", content: transcript },
       ],
@@ -246,9 +252,10 @@ async function summariseDropped(args: {
   }
 }
 
-/** The frame the summary is delivered in, and what it says when there is none. */
-const SUMMARY_HEADER =
-  "【以下是这次对话较早部分的摘要，之后的对话从摘要之后继续】\n";
+/** The frame the summary is delivered in. */
+function summaryHeader(locale: Locale | undefined): string {
+  return translate(locale ?? DEFAULT_LOCALE, "assistant.message.summaryHeader");
+}
 
 /** Below this, dropping is cheaper than summarising. */
 const SUMMARY_MIN_CHARS = 2_000;
@@ -546,6 +553,15 @@ function withArtifactRefs(content: string, refs: ArtifactRef[]): string {
 
 export async function runChat(opts: RunChatOptions): Promise<void> {
   const { user, settings, thread, message, credential, signal, emit } = opts;
+  /**
+   * The reader's language, once.
+   *
+   * Everything the assistant says on its own — the prompt, the summary frame,
+   * the refusals — is in it. The deployment's own data (a model's name, a
+   * provider's row, a documentation page) stays in the deployment's language;
+   * the prompt tells the model to relay those in the reader's.
+   */
+  const locale = opts.locale ?? DEFAULT_LOCALE;
   // Which of the two upstreams this turn uses, decided once. The stored upstream
   // wins when both are present, and the account path is the one that has no key
   // to decrypt at all — so this cannot be left as a field read at the call site.
@@ -649,13 +665,17 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
             ...(upstream.transport ? { transport: upstream.transport } : {}),
           },
           dropped,
+          ...(opts.locale ? { locale: opts.locale } : {}),
         })
       : null;
 
   const messages: ChatMessage[] = [
-    { role: "system", content: systemPrompt(isAdmin, { webSearch }) },
-    ...(summary ? [{ role: "system" as const, content: SUMMARY_HEADER + summary }] : []),
-    ...(await toWireMessages(kept, user.id)),
+    // The prompt is the reader's language, so the answer is too.
+    { role: "system", content: systemPrompt(isAdmin, { webSearch }, opts.locale) },
+    ...(summary
+      ? [{ role: "system" as const, content: summaryHeader(opts.locale) + summary }]
+      : []),
+    ...(await toWireMessages(kept, user.id, opts.locale)),
   ];
 
   const pendingActions: string[] = [];
@@ -724,10 +744,18 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
         onReasoning: (delta) => emit({ type: "reasoning", text: delta }),
       });
     } catch (err) {
+      // In the reader's language: this one is shown on screen, not read by the
+      // model.
+      const locale = opts.locale ?? DEFAULT_LOCALE;
       const message_ =
         err instanceof UpstreamError
-          ? `上游调用失败（HTTP ${err.status}）：${err.message}`
-          : `调用失败：${err instanceof Error ? err.message : String(err)}`;
+          ? translate(locale, "assistant.message.upstreamFailed", {
+              status: err.status,
+              message: err.message,
+            })
+          : translate(locale, "assistant.message.callFailed", {
+              message: err instanceof Error ? err.message : String(err),
+            });
       emit({ type: "error", text: message_ });
       return;
     }
@@ -753,7 +781,7 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
 
     if (turn.toolCalls.length === 0) {
       if (round > 0 && !turn.content.trim()) {
-        emit({ type: "error", text: "模型结束了回合但没有给出文字回复。" });
+        emit({ type: "error", text: translate(locale, "assistant.message.emptyAnswer") });
       }
       emit({ type: "done", data: { rounds: round + 1, usage, pendingActions } });
       return;
@@ -785,9 +813,10 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
        */
       const looping = repeatedCall(signatures);
       if (looping) {
-        stopReason =
-          `助手连续 ${MAX_IDENTICAL_CALLS} 次调用同一个工具（${toolNameOf(looping)}）而没有新的输入，` +
-          `这一轮已经停下。可以直接告诉它接下来该做什么。`;
+        stopReason = translate(locale, "assistant.message.loopStopped", {
+          count: MAX_IDENTICAL_CALLS,
+          tool: toolNameOf(looping),
+        });
         // Labelled, because the `break` here is inside the per-call loop and
         // would only have left that one. The turn ends below, outside it.
         loopingTurn = true;
@@ -849,7 +878,7 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
         // of a video spec's `async.poll`, so the model copied a spec with no
         // `statusMap` and the approval rejected it — a result that looked
         // complete and was not.
-        resultText = `${resultText.slice(0, MAX_TOOL_RESULT_CHARS)}\n…（内容过长已截断）`;
+        resultText = `${resultText.slice(0, MAX_TOOL_RESULT_CHARS)}\n${translate(locale, "assistant.message.truncated")}`;
       }
 
       await appendAssistantMessage({
@@ -876,7 +905,9 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
     // model gets to see the result of the round it just finished.
     if (loopingTurn) break;
     if (Date.now() - startedAt > MAX_TURN_MS) {
-      stopReason = `这一轮已经跑了 ${Math.round(MAX_TURN_MS / 60000)} 分钟，已停止。可以把问题拆小一点再试。`;
+      stopReason = translate(locale, "assistant.message.turnTooLong", {
+      minutes: Math.round(MAX_TURN_MS / 60000),
+    });
       break;
     }
   }
@@ -894,7 +925,7 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
   if (!stopReason) {
     // Only reachable if the loop broke for a reason neither the time check nor
     // the repeat check set. Said so rather than inventing a cause.
-    stopReason = "这一轮结束了。";
+    stopReason = translate(locale, "assistant.message.turnEnded");
   }
   emit({ type: "error", text: stopReason });
   emit({ type: "done", data: { rounds, usage, pendingActions, truncated: true } });
@@ -952,6 +983,7 @@ const MAX_INLINE_BYTES = 16 * 1024 * 1024;
 async function toWireMessages(
   rows: Awaited<ReturnType<typeof listAssistantMessages>>,
   userId: string,
+  locale?: Locale,
 ): Promise<ChatMessage[]> {
   // Pass one: everything, tool turns included.
   const withTools: ChatMessage[] = [];
@@ -978,7 +1010,7 @@ async function toWireMessages(
     }
     withTools.push(
       row.attachments.length
-        ? { role: row.role, content: await withAttachments(row, userId) }
+        ? { role: row.role, content: await withAttachments(row, userId, locale) }
         : { role: row.role, content: row.content },
     );
   }
@@ -1003,6 +1035,7 @@ async function toWireMessages(
 async function withAttachments(
   row: { content: string; attachments: MessageAttachment[] },
   userId: string,
+  locale?: Locale,
 ): Promise<ContentPart[]> {
   const parts: ContentPart[] = [];
   const notes: string[] = [];
@@ -1011,18 +1044,37 @@ async function withAttachments(
   for (const attachment of row.attachments) {
     if (attachment.kind !== "image" || !MODEL_VIEWABLE.has(attachment.contentType)) {
       notes.push(
-        `- ${attachment.name}（${attachment.contentType}）：这是一个 ${attachment.kind === "image" ? "图片" : attachment.kind === "audio" ? "音频" : "视频"}附件，但你这次看不到它的内容。`,
+        translate(locale ?? DEFAULT_LOCALE, "assistant.message.attachmentNote", {
+          name: attachment.name,
+          type: attachment.contentType,
+          kind: translate(
+            locale ?? DEFAULT_LOCALE,
+            attachment.kind === "image"
+              ? "assistant.artifact.kindImage"
+              : attachment.kind === "audio"
+                ? "assistant.artifact.kindAudio"
+                : "assistant.artifact.kindVideo",
+          ),
+        }),
       );
       continue;
     }
     const artifact = await getAssistantArtifact(attachment.id, userId);
     if (!artifact?.bytes) {
-      notes.push(`- ${attachment.name}：图片读不出来了，你这次看不到它。`);
+      notes.push(
+        translate(locale ?? DEFAULT_LOCALE, "assistant.message.attachmentUnreadable", {
+          name: attachment.name,
+        }),
+      );
       continue;
     }
     const size = artifact.bytes.byteLength;
     if (size > budget) {
-      notes.push(`- ${attachment.name}：太大了，这次没有发给你。`);
+      notes.push(
+        translate(locale ?? DEFAULT_LOCALE, "assistant.message.attachmentTooLarge", {
+          name: attachment.name,
+        }),
+      );
       continue;
     }
     budget -= size;
@@ -1035,7 +1087,7 @@ async function withAttachments(
   }
 
   const text = [
-    row.content || "（这条消息没有文字，只有下面的附件。）",
+    row.content || translate(locale ?? DEFAULT_LOCALE, "assistant.message.attachmentOnly"),
     ...notes,
   ].join("\n");
   parts.unshift({ type: "text", text });

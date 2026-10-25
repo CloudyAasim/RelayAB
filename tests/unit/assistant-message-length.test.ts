@@ -53,8 +53,11 @@ describe("the message has no ceiling", () => {
 
 describe("an empty turn is still refused", () => {
   it("a turn of nothing but a picture is fine", () => {
+    // The refusal is in the dictionary now — it is read on screen, so it is in
+    // the reader's language. What is asserted is that the route refuses an
+    // empty turn, and that it refuses it with the dictionary's key.
     expect(ROUTE).toMatch(
-      /if \(!message && uploads\.files\.length === 0\) \{[\s\S]{0,200}消息不能为空/,
+      /if \(!message && uploads\.files\.length === 0\) \{[\s\S]{0,200}assistant\.error\.emptyMessage/,
     );
   });
 
@@ -63,7 +66,7 @@ describe("an empty turn is still refused", () => {
     // thread with nothing in it. Anchored on the settings read the turn needs,
     // not on a function name: the check is "before the work", and naming one
     // caller would make the test pass while a different path started first.
-    const check = ROUTE.indexOf("消息不能为空");
+    const check = ROUTE.indexOf("assistant.error.emptyMessage");
     // The turn's first read. It used to be `getSettings().then(...)`; the route
     // now awaits the row once and reuses it for search and documentation, so the
     // anchor is the read itself rather than the shape it had at the time.

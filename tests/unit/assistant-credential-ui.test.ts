@@ -21,6 +21,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { reconcileMode, optionAppearance } from "@/lib/assistant/CredentialPanel";
+import { DICTS } from "@/lib/i18n/dict";
 
 const SRC = join(process.cwd(), "src");
 const read = (relative: string): string => readFileSync(join(SRC, relative), "utf-8");
@@ -428,7 +429,7 @@ describe("credential UI: one form, and a model on both paths", () => {
     expect(CHAT_ROUTE, "the account path still dials an address").toMatch(
       /function accountTransport\([\s\S]{0,900}proxyChatCompletion\(\{/,
     );
-    expect(CHAT_ROUTE).toMatch(/transport: accountTransport\(credential\.account\)/);
+    expect(CHAT_ROUTE).toMatch(/transport: accountTransport\(credential\.account, locale\)/);
     // And the client takes that as an alternative to the fetch, not instead of
     // the streaming assembly — the two paths must not become two clients.
     expect(CLIENT).toContain("export type UpstreamTransport");
@@ -508,14 +509,24 @@ describe("credential UI: one form, and a model on both paths", () => {
     // reader has to go and do. Mentioning the other path as an alternative is
     // fine and useful; claiming a key is *required* is the bug, so the assertion
     // is on the destination rather than on a banned word.
+    //
+    // The refusal itself is in the dictionary now — it is read on screen, so it
+    // is in the reader's language. What is asserted is what it says.
     const noCredential = CHAT_ROUTE.slice(
       CHAT_ROUTE.indexOf('if (config.mode === "account" && credential.kind === "none")'),
       CHAT_ROUTE.indexOf('if (config.mode === "account" && credential.kind === "none")') + 900,
     );
-    expect(noCredential, "the refusal does not say which option is unavailable").toContain(
-      "账号身份",
+    expect(noCredential, "the refusal does not name the dictionary key").toContain(
+      "assistant.error.credentialOff",
     );
-    expect(noCredential, "the refusal does not send them to the switch").toContain("设置");
+    expect(
+      DICTS["zh-CN"]["assistant.error.credentialOff"],
+      "the refusal does not say which option is unavailable",
+    ).toContain("账号身份");
+    expect(
+      DICTS["zh-CN"]["assistant.error.credentialOff"],
+      "the refusal does not send them to the switch",
+    ).toContain("设置");
     // And the form says the same thing before they send anything.
     expect(SETTINGS_PANEL_SRC).toContain("assistant.settings.wayAccountOff");
   });

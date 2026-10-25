@@ -1319,6 +1319,51 @@ const zhCN: Dict = {
   "assistant.upload.tooMany": "{name} 超过一次 {max} 个的上限",
   "assistant.upload.refused": "这些文件没有加上：{list}",
   "assistant.upload.remove": "移除 {name}",
+  "assistant.message.summariseInstruction":
+    "你把一段对话压缩成备忘，供另一个助手继续这次对话。只保留后面还需要的事实：" +
+    "对方的要求与约束、已经确定的事、名字与数字、待办与未解决的问题、" +
+    "已经查到的结果。不要写客套话，不要编造没有的内容，不要评价。",
+  "assistant.message.summaryHeader":
+    "【以下是这次对话较早部分的摘要，之后的对话从摘要之后继续】\n",
+  "assistant.message.upstreamFailed": "上游调用失败（HTTP {status}）：{message}",
+  "assistant.message.callFailed": "调用失败：{message}",
+  "assistant.message.upstreamStatus": "上游返回 {status}",
+  "assistant.message.upstreamNoStream": "上游没有返回可读的响应流",
+  "assistant.message.emptyAnswer": "模型结束了回合但没有给出文字回复。",
+  "assistant.message.loopStopped":
+    "助手连续 {count} 次调用同一个工具（{tool}）而没有新的输入，这一轮已经停下。可以直接告诉它接下来该做什么。",
+  "assistant.message.truncated": "…（内容过长已截断）",
+  "assistant.message.turnTooLong":
+    "这一轮已经跑了 {minutes} 分钟，已停止。可以把问题拆小一点再试。",
+  "assistant.message.turnEnded": "这一轮结束了。",
+  "assistant.message.attachmentNote":
+    "- {name}（{type}）：这是一个 {kind} 附件，但你这次看不到它的内容。",
+  "assistant.message.attachmentUnreadable": "- {name}：图片读不出来了，你这次看不到它。",
+  "assistant.message.attachmentTooLarge": "- {name}：太大了，这次没有发给你。",
+  "assistant.message.attachmentOnly": "（这条消息没有文字，只有下面的附件。）",
+  "assistant.error.rateLimited": "助手请求太频繁了，{seconds} 秒后再试。",
+  "assistant.error.emptyMessage": "消息不能为空",
+  "assistant.error.noUpstream": "还没有填写接口地址。请到助手设置里补上。",
+  "assistant.error.noKey": "还没有配置密钥。请到助手设置里补上。",
+  "assistant.error.noAccountModel": "还没有选模型。请到助手设置里选一个模型。",
+  "assistant.error.noModel": "还没有填写模型名。请到助手设置里补上。",
+  "assistant.error.credentialOff":
+    "「用我的账号身份」已关闭。请到设置里打开，或改用「用我自己配置的密钥」。",
+  "assistant.error.credentialMissing":
+    "还没有开启「用我的账号身份」。请到设置里创建并打开它，或者改用「用我自己配置的密钥」。",
+  "assistant.error.modelNotAllowed":
+    "你选的模型现在不可用了：{model}。可能是这个模型已经下线，也可能是你的账号没有它的权限。请到助手设置里换一个。",
+  "assistant.error.noModels": "当前没有可用模型，请先让管理员配置提供商。",
+  "assistant.error.threadNotFound": "对话不存在",
+  "assistant.error.attachmentsNotArray": "attachments 必须是数组",
+  "assistant.error.tooManyAttachments": "一次最多上传 {max} 个文件",
+  "assistant.error.unsupportedAttachment":
+    "{name} 没有加上：不支持 {type}，只支持图片、音频和视频。",
+  "assistant.error.attachmentEmpty": "{name} 没有内容",
+  "assistant.error.attachmentNotBase64": "{name} 不是合法的 base64",
+  "assistant.error.attachmentZeroLength": "{name} 是空文件",
+  "assistant.error.attachmentTooLarge": "{name} 超过 {max} 上限",
+  "assistant.thread.fileTitle": "{name} 等 {count} 个文件",
   "assistant.stop": "停止",
   "assistant.notConfigured": "还没有配置助手模型。",
   "assistant.pendingAction": "助手提出了一项配置变更，需要管理员确认后才会生效。",
@@ -2894,6 +2939,49 @@ const en: Dict = {
   "assistant.upload.tooMany": "{name} is over the limit of {max} files at a time",
   "assistant.upload.refused": "These files were not added: {list}",
   "assistant.upload.remove": "Remove {name}",
+  "assistant.message.summariseInstruction":
+    "You compress a conversation into a memo for another assistant to carry on with. Keep only the facts that are still needed: the other party's requirements and constraints, what has been settled, names and numbers, open questions, and results already looked up. No pleasantries, nothing invented, no commentary.",
+  "assistant.message.summaryHeader":
+    "[The earlier part of this conversation, summarised. The conversation continues from here.]\n",
+  "assistant.message.upstreamFailed": "The upstream call failed (HTTP {status}): {message}",
+  "assistant.message.callFailed": "The call failed: {message}",
+  "assistant.message.upstreamStatus": "The upstream returned {status}",
+  "assistant.message.upstreamNoStream": "The upstream returned no readable stream",
+  "assistant.message.emptyAnswer": "The model ended the turn without a text reply.",
+  "assistant.message.loopStopped":
+    "The assistant called the same tool {count} times in a row ({tool}) with nothing new coming in, so this turn has stopped. You can just tell it what to do next.",
+  "assistant.message.truncated": "… (too long, truncated)",
+  "assistant.message.turnTooLong":
+    "This turn has run for {minutes} minutes and has been stopped. Try splitting the question into a smaller one.",
+  "assistant.message.turnEnded": "This turn has ended.",
+  "assistant.message.attachmentNote":
+    "- {name} ({type}): this is a {kind} attachment, but you cannot see its contents this time.",
+  "assistant.message.attachmentUnreadable": "- {name}: the picture could not be read, so you cannot see it.",
+  "assistant.message.attachmentTooLarge": "- {name}: it is too large and was not sent this time.",
+  "assistant.message.attachmentOnly": "(This message has no text — only the attachments below.)",
+  "assistant.error.rateLimited": "Too many assistant requests — try again in {seconds} seconds.",
+  "assistant.error.emptyMessage": "The message cannot be empty.",
+  "assistant.error.noUpstream": "No API base URL yet. Add it in the assistant settings.",
+  "assistant.error.noKey": "No key yet. Add it in the assistant settings.",
+  "assistant.error.noAccountModel": "No model picked yet. Pick one in the assistant settings.",
+  "assistant.error.noModel": "No model name yet. Add it in the assistant settings.",
+  "assistant.error.credentialOff":
+    "\"Use my account identity\" is switched off. Turn it on in settings, or use \"my own configured key\" instead.",
+  "assistant.error.credentialMissing":
+    "\"Use my account identity\" is not switched on yet. Create and switch it on in settings, or use \"my own configured key\" instead.",
+  "assistant.error.modelNotAllowed":
+    "The model you picked is no longer available: {model}. It may have been withdrawn, or your account may not have access to it. Pick another one in the assistant settings.",
+  "assistant.error.noModels": "No models are available — ask an administrator to configure a provider first.",
+  "assistant.error.threadNotFound": "That conversation does not exist.",
+  "assistant.error.attachmentsNotArray": "attachments must be an array.",
+  "assistant.error.tooManyAttachments": "At most {max} files at a time.",
+  "assistant.error.unsupportedAttachment":
+    "{name} was not added: {type} is not supported — only images, audio and video are.",
+  "assistant.error.attachmentEmpty": "{name} is empty.",
+  "assistant.error.attachmentNotBase64": "{name} is not valid base64.",
+  "assistant.error.attachmentZeroLength": "{name} is an empty file.",
+  "assistant.error.attachmentTooLarge": "{name} is over the {max} limit.",
+  "assistant.thread.fileTitle": "{name} and {count} files",
   "assistant.stop": "Stop",
   "assistant.notConfigured": "The assistant has no model configured yet.",
   "assistant.pendingAction":

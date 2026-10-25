@@ -12,6 +12,8 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { DICTS } from "@/lib/i18n/dict";
+
 const CHAT = readFileSync(join(process.cwd(), "src", "lib", "assistant", "chat.ts"), "utf-8");
 const fn = (name: string): string => {
   const at = CHAT.indexOf(`function ${name}`);
@@ -25,11 +27,16 @@ describe("the part that no longer fits", () => {
     // a summary the model cannot reason over.
     expect(CHAT).toMatch(/async function summariseDropped\(/);
     expect(CHAT, "the summary is never put in front").toMatch(
-      /role: "system" as const, content: SUMMARY_HEADER \+ summary/,
+      /role: "system" as const, content: summaryHeader\(opts\.locale\) \+ summary/,
     );
     // It says what it is, so the model does not read it as a system
-    // instruction from the user.
-    expect(CHAT).toContain("以下是这次对话较早部分的摘要");
+    // instruction from the user. The frame is in the dictionary now — it is
+    // read by the model, which speaks the reader's language.
+    expect(CHAT).toContain("assistant.message.summaryHeader");
+    expect(
+      DICTS["zh-CN"]["assistant.message.summaryHeader"],
+      "the frame does not say what it is",
+    ).toContain("以下是这次对话较早部分的摘要");
   });
 
   it("is not summarised for a conversation that has not overflowed", () => {
@@ -60,7 +67,7 @@ describe("the part that no longer fits", () => {
       /catch \{[\s\S]{0,200}?return null;/,
     );
     // Which is why the summary is optional in the array rather than required.
-    expect(CHAT).toMatch(/\.\.\.\(summary \? \[\{ role: "system"/);
+    expect(CHAT).toMatch(/\.\.\.\(summary\s*\?\s*\[\{ role: "system"/);
   });
 
   it("and the window itself is unchanged: whole messages, never half a tool call", () => {

@@ -113,7 +113,7 @@ describe("what the removal got right, and kept", () => {
       /fitToWindow\(\s*history,\s*settings\?\.contextLength/,
     );
     expect(CHAT, "the trimmed history is no longer sent").toMatch(
-      /toWireMessages\(kept, user\.id\)/,
+      /toWireMessages\(kept, user\.id, opts\.locale\)/,
     );
     expect(CHAT).toMatch(/kept\.unshift\(recent\[i\]\)/);
     expect(CHAT, "a history message is truncated by content").not.toMatch(

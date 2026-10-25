@@ -70,7 +70,7 @@ describe("a configured parameter reaches the request", () => {
     // the model read is already past a 32k window.
     expect(CHAT).toMatch(/function fitToWindow</);
     expect(CHAT).toMatch(
-      /toWireMessages\(kept, user\.id\)/,
+      /toWireMessages\(kept, user\.id, opts\.locale\)/,
     );
     // …and the window it trims is the one the declared length sized.
     //

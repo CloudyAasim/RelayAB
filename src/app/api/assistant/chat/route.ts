@@ -37,6 +37,7 @@ import { listClientModelIds } from "@/lib/proxy/model-catalog";
 import { consumeAssistantTurn } from "@/lib/assistant/rate-limit";
 import { resolvePublicUrl } from "@/lib/public-url";
 import { getServerLocale } from "@/lib/i18n/server";
+import { translate, type Locale } from "@/lib/i18n/dict";
 import { getSettings } from "@/lib/db/settings";
 import { saveAssistantArtifact, artifactRef } from "@/lib/db/assistant-artifacts";
 import type { MessageAttachment } from "@/lib/assistant/schema";
@@ -70,20 +71,27 @@ const KEEPALIVE_MS = 25_000;
  * error reporting is written against it, and a failed turn must read as "上游调用
  * 失败（HTTP …）" on the account path too rather than as a generic stream error.
  */
-function accountTransport(account: {
-  apiKey: import("@/lib/db/types").ApiKey;
-  user: import("@/lib/db/types").User;
-}): import("@/lib/assistant/client").UpstreamTransport {
+function accountTransport(
+  account: {
+    apiKey: import("@/lib/db/types").ApiKey;
+    user: import("@/lib/db/types").User;
+  },
+  locale: Locale,
+): import("@/lib/assistant/client").UpstreamTransport {
   return async ({ body, signal }) => {
     const req = body as ChatCompletionRequest;
     const result = await proxyChatCompletion({ req, apiKey: account.apiKey, user: account.user, signal });
     const res = proxyResultToResponse(result, { streamRequest: true });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      throw new UpstreamError(text.slice(0, 400) || `上游返回 ${res.status}`, res.status, text);
+      throw new UpstreamError(
+        text.slice(0, 400) || translate(locale, "assistant.message.upstreamStatus", { status: res.status }),
+        res.status,
+        text,
+      );
     }
     if (!res.body) {
-      throw new UpstreamError("上游没有返回可读的响应流", 502);
+      throw new UpstreamError(translate(locale, "assistant.message.upstreamNoStream"), 502);
     }
     return res.body;
   };
@@ -155,11 +163,26 @@ function badRequest(code: string, message: string, status = 400): Response {
  * into a multipart form would mean a second parser for the common case that
  * has no files at all.
  */
-function readAttachments(value: unknown): { files: UploadedFile[] } | { error: Response } {
+function readAttachments(
+  value: unknown,
+  locale: Locale,
+): { files: UploadedFile[] } | { error: Response } {
   if (value === undefined || value === null) return { files: [] };
-  if (!Array.isArray(value)) return { error: badRequest("bad_request", "attachments 必须是数组") };
+  if (!Array.isArray(value)) {
+    return {
+      error: badRequest(
+        "bad_request",
+        translate(locale, "assistant.error.attachmentsNotArray"),
+      ),
+    };
+  }
   if (value.length > MAX_ATTACHMENTS) {
-    return { error: badRequest("too_many_attachments", `一次最多上传 ${MAX_ATTACHMENTS} 个文件`) };
+    return {
+      error: badRequest(
+        "too_many_attachments",
+        translate(locale, "assistant.error.tooManyAttachments", { max: MAX_ATTACHMENTS }),
+      ),
+    };
   }
 
   const files: UploadedFile[] = [];
@@ -172,24 +195,50 @@ function readAttachments(value: unknown): { files: UploadedFile[] } | { error: R
       return {
         error: badRequest(
           "unsupported_attachment",
-          `${name} 没有加上：不支持 ${contentType || "未知类型"}，只支持图片、音频和视频。`,
+          translate(locale, "assistant.error.unsupportedAttachment", {
+            name,
+            type: contentType || translate(locale, "assistant.upload.unknownType"),
+          }),
         ),
       };
     }
     if (typeof row.data !== "string" || !row.data) {
-      return { error: badRequest("bad_request", `${name} 没有内容`) };
+      return {
+        error: badRequest(
+          "bad_request",
+          translate(locale, "assistant.error.attachmentEmpty", { name }),
+        ),
+      };
     }
     let bytes: Uint8Array;
     try {
       bytes = new Uint8Array(Buffer.from(row.data, "base64"));
     } catch {
-      return { error: badRequest("bad_request", `${name} 不是合法的 base64`) };
+      return {
+        error: badRequest(
+          "bad_request",
+          translate(locale, "assistant.error.attachmentNotBase64", { name }),
+        ),
+      };
     }
     if (bytes.byteLength === 0) {
-      return { error: badRequest("bad_request", `${name} 是空文件`) };
+      return {
+        error: badRequest(
+          "bad_request",
+          translate(locale, "assistant.error.attachmentZeroLength", { name }),
+        ),
+      };
     }
     if (bytes.byteLength > MAX_ATTACHMENT_BYTES) {
-      return { error: badRequest("attachment_too_large", `${name} 超过 25MB 上限`) };
+      return {
+        error: badRequest(
+          "attachment_too_large",
+          translate(locale, "assistant.error.attachmentTooLarge", {
+            name,
+            max: `${MAX_ATTACHMENT_BYTES / 1024 / 1024}MB`,
+          }),
+        ),
+      };
     }
     files.push({ name, contentType, kind, bytes });
   }
@@ -197,10 +246,12 @@ function readAttachments(value: unknown): { files: UploadedFile[] } | { error: R
 }
 
 /** A thread opened by nothing but a file still needs a name a person can find. */
-function firstUploadTitle(files: UploadedFile[]): string {
+function firstUploadTitle(files: UploadedFile[], locale: Locale): string {
   const first = files[0];
-  if (!first) return "新对话";
-  return files.length > 1 ? `${first.name} 等 ${files.length} 个文件` : first.name.slice(0, 60);
+  if (!first) return translate(locale, "assistant.newThread");
+  return files.length > 1
+    ? translate(locale, "assistant.thread.fileTitle", { name: first.name, count: files.length })
+    : first.name.slice(0, 60);
 }
 
 export async function POST(req: Request): Promise<Response> {
@@ -212,6 +263,16 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
+  /**
+   * The reader's language, resolved first.
+   *
+   * Every message this route refuses with is shown on screen, so it has to be
+   * in the language the reader chose — not in the language the deployment
+   * happens to be configured for. The cookie is the same one the interface
+   * reads, so the two cannot disagree.
+   */
+  const locale = await getServerLocale();
+
   // Before anything is parsed, created or dialled. A turn costs this server an
   // open SSE connection and a SQLite write whatever the caller's own key pays
   // for upstream, and that was unbounded until now.
@@ -222,7 +283,9 @@ export async function POST(req: Request): Promise<Response> {
         ok: false,
         error: {
           code: "rate_limited",
-          message: `助手请求太频繁了，${rate.retryAfterSeconds} 秒后再试。`,
+          message: translate(locale, "assistant.error.rateLimited", {
+            seconds: rate.retryAfterSeconds,
+          }),
         },
       },
       { status: 429, headers: { "Retry-After": String(rate.retryAfterSeconds) } },
@@ -248,7 +311,7 @@ export async function POST(req: Request): Promise<Response> {
 
   // Read before anything is created, so an unusable file leaves no thread and
   // no half-written turn behind.
-  const uploads = readAttachments(body.attachments);
+  const uploads = readAttachments(body.attachments, locale);
   if ("error" in uploads) return uploads.error;
 
   const message = typeof body.message === "string" ? body.message.trim() : "";
@@ -258,7 +321,10 @@ export async function POST(req: Request): Promise<Response> {
   // user's history.
   if (!message && uploads.files.length === 0) {
     return Response.json(
-      { ok: false, error: { code: "bad_request", message: "消息不能为空" } },
+      {
+        ok: false,
+        error: { code: "bad_request", message: translate(locale, "assistant.error.emptyMessage") },
+      },
       { status: 400 },
     );
   }
@@ -308,14 +374,16 @@ export async function POST(req: Request): Promise<Response> {
    * because it is the thing a person can fix in the panel they are looking at.
    */
   if (!config.ready) {
-    const message =
+    const message = translate(
+      locale,
       config.missing === "no-upstream"
-        ? "还没有填写接口地址。请到助手设置里补上。"
+        ? "assistant.error.noUpstream"
         : config.missing === "no-key"
-          ? "还没有配置密钥。请到助手设置里补上。"
+          ? "assistant.error.noKey"
           : config.mode === "account"
-            ? "还没有选模型。请到助手设置里选一个模型。"
-            : "还没有填写模型名。请到助手设置里补上。";
+            ? "assistant.error.noAccountModel"
+            : "assistant.error.noModel",
+    );
     return Response.json(
       { ok: false, error: { code: "not_configured", message } },
       { status: 409 },
@@ -352,10 +420,12 @@ export async function POST(req: Request): Promise<Response> {
         ok: false,
         error: {
           code: "no_credential",
-          message:
+          message: translate(
+            locale,
             credential.reason === "switch_off"
-              ? "「用我的账号身份」已关闭。请到设置里打开，或改用「用我自己配置的密钥」。"
-              : "还没有开启「用我的账号身份」。请到设置里创建并打开它，或者改用「用我自己配置的密钥」。",
+              ? "assistant.error.credentialOff"
+              : "assistant.error.credentialMissing",
+          ),
         },
       },
       { status: 409 },
@@ -392,8 +462,8 @@ export async function POST(req: Request): Promise<Response> {
             // right there on the provider list "is no longer available" is
             // telling them the wrong thing about somebody else's allocation.
             message: allowed.length
-              ? `你选的模型现在不可用了：${config.model}。可能是这个模型已经下线，也可能是你的账号没有它的权限。请到助手设置里换一个。`
-              : "当前没有可用模型，请先让管理员配置提供商。",
+              ? translate(locale, "assistant.error.modelNotAllowed", { model: config.model })
+              : translate(locale, "assistant.error.noModels"),
           },
         },
         { status: 400 },
@@ -406,14 +476,17 @@ export async function POST(req: Request): Promise<Response> {
     ? await getAssistantThread(me.id, threadId)
     : await createAssistantThread(
         me.id,
-        message.slice(0, 60) || firstUploadTitle(uploads.files),
+        message.slice(0, 60) || firstUploadTitle(uploads.files, locale),
         // Only an explicit choice is stored; null keeps inheriting the user's
         // default, so changing that default still affects untouched threads.
         requestedWebSearch,
       );
   if (!thread) {
     return Response.json(
-      { ok: false, error: { code: "not_found", message: "对话不存在" } },
+      {
+        ok: false,
+        error: { code: "not_found", message: translate(locale, "assistant.error.threadNotFound") },
+      },
       { status: 404 },
     );
   }
@@ -467,10 +540,7 @@ export async function POST(req: Request): Promise<Response> {
    * deployment that does not set RELAY_PUBLIC_URL. The documentation tool and
    * its language have to come from here for the same reason.
    */
-  const [gatewayBase, locale] = await Promise.all([
-    resolvePublicUrl(),
-    getServerLocale(),
-  ]);
+  const gatewayBase = await resolvePublicUrl();
   // Already loaded above for the search settings; a second read would be the
   // same row twice in one request.
   const docPages = appSettings.docPages ?? [];
@@ -544,7 +614,7 @@ export async function POST(req: Request): Promise<Response> {
             ? {
                 inProcessUpstream: {
                   model: config.model,
-                  transport: accountTransport(credential.account),
+                  transport: accountTransport(credential.account, locale),
                 },
               }
             : {}),
