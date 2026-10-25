@@ -215,7 +215,18 @@ export default async function AdminOverviewPage() {
                       scroll, and neither of these is what the operator came
                       to read. */}
                   <TH className="hidden sm:table-cell">{t("admin.keys.create.user")}</TH>
-                  <TH>{t("docs.models.title")}</TH>
+                  {/* 「模型」, not 「模型名称与映射」. The header had borrowed the
+                      docs page's section title, and the docs page really does
+                      show a mapping — the catalog is where a name and the
+                      upstream name it is sent as belong side by side. This table
+                      shows neither: a usage row shows the client-visible model
+                      name (`model` is documented as exactly that), and the
+                      upstream name is what the rate table keys on. So the
+                      header was promising a second thing the column never
+                      said — and being four characters wider than the data it
+                      sat over, it was also the widest thing in the column on a
+                      narrow screen. */}
+                  <TH>{t("admin.overview.recentUsageModel")}</TH>
                   <TH className="text-right">{t("admin.overview.usageTotalTokens")}</TH>
                   <TH className="text-right">{t("admin.overview.usageTotalCredits")}</TH>
                   <TH className="hidden xl:table-cell text-right">{t("admin.overview.usageCache")}</TH>
@@ -231,14 +242,17 @@ export default async function AdminOverviewPage() {
                     <TD className="hidden sm:table-cell font-mono text-xs">
                       {userLabelById.get(row.userId) ?? row.userId}
                     </TD>
-                    <TD className="font-mono text-xs">{row.model}</TD>
+                    {/* An identifier, not prose: 「MiniMax-M3.1-Flash」 broken
+                        into 「MiniMax-」/「M3.1-」/「Flash」 is not a model
+                        name any more, it is three fragments of one. */}
+                    <TD className="font-mono text-xs whitespace-nowrap">{row.model}</TD>
                     <TD className="text-right">
                       {row.status === "success" ? formatNumber(row.totalTokens) : "—"}
                     </TD>
                     <TD className="text-right">
                       {row.status === "success" ? formatNumber(row.creditsUsed / 1000) : "—"}
                     </TD>
-                    <TD className="hidden xl:table-cell text-right text-xs">
+                    <TD className="hidden xl:table-cell text-right text-xs whitespace-nowrap">
                       {row.cachedPromptTokens || row.cacheWriteTokens ? (
                         <span title={t("admin.overview.usageCacheHint")}>
                           {row.cacheWriteTokens

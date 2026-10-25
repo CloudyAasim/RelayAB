@@ -148,6 +148,54 @@ describe("a table too wide for a phone drops its quiet columns", () => {
   });
 });
 
+/**
+ * A cell that gets squeezed does not get narrower — it gets taller.
+ *
+ * The recent-requests table was the worst case of it. On a narrow window the
+ * browser gave each column whatever was left over, and what was left over for
+ * the billing-mode column was about fifty pixels. Chinese breaks between any
+ * two characters, so 「按上游用量」 rendered as four glyphs stacked one under
+ * the other — a pill that had become a column of text — and the header above
+ * it broke the same way as 「计费方」/「式」. The model column broke
+ * 「MiniMax-M3.1-Flash」 into 「MiniMax-」/「M3.1-」/「Flash」, which is not a
+ * model name any more but three fragments of one.
+ *
+ * So a badge is one line and an identifier is one token: both say so, and the
+ * columns keep the width their contents need instead of taking it from their
+ * neighbours.
+ */
+describe("a squeezed cell keeps its shape", () => {
+  it("a badge is one line, whatever room the column has", () => {
+    const badge = read("src", "components", "ui", "Badge.tsx");
+    // The class list itself, not the file: the component's note explains the
+    // rule in prose and says the same word, and a guard that reads prose
+    // passes on a badge that still wraps.
+    expect(badge).toMatch(/cn\(\s*"[^"]*\bwhitespace-nowrap\b[^"]*"/);
+  });
+
+  it("and the recent-requests table keeps its identifiers whole", () => {
+    const overview = read("src", "app", "(admin)", "admin", "page.tsx");
+    // A model name and a pair of cache figures are tokens. Breaking them
+    // turns one value into several that read as several.
+    expect(overview).toContain('className="font-mono text-xs whitespace-nowrap"');
+    expect(overview).toContain('className="hidden xl:table-cell text-right text-xs whitespace-nowrap"');
+  });
+
+  it("and the model column does not promise a mapping the table never shows", () => {
+    // The header was 「模型名称与映射」 — the docs page's section title, borrowed.
+    // The catalog really does show a mapping, because a catalog is where a
+    // name and the upstream name it is sent as belong side by side. A usage
+    // row does not: `model` is documented as the client-visible name the usage
+    // row shows, and the upstream name is what the rate table keys on. So the
+    // header promised a second thing the column never said — and being four
+    // characters wider than the data it sat over, it was also the widest
+    // thing in that column on a narrow screen.
+    const overview = read("src", "app", "(admin)", "admin", "page.tsx");
+    expect(overview).not.toContain('t("docs.models.title")');
+    expect(overview).toContain('t("admin.overview.recentUsageModel")');
+  });
+});
+
 describe("the stat tile is as tall as its two lines", () => {
   const card = read("src", "components", "ui", "Card.tsx");
 

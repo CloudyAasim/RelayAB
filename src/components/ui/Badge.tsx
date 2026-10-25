@@ -9,6 +9,13 @@
  * The pale surfaces are `bg-x/10`: the theme colours in `tailwind.config.ts`
  * are functions, so an opacity modifier on one of them is a colour mix of the
  * same variable — which means the tint follows the light/dark switch.
+ *
+ * `whitespace-nowrap` is not decoration. A badge is a pill: one line, always.
+ * Without it, Chinese text in a column the browser had squeezed to fifty-odd
+ * pixels broke between characters, and 「按上游用量」 rendered as four glyphs
+ * stacked one under the other — a pill that had become a column of text.
+ * `cn` is tailwind-merge, so a caller that genuinely needs a wrapping badge
+ * can still say so.
  */
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
@@ -52,7 +59,7 @@ export function Badge({
     <span
       title={title}
       className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
+        "inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium",
         toneClass[tone],
         className,
       )}
