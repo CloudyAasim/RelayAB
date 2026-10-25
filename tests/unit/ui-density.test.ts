@@ -125,8 +125,11 @@ describe("a table too wide for a phone drops its quiet columns", () => {
 
   it("the admin overview's usage table gives up its two quiet columns", () => {
     const overview = read("src", "app", "(admin)", "admin", "page.tsx");
-    expect(overview).toContain('className="hidden sm:table-cell"');
-    expect(overview).toContain('className="hidden xl:table-cell text-right"');
+    // The class lists grew a `whitespace-nowrap` (a header that can wrap is a
+    // header row twice as tall as it needs to be), but the breakpoints did not
+    // move: the same two columns step aside, on the same widths as before.
+    expect(overview).toContain('className="hidden sm:table-cell whitespace-nowrap"');
+    expect(overview).toContain('className="hidden xl:table-cell whitespace-nowrap text-right"');
   });
 
   it("and so do the admin keys table and the providers table", () => {
@@ -193,6 +196,31 @@ describe("a squeezed cell keeps its shape", () => {
     const overview = read("src", "app", "(admin)", "admin", "page.tsx");
     expect(overview).not.toContain('t("docs.models.title")');
     expect(overview).toContain('t("admin.overview.recentUsageModel")');
+  });
+
+  it("and its headers are phrases, not two-line stacks", () => {
+    // 「总词元用量」 broke into 「总词元用」/「量」, and 「总积分用量」 into
+    // 「总积分用」/「量」. The tiles above the table keep the 「总」, because
+    // across a whole deployment the total is the point. Here a row is one
+    // request, so its tokens are already that request's total: 「总…用量」
+    // said it twice, and at four characters wider than the number underneath
+    // it was the thing that made the header break in the first place.
+    const overview = read("src", "app", "(admin)", "admin", "page.tsx");
+    expect(overview).toContain('t("admin.overview.recentUsageTokens")');
+    expect(overview).toContain('t("admin.overview.recentUsageCredits")');
+
+    // No header in this table may wrap: a header that wraps is a header row
+    // twice as tall as it needs to be, and 「总词元用」/「量」 is a phrase cut
+    // in half rather than a phrase.
+    //
+    // The page has two tables, so the header row is picked by the key it
+    // holds rather than by being the first one on the page.
+    const heads = [...overview.matchAll(/<THead>([\s\S]*?)<\/THead>/g)].map((m) => m[1]);
+    const head = heads.find((h) => h.includes("admin.overview.recentUsageModel")) ?? "";
+    expect(head, "the recent-requests table has no header row").not.toBe("");
+    for (const th of head.match(/<TH[^>]*>/g) ?? []) {
+      expect(th, `a header that can wrap: ${th}`).toContain("whitespace-nowrap");
+    }
   });
 });
 

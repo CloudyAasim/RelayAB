@@ -208,13 +208,13 @@ export default async function AdminOverviewPage() {
             <Table bare>
               <THead>
                 <TR>
-                  <TH>{t("dashboard.table.time")}</TH>
+                  <TH className="whitespace-nowrap">{t("dashboard.table.time")}</TH>
                   {/* The two quietest columns go first on a narrow screen, the
                       same way the account's own key table does it: seven
                       columns on a phone is a row of crumbs and a sideways
                       scroll, and neither of these is what the operator came
                       to read. */}
-                  <TH className="hidden sm:table-cell">{t("admin.keys.create.user")}</TH>
+                  <TH className="hidden sm:table-cell whitespace-nowrap">{t("admin.keys.create.user")}</TH>
                   {/* 「模型」, not 「模型名称与映射」. The header had borrowed the
                       docs page's section title, and the docs page really does
                       show a mapping — the catalog is where a name and the
@@ -226,11 +226,18 @@ export default async function AdminOverviewPage() {
                       said — and being four characters wider than the data it
                       sat over, it was also the widest thing in the column on a
                       narrow screen. */}
-                  <TH>{t("admin.overview.recentUsageModel")}</TH>
-                  <TH className="text-right">{t("admin.overview.usageTotalTokens")}</TH>
-                  <TH className="text-right">{t("admin.overview.usageTotalCredits")}</TH>
-                  <TH className="hidden xl:table-cell text-right">{t("admin.overview.usageCache")}</TH>
-                  <TH>{t("admin.overview.billingMode")}</TH>
+                  <TH className="whitespace-nowrap">{t("admin.overview.recentUsageModel")}</TH>
+                  {/* 「词元」 and 「积分」, not 「总词元用量」 and 「总积分用量」.
+                      The tiles above keep the 「总」, because across a whole
+                      deployment the total is the point. Here a row is one
+                      request, so its tokens are already that request's total —
+                      「总…用量」 said it twice, and at four characters wider
+                      than the number underneath it was what made the header
+                      break into 「总词元用」/「量」 on a narrow window. */}
+                  <TH className="whitespace-nowrap text-right">{t("admin.overview.recentUsageTokens")}</TH>
+                  <TH className="whitespace-nowrap text-right">{t("admin.overview.recentUsageCredits")}</TH>
+                  <TH className="hidden xl:table-cell whitespace-nowrap text-right">{t("admin.overview.usageCache")}</TH>
+                  <TH className="whitespace-nowrap">{t("admin.overview.billingMode")}</TH>
                 </TR>
               </THead>
               <TBody>
