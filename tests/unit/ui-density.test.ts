@@ -312,6 +312,7 @@ describe("the layout says it, so the page does not", () => {
       "assistant.settings.drawerTitle",
       "assistant.settings.drawerDesc",
       "assistant.credential.perTurnDesc",
+      "assistant.composerHint",
     ]) {
       expect(dict, `"${key}" is no longer used by anything`).not.toContain(`"${key}":`);
     }
@@ -375,6 +376,17 @@ describe("the assistant screen says a thing once", () => {
     // is the better name when there is one; the label is what names the card
     // when there is not.
     expect(ARTIFACTS).not.toMatch(/\{label\}/);
+  });
+
+  it("and the unconfigured banner points at the button, not at a place that is not there", () => {
+    // It said 「请在下方填入你自己的 API 地址、密钥和模型名」 — and there are no
+    // fields below: the settings are in the drawer, and the banner has a
+    // 「去设置」 button right beside it. A sentence that sends the reader to
+    // the wrong place, next to a button that opens the right one.
+    expect(DICTS["zh-CN"]["assistant.notConfigured"]).not.toContain("下方");
+    expect(DICTS["en"]["assistant.notConfigured"]).not.toContain("below");
+    // The button is what says where to go.
+    expect(CHAT).toContain("assistant.openSettings");
   });
 
   it("and the tool card's two states are words, not Chinese characters", () => {

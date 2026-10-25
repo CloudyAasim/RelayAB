@@ -121,6 +121,10 @@ describe("the composer sends on the key it says it sends on", () => {
     expect(src, "the line under the box still falls back to the shortcut").not.toMatch(
       /currentTitle\s*\?\?/,
     );
+    // And the key it used is gone from the dictionary rather than left over:
+    // an unused label is a label somebody will reuse.
+    const dict = readFileSync(join(ROOT, "src", "lib", "i18n", "dict.ts"), "utf-8");
+    expect(dict, "the old key is still in the dictionary").not.toContain('"assistant.composerHint"');
   });
 
   it("the box can show the line Enter just inserted", () => {

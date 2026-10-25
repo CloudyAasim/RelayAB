@@ -1304,7 +1304,7 @@ const zhCN: Dict = {
   "assistant.pretty.hint": "把回答按 Markdown 排版，思考过程默认折叠起来，生成的图片/语音附带类型与下载。关掉就是模型原样的纯文本。",
   "assistant.artifact.download": "下载",
   "assistant.stop": "停止",
-  "assistant.notConfigured": "还没有配置助手模型。请在下方填入你自己的 API 地址、密钥和模型名。",
+  "assistant.notConfigured": "还没有配置助手模型。",
   "assistant.pendingAction": "助手提出了一项配置变更，需要管理员确认后才会生效。",
   "assistant.history": "历史对话",
   "assistant.noHistory": "还没有对话记录。",
@@ -2859,8 +2859,7 @@ const en: Dict = {
     "Lay answers out as Markdown, fold the reasoning away by default, and label generated images and audio with their type and a download button. Turn it off for the model's raw text exactly as written.",
   "assistant.artifact.download": "Download",
   "assistant.stop": "Stop",
-  "assistant.notConfigured":
-    "The assistant has no model configured yet. Add your own API base URL, key and model below.",
+  "assistant.notConfigured": "The assistant has no model configured yet.",
   "assistant.pendingAction":
     "The assistant proposed a configuration change. It takes effect only once an admin confirms it.",
   "assistant.history": "Conversations",
