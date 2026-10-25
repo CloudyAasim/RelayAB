@@ -444,6 +444,48 @@ export function specServingModel(
   );
 }
 
+/** One capability a provider serves, and the models its specs cover. */
+export interface ServedCapability {
+  capability: MediaCapability;
+  /** Every client model the provider's specs of this capability serve. */
+  models: string[];
+  /** How many specs serve it — more than one means the vendor ships two APIs. */
+  specCount: number;
+}
+
+/**
+ * The capabilities a provider serves, each one **once**.
+ *
+ * A provider may hold several specs of the same capability — a vendor that
+ * ships both a v1 and a v2 API — and each of those specs declares the models
+ * it serves. Listing the specs one by one therefore prints the same
+ * capability twice, which is how the administrator's media list came to show
+ * 「image.generate image.generate」 for a provider with one image capability.
+ *
+ * What the list is for is "what can this provider do", and the answer to that
+ * is the set of capabilities — the models each one covers ride along, because
+ * they are what tells two specs of the same capability apart.
+ */
+export function servedCapabilities(specs: MediaSpec[] | undefined): ServedCapability[] {
+  const byCapability = new Map<MediaCapability, ServedCapability>();
+  for (const spec of specs ?? []) {
+    const existing = byCapability.get(spec.capability);
+    if (!existing) {
+      byCapability.set(spec.capability, {
+        capability: spec.capability,
+        models: [...(spec.models ?? [])],
+        specCount: 1,
+      });
+      continue;
+    }
+    existing.specCount += 1;
+    for (const model of spec.models ?? []) {
+      if (!existing.models.includes(model)) existing.models.push(model);
+    }
+  }
+  return [...byCapability.values()];
+}
+
 // ---------------------------------------------------------------------------
 // Validation
 // ---------------------------------------------------------------------------

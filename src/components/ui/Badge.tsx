@@ -40,13 +40,17 @@ export function Badge({
   tone = "neutral",
   children,
   className,
+  title,
 }: {
   tone?: Tone;
   children: ReactNode;
   className?: string;
+  /** A tooltip, for a badge whose label says less than it stands for. */
+  title?: string;
 }) {
   return (
     <span
+      title={title}
       className={cn(
         "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
         toneClass[tone],

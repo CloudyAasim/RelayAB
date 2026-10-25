@@ -8,6 +8,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { listMediaProviders, toPublicMediaProvider } from "@/lib/db/media-providers";
 import { MEDIA_TEMPLATES } from "@/lib/media/seeds";
+import { servedCapabilities } from "@/lib/media/spec";
 import { Card } from "@/components/ui/Card";
 import {
   Table,
@@ -52,9 +53,11 @@ export default async function MediaProvidersPage() {
         <CreateMediaProviderButton templates={templates} />
       </SectionPageLayout.Actions>
       <SectionPageLayout.Content>
-        <p className="mb-4 text-sm text-muted-foreground">
-          {t("admin.mediaProviders.description")}
-        </p>
+        {/*
+          No paragraph under the header: the description above already says it.
+          It used to be rendered twice — once as the page's description and once
+          here, the same sentence, a line apart.
+        */}
         <Card>
           {providers.length === 0 ? (
             <EmptyState
@@ -87,9 +90,24 @@ export default async function MediaProvidersPage() {
                         <Badge tone="neutral">—</Badge>
                       ) : (
                         <div className="flex flex-wrap gap-1">
-                          {p.specs.map((spec) => (
-                            <Badge key={spec.capability} tone="primary">
-                              {spec.capability}
+                          {/*
+                            One badge per capability, not per spec. A provider
+                            may hold two specs of the same capability — a vendor
+                            that ships a v1 and a v2 API — and listing the specs
+                            one by one printed the same capability twice, side
+                            by side, with nothing to tell them apart.
+                          */}
+                          {servedCapabilities(p.specs).map((served) => (
+                            <Badge
+                              key={served.capability}
+                              tone="primary"
+                              title={
+                                served.models.length > 0
+                                  ? `${served.models.join("、")}`
+                                  : undefined
+                              }
+                            >
+                              {served.capability}
                             </Badge>
                           ))}
                         </div>

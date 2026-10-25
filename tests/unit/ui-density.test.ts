@@ -28,6 +28,7 @@ import { join } from "node:path";
 const ROOT = process.cwd();
 const read = (...parts: string[]) => readFileSync(join(ROOT, ...parts), "utf-8");
 
+/** Every `.tsx` file under a directory, recursively. */
 function filesIn(dir: string): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir)) {
@@ -265,6 +266,26 @@ describe("the layout says it, so the page does not", () => {
     // thing, a card's worth apart.
     const users = read("src", "app", "(admin)", "admin", "users", "page.tsx");
     expect(users).not.toContain("admin.users.allocation.desc");
+  });
+
+  it("and a page says its description once", () => {
+    // The media providers page rendered 「新增或调整供应商只需改这里…」 twice:
+    // once as the page's description and once as a paragraph under it, the
+    // same sentence a line apart.
+    const pages = filesIn(join(ROOT, "src", "app")).filter((f) => f.endsWith("page.tsx"));
+    const offenders: string[] = [];
+    for (const file of pages) {
+      const source = readFileSync(file, "utf-8");
+      const match = /<SectionPageLayout\.Description>\s*\{t\("([^"]+)"\)\}/.exec(source);
+      if (!match) continue;
+      const key = match[1];
+      const uses = source.split(`"${key}"`).length - 1;
+      if (uses > 1) offenders.push(`${file.replace(ROOT, "")}: ${key} × ${uses}`);
+    }
+    expect(
+      offenders,
+      "a description rendered more than once on the same page:\n" + offenders.join("\n"),
+    ).toEqual([]);
   });
 
   it("and the dictionary has no key left over for the sentences that went", () => {
