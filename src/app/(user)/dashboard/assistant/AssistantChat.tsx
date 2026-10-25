@@ -1242,14 +1242,19 @@ export function AssistantChat({
              decorative. Heading down a size, the gap halved, the cards one row
              of padding shallower. */
           <div className="mx-auto flex h-full w-full max-w-4xl flex-col items-center justify-center gap-4 px-4 text-center">
-            <div className="space-y-1.5">
-              <h2 className="text-xl font-semibold text-foreground sm:text-2xl">
-                {t("assistant.emptyTitle")}
-              </h2>
-              <p className="mx-auto max-w-prose text-sm text-muted-foreground">
-                {t("assistant.emptyState")}
-              </p>
-            </div>
+            {/*
+              The heading and nothing else.
+              
+              There was a paragraph under it — 「问我这个中转站有什么、怎么用、怎么调，
+              也能直接生成图片」 — and the four buttons under *that* say the same
+              four things one by one: which models this gateway serves, how to
+              call a text model, what to do when a call fails, and a picture to
+              draw. A sentence above a list that already says it is a sentence
+              the reader reads twice.
+            */}
+            <h2 className="text-xl font-semibold text-foreground sm:text-2xl">
+              {t("assistant.emptyTitle")}
+            </h2>
             <div className="grid w-full gap-2 sm:grid-cols-2">
               {suggestions.map((s) => (
                 <button
@@ -1276,6 +1281,8 @@ export function AssistantChat({
                   label={t("assistant.toolResult")}
                   content={m.content}
                   downloadLabel={t("assistant.artifact.download")}
+                  expandLabel={t("assistant.expand")}
+                  collapseLabel={t("assistant.collapse")}
                   pretty={pretty}
                 />
               ) : m.role === "user" ? (
@@ -1475,7 +1482,14 @@ export function AssistantChat({
               className="max-h-40 min-h-[2.25rem] flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none"
             />
             {busy ? (
-              <Button size="icon" variant="ghost" onClick={() => abortRef.current?.abort()}>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => abortRef.current?.abort()}
+                // A square with no name is a square to a screen reader. The
+                // dictionary already had the word for it.
+                aria-label={t("assistant.stop")}
+              >
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
                   <rect x="6" y="6" width="12" height="12" rx="1" />
                 </svg>
@@ -1505,7 +1519,6 @@ export function AssistantChat({
         <SheetContent side="left" className="overflow-y-auto">
           <SheetHeader>
             <SheetTitle>{t("assistant.history")}</SheetTitle>
-            <SheetDescription>{t("assistant.historyDesc")}</SheetDescription>
           </SheetHeader>
           {/* The new-chat button is an action, the rows below it are a list.
               At space-y-1 they read as one block, and a 28px row with a 4px gap
@@ -1673,14 +1686,17 @@ export function AssistantChat({
               being able to change it.
             */}
             <section className="space-y-2">
-              <header>
-                <h3 className="text-sm font-medium text-foreground">
-                  {t("assistant.settings.drawerTitle")}
-                </h3>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {t("assistant.settings.drawerDesc")}
-                </p>
-              </header>
+              {/*
+                No heading of its own.
+                
+                It said 「助手设置」 — the same four characters as the drawer's
+                title, twenty lines above it — and under it a sentence about
+                the changes being stored. The form below names itself: the
+                first thing in it is a legend that says which way the assistant
+                calls, and every field after that has a label. The one thing
+                the form cannot show is that a change is kept, so that moved up
+                to the drawer's own description, where it is said once.
+              */}
               {settingsPanel}
             </section>
 
@@ -1700,9 +1716,15 @@ export function AssistantChat({
                   <h3 className="text-sm font-medium text-foreground">
                     {t("assistant.credential.perTurnTitle")}
                   </h3>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {t("assistant.credential.perTurnDesc")}
-                  </p>
+                  {/*
+                    No description here.
+                    
+                    It said 「只对下一次请求有效，不会保存。想随时撤销访问，删掉
+                    这把密钥就行」 — and the field's own hint underneath says the
+                    same thing: valid for one request, never stored, delete it
+                    to revoke. The field's hint is the one next to the field
+                    it is about.
+                  */}
                 </header>
                 <PerTurnKeyField value={relayKey} onChange={setRelayKey} />
               </section>

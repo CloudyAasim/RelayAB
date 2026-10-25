@@ -56,7 +56,14 @@ describe("the per-turn key section", () => {
       "assistant.tools.title",
     );
     expect(section).toContain("assistant.credential.perTurnTitle");
-    expect(section).toContain("assistant.credential.perTurnDesc");
+    // The description under that title is gone: it said 「只对下一次请求有效，
+    // 不会保存。想随时撤销访问，删掉这把密钥就行」 — and the field's own hint,
+    // a line below it, says the same sentence. The hint is the one next to the
+    // field it is about, so it keeps it.
+    expect(section, "the section repeats the field's own hint").not.toContain(
+      "assistant.credential.perTurnDesc",
+    );
+    expect(CHAT, "the field's own hint is still there").toContain("assistant.credential.keyHint");
     // …and the old wording is gone from the file entirely rather than merely
     // unused, because an unused label is a label somebody will reuse.
     expect(CHAT, "the old tools heading is still here").not.toContain("assistant.tools.title");

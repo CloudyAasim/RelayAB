@@ -1264,11 +1264,7 @@ const zhCN: Dict = {
   // ===== AI 助手 =====
   "assistant.title": "AI 助手",
   "assistant.newThread": "新对话",
-  "assistant.emptyState": "问我这个中转站有什么、怎么用、怎么调，也能直接生成图片。",
-  "assistant.you": "你",
   "assistant.toolResult": "查看工具输出",
-  "assistant.gatewayKey": "网关密钥（一般不用填）",
-  "assistant.gatewayKeyHint": "助手实测模型、生成图片/语音时需要一把本部署的网关密钥。如果下面的 API 地址填的就是本部署，助手会自动用你配置助手时存下的那把，不用在这里重复填。",
 
   "assistant.credential.switch": "允许助手用我的账号调用",
   "settings.assistantCredential.title": "AI 助手权限",
@@ -1311,13 +1307,12 @@ const zhCN: Dict = {
   "assistant.notConfigured": "还没有配置助手模型。请在下方填入你自己的 API 地址、密钥和模型名。",
   "assistant.pendingAction": "助手提出了一项配置变更，需要管理员确认后才会生效。",
   "assistant.history": "历史对话",
-  "assistant.historyDesc": "选择一次对话继续，或新建一个。",
   "assistant.noHistory": "还没有对话记录。",
   "assistant.renameThread": "重命名",
   "assistant.renameThreadHint": "回车保存，Esc 取消",
   "assistant.deleteThread": "删除",
   "assistant.confirmDeleteThread": "删除对话「{title}」？里面的消息会一起删掉，无法恢复。",
-  "assistant.placeholderHint": "问点什么，Enter 换行，Shift+Enter 发送",  "assistant.messageLabel": "消息",
+  "assistant.placeholderHint": "问点什么，Enter 换行，Shift+Enter 发送",
   "assistant.attach.hint": "添加图片、音频或视频",
   "assistant.webSearch.on": "网页搜索已开启",
   "assistant.webSearch.off": "网页搜索已关闭",
@@ -1336,7 +1331,8 @@ const zhCN: Dict = {
 
 
   "assistant.settings.title": "助手设置",
-  "assistant.settings.desc": "助手跑在你自己的上游密钥上，不经过本系统的提供商。",
+  "assistant.settings.desc":
+    "助手跑在你自己的上游密钥上，不经过本系统的提供商。这里改的都存下来了，刷新页面不会丢。",
   "assistant.settings.baseUrl": "API 地址",
   "assistant.settings.baseUrlHint": "OpenAI 兼容的基址，通常以 /v1 结尾。",
   "assistant.settings.apiKey": "上游 API 密钥",
@@ -1375,7 +1371,6 @@ const zhCN: Dict = {
   "assistant.settings.wayAccountGo": "去设置里开启",
   "assistant.settings.wayTitle": "助手怎么调用",
   "assistant.credential.perTurnTitle": "这一轮用哪把网关密钥",
-  "assistant.credential.perTurnDesc": "只对下一次请求有效，不会保存。想随时撤销访问，删掉这把密钥就行。",
   "assistant.settings.wayActiveAccount": "当前生效：用我的账号身份",
   "assistant.settings.wayActiveKey": "当前生效：用我自己配置的密钥",
   "assistant.settings.wayAccount": "用我的账号身份",
@@ -1383,11 +1378,8 @@ const zhCN: Dict = {
   "assistant.settings.wayAccountHint": "走本部署，用你已授权的账号凭据计费，消耗你的额度。",
   "assistant.settings.wayKeyHint": "绕开本部署，直接用你自己的第三方 API 回答，费用由厂商向你收取。",
   "assistant.settings.accountModel": "用哪个模型",
-  "assistant.settings.accountModelNone": "请选择…",
   "assistant.settings.accountModelHint": "本部署可用的对话模型。也可以自己填一个上游有、这里还没列出的名字；填错会被明确拒绝，不会被悄悄换成别的模型。",
   "assistant.settings.pickAnAccountModel": "先选一个模型，否则助手不知道该用哪个回答。",
-  "assistant.settings.drawerTitle": "助手设置",
-  "assistant.settings.drawerDesc": "这里改的都存下来了，刷新页面不会丢。",
   "assistant.settings.modelCustom": "自定义…",
   "assistant.settings.pickAModel": "先选一个模型，否则助手不知道该用哪个回答。",
   "assistant.settings.modelHint": "点「测试连通」会按这把密钥向上游要一份模型列表，填进候选里。",
@@ -1411,8 +1403,6 @@ const zhCN: Dict = {
   "assistant.settings.webSearch.sourceNone": "—",
   "assistant.settings.webSearch.manage": "管理搜索提供商 →",
   "assistant.settings.searchService.title": "搜索服务用哪个",
-  "assistant.settings.searchService.hint":
-    "用自己的搜索服务时，助手搜索走它，费用由你的服务商收，不经过本中转站计费。",
   "assistant.settings.searchService.sourceLegend": "搜索服务来源",
   "assistant.settings.searchService.sourceDeployment": "站点的搜索",
   "assistant.settings.searchService.sourceOwn": "我自己的",
@@ -2824,13 +2814,7 @@ const en: Dict = {
   // ===== AI assistant =====
   "assistant.title": "AI assistant",
   "assistant.newThread": "New chat",
-  "assistant.emptyState":
-    "Ask what this gateway serves, how to use it, how to call it, or have it draw you something.",
-  "assistant.you": "You",
   "assistant.toolResult": "Show tool output",
-  "assistant.gatewayKey": "Gateway key (usually not needed)",
-  "assistant.gatewayKeyHint":
-    "Actually testing a model, or generating an image or voice, needs a gateway key for this deployment. If the API base URL below is this deployment, the assistant reuses the key you already saved here and there is nothing to paste.",
 
   "assistant.credential.switch": "Let the assistant call as me",
   "settings.assistantCredential.title": "Assistant permissions",
@@ -2881,14 +2865,13 @@ const en: Dict = {
   "assistant.pendingAction":
     "The assistant proposed a configuration change. It takes effect only once an admin confirms it.",
   "assistant.history": "Conversations",
-  "assistant.historyDesc": "Pick one to continue, or start a new one.",
   "assistant.noHistory": "No conversations yet.",
   "assistant.renameThread": "Rename",
   "assistant.renameThreadHint": "Enter to save, Esc to cancel",
   "assistant.deleteThread": "Delete",
   "assistant.confirmDeleteThread":
     "Delete the conversation \"{title}\"? Its messages go with it, and this cannot be undone.",
-  "assistant.placeholderHint": "Ask something — Enter for a new line, Shift+Enter to send",  "assistant.messageLabel": "Message",
+  "assistant.placeholderHint": "Ask something — Enter for a new line, Shift+Enter to send",
   "assistant.attach.hint": "Attach an image, audio or video file",
   "assistant.webSearch.on": "Web search is on",
   "assistant.webSearch.off": "Web search is off",
@@ -2909,7 +2892,7 @@ const en: Dict = {
 
   "assistant.settings.title": "Assistant settings",
   "assistant.settings.desc":
-    "The assistant runs on your own upstream key. It does not go through this deployment's providers.",
+    "The assistant runs on your own upstream key. It does not go through this deployment's providers. Everything here is stored, so a refresh does not lose it.",
   "assistant.settings.baseUrl": "API base URL",
   "assistant.settings.baseUrlHint": "An OpenAI-compatible base, usually ending in /v1.",
   "assistant.settings.apiKey": "Upstream API key",
@@ -2948,7 +2931,6 @@ const en: Dict = {
   "assistant.settings.wayAccountGo": "Turn it on in settings",
   "assistant.settings.wayTitle": "How the assistant calls",
   "assistant.credential.perTurnTitle": "Gateway key for this turn",
-  "assistant.credential.perTurnDesc": "Valid for the next request only, never stored. Delete the key whenever you want to revoke access.",
   "assistant.settings.wayActiveAccount": "In use: my account identity",
   "assistant.settings.wayActiveKey": "In use: my own API key",
   "assistant.settings.wayAccount": "My account identity",
@@ -2956,11 +2938,8 @@ const en: Dict = {
   "assistant.settings.wayAccountHint": "Runs through this deployment, billed to the account credential you already authorised.",
   "assistant.settings.wayKeyHint": "Skips this deployment and answers through your own third-party API; your vendor bills you.",
   "assistant.settings.accountModel": "Which model",
-  "assistant.settings.accountModelNone": "Choose one…",
   "assistant.settings.accountModelHint": "The chat models this deployment lists. You can also type one the upstream has but this deployment has not listed yet — a wrong name is refused by name, never quietly swapped for something else.",
   "assistant.settings.pickAnAccountModel": "Pick a model first — otherwise the assistant does not know which one is answering.",
-  "assistant.settings.drawerTitle": "Assistant settings",
-  "assistant.settings.drawerDesc": "Everything here is stored, so a refresh does not lose it.",
   "assistant.settings.modelCustom": "Custom…",
   "assistant.settings.pickAModel": "Pick a model first — otherwise the assistant does not know which one is answering.",
   "assistant.settings.modelHint": "Press \"Test\" to ask the upstream for its model list with this key; they become the suggestions.",
@@ -2984,8 +2963,6 @@ const en: Dict = {
   "assistant.settings.webSearch.sourceNone": "—",
   "assistant.settings.webSearch.manage": "Manage search providers →",
   "assistant.settings.searchService.title": "Which search service to use",
-  "assistant.settings.searchService.hint":
-    "With your own service, the assistant searches through it: your vendor bills you, and nothing is charged here.",
   "assistant.settings.searchService.sourceLegend": "Search service source",
   "assistant.settings.searchService.sourceDeployment": "The deployment's",
   "assistant.settings.searchService.sourceOwn": "My own",

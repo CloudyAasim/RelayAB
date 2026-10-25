@@ -29,9 +29,12 @@ const CHAT = readFileSync(
 
 describe("the switch reaches every part of the reply", () => {
   it("the tool card takes it, and the screen passes it", () => {
-    expect(ARTIFACTS).toMatch( /function ToolResultCard\([\s\S]{0,600}pretty\?: boolean/);
-    expect(ARTIFACTS).toMatch( /function ToolResultCard\([\s\S]{0,600}pretty = true/);
-    expect(CHAT).toMatch(/<ToolResultCard[\s\S]{0,300}pretty=\{pretty\}/);
+    // The window is wide because the card grew two props: the labels for its
+    // two states used to be Chinese characters typed into the file, so the
+    // English interface showed them on a card that was otherwise in English.
+    expect(ARTIFACTS).toMatch( /function ToolResultCard\([\s\S]{0,1400}pretty\?: boolean/);
+    expect(ARTIFACTS).toMatch( /function ToolResultCard\([\s\S]{0,1400}pretty = true/);
+    expect(CHAT).toMatch(/<ToolResultCard[\s\S]{0,600}pretty=\{pretty\}/);
   });
 
   it("with it off, the tool result is plain text rather than a card", () => {

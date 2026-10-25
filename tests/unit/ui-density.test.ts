@@ -25,6 +25,8 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
+import { DICTS } from "@/lib/i18n/dict";
+
 const ROOT = process.cwd();
 const read = (...parts: string[]) => readFileSync(join(ROOT, ...parts), "utf-8");
 
@@ -305,8 +307,83 @@ describe("the layout says it, so the page does not", () => {
       "settings.assistantCredential.desc",
       "settings.password.desc",
       "admin.users.allocation.desc",
+      "assistant.emptyState",
+      "assistant.historyDesc",
+      "assistant.settings.drawerTitle",
+      "assistant.settings.drawerDesc",
+      "assistant.credential.perTurnDesc",
     ]) {
       expect(dict, `"${key}" is no longer used by anything`).not.toContain(`"${key}":`);
     }
+  });
+});
+
+/**
+ * The assistant screen, which is the one a person looks at every day.
+ *
+ * Six sentences were said twice on it, and every one of them was the *second*
+ * copy that had to go — the first one was the one next to the thing it was
+ * about.
+ */
+describe("the assistant screen says a thing once", () => {
+  const CHAT = read("src", "app", "(user)", "dashboard", "assistant", "AssistantChat.tsx");
+  const ARTIFACTS = read(
+    "src",
+    "app",
+    "(user)",
+    "dashboard",
+    "assistant",
+    "MediaArtifacts.tsx",
+  );
+
+  it("the empty state does not prose what the four suggestions already say", () => {
+    // 「问我这个中转站有什么、怎么用、怎么调，也能直接生成图片」 is the four
+    // suggestion buttons, said in prose: which models this gateway serves, how
+    // to call a text model, what to do when a call fails, and a picture to
+    // draw. A sentence above a list that already says it is a sentence the
+    // reader reads twice.
+    expect(CHAT).not.toContain("assistant.emptyState");
+  });
+
+  it("the history drawer does not describe a list of conversations", () => {
+    // The drawer is a 「+ 新对话」 button and a list of rows you can click.
+    // 「选择一次对话继续，或新建一个」 describes both of them.
+    expect(CHAT).not.toContain("assistant.historyDesc");
+  });
+
+  it("the settings drawer does not say 「助手设置」 twice", () => {
+    // The drawer's title is 「助手设置」, and the section header under it said
+    // the same four characters twenty lines further down — with a sentence
+    // about the changes being stored under that.
+    expect(CHAT).not.toContain("assistant.settings.drawerTitle");
+    expect(CHAT).not.toContain("assistant.settings.drawerDesc");
+    // The one thing the form cannot show is that a change is kept, so that
+    // is said once, in the drawer's own description.
+    expect(DICTS["zh-CN"]["assistant.settings.desc"]).toContain("存下来了");
+  });
+
+  it("the per-turn key section does not repeat the field's own hint", () => {
+    // The section said 「只对下一次请求有效，不会保存…」 and the field's hint
+    // underneath said the same sentence. The hint is the one next to the field
+    // it is about.
+    expect(CHAT).not.toContain("assistant.credential.perTurnDesc");
+  });
+
+  it("the tool card does not say 「查看工具输出」 next to 「展开」", () => {
+    // The summary line read 「web_search  查看工具输出  展开」 — the label and
+    // the affordance saying the same thing in the same line. The tool's name
+    // is the better name when there is one; the label is what names the card
+    // when there is not.
+    expect(ARTIFACTS).not.toMatch(/\{label\}/);
+  });
+
+  it("and the tool card's two states are words, not Chinese characters", () => {
+    // 「展开」 and 「收起」 were typed into the file, so the English interface
+    // showed them on a card that was otherwise in English. The reasoning
+    // block next to it already took its two labels as props for that reason.
+    expect(ARTIFACTS).not.toContain("展开");
+    expect(ARTIFACTS).not.toContain("收起");
+    expect(ARTIFACTS).toContain("expandLabel");
+    expect(ARTIFACTS).toContain("collapseLabel");
   });
 });

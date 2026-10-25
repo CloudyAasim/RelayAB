@@ -555,12 +555,23 @@ export const ToolResultCard = memo(function ToolResultCard({
   label,
   content,
   downloadLabel,
+  expandLabel,
+  collapseLabel,
   pretty = true,
 }: {
   toolName: string | null | undefined;
   label: string;
   content: string;
   downloadLabel: string;
+  /**
+   * What the closed and the open summary say.
+   *
+   * They were Chinese characters typed into the file, so the English interface
+   * showed them on a card that was otherwise in English. The reasoning block
+   * next to it already takes its two labels as props for exactly this reason.
+   */
+  expandLabel: string;
+  collapseLabel: string;
   /**
    * The output-format switch.
    *
@@ -597,10 +608,19 @@ export const ToolResultCard = memo(function ToolResultCard({
             aria-hidden
             className={`h-1.5 w-1.5 shrink-0 rounded-full ${failed ? "bg-destructive" : "bg-primary"}`}
           />
+          {/*
+            The tool's name, and nothing else.
+
+            The line used to carry the label as well — the tool's name, then a
+            sentence saying the output is there to be seen, then the affordance
+            that says the same thing again. The label and the affordance were
+            saying it twice in the same line. When there is no tool name the
+            label is what names the card, so it stays as the fallback; when
+            there is one, the name is the better name.
+          */}
           <span className="font-medium">{toolName ?? label}</span>
-          <span className="text-xs opacity-70 group-open:hidden">{label}</span>
-          <span className="ml-auto text-xs opacity-70 group-open:hidden">展开</span>
-          <span className="ml-auto hidden text-xs opacity-70 group-open:inline">收起</span>
+          <span className="ml-auto text-xs opacity-70 group-open:hidden">{expandLabel}</span>
+          <span className="ml-auto hidden text-xs opacity-70 group-open:inline">{collapseLabel}</span>
         </summary>
         {display.trim() ? (
           <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words border-t border-border px-3 py-2 text-xs">

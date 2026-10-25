@@ -147,10 +147,21 @@ describe("the empty state asks a user, not an operator", () => {
     // "How do I deploy this" and "which env vars do I need" are questions from
     // the person standing behind the relay. Everyone else is asking what it
     // serves, what it costs, and why their call failed.
-    const line = DICT.split("\n").find((l) => l.includes('"assistant.emptyState"'))!;
-    expect(line).toContain("中转站");
-    expect(line).not.toContain("部署");
-    expect(line).not.toContain("环境变量");
+    //
+    // The empty state is the heading and the four suggestions now. The
+    // paragraph that used to stand between them said the same thing the
+    // suggestions say, one by one — so it is gone, and what is left is checked
+    // here instead.
+    const heading = DICT.split("\n").find((l) => l.includes('"assistant.emptyTitle"'))!;
+    expect(heading, "the heading is missing").toBeTruthy();
+    expect(heading).not.toContain("部署");
+    expect(heading).not.toContain("环境变量");
+
+    const s1 = DICT.split("\n").find((l) => l.includes('"assistant.suggestions.1":'))!;
+    expect(s1, "suggestion 1 is missing").toBeTruthy();
+    expect(s1).toContain("中转站");
+    expect(s1).not.toContain("部署");
+    expect(s1).not.toContain("环境变量");
   });
 
   it("and every suggestion is something an ordinary caller would ask", () => {
@@ -175,24 +186,26 @@ describe("the empty state asks a user, not an operator", () => {
     expect(DICT.includes("�")).toBe(false);
   });
 
-  it("and it is one sentence, mentioning that it draws things", () => {
-    // It is an invitation, not a summary of what the deployment is. It used to
-    // run to a list of things the system can do and offered "I just set up
-    // Dokku" as a suggestion, which is a question from whoever stands behind
-    // the relay rather than from anyone using it.
+  it("and there is no paragraph over the suggestions at all", () => {
+    // There used to be one: an invitation, then a list of things the system can
+    // do, offered "I just set up Dokku" as a suggestion — a question from
+    // whoever stands behind the relay rather than from anyone using it.
     //
-    // Found by the Chinese line, which is the one that has to be short; the
-    // English one is wrapped across two lines in the file and a matcher
-    // written for one layout silently finds nothing in the other.
-    const line = DICT.split("\n").find((l) => l.includes('"assistant.emptyState": "'))!;
-    expect(line).toBeTruthy();
-    // The string literal including its quotes, so the trailing `",` is not
-    // mistaken for a second sentence.
-    const text = line.slice(line.indexOf('": "') + 2).replace(/",$/, "");
-    expect(text.split("。").filter((s) => s.length > 0)).toHaveLength(1);
-    expect(text).toContain("图片");
-    expect(text).not.toContain("部署");
-    expect(text).not.toContain("环境变量");
+    // The paragraph is gone. It said 「问我这个中转站有什么、怎么用、怎么调，
+    // 也能直接生成图片」, and the four buttons under the heading say the same
+    // four things one by one: which models this gateway serves, how to call a
+    // text model, what to do when a call fails, and a picture to draw. A
+    // sentence above a list that already says it is a sentence read twice.
+    expect(DICT, "the paragraph over the suggestions is still there").not.toContain(
+      '"assistant.emptyState"',
+    );
+    // And what it used to carry — that the assistant draws things — is carried
+    // by the fourth button, which is a picture to ask for.
+    const s4 = DICT.split("\n").find((l) => l.includes('"assistant.suggestions.4":'))!;
+    expect(s4, "suggestion 4 is missing").toBeTruthy();
+    expect(s4).toContain("生成");
+    expect(s4).not.toContain("部署");
+    expect(s4).not.toContain("环境变量");
   });
 
   it("the suggestions ask about credits, never about money", () => {
