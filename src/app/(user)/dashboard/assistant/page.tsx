@@ -173,6 +173,10 @@ export default async function AssistantPage() {
                 ownInUse: useOwnSearchService(settings),
                 // The services the deployment offers, for the picker.
                 services: searchServices(searchRows),
+                // And the one the operator marked as the default, so the panel
+                // can say which service is actually in effect for an account
+                // that has not chosen one.
+                defaultServiceId: searchConfig.defaultServiceId,
               }}
             />
           }

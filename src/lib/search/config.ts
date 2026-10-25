@@ -77,6 +77,14 @@ export interface SearchConfig {
   backendKind: SearchProvider | null;
   /** The id written into usage rows for this backend. */
   backendProviderId: string | null;
+  /**
+   * The client-visible name of the service that answers when nobody names one.
+   *
+   * The operator marks it in the panel; it is the deployment's answer to "which
+   * one runs when nobody says" — a question a client speaking the other search
+   * APIs has no field for. Null when nobody marked one.
+   */
+  defaultServiceId: string | null;
 }
 
 /**
@@ -113,5 +121,6 @@ export async function loadSearchConfig(settings?: AppSettings): Promise<SearchCo
     backendSource: backend.source,
     backendKind: backend.kind,
     backendProviderId: backend.usageProviderId,
+    defaultServiceId: stored.searchDefaultServiceId ?? null,
   };
 }

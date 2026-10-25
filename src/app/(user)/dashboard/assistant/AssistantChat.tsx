@@ -160,6 +160,8 @@ const UPLOADABLE = new Set([
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 const MAX_UPLOADS = 6;
+/** How the size cap is written in a refusal, so it cannot drift from the cap. */
+const MAX_UPLOAD_LABEL = `${MAX_UPLOAD_BYTES / 1024 / 1024}MB`;
 
 /**
  * File → base64, without blowing the argument limit.
@@ -784,11 +786,16 @@ export function AssistantChat({
     for (const file of Array.from(list)) {
       const type = file.type.toLowerCase().trim();
       if (!UPLOADABLE.has(type)) {
-        refused.push(`${file.name}（${type || "未知类型"}）`);
+        refused.push(
+          t("assistant.upload.refusedFile", {
+            name: file.name,
+            type: type || t("assistant.upload.unknownType"),
+          }),
+        );
         continue;
       }
       if (file.size > MAX_UPLOAD_BYTES) {
-        refused.push(`${file.name} 超过 25MB`);
+        refused.push(t("assistant.upload.tooLarge", { name: file.name, max: MAX_UPLOAD_LABEL }));
         continue;
       }
       const key = `${file.name}:${file.size}:${file.lastModified}`;
@@ -813,12 +820,16 @@ export function AssistantChat({
         files.delete(extra.key);
         URL.revokeObjectURL(extra.previewUrl);
         liveObjectUrlsRef.current.delete(extra.previewUrl);
-        refused.push(`${extra.name} 超过一次 ${MAX_UPLOADS} 个的上限`);
+        refused.push(t("assistant.upload.tooMany", { name: extra.name, max: MAX_UPLOADS }));
       }
       return next;
     });
 
-    setError(refused.length ? `这些文件没有加上：${refused.join("、")}` : null);
+    setError(
+      refused.length
+        ? t("assistant.upload.refused", { list: refused.join(t("common.listSeparator")) })
+        : null,
+    );
   }
 
   function dropUpload(key: string): void {
@@ -1398,7 +1409,7 @@ export function AssistantChat({
                   <button
                     type="button"
                     onClick={() => dropUpload(u.key)}
-                    aria-label={`移除 ${u.name}`}
+                    aria-label={t("assistant.upload.remove", { name: u.name })}
                     className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   >
                     <X className="h-3.5 w-3.5" />

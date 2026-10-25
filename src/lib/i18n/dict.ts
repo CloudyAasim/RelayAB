@@ -1155,6 +1155,8 @@ const zhCN: Dict = {
   "common.back": "返回",
   "common.limit": "额度",
   "common.models": "{count} 个模型",
+  "common.customValue": "自定义：{value}",
+  "common.listSeparator": "、",
   "common.networkError": "网络错误",
   "common.unknown": "未知",
 
@@ -1303,6 +1305,20 @@ const zhCN: Dict = {
   "assistant.pretty.switch": "输出美化",
   "assistant.pretty.hint": "把回答按 Markdown 排版，思考过程默认折叠起来，生成的图片/语音附带类型与下载。关掉就是模型原样的纯文本。",
   "assistant.artifact.download": "下载",
+  "assistant.artifact.type": "类型",
+  "assistant.artifact.format": "格式",
+  "assistant.artifact.pixels": "像素",
+  "assistant.artifact.size": "大小",
+  "assistant.artifact.link": "链接",
+  "assistant.artifact.kindImage": "图片",
+  "assistant.artifact.kindAudio": "音频",
+  "assistant.artifact.kindVideo": "视频",
+  "assistant.upload.unknownType": "未知类型",
+  "assistant.upload.refusedFile": "{name}（{type}）",
+  "assistant.upload.tooLarge": "{name} 超过 {max}",
+  "assistant.upload.tooMany": "{name} 超过一次 {max} 个的上限",
+  "assistant.upload.refused": "这些文件没有加上：{list}",
+  "assistant.upload.remove": "移除 {name}",
   "assistant.stop": "停止",
   "assistant.notConfigured": "还没有配置助手模型。",
   "assistant.pendingAction": "助手提出了一项配置变更，需要管理员确认后才会生效。",
@@ -1361,6 +1377,7 @@ const zhCN: Dict = {
   "assistant.settings.refresh": "从厂商刷新窗口和输出上限",
   "assistant.settings.refreshDone": "已更新 {n} 个模型的窗口和输出上限。",
   "assistant.settings.refreshPartial": "已更新 {n} 个；这些没读到：{names}。",
+  "assistant.settings.refreshFailedItem": "{name}（{error}）",
   "assistant.settings.refreshNone": "没有可读取的模型配置。",
   "assistant.settings.refreshing": "正在向各厂商要模型列表…",
   "assistant.settings.refreshHint": "向各家厂商要一次模型列表，更新本部署已接入模型的上下文窗口和输出上限——只有厂商知道这两个数。思考等级不在这里填：那是本部署自己声明的，写在该模型的「模型」配置里。",
@@ -1389,7 +1406,7 @@ const zhCN: Dict = {
   "assistant.settings.probeFail": "不通",
   "assistant.settings.probeNeedsKey": "测试连通需要先填入密钥。",
   "assistant.settings.webSearch.title": "网页搜索",
-  "assistant.settings.webSearch.available": "这个部署可以使用网页搜索。输入框旁边的地球图标控制当前对话。",
+  "assistant.settings.webSearch.available": "这个部署可以使用网页搜索。",
   "assistant.settings.webSearch.unavailable": "当前不可用：管理员关闭了搜索，或还没有配置搜索后端。",
   "assistant.settings.webSearch.defaultOn": "新对话默认开启网页搜索",
   "assistant.settings.webSearch.defaultHint": "每个对话仍然可以在输入框旁边单独切换。",
@@ -1406,7 +1423,7 @@ const zhCN: Dict = {
   "assistant.settings.searchService.sourceDeployment": "站点的搜索",
   "assistant.settings.searchService.sourceOwn": "我自己的",
   "assistant.settings.searchService.sourceDeploymentHint":
-    "助手用站点的搜索提供商（管理员配置的），按站点的价格扣你的积分。这需要先在设置里创建并打开「用我的账号身份调用」——不需要填任何密钥。",
+    "助手用站点的搜索提供商（管理员配置的），按站点的价格扣你的积分。",
   "assistant.settings.searchService.needsCredential":
     "站点的搜索服务也要「用我的账号身份」，它不需要任何密钥。或者改用你自己的搜索服务。",
   "assistant.settings.searchService.sourceOwnHint":
@@ -1414,12 +1431,13 @@ const zhCN: Dict = {
   "assistant.settings.searchService.whichService": "用站点的哪一个",
   "assistant.settings.searchService.notChosen": "还没选",
   "assistant.settings.searchService.notChosenOne": "不特别指定（就用站点的这一个）",
+  "assistant.settings.searchService.notChosenDefault": "不特别指定（就用站点的默认服务）",
   "assistant.settings.searchService.needsChoice":
     "站点的搜索服务有多个，还没选 —— 选一个之后助手才会用站点的搜索。",
   "assistant.settings.searchService.chosenGone":
     "你选的搜索服务「{id}」已经不在了，请重新选一个。",
   "assistant.settings.searchService.whichServiceHint":
-    "这里列的是站点的搜索服务（像模型一样，每个有一个客户端可见的名字）。选了哪一个，助手的搜索就走它；那个服务坏了会直接报错，不会悄悄换成别的服务去搜。站点只有一个服务时不选也一样会用它；有多个而不选，助手就不联网搜索，会让你来选。",
+    "这里列的是站点的搜索服务（像模型一样，每个有一个客户端可见的名字）。选了哪一个，助手的搜索就走它；那个服务坏了会直接报错，不会悄悄换成别的服务去搜。",
   "assistant.settings.searchService.deploymentBackend": "现在生效：站点的搜索服务（{name}）。",
   "assistant.settings.searchService.deploymentBackendUnknown": "现在生效：站点的搜索服务。",
   "assistant.settings.searchService.storedButUnused":
@@ -2698,6 +2716,8 @@ const en: Dict = {
   "common.back": "Back",
   "common.limit": "Limit",
   "common.models": "{count} models",
+  "common.customValue": "Custom: {value}",
+  "common.listSeparator": ", ",
   "common.networkError": "Network error",
   "common.unknown": "unknown",
 
@@ -2858,6 +2878,20 @@ const en: Dict = {
   "assistant.pretty.hint":
     "Lay answers out as Markdown, fold the reasoning away by default, and label generated images and audio with their type and a download button. Turn it off for the model's raw text exactly as written.",
   "assistant.artifact.download": "Download",
+  "assistant.artifact.type": "Type",
+  "assistant.artifact.format": "Format",
+  "assistant.artifact.pixels": "Pixels",
+  "assistant.artifact.size": "Size",
+  "assistant.artifact.link": "Link",
+  "assistant.artifact.kindImage": "Image",
+  "assistant.artifact.kindAudio": "Audio",
+  "assistant.artifact.kindVideo": "Video",
+  "assistant.upload.unknownType": "unknown type",
+  "assistant.upload.refusedFile": "{name} ({type})",
+  "assistant.upload.tooLarge": "{name} is over {max}",
+  "assistant.upload.tooMany": "{name} is over the limit of {max} files at a time",
+  "assistant.upload.refused": "These files were not added: {list}",
+  "assistant.upload.remove": "Remove {name}",
   "assistant.stop": "Stop",
   "assistant.notConfigured": "The assistant has no model configured yet.",
   "assistant.pendingAction":
@@ -2919,6 +2953,7 @@ const en: Dict = {
   "assistant.settings.refresh": "Refresh window and output cap",
   "assistant.settings.refreshDone": "Updated the window and output cap of {n} model(s).",
   "assistant.settings.refreshPartial": "Updated {n}; could not read: {names}.",
+  "assistant.settings.refreshFailedItem": "{name} ({error})",
   "assistant.settings.refreshNone": "No model configuration to read.",
   "assistant.settings.refreshing": "Asking each vendor…",
   "assistant.settings.refreshHint": "Asks each vendor once for its model list and updates the context window and output cap of the models here — only the vendor knows those two. Thinking levels are not filled in from this: they are declared by this deployment, on the model’s own configuration.",
@@ -2947,7 +2982,7 @@ const en: Dict = {
   "assistant.settings.probeFail": "Not reachable",
   "assistant.settings.probeNeedsKey": "Enter a key to test the connection.",
   "assistant.settings.webSearch.title": "Web search",
-  "assistant.settings.webSearch.available": "This deployment can search the web. The globe button beside the input controls the current conversation.",
+  "assistant.settings.webSearch.available": "This deployment can search the web.",
   "assistant.settings.webSearch.unavailable": "Unavailable: an administrator turned search off, or no search backend is configured.",
   "assistant.settings.webSearch.defaultOn": "New conversations start with web search on",
   "assistant.settings.webSearch.defaultHint": "Each conversation can still be switched independently beside the input.",
@@ -2964,7 +2999,7 @@ const en: Dict = {
   "assistant.settings.searchService.sourceDeployment": "The deployment's",
   "assistant.settings.searchService.sourceOwn": "My own",
   "assistant.settings.searchService.sourceDeploymentHint":
-    "The assistant uses the deployment's search providers, at the deployment's price on your balance. That needs the account identity created and switched on in settings ('use my account identity') — it needs no key of yours.",
+    "The assistant uses the deployment's search providers, at the deployment's price on your balance.",
   "assistant.settings.searchService.needsCredential":
     "The deployment's search service needs the account identity too, and it needs no key. Or use a search service of your own instead.",
   "assistant.settings.searchService.sourceOwnHint":
@@ -2972,12 +3007,13 @@ const en: Dict = {
   "assistant.settings.searchService.whichService": "Which one of the deployment's",
   "assistant.settings.searchService.notChosen": "Not chosen yet",
   "assistant.settings.searchService.notChosenOne": "Not specific (use the deployment's only one)",
+  "assistant.settings.searchService.notChosenDefault": "Not specific (use the deployment's default)",
   "assistant.settings.searchService.needsChoice":
     "The deployment offers several search services and none is chosen — pick one and the assistant will use the deployment's search.",
   "assistant.settings.searchService.chosenGone":
     "The search service you chose, “{id}”, is no longer there. Please choose another one.",
   "assistant.settings.searchService.whichServiceHint":
-    "These are the deployment's search services (each has a client-visible name, like a model). Whichever you pick is the one the assistant searches with; if that service cannot answer, the search fails by name rather than quietly going to a different one. With one service, leaving it unpicked uses it anyway; with several and nothing picked, the assistant will not search and asks you to choose.",
+    "These are the deployment's search services (each has a client-visible name, like a model). Whichever you pick is the one the assistant searches with; if that service cannot answer, the search fails by name rather than quietly going to a different one.",
   "assistant.settings.searchService.deploymentBackend": "In effect: the deployment's search service ({name}).",
   "assistant.settings.searchService.deploymentBackendUnknown": "In effect: the deployment's search service.",
   "assistant.settings.searchService.storedButUnused":

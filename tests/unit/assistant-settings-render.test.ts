@@ -127,7 +127,10 @@ const pickerOptions = (html: string): string[] => {
 };
 
 /** A webSearch block with the given services on offer. */
-function webSearchWith(services: Array<{ id: string; name: string; kind: string }>) {
+function webSearchWith(
+  services: Array<{ id: string; name: string; kind: string }>,
+  defaultServiceId: string | null = null,
+) {
   return {
     available: true,
     defaultOn: true,
@@ -139,6 +142,7 @@ function webSearchWith(services: Array<{ id: string; name: string; kind: string 
     ownHasKey: false,
     ownInUse: false,
     services,
+    defaultServiceId,
   };
 }
 
@@ -208,6 +212,62 @@ describe("the search service can be named, even when there is only one", () => {
       webSearch: webSearchWith([{ id: "searxng", name: "自建 SearXNG", kind: "searxng" }]),
     });
     expect(servicePicker(html), "the picker is offered for the user's own service").toBeNull();
+  });
+});
+
+describe("the deployment's default service is the one the panel says is in effect", () => {
+  it("— an account that chose nothing is told which one answers", () => {
+    // The deployment marked one of its two services as the default. An account
+    // that has not chosen gets that one — so the panel has to say which, not
+    // ask the reader to pick, and not claim that nothing is in use.
+    const html = render({
+      initial: {
+        baseUrl: "",
+        model: "",
+        accountModel: "gpt-4o",
+        credentialMode: "account",
+        hasApiKey: false,
+        searchSource: "deployment",
+      },
+      webSearch: webSearchWith(
+        [
+          { id: "searxng", name: "自建 SearXNG", kind: "searxng" },
+          { id: "tavily", name: "Tavily", kind: "tavily" },
+        ],
+        "tavily",
+      ),
+    });
+
+    expect(html, "the default service is not named as the one in effect").toContain(
+      "现在生效：站点的搜索服务（Tavily）",
+    );
+    // And "not picking one" says what it means now.
+    expect(servicePicker(html)).toContain("不特别指定（就用站点的默认服务）");
+    // And it does not ask them to choose, because there is nothing to choose.
+    expect(html).not.toContain("选一个之后助手才会用站点的搜索");
+  });
+
+  it("— and with no default and several services, it says that instead", () => {
+    // The old panel said "there is no default" here, and that stopped being
+    // true when the operator could mark one. With no mark and several
+    // services, the search is refused by name — and the panel says so.
+    const html = render({
+      initial: {
+        baseUrl: "",
+        model: "",
+        accountModel: "gpt-4o",
+        credentialMode: "account",
+        hasApiKey: false,
+        searchSource: "deployment",
+      },
+      webSearch: webSearchWith([
+        { id: "searxng", name: "自建 SearXNG", kind: "searxng" },
+        { id: "tavily", name: "Tavily", kind: "tavily" },
+      ]),
+    });
+
+    expect(html).toContain("选一个之后助手才会用站点的搜索");
+    expect(servicePicker(html)).toContain("还没选");
   });
 });
 

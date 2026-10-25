@@ -41,6 +41,7 @@ import { modelParamsForRequest, type AssistantModelParams, type AssistantReasoni
 import type { Locale } from "../i18n/dict";
 import type { DocPage } from "../docs/custom";
 import type { AuthedUser } from "../auth/session";
+import { TOOL_FAILURE_PREFIX } from "./tool-failure";
 
 /**
  * Out of the way on purpose.
@@ -834,7 +835,7 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
       } catch (err) {
         // A tool that throws is a fact the model can reason about, not a reason
         // to end the conversation.
-        resultText = `工具执行失败：${err instanceof Error ? err.message : String(err)}`;
+        resultText = `${TOOL_FAILURE_PREFIX}${err instanceof Error ? err.message : String(err)}`;
       }
 
       if (resultText.length > MAX_TOOL_RESULT_CHARS) {

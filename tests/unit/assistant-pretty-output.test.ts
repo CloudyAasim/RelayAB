@@ -141,7 +141,14 @@ describe("assistant: a picture with a label and a way to keep it", () => {
 
   it("labels the kind, the format and the link, and says the size only when it knows it", () => {
     const media = sourceOf(body, "Artifact");
-    for (const row of ["类型", "格式", "大小", "链接"]) {
+    // The row labels are dictionary keys now: they were Chinese in the source,
+    // so the English interface labelled a file in Chinese.
+    for (const row of [
+      "assistant.artifact.type",
+      "assistant.artifact.format",
+      "assistant.artifact.size",
+      "assistant.artifact.link",
+    ]) {
       expect(media, `missing the ${row} row`).toContain(row);
     }
     expect(media).toContain("artifact.url");
@@ -152,7 +159,7 @@ describe("assistant: a picture with a label and a way to keep it", () => {
 
   it("shows how many pixels the picture is", () => {
     const media = sourceOf(body, "Artifact");
-    expect(media, "missing the pixel row").toContain("像素");
+    expect(media, "missing the pixel row").toContain("assistant.artifact.pixels");
     expect(media).toMatch(/onLoad=\{onImageLoad\}/);
     // A sound has no pixels, so the row is conditional.
     expect(media).toMatch(/\{pixels && \(/);

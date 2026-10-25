@@ -399,3 +399,51 @@ describe("the assistant screen says a thing once", () => {
     expect(ARTIFACTS).toContain("collapseLabel");
   });
 });
+
+/**
+ * The assistant's settings form, which is a drawer full of fields and the
+ * paragraphs under them.
+ *
+ * Three sentences were said twice there, and each time the second copy was the
+ * one further from the thing it was about.
+ */
+describe("the assistant's settings form says a thing once", () => {
+  it("the deployment's search status does not repeat the toggle hint below it", () => {
+    // 「输入框旁边的地球图标控制当前对话」 and 「每个对话仍然可以在输入框旁边单独
+    // 切换」 are the same sentence, a checkbox's hint apart. The hint is the
+    // one next to the checkbox.
+    expect(DICTS["zh-CN"]["assistant.settings.webSearch.available"]).not.toContain("输入框旁边");
+    expect(DICTS["en"]["assistant.settings.webSearch.available"]).not.toMatch(
+      /beside the input/i,
+    );
+    // …and the hint still says it.
+    expect(DICTS["zh-CN"]["assistant.settings.webSearch.defaultHint"]).toContain("输入框旁边");
+  });
+
+  it("the deployment's search hint does not repeat the credential notice", () => {
+    // The credential sentence was in the hint *and* in the notice that appears
+    // when the credential is off — which is exactly the moment the reader
+    // needs it. The notice owns it.
+    expect(
+      DICTS["zh-CN"]["assistant.settings.searchService.sourceDeploymentHint"],
+    ).not.toContain("用我的账号身份");
+    expect(DICTS["en"]["assistant.settings.searchService.sourceDeploymentHint"]).not.toMatch(
+      /account identity/i,
+    );
+    expect(DICTS["zh-CN"]["assistant.settings.searchService.needsCredential"]).toContain(
+      "用我的账号身份",
+    );
+  });
+
+  it("the service hint does not repeat the line that says which one is in effect", () => {
+    // The hint used to end with 「有多个而不选，助手就不联网搜索，会让你来选」 —
+    // and the line right below it says which service is in effect, which is
+    // the same fact said better.
+    expect(
+      DICTS["zh-CN"]["assistant.settings.searchService.whichServiceHint"],
+    ).not.toContain("不选");
+    expect(DICTS["en"]["assistant.settings.searchService.whichServiceHint"]).not.toMatch(
+      /unpicked|nothing picked/i,
+    );
+  });
+});

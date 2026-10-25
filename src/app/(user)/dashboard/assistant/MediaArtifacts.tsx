@@ -21,6 +21,8 @@ import type { ArtifactRef } from "@/lib/db/assistant-artifacts";
 import { markdownToHtml } from "@/lib/markdown";
 import { buttonVariants } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
+import { useT } from "@/components/i18n/I18nProvider";
+import { isToolFailure } from "@/lib/assistant/tool-failure";
 
 /**
  * Read the references a tool message carries.
@@ -583,7 +585,7 @@ export const ToolResultCard = memo(function ToolResultCard({
   pretty?: boolean;
 }) {
   const display = toolContentForDisplay(content);
-  const failed = /\n?\s*"ok":\s*false/.test(content) || /^工具执行失败/.test(content);
+  const failed = /\n?\s*"ok":\s*false/.test(content) || isToolFailure(content);
   const artifacts = artifactsFromToolContent(content);
 
   if (!pretty) {
@@ -633,10 +635,10 @@ export const ToolResultCard = memo(function ToolResultCard({
 });
 
 /** A short, honest description of a file, for the panel beside it. */
-const KIND_LABEL: Record<ArtifactRef["kind"], string> = {
-  image: "图片",
-  audio: "音频",
-  video: "视频",
+const KIND_KEY: Record<ArtifactRef["kind"], string> = {
+  image: "assistant.artifact.kindImage",
+  audio: "assistant.artifact.kindAudio",
+  video: "assistant.artifact.kindVideo",
 };
 
 function sizeLabel(bytes: number | null): string | null {
@@ -717,6 +719,7 @@ export function MediaArtifacts({
 }
 
 function Artifact({ artifact, downloadLabel }: { artifact: ArtifactRef; downloadLabel: string }) {
+  const t = useT();
   const meta = useArtifactMeta(artifact);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const [pixels, onImageLoad] = usePixelSize(imgRef);
@@ -758,11 +761,11 @@ function Artifact({ artifact, downloadLabel }: { artifact: ArtifactRef; download
       <div className="min-w-0 flex-1 space-y-2.5">
         <dl className="space-y-1 text-xs">
           <div className="flex gap-2">
-            <dt className="w-14 shrink-0 text-muted-foreground">类型</dt>
-            <dd className="text-foreground">{KIND_LABEL[artifact.kind]}</dd>
+            <dt className="w-14 shrink-0 text-muted-foreground">{t("assistant.artifact.type")}</dt>
+            <dd className="text-foreground">{t(KIND_KEY[artifact.kind])}</dd>
           </div>
           <div className="flex gap-2">
-            <dt className="w-14 shrink-0 text-muted-foreground">格式</dt>
+            <dt className="w-14 shrink-0 text-muted-foreground">{t("assistant.artifact.format")}</dt>
             <dd className="truncate font-mono text-foreground" title={meta.contentType}>
               {meta.contentType}
             </dd>
@@ -770,18 +773,18 @@ function Artifact({ artifact, downloadLabel }: { artifact: ArtifactRef; download
           {/* Only for something with pixels; a sound has none. */}
           {pixels && (
             <div className="flex gap-2">
-              <dt className="w-14 shrink-0 text-muted-foreground">像素</dt>
+              <dt className="w-14 shrink-0 text-muted-foreground">{t("assistant.artifact.pixels")}</dt>
               <dd className="font-mono text-foreground">{pixels}</dd>
             </div>
           )}
           {size && (
             <div className="flex gap-2">
-              <dt className="w-14 shrink-0 text-muted-foreground">大小</dt>
+              <dt className="w-14 shrink-0 text-muted-foreground">{t("assistant.artifact.size")}</dt>
               <dd className="text-foreground">{size}</dd>
             </div>
           )}
           <div className="flex gap-2">
-            <dt className="w-14 shrink-0 text-muted-foreground">链接</dt>
+            <dt className="w-14 shrink-0 text-muted-foreground">{t("assistant.artifact.link")}</dt>
             <dd className="min-w-0">
               {/* The path the model keeps quoting back, shown where it can be
                   read and copied rather than inferred from prose. */}

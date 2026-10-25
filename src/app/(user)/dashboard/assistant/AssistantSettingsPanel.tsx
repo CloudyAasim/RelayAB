@@ -176,6 +176,18 @@ export interface WebSearchSettings {
    * catalogue being read from the form.
    */
   services: Array<{ id: string; name: string; kind: string }>;
+  /**
+   * The service the operator marked as the deployment's default.
+   *
+   * By its client-visible name, because that is what a client would name. Null
+   * when nobody marked one — and then the deployment answers with the only
+   * service it has, or refuses when it has several.
+   *
+   * The panel needs it to say which service is actually in effect for an
+   * account that has not chosen one: the search is answered by the default,
+   * and a panel that claimed otherwise would be wrong.
+   */
+  defaultServiceId: string | null;
 }
 
 /**
@@ -224,6 +236,7 @@ export function AssistantSettingsPanel({
     ownHasKey: false,
     ownInUse: false,
     services: [],
+    defaultServiceId: null,
   },
 }: {
   initial: AssistantSettingsView | null;
@@ -332,14 +345,24 @@ export function AssistantSettingsPanel({
   );
   /**
    * The service this account's assistant will search with: the one they chose,
-   * or the only one the deployment offers.
+   * the one the operator marked as the default, or the only one the deployment
+   * offers.
    *
-   * Null when there are several and none is chosen — and then the assistant
-   * will not search with the deployment's services until they pick one, which
-   * is what the panel has to say rather than gloss over.
+   * The default is the deployment's own answer to "which one runs when nobody
+   * says" — a client that speaks the other search APIs has no field for it, so
+   * the operator has to. It is only in effect for an account that has not
+   * chosen one; a choice always wins.
+   *
+   * Null when there are several, none is chosen and the deployment has no
+   * default — and then the search is refused by name rather than quietly going
+   * somewhere, which is what the panel has to say.
    */
+  const defaultService = webSearch.defaultServiceId
+    ? webSearch.services.find((service) => service.id === webSearch.defaultServiceId) ?? null
+    : null;
   const effectiveService =
     webSearch.services.find((service) => service.id === searchServiceId) ??
+    defaultService ??
     (webSearch.services.length === 1 ? webSearch.services[0] : null);
   const [searchProbe, setSearchProbe] = useState<{ ok: boolean; text: string } | null>(null);
   const [searchBusy, setSearchBusy] = useState(false);
@@ -558,7 +581,9 @@ export function AssistantSettingsPanel({
       }
       const { updated, seen, outcomes } = json.data ?? { updated: 0, seen: 0, outcomes: [] };
       const failed = outcomes.filter((o) => !o.ok);
-      const names = failed.map((o) => `${o.name}（${o.error ?? "—"}）`).join("、");
+      const names = failed
+        .map((o) => t("assistant.settings.refreshFailedItem", { name: o.name, error: o.error ?? "—" }))
+        .join(t("common.listSeparator"));
       setRefreshNote(
         failed.length > 0
           ? t("assistant.settings.refreshPartial", { n: updated, names })
@@ -1119,9 +1144,11 @@ export function AssistantSettingsPanel({
                   className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                 >
                   <option value="">
-                    {webSearch.services.length === 1
-                      ? t("assistant.settings.searchService.notChosenOne")
-                      : t("assistant.settings.searchService.notChosen")}
+                    {defaultService
+                      ? t("assistant.settings.searchService.notChosenDefault")
+                      : webSearch.services.length === 1
+                        ? t("assistant.settings.searchService.notChosenOne")
+                        : t("assistant.settings.searchService.notChosen")}
                   </option>
                   {webSearch.services.map((service) => (
                     <option key={service.id} value={service.id}>
@@ -1213,10 +1240,9 @@ export function AssistantSettingsPanel({
             <p className="text-xs text-muted-foreground">
               {/*
                 The service this account's assistant will actually search
-                with: the one they chose, or the only one there is. There is
-                no "the deployment's default" to fall back on — that is the
-                point — so when there are several and none is chosen, the
-                panel says so instead of implying one is in use.
+                with: the one they chose, the one the operator marked as the
+                default, or the only one the deployment offers. The line says
+                which — so the rules do not have to be stated above it.
               */}
               {effectiveService
                 ? t("assistant.settings.searchService.deploymentBackend", {
@@ -1440,7 +1466,7 @@ function ReasoningCombobox({
           </option>
         ))}
         <option value={CUSTOM_EFFORT}>
-          {custom && typed ? `自定义：${typed}` : t("assistant.settings.reasoningCustom")}
+          {custom && typed ? t("common.customValue", { value: typed }) : t("assistant.settings.reasoningCustom")}
         </option>
       </select>
       {/*

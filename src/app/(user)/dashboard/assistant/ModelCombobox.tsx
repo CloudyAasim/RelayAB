@@ -26,6 +26,7 @@
  */
 import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/Input";
+import { useT } from "@/components/i18n/I18nProvider";
 
 /** The sentinel option that reveals the free-text field. */
 const CUSTOM = "__custom__";
@@ -47,9 +48,17 @@ export function ModelCombobox({
   value: string;
   options: string[];
   placeholder?: string;
-  customLabel?: string;
+  /**
+   * What the free-text entry says.
+   *
+   * Required rather than optional with a hardcoded fallback: the fallback was
+   * Chinese, so the English interface offered 「自定义…」 in a picker whose
+   * every other word was English.
+   */
+  customLabel: string;
   onChange: (value: string) => void;
 }) {
+  const t = useT();
   const known = useMemo(() => [...new Set(options.map((o) => o.trim()).filter(Boolean))], [options]);
   // A value that is not on the list is exactly the case this exists for, so it
   // starts in custom mode rather than showing as nothing selected.
@@ -80,7 +89,7 @@ export function ModelCombobox({
         className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
       >
         <option value={CUSTOM}>
-          {custom && value ? `自定义：${value}` : (customLabel ?? "自定义…")}
+          {custom && value ? t("common.customValue", { value }) : customLabel}
         </option>
         {known.map((o) => (
           <option key={o} value={o}>

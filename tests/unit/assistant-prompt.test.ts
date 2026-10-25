@@ -172,7 +172,10 @@ describe("assistant: what the composer can do", () => {
     // A turn that only fails after the bytes have crossed the network costs the
     // most when the file is the biggest one.
     expect(CHAT).toMatch(/if \(!UPLOADABLE\.has\(type\)\)/);
-    expect(CHAT).toMatch(/超过 25MB/);
+    // The size is written in the dictionary now: it was Chinese in the source,
+    // so the English interface refused a file in Chinese.
+    expect(CHAT).toMatch(/assistant\.upload\.tooLarge/);
+    expect(CHAT).toContain("MAX_UPLOAD_LABEL");
   });
 
   it("converts big files without blowing the argument limit", () => {
