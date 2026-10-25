@@ -259,7 +259,9 @@ export function applySearchAnnotations(output: unknown, sources: WebSearchSource
   // find it: the answer is what the search was for.
   const call = {
     type: "web_search_call",
-    id: `ws_${sources.length}_${Date.now().toString(36)}`,
+    // Unique per call: two searches in the same millisecond must not share
+    // an id, or a client that keys on it merges them.
+    id: `ws_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
     status: "completed",
   };
   const firstMessage = items.findIndex(
@@ -484,6 +486,13 @@ export function chatAnnotationChunk(args: {
   sources: WebSearchSource[];
   /** The frame fields copied from the upstream, so the chunk looks like its neighbours. */
   template: Record<string, unknown>;
+  /**
+   * Why the upstream stopped, as the upstream said it.
+   *
+   * The upstream's own reason: a stream that was cut short ("length") must not
+   * be closed with "stop" just because the sources were appended.
+   */
+  finishReason: string | null;
 }): string | null {
   const citations = chatUrlCitations(args.text, args.sources);
   if (citations.length === 0) return null;
@@ -494,7 +503,7 @@ export function chatAnnotationChunk(args: {
       {
         index: 0,
         delta: {},
-        finish_reason: null,
+        finish_reason: args.finishReason,
         message: {
           role: "assistant",
           content: args.text,
@@ -520,6 +529,8 @@ export function withChatSearchAnnotationStream(
   let text = "";
   let template: Record<string, unknown> = {};
   let sawDone = false;
+  /** Why the upstream stopped, as the upstream said it. */
+  let finishReason: string | null = null;
 
   return sseRewrite(body, {
     map: (line) => {
@@ -548,6 +559,8 @@ export function withChatSearchAnnotationStream(
           for (const choice of choices) {
             const delta = (choice as { delta?: { content?: unknown } } | null)?.delta;
             if (delta && typeof delta.content === "string") text += delta.content;
+            const reason = (choice as { finish_reason?: unknown } | null)?.finish_reason;
+            if (typeof reason === "string") finishReason = reason;
           }
         }
       } catch {
@@ -557,7 +570,7 @@ export function withChatSearchAnnotationStream(
     },
     onEnd: () => {
       const lines: string[] = [];
-      const chunk = chatAnnotationChunk({ text, sources, template });
+      const chunk = chatAnnotationChunk({ text, sources, template, finishReason });
       if (chunk) lines.push(chunk);
       // Only when the upstream sent one: a stream that ended without it ends
       // without it here too.

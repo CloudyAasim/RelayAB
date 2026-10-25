@@ -263,6 +263,19 @@ describe("a streamed answer carries its sources too", () => {
     expect(out.indexOf("url_citation")).toBeLessThan(out.indexOf("[DONE]"));
   });
 
+  it("and it keeps the reason the upstream stopped", async () => {
+    // A stream that was cut short says "length"; the source frame must not
+    // close it with "stop" just because the sources were appended.
+    const upstream = sseStream(
+      'data: {"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"答案 [1]"}}]}\n\n' +
+        'data: {"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"length"}]}\n\n' +
+        "data: [DONE]\n\n",
+    );
+    const out = await readAll(withChatSearchAnnotationStream(upstream, sources));
+    const frame = out.split("\n").find((line) => line.includes("url_citation")) ?? "";
+    expect(frame).toContain('"finish_reason":"length"');
+  });
+
   it("and a stream with no markers in it gets no extra frame", async () => {
     const upstream = sseStream(
       'data: {"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"没有来源"}}]}\n\n' +
