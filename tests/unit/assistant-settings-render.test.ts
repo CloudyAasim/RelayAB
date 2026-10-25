@@ -269,6 +269,31 @@ describe("the deployment's default service is the one the panel says is in effec
     expect(html).toContain("选一个之后助手才会用站点的搜索");
     expect(servicePicker(html)).toContain("还没选");
   });
+  it("— and a default that cannot answer is said so, not papered over", () => {
+    // The operator can switch the marked service off afterwards. Then a request
+    // that names no service is refused **by the default's name** — so the panel
+    // must not claim that one of the others is in effect.
+    const html = render({
+      initial: {
+        baseUrl: "",
+        model: "",
+        accountModel: "gpt-4o",
+        credentialMode: "account",
+        hasApiKey: false,
+        searchSource: "deployment",
+      },
+      webSearch: webSearchWith(
+        [{ id: "searxng", name: "自建 SearXNG", kind: "searxng" }],
+        "switched-off",
+      ),
+    });
+
+    expect(html, "the broken default is not reported").toContain(
+      "站点指定的默认搜索服务现在用不了",
+    );
+    // And it does not claim that the working one is in effect.
+    expect(html).not.toContain("现在生效：站点的搜索服务（自建 SearXNG）");
+  });
 });
 
 describe("the account path shows no key field", () => {

@@ -360,6 +360,19 @@ export function AssistantSettingsPanel({
   const defaultService = webSearch.defaultServiceId
     ? webSearch.services.find((service) => service.id === webSearch.defaultServiceId) ?? null
     : null;
+  /**
+   * The default is marked but cannot answer.
+   *
+   * The operator can switch the marked service off afterwards, and then a
+   * request that names no service is refused **by the default's name** — not
+   * quietly answered by another one. So the panel must not say that some other
+   * service is in effect: the truth is that the assistant's search will fail
+   * until the account picks one.
+   */
+  const defaultBroken =
+    Boolean(webSearch.defaultServiceId) &&
+    !defaultService &&
+    webSearch.services.length > 0;
   const effectiveService =
     webSearch.services.find((service) => service.id === searchServiceId) ??
     defaultService ??
@@ -1244,17 +1257,19 @@ export function AssistantSettingsPanel({
                 default, or the only one the deployment offers. The line says
                 which — so the rules do not have to be stated above it.
               */}
-              {effectiveService
-                ? t("assistant.settings.searchService.deploymentBackend", {
-                    name: effectiveService.name,
-                  })
-                : webSearch.services.length > 1
-                  ? t("assistant.settings.searchService.needsChoice")
-                  : webSearch.backendName
-                    ? t("assistant.settings.searchService.deploymentBackend", {
-                        name: webSearch.backendName,
-                      })
-                    : t("assistant.settings.searchService.deploymentBackendUnknown")}
+              {defaultBroken
+                ? t("assistant.settings.searchService.defaultBroken")
+                : effectiveService
+                  ? t("assistant.settings.searchService.deploymentBackend", {
+                      name: effectiveService.name,
+                    })
+                  : webSearch.services.length > 1
+                    ? t("assistant.settings.searchService.needsChoice")
+                    : webSearch.backendName
+                      ? t("assistant.settings.searchService.deploymentBackend", {
+                          name: webSearch.backendName,
+                        })
+                      : t("assistant.settings.searchService.deploymentBackendUnknown")}
               {webSearch.ownBaseUrl && (
                 <>
                   {" "}

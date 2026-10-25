@@ -1432,6 +1432,8 @@ const zhCN: Dict = {
   "assistant.settings.searchService.notChosen": "还没选",
   "assistant.settings.searchService.notChosenOne": "不特别指定（就用站点的这一个）",
   "assistant.settings.searchService.notChosenDefault": "不特别指定（就用站点的默认服务）",
+  "assistant.settings.searchService.defaultBroken":
+    "站点指定的默认搜索服务现在用不了，助手不联网时会直接报错。你自己选一个就能用。",
   "assistant.settings.searchService.needsChoice":
     "站点的搜索服务有多个，还没选 —— 选一个之后助手才会用站点的搜索。",
   "assistant.settings.searchService.chosenGone":
@@ -3008,6 +3010,8 @@ const en: Dict = {
   "assistant.settings.searchService.notChosen": "Not chosen yet",
   "assistant.settings.searchService.notChosenOne": "Not specific (use the deployment's only one)",
   "assistant.settings.searchService.notChosenDefault": "Not specific (use the deployment's default)",
+  "assistant.settings.searchService.defaultBroken":
+    "The deployment's default search service cannot answer right now, so the assistant's search fails by name. Pick one yourself and it works.",
   "assistant.settings.searchService.needsChoice":
     "The deployment offers several search services and none is chosen — pick one and the assistant will use the deployment's search.",
   "assistant.settings.searchService.chosenGone":
