@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 export const dynamic = "force-dynamic";
 import { getCurrentUser } from "@/lib/auth/session";
 import { listAllApiKeys } from "@/lib/db/keys";
+import { assistantKeyLabel } from "@/lib/assistant-key-label";
 import { listUsers } from "@/lib/db/users";
 import { Card } from "@/components/ui/Card";
 import { KeyStatusBadge } from "@/components/keys/KeyStatusBadge";
@@ -89,7 +90,7 @@ export default async function KeysPage() {
               <TBody>
                 {keys.map((k) => (
                   <TR key={k.id}>
-                    <TD className="font-medium">{k.label}</TD>
+                    <TD className="font-medium">{assistantKeyLabel(k.label, t)}</TD>
                     <TD>
                       <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
                         {userLabelById.get(k.userId) ?? "—"}

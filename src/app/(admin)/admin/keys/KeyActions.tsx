@@ -7,6 +7,7 @@ import { LegacyModal as Modal } from "@/components/ui/Modal";
 import { useT } from "@/components/i18n/I18nProvider";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";
 import type { ApiKey } from "@/lib/db/types";
+import { assistantKeyLabel } from "@/lib/assistant-key-label";
 import { MoreHorizontal, Power, Trash2, Ban, Pencil } from "lucide-react";
 
 export function KeyActions({ apiKey }: { apiKey: ApiKey }) {
@@ -18,6 +19,15 @@ export function KeyActions({ apiKey }: { apiKey: ApiKey }) {
   const [renameValue, setRenameValue] = useState(apiKey.label);
   const [renameError, setRenameError] = useState<string | null>(null);
   const [renameLoading, setRenameLoading] = useState(false);
+  /**
+   * What this key is called, in the reader's language.
+   *
+   * The assistant's own credential carries a stored marker, and it is translated
+   * on the way to the screen — so the rename form opens with the *translated*
+   * name, and saving it unchanged has to put the stored marker back rather
+   * than write the translation into the row.
+   */
+  const displayLabel = assistantKeyLabel(apiKey.label, t);
 
   async function toggle(enabled: boolean) {
     setLoading(true);
@@ -119,7 +129,7 @@ export function KeyActions({ apiKey }: { apiKey: ApiKey }) {
       <Modal
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
-        title={apiKey.label}
+        title={displayLabel}
       >
         <div className="space-y-2">
           {effectiveStatus === "force_disabled" ? (
@@ -191,7 +201,7 @@ export function KeyActions({ apiKey }: { apiKey: ApiKey }) {
             variant="outline"
             className="w-full justify-start"
             onClick={() => {
-              setRenameValue(apiKey.label);
+              setRenameValue(displayLabel);
               setRenameError(null);
               setMenuOpen(false);
               setRenameModal(true);
@@ -254,10 +264,19 @@ export function KeyActions({ apiKey }: { apiKey: ApiKey }) {
                 setRenameLoading(true);
                 setRenameError(null);
                 try {
+                  /**
+                   * The stored value, not the translation.
+                   *
+                   * The form was opened with the translated name, so saving it
+                   * unchanged would write the translation into the row — and the
+                   * marker would be gone, in every language. Unchanged means
+                   * unchanged: the stored marker goes back.
+                   */
+                  const label = trimmed === displayLabel ? apiKey.label : trimmed;
                   const res = await fetch(`/api/admin/keys/${apiKey.id}`, {
                     method: "PATCH",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ label: trimmed }),
+                    body: JSON.stringify({ label }),
                   });
                   const json = await res.json();
                   if (!res.ok || !json.ok) {

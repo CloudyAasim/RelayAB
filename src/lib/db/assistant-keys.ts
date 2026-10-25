@@ -33,13 +33,24 @@
 import { createApiKey, deleteApiKey, getApiKeyById, updateApiKey } from "./keys";
 import { fromDbBool, getOne, run, rowToApiKey, toDbBool, withTransaction } from "./sqlite";
 import type { ApiKey } from "./types";
+import { ASSISTANT_KEY_LABEL } from "../assistant-key-label";
 
 /**
  * Label the assistant credential carries in the admin key list, where it is
- * visible and has to be self-explanatory. Hidden from the owning user, so no
- * localisation is needed for it.
+ * visible and has to be self-explanatory. Hidden from the owning user, so only
+ * an administrator ever reads it.
+ *
+ * It is a **marker**, not prose: it says "this one belongs to the assistant",
+ * and that is the only thing it has ever said. It is stored as a string, so an
+ * English administrator was shown the Chinese marker in the middle of an
+ * English table — so the marker is translated at the point of display and the
+ * stored value stays as it is (see {@link assistantKeyLabel}).
+ *
+ * The rule and the marker live in a module of their own because the browser
+ * reads them: the database layer reaches for `node:crypto` and `node:fs`, which
+ * a client bundle cannot have.
  */
-export const ASSISTANT_KEY_LABEL = "AI 助手专用";
+export { ASSISTANT_KEY_LABEL, assistantKeyLabel } from "../assistant-key-label";
 
 export interface AssistantCredential {
   userId: string;

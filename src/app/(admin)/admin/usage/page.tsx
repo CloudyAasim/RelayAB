@@ -34,6 +34,7 @@ import {
   type UsageReport,
 } from "@/lib/usage/load";
 import { MAX_LOGS_PER_KEY } from "@/lib/db/usage";
+import { assistantKeyLabel } from "@/lib/assistant-key-label";
 import { formatUserIdentity } from "@/lib/user-identity";
 import { formatCredits, formatNumber } from "@/lib/utils";
 import { Coins, KeyRound, Users } from "lucide-react";
@@ -242,7 +243,9 @@ export default async function AdminUsagePage({ searchParams }: UsagePageProps) {
             model={effectiveModel}
             keys={allKeys.map((key) => ({
               value: key.id,
-              label: `${userLabel(key.userId)} · ${key.label} · ${key.keyPrefix}`,
+              // The assistant's own credential carries a stored marker, and it
+              // is translated on the way to the screen.
+              label: `${userLabel(key.userId)} · ${assistantKeyLabel(key.label, t)} · ${key.keyPrefix}`,
             }))}
             models={modelOptionRows.map((row) => ({ value: row.id, label: row.id }))}
             labels={{
