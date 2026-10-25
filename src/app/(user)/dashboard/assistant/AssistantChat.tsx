@@ -1508,9 +1508,19 @@ export function AssistantChat({
             )}
           </div>
 
-          <p className="mt-1.5 text-center text-xs text-muted-foreground">
-            {currentTitle ?? t("assistant.composerHint")}
-          </p>
+          {/*
+            Which conversation this is — and nothing else.
+
+            The line used to hold the keyboard shortcut when there was no
+            conversation yet, and the placeholder said the same thing at the
+            same time: one instruction, said twice, forty pixels apart. The
+            shortcut lives in the placeholder now, and this line says what it
+            is for. It is drawn only when there is a name to draw, so a new
+            conversation does not carry an empty line.
+          */}
+          {currentTitle && (
+            <p className="mt-1.5 text-center text-xs text-muted-foreground">{currentTitle}</p>
+          )}
         </div>
       </div>
 

@@ -26,8 +26,15 @@ import { DICTS, SUPPORTED_LOCALES } from "@/lib/i18n/dict";
 const ROOT = process.cwd();
 const COMPOSER = join(ROOT, "src/app/(user)/dashboard/assistant/AssistantChat.tsx");
 
-/** Every string in the composer that tells the user what Enter does. */
-const SHORTCUT_HINTS = ["assistant.composerHint", "assistant.placeholderHint"] as const;
+/**
+ * The one string in the composer that tells the user what Enter does.
+ *
+ * It used to be two — the placeholder and the line under the box — and both
+ * were on screen at once, saying the same instruction forty pixels apart. Now
+ * the placeholder carries it alone and the line under the box says what it is
+ * for (which conversation this is).
+ */
+const SHORTCUT_HINT = "assistant.placeholderHint" as const;
 
 /**
  * Stands in for the Shift+Enter mention while the text is taken apart. Plain
@@ -75,20 +82,45 @@ describe("the composer sends on the key it says it sends on", () => {
 
   it("every locale attaches the sending key to Shift+Enter, not to Enter", () => {
     for (const locale of SUPPORTED_LOCALES) {
-      for (const key of SHORTCUT_HINTS) {
-        const text = DICTS[locale][key];
-        expect(text, `${locale} is missing ${key}`).toBeTruthy();
-        expect(text, `${locale}/${key} does not mention Shift+Enter`).toContain("Shift+Enter");
-        expect(
-          saysAbout(text, true, SENDS[locale]),
-          `${locale}/${key} does not say Shift+Enter sends: ${text}`,
-        ).toBe(true);
-        expect(
-          saysAbout(text, false, BREAKS_LINE[locale]),
-          `${locale}/${key} does not say Enter breaks the line: ${text}`,
-        ).toBe(true);
-      }
+      const text = DICTS[locale][SHORTCUT_HINT];
+      expect(text, `${locale} is missing ${SHORTCUT_HINT}`).toBeTruthy();
+      expect(text, `${locale}/${SHORTCUT_HINT} does not mention Shift+Enter`).toContain("Shift+Enter");
+      expect(
+        saysAbout(text, true, SENDS[locale]),
+        `${locale}/${SHORTCUT_HINT} does not say Shift+Enter sends: ${text}`,
+      ).toBe(true);
+      expect(
+        saysAbout(text, false, BREAKS_LINE[locale]),
+        `${locale}/${SHORTCUT_HINT} does not say Enter breaks the line: ${text}`,
+      ).toBe(true);
     }
+  });
+
+  it("and nothing else in the assistant's strings says it a second time", () => {
+    // The duplicate was the whole point of the change: the placeholder and the
+    // line under the box both carried the shortcut, and both were on screen
+    // together. A second copy is not a backup — it is the same instruction
+    // read twice, and the reader has to work out which one to believe.
+    for (const locale of SUPPORTED_LOCALES) {
+      const carriers = Object.entries(DICTS[locale])
+        .filter(([key, value]) => key.startsWith("assistant.") && value.includes("Shift+Enter"))
+        .map(([key]) => key);
+      expect(
+        carriers,
+        `${locale}: the shortcut is described more than once`,
+      ).toEqual([SHORTCUT_HINT]);
+    }
+  });
+
+  it("and the line under the box says what it is for instead", () => {
+    // The conversation's name, and nothing else. It used to fall back to the
+    // shortcut when there was no name yet, which is how the two of them ended
+    // up on screen together.
+    const src = readFileSync(COMPOSER, "utf8");
+    expect(src, "the shortcut is still under the box").not.toContain("assistant.composerHint");
+    expect(src, "the line under the box still falls back to the shortcut").not.toMatch(
+      /currentTitle\s*\?\?/,
+    );
   });
 
   it("the box can show the line Enter just inserted", () => {
