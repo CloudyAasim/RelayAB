@@ -110,6 +110,22 @@ function textOf(content: unknown): string {
  * does not write them loses the citation, not the answer.
  */
 export function buildSearchContext(query: string, sources: WebSearchSource[]): string {
+  /**
+   * Nothing found is still an answer, and it has to be said plainly.
+   *
+   * A context that opens with "here are the results" and then has no results
+   * in it reads as a search that worked and came back empty — and a model
+   * asked to answer from it will answer from memory, which is exactly the
+   * thing the caller was told not to do. So the empty case says it outright.
+   */
+  if (sources.length === 0) {
+    return [
+      `没有检索到「${query}」的任何结果。`,
+      "",
+      "直接告诉用户没有搜到，不要根据记忆作答，也不要给出未经检索的来源。",
+    ].join("\n");
+  }
+
   const lines = sources.map(
     (source) =>
       `[${source.index}] ${source.title}\n${source.url}\n${source.snippet}`.trim(),

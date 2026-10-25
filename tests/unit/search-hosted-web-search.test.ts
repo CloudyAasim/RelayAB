@@ -160,6 +160,16 @@ describe("the results go in front of the model", () => {
     expect(context).toContain("[1]");
   });
 
+  it("and says so plainly when there was nothing to find", () => {
+    // A context that opens with "here are the results" and then has none in it
+    // reads as a search that worked and came back empty — and a model asked
+    // to answer from it will answer from memory, which is the one thing the
+    // caller was told not to do.
+    const empty = buildSearchContext("问题", []);
+    expect(empty).toContain("没有检索到");
+    expect(empty).not.toContain("以下是关于");
+  });
+
   it("into the last user message, not as a turn of its own", () => {
     const messages = withChatSearchContext(
       [
