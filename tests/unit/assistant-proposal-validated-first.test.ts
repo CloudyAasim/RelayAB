@@ -77,7 +77,14 @@ describe("every propose tool checks its payload before offering it", () => {
   it.each(handlers.map((h) => [h.name, h.body] as const))(
     "%s refuses rather than offering it",
     (_name, body) => {
-      expect(body).toMatch(/if \(!gate\.ok\) return fail\(gate\.message!\);/);
+      // The shape changed when the refusals became localisable: `fail` now
+      // takes the reader's context and a key into the two-language table in
+      // `tool-text.ts`, with the gate's own message passed as a variable. The
+      // guard is still about the same thing — the gate's message is what the
+      // refusal carries — so it names the new shape rather than the old one.
+      expect(body).toMatch(
+        /if \(!gate\.ok\) return fail\(ctx, "proposalRejected", \{ reason: gate\.message! \}\);/,
+      );
     },
   );
 

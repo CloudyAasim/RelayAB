@@ -18,11 +18,12 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { toolDefinitions } from "@/lib/assistant/tools";
+
 const ROOT = process.cwd();
 const read = (...p: string[]) => readFileSync(join(ROOT, ...p), "utf-8");
 
 const PROMPTS = read("src", "lib", "assistant", "prompts.ts");
-const TOOLS = read("src", "lib", "assistant", "tools.ts");
 
 describe("the assistant is told RelayAB maps interfaces", () => {
   it("says so in the shared prompt, which both modes see", () => {
@@ -70,8 +71,14 @@ describe("the assistant is told RelayAB maps interfaces", () => {
   it("and the tool that writes the pages says the same thing", () => {
     // The description is where the instruction lands when the tool is chosen,
     // which is later than any system prompt the reader remembers quoting.
-    expect(TOOLS).toMatch(/写的是本部署映射之后的接口，不是上游厂商的原生接口/);
-    expect(TOOLS).toMatch(/把厂商原生接口照抄进来/);
-    expect(TOOLS).toMatch(/read_docs 和 list_providers/);
+    //
+    // The wording moved out of `tools.ts` and into the two-language table in
+    // `tool-text.ts`, so the guard reads the catalogue the model is handed
+    // rather than a slice of the source file.
+    const def = toolDefinitions(true).find((t) => t.function.name === "propose_doc_pages")!;
+    const description = def.function.description;
+    expect(description).toMatch(/写的是本部署映射之后的接口，不是上游厂商的原生接口/);
+    expect(description).toMatch(/把厂商原生接口照抄进来/);
+    expect(description).toMatch(/read_docs 和 list_providers/);
   });
 });

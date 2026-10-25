@@ -25,6 +25,9 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { toolDefinitions } from "@/lib/assistant/tools";
+import { TOOL_REFUSALS } from "@/lib/assistant/tool-text";
+
 const ROOT = process.cwd();
 const read = (...p: string[]) => readFileSync(join(ROOT, ...p), "utf-8");
 
@@ -41,7 +44,15 @@ describe("the assistant can read an audio file it was given", () => {
   it("it takes the same `attachment` shorthand as the image tool", () => {
     // Otherwise the only way to use it is to paste a megabyte of base64 into a
     // tool call, which is the thing the shorthand exists to avoid.
-    expect(TOOLS).toMatch(/audio: \{[\s\S]{0,400}attachment/);
+    //
+    // The parameter's wording moved out of `tools.ts` and into the
+    // two-language table in `tool-text.ts`, so the guard reads the catalogue the
+    // model is handed rather than a slice of the source file.
+    const def = toolDefinitions(true).find((t) => t.function.name === "transcribe_audio")!;
+    const audio = (
+      def.function.parameters as { properties?: Record<string, { description?: string }> }
+    ).properties?.audio;
+    expect(audio?.description).toMatch(/attachment/);
     expect(TOOLS).toMatch(/resolveReferenceAudio/);
     expect(TOOLS).toMatch(/kind === "audio"/);
   });
@@ -57,8 +68,11 @@ describe("the assistant can read an audio file it was given", () => {
   it("and a missing model is answered from this deployment, not from upstream", () => {
     // A 400 from the vendor about a model name is a question with an answer in
     // the media providers this gateway already has.
+    //
+    // The refusal moved into the two-language table in `tool-text.ts` along
+    // with every other one, so the guard reads it there.
     expect(TOOLS).toMatch(/listSttModels/);
-    expect(TOOLS).toMatch(/请指定语音识别模型/);
+    expect(TOOL_REFUSALS.sttModelRequired["zh-CN"]).toMatch(/请指定语音识别模型/);
   });
 
   it("and it returns the text so the model can put it in a message", () => {

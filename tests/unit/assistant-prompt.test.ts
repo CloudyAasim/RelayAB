@@ -22,16 +22,26 @@ import { USER_SYSTEM_PROMPT, ADMIN_SYSTEM_PROMPT, systemPrompt } from "@/lib/ass
 import { EN_SHARED, EN_USER_TIER, EN_ADMIN_TIER } from "@/lib/assistant/prompts.en";
 import { toolDefinitions } from "@/lib/assistant/tools";
 
-const TOOLS = readFileSync(join(process.cwd(), "src", "lib", "assistant", "tools.ts"), "utf-8");
 const CHAT = readFileSync(join(process.cwd(), "src", "app", "(user)", "dashboard", "assistant", "AssistantChat.tsx"), "utf-8");
 
-/** The description the model actually reads when it is about to call a tool. */
-function paramDescription(tool: string, field: string): string {
-  const at = TOOLS.indexOf(`name: "${tool}"`);
-  expect(at, `${tool} is not defined`).toBeGreaterThan(-1);
-  const from = TOOLS.slice(at, at + 2600);
-  const hit = from.match(new RegExp(`${field}:\\s*\\{[\\s\\S]{0,80}?description:\\s*\\n?\\s*"([\\s\\S]*?)",\\n`));
-  return hit?.[1] ?? "";
+/**
+ * The description the model actually reads when it is about to call a tool.
+ *
+ * Read from the built catalogue rather than scraped out of the source.
+ *
+ * The wording moved out of `tools.ts` and into `tool-text.ts` — one table, two
+ * languages — so a source scan now finds the key `t("propose_provider_update.modelMapping")`
+ * instead of the sentence, and the guard was reading an empty string. Reading
+ * the catalogue instead is what the test means anyway: the sentence the model
+ * is handed, not the shape of the file it was typed into. It also means the
+ * same guard covers both languages.
+ */
+function paramDescription(tool: string, field: string, locale: "zh-CN" | "en" = "zh-CN"): string {
+  const def = toolDefinitions(true, {}, locale).find((t) => t.function.name === tool);
+  expect(def, `${tool} is not defined`).toBeTruthy();
+  const props = (def!.function.parameters as { properties?: Record<string, { description?: string }> })
+    .properties ?? {};
+  return props[field]?.description ?? "";
 }
 
 /**
@@ -244,6 +254,16 @@ describe("assistant: the tool descriptions the model reads at call time", () => 
     const specs = paramDescription("propose_media_provider_update", "specs");
     expect(specs).toMatch(/specEdits/);
     expect(specs).toMatch(/新增或删除/);
+  });
+
+  it("says the same thing in English, because the reader's language decides", () => {
+    // The wording moved into a table with two columns, so the guard has to
+    // hold for both of them: an English reader is told the same rule in
+    // English, not the Chinese sentence with an English wrapper.
+    const en = paramDescription("propose_provider_update", "modelMapping", "en");
+    expect(en).toMatch(/complete/i);
+    expect(en).toMatch(/replaced/i);
+    expect(en).toContain("list_providers");
   });
 
   it("offers specEdits, which is how a spec changes now", () => {

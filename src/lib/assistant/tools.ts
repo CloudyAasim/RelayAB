@@ -82,6 +82,7 @@ import { loadSearchConfig } from "../search/config";
 import { fetchPage, WebFetchError } from "./web-fetch";
 import { createDocReader } from "./docs-reader";
 import { DEFAULT_LOCALE, type Locale } from "../i18n/dict";
+import { toolDescription, toolRefusal } from "./tool-text";
 import type { DocPage } from "../docs/custom";
 import { NO_CREDENTIAL_MESSAGE, type AccountCredential } from "./credentials";
 import { executeMediaRequest, resultItems } from "../media/handler";
@@ -266,8 +267,19 @@ function parseArgs(raw: string): Record<string, unknown> {
   }
 }
 
-function fail(message: string): ToolResult {
-  return { ok: false, content: message };
+/**
+ * A refusal, in the reader's language.
+ *
+ * The wording lives in `tool-text.ts` and is fetched by key, so a refusal the
+ * user reads in a tool card follows the locale the route resolved. The context
+ * is what carries that locale — there is no module-level "current language"
+ * here, because two conversations can be in flight at once.
+ *
+ * A missing key returns the key itself: an empty refusal is invisible, and one
+ * that reads as its own key is a bug somebody can see.
+ */
+function fail(ctx: ToolContext, key: string, vars?: Record<string, string | number>): ToolResult {
+  return { ok: false, content: toolRefusal(ctx.locale, key, vars) };
 }
 
 function ok(value: unknown): ToolResult {
@@ -293,44 +305,41 @@ function okCompact(value: unknown): ToolResult {
 // Tool catalogue
 // ---------------------------------------------------------------------------
 
-const USER_TOOLS: AssistantToolDef[] = [
+/**
+ * The tools everybody gets.
+ *
+ * A function rather than a constant, because the descriptions are words and
+ * the words have to follow the reader's language. The translation function is
+ * handed in rather than read from a module-level variable: two conversations
+ * can be in flight at once, and a shared "current locale" would have one of
+ * them describing the tools in the wrong language.
+ */
+function userTools(t: (key: string) => string): AssistantToolDef[] {
+  return [
   {
     type: "function",
     function: {
       name: "ask_user",
-      description:
-        "向用户提一个问题，然后这一轮就结束，等他回答。\n\n" +
-        "**什么时候必须用它**：有一件事你不知道答案，而猜错的代价比多问一句大。" +
-        "典型的是需要人做决定或需要只有他知道的事——这个模型的价格是多少、" +
-        "要不要开启某个协议面、你更想要哪种做法。\n\n" +
-        "**什么时候不要用**：文档里写着答案的（先去查文档）、用户刚才说过的、" +
-        "你自己能定一个合理默认并把它讲清楚的。\n\n" +
-        "**用了它之后必须停止**。不要再调用任何其他工具，不要接着往下做，" +
-        "也不要「顺便假设一个答案继续」。用户的回答会在下一轮到达你手里。\n\n" +
-        "options 是给用户点的按钮——当他只有几个明确选择时给上它" +
-        "（比如「切成高级模式」「先只用 OpenAI 面」）；" +
-        "当他可能要自己输入（价格、URL）就留空，只用 question。",
+      description: t("ask_user"),
       parameters: {
         type: "object",
         properties: {
           question: {
             type: "string",
-            description: "要问的问题。一句话，具体到能直接回答。",
+            description: t("ask_user.question"),
           },
           options: {
             type: "array",
             items: { type: "string" },
-            description:
-              "可选的候选答案，会显示成按钮让用户点。答案数量少而确定时用它，" +
-              "用户可能自己输入时不要给。",
+            description: t("ask_user.options"),
           },
           placeholder: {
             type: "string",
-            description: "自由输入框的占位提示，例如「输入每百万 token 的积分价格」。",
+            description: t("ask_user.placeholder"),
           },
           hint: {
             type: "string",
-            description: "可选：这个问题问出来是为了什么、答案会用来做什么。",
+            description: t("ask_user.hint"),
           },
         },
         required: ["question"],
@@ -342,13 +351,7 @@ const USER_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "list_gateway_models",
-      description:
-        "列出这个 RelayAB 网关当前对外提供的所有模型（聊天与媒体），**并带上每个聊天模型的" +
-        "上下文窗口、最大输出，以及思考能力**——思考那部分在 reasoning 字段里，" +
-        "levels（可选档位）、effortSupported（能不能调深度）、switchSupported（能不能关掉）" +
-        "**三者必须一起读、一起说**，缺一不可。回答「有哪些模型」「上下文多大」" +
-        "「支持思考吗 / 能选哪几档 / 能不能关掉」这类问题时先调它，" +
-        "不要凭记忆报模型名，也不要因为看不到管理员配置就说查不到——数字就在这个返回值里。",
+      description: t("list_gateway_models"),
       parameters: { type: "object", properties: {}, additionalProperties: false },
     },
   },
@@ -356,13 +359,12 @@ const USER_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "test_gateway_model",
-      description:
-        "用一个具体模型跑一次真实请求，验证它是否真的可用。会消耗用户自己的配额。回答「这个模型能用吗」「帮我试试 X」时用它，而不是只看模型列表就下结论。",
+      description: t("test_gateway_model"),
       parameters: {
         type: "object",
         properties: {
-          model: { type: "string", description: "要测试的模型名，取自 list_gateway_models" },
-          prompt: { type: "string", description: "测试提示词，默认一个简短问题" },
+          model: { type: "string", description: t("test_gateway_model.model") },
+          prompt: { type: "string", description: t("test_gateway_model.prompt") },
         },
         required: ["model"],
         additionalProperties: false,
@@ -373,7 +375,7 @@ const USER_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "get_my_usage",
-      description: "查询当前用户的配额、已用积分、密钥列表和最近用量。",
+      description: t("get_my_usage"),
       parameters: { type: "object", properties: {}, additionalProperties: false },
     },
   },
@@ -381,12 +383,11 @@ const USER_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "get_deployment_notes",
-      description:
-        "取回本项目的部署参考：环境变量、Dokku/SQLite 部署步骤、备份与排错要点。用户问「怎么部署」「要配什么环境变量」「怎么备份」时用它，答案要基于返回内容而不是记忆。",
+      description: t("get_deployment_notes"),
       parameters: {
         type: "object",
         properties: {
-          topic: { type: "string", description: "可选 narrowed 主题，如 dokku / env / backup / nginx" },
+          topic: { type: "string", description: t("get_deployment_notes.topic") },
         },
         additionalProperties: false,
       },
@@ -401,20 +402,17 @@ const USER_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "web_search",
-      description:
-        "搜索公开网页，返回标题、网址和摘要。**不知道厂商文档地址时先用它**，拿到候选地址再用 fetch_page 读正文 —— 摘要不是文档，不能拿摘要里的字段名去写配置。\n" +
-        "工具本身只做检索，不读页面；结果里每条 url 都可以直接交给 fetch_page。\n" +
-        "如果部署没有配置搜索后端，它会明确告诉你，这时才向用户要链接；**不要在没有调用它的情况下声称「我搜索了」**。",
+      description: t("web_search"),
       parameters: {
         type: "object",
         properties: {
           query: {
             type: "string",
-            description: "搜索词。写清楚厂商名和要找的东西，例如「智谱 BigModel 图像生成 API 文档」。",
+            description: t("web_search.query"),
           },
           limit: {
             type: "integer",
-            description: "最多返回几条，1–8，默认 6。",
+            description: t("web_search.limit"),
           },
         },
         required: ["query"],
@@ -426,13 +424,11 @@ const USER_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "fetch_page",
-      description:
-        "抓取一个公开网页并读出正文文字。查厂商官方文档、API 参考、报错说明时用它 —— 这些内容不能靠记忆编。用户给了一个网址、或者问题需要看某个具体页面时，先调它再回答。只支持 http/https 的公网地址，内网地址会被拒绝；返回的是正文纯文本，不含图片和脚本。\n" +
-        "如果页面是单页应用、正文抓不到，工具会自动尝试同域的 Markdown 版本、llms.txt 和 openapi.json，并在结果里标出可继续读的地址。",
+      description: t("fetch_page"),
       parameters: {
         type: "object",
         properties: {
-          url: { type: "string", description: "要读的完整网址，例如 https://platform.minimaxi.com/docs/api-reference/image-generation" },
+          url: { type: "string", description: t("fetch_page.url") },
         },
         required: ["url"],
         additionalProperties: false,
@@ -443,19 +439,13 @@ const USER_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "read_docs",
-      description:
-        "读本系统自己的文档正文 —— 和用户界面上 /docs、/dashboard/docs、/admin/docs 显示的是同一份。\n" +
-        "不带 topic 返回目录；带 topic 返回那一页的全文。\n" +
-        "凡是问「这个系统怎么用」「这个接口怎么调」「这个配置项是什么意思」「为什么报这个错」，" +
-        "都要先读文档再回答，不要凭记忆作答。管理员文档只有管理员能读。",
+      description: t("read_docs"),
       parameters: {
         type: "object",
         properties: {
           topic: {
             type: "string",
-            description:
-              "不填则返回目录。填写形如 openai、anthropic、media、providers、trouble、mapping。" +
-              "也可以写 user:openai 或 admin:providers 指定是哪一套。",
+            description: t("read_docs.topic"),
           },
         },
         additionalProperties: false,
@@ -466,26 +456,20 @@ const USER_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "generate_image",
-      description:
-        "用一个媒体模型生成图片，返回图片 URL。走的是本系统的 /v1/images/generations 端点，消耗用户自己的配额。\n" +
-        "图生图（以图为参考）用 image 参数：填 attachment 表示「用用户这条消息里附的那张图」，" +
-        "或直接给一个 http(s) 图片网址。服务商是否支持图生图取决于它的 spec，" +
-        "先用 list_media_providers 看该模型的 spec 里 metadata.modes 有没有 image-to-image。",
+      description: t("generate_image"),
       parameters: {
         type: "object",
         properties: {
-          model: { type: "string", description: "图片模型名，取自 list_gateway_models 的 mediaModels" },
-          prompt: { type: "string", description: "想生成什么画面" },
-          size: { type: "string", description: "如 1024x1024；不填则用服务商默认" },
+          model: { type: "string", description: t("generate_image.model") },
+          prompt: { type: "string", description: t("generate_image.prompt") },
+          size: { type: "string", description: t("generate_image.size") },
           ratio: {
             type: "string",
-            description: "宽高比，如 16:9、9:16。服务商通常按尺寸表把它换算成实际尺寸。",
+            description: t("generate_image.ratio"),
           },
           image: {
             type: "string",
-            description:
-              "参考图。填 attachment 表示用用户这条消息里附的图片；也可以给一个 http(s) 图片网址。" +
-              "不填就是文生图。这个工具不接收 base64。",
+            description: t("generate_image.image"),
           },
         },
         required: ["model", "prompt"],
@@ -497,9 +481,7 @@ const USER_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "list_voices",
-      description:
-        "列出本部署能用的全部音色（按服务商分组，含显示名、描述和适用模型）。" +
-        "查「有哪些音色」「这个音色支持哪些模型」「换音色」时先调它，不要凭记忆报音色 id。",
+      description: t("list_voices"),
       parameters: { type: "object", properties: {}, additionalProperties: false },
     },
   },
@@ -507,18 +489,15 @@ const USER_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "generate_speech",
-      description:
-        "用语音合成模型把文字读成音频，返回实际生成的字节数与 content-type。走 /v1/audio/speech，消耗用户自己的配额。",
+      description: t("generate_speech"),
       parameters: {
         type: "object",
         properties: {
-          model: { type: "string", description: "语音模型名" },
-          input: { type: "string", description: "要读出来的文字" },
+          model: { type: "string", description: t("generate_speech.model") },
+          input: { type: "string", description: t("generate_speech.input") },
           voice: {
             type: "string",
-            description:
-              "音色 id。留空则使用已验证可用的默认值 —— MiniMax 的 t2a_v2 缺少 voice_id 会直接拒绝，" +
-              "所以这不是真正可选的。",
+            description: t("generate_speech.voice"),
           },
         },
         required: ["model", "input"],
@@ -530,23 +509,18 @@ const USER_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "transcribe_audio",
-      description:
-        "把一段语音转成文字。传 attachment（用户这一条消息里附的音频）、一个 http(s) 音频网址，" +
-        "或一个 data URL。走 /v1/audio/transcriptions，消耗用户自己的配额，返回识别出的文本。\n" +
-        "如果用户发来的是音频而你在找别的办法，先用这个 —— 网关已经配好了 ASR 模型，" +
-        "不需要让用户自己去发请求。",
+      description: t("transcribe_audio"),
       parameters: {
         type: "object",
         properties: {
-          model: { type: "string", description: "语音识别模型名，例如 asr-1.0" },
+          model: { type: "string", description: t("transcribe_audio.model") },
           audio: {
             type: "string",
-            description:
-              "attachment、http(s) 音频网址，或 data URL。",
+            description: t("transcribe_audio.audio"),
           },
           language: {
             type: "string",
-            description: "音频主要语言，可留空。中文例如 zh。",
+            description: t("transcribe_audio.language"),
           },
         },
         required: ["audio"],
@@ -558,38 +532,40 @@ const USER_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "generate_video",
-      description:
-        "提交一个视频生成任务。视频是异步的：这里只返回任务 id 和当前状态，产物要稍后由上游查询，不要在这里反复重试。",
+      description: t("generate_video"),
       parameters: {
         type: "object",
         properties: {
-          model: { type: "string", description: "视频模型名" },
-          prompt: { type: "string", description: "想生成什么画面" },
-          duration: { type: "number", description: "时长（秒）；留空用默认值" },
-          ratio: { type: "string", description: "画面比例，如 16:9；留空用默认值" },
+          model: { type: "string", description: t("generate_video.model") },
+          prompt: { type: "string", description: t("generate_video.prompt") },
+          duration: { type: "number", description: t("generate_video.duration") },
+          ratio: { type: "string", description: t("generate_video.ratio") },
         },
         required: ["model", "prompt"],
         additionalProperties: false,
       },
     },
   },
-];
+  ];
+}
 
-const ADMIN_TOOLS: AssistantToolDef[] = [
+/**
+ * The tools only administrators get.
+ *
+ * Same shape and same reason as {@link userTools}: the wording follows the
+ * reader, the structure does not change with it.
+ */
+function adminTools(t: (key: string) => string): AssistantToolDef[] {
+  return [
   {
     type: "function",
     function: {
       name: "audit_provider_config",
-      description:
-        "体检一个聊天服务商的模型配置，找出**具体哪几个模型、哪个字段**有问题。\n" +
-        "用户问「这个服务商的配置有没有问题」「为什么有的模型不收钱」时先调这个，" +
-        "拿到清单再用 propose_model_configs_update 一次改完。\n" +
-        "只读，不改任何东西。检查项：价格全为 0 的模型、积分与元混用、缓存读取有价但写入没填、" +
-        "声明了不支持思考等级却仍然有档位、上下文或输出上限缺失。",
+      description: t("audit_provider_config"),
       parameters: {
         type: "object",
         properties: {
-          providerId: { type: "string", description: "要体检的服务商 id；省略则体检全部" },
+          providerId: { type: "string", description: t("audit_provider_config.providerId") },
         },
         additionalProperties: false,
       },
@@ -599,26 +575,15 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "propose_model_configs_update",
-      description:
-        "**一次性配置一个服务商下多个模型**——上下文、最大输出、思考等级、思考等级支持声明、四个价格、显示名、是否启用。\n" +
-        "管理员点一次确认，全部生效。\n\n" +
-        "**要一次改多个模型就用这个，不要循环调 propose_model_config_update**——" +
-        "那会生成 N 条提案、要点 N 次确认，而且中途失败会留下半配置的状态。\n" +
-        "只改一个模型时两个都行，这个更省事。\n\n" +
-        "models 里只写要改的字段；没写的字段保持原样，不会被清零。\n\n" +
-        "**被拦下来的时候**：如果提示里说某个字段「看起来是错的」，先判断是值真的错了、还是这条检查" +
-        "误伤了一个已经就对的配置。值错了就改值；确实如此（比如厂商的这两个模型真的免费）就在 " +
-        "confirmFindings 里写上「code:模型名」，例如 all_zero:agnes-2.5-flash。**不要原样重发一遍**，" +
-        "同样的内容会得到同样的拒绝。",
+      description: t("propose_model_configs_update"),
       parameters: {
         type: "object",
         properties: {
-          providerId: { type: "string", description: "服务商 id，用 list_providers 查" },
-          summary: { type: "string", description: "一句话说明这次变更的目的" },
+          providerId: { type: "string", description: t("propose_model_configs_update.providerId") },
+          summary: { type: "string", description: t("propose_model_configs_update.summary") },
           models: {
             type: "object",
-            description:
-              "模型名 → 该模型要设的字段。只有列出的字段会被写入，其余保持原样。",
+            description: t("propose_model_configs_update.models"),
             additionalProperties: {
               type: "object",
               properties: {
@@ -627,44 +592,32 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
                 purpose: {
                   type: "string",
                   enum: ["chat", "embedding", "rerank", "moderation"],
-                  description:
-                    "这个模型是做什么用的：chat（对话）、embedding（向量）、rerank（重排）、moderation（审核）。\n" +
-                    "决定它在管理员给账号授权时归到哪一组 —— 不设就是对话模型。",
+                  description: t("propose_model_configs_update.models.purpose"),
                 },
-                contextLength: { type: "integer", description: "上下文长度（输入 token 上限）" },
+                contextLength: { type: "integer", description: t("propose_model_configs_update.models.contextLength") },
                 maxOutputTokens: { type: "integer" },
                 reasoningLevels: {
                   type: "array",
                   items: { type: "string" },
-                  description:
-                    "这个模型接受的思考等级，照厂商文档原样写。空数组 = 不支持。\n" +
-                    "厂商文档明确写了它不读这个参数时，同时设 reasoningEffortSupported: false——" +
-                    "界面会把对应的下拉置灰。",
+                  description: t("propose_model_configs_update.models.reasoningLevels"),
                 },
                 reasoningEffortSupported: {
                   type: "boolean",
-                  description:
-                    "厂商是否支持 reasoning_effort。填 false 会让助手设置里的档位下拉置灰。" +
-                    "不确定就别传——没声明过和声明过「不支持」是两回事，只有传了才会置灰。",
+                  description: t("propose_model_configs_update.models.reasoningEffortSupported"),
                 },
                 thinkingSwitchSupported: {
                   type: "boolean",
-                  description:
-                    "厂商是否接受 thinking 开关（关掉思考）。填 false 会让助手设置里的「思考开关」置灰。\n" +
-                    "**厂商会拒绝关闭请求时填 false**：M2.x 系列收下 disabled 却照样思考；" +
-                    "M3.1-Flash-Preview 直接返回 400。只有 MiniMax-M3 认这个开关。",
+                  description: t("propose_model_configs_update.models.thinkingSwitchSupported"),
                 },
-                inputCost: { type: "number", description: "每 100 万输入 token 的积分" },
-                outputCost: { type: "number", description: "每 100 万输出 token 的积分" },
+                inputCost: { type: "number", description: t("propose_model_configs_update.models.inputCost") },
+                outputCost: { type: "number", description: t("propose_model_configs_update.models.outputCost") },
                 cachedInputCost: {
                   type: "number",
-                  description:
-                    "每 100 万「命中上游提示缓存」的输入 token 的积分。0 = 缓存命中免费。不填 = 按 inputCost 算。",
+                  description: t("propose_model_configs_update.models.cachedInputCost"),
                 },
                 cacheWriteCost: {
                   type: "number",
-                  description:
-                    "每 100 万「写入上游缓存」的积分。0 = 写入免费。**留空和 0 不是一回事**：留空会按 inputCost 收钱。",
+                  description: t("propose_model_configs_update.models.cacheWriteCost"),
                 },
                 enabled: { type: "boolean" },
               },
@@ -674,11 +627,7 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
           confirmFindings: {
             type: "array",
             items: { type: "string" },
-            description:
-              "你确认过、因而不再拦下来的检查项，格式「code:模型名」，例如 " +
-              "\"all_zero:agnes-2.5-flash\"。**只在厂商文档或官方定价页确写它免费时才用。**\n" +
-              "只有真正会被这次改动碰到的字段才会被拦；模型本来就是 0 价、而你只是在改上下文长度，" +
-              "那样根本不会被拦，也不需要在这里声明。",
+            description: t("propose_model_configs_update.confirmFindings"),
           },
         },
         required: ["providerId", "models"],
@@ -690,17 +639,12 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "withdraw_proposal",
-      description:
-        "撤回一条**还在待确认**的提案。propose_* 只能建不能撤，缺了这个工具，助手就只能看着自己" +
-        "提交的东西一直挂在队列里，明知它过时了也收不回来。\n" +
-        "**只能撤待确认的。** 已经生效（applied）的撤不掉——那不是撤回，是想改回去，"+
-        "要改就重新提一条。撤不成功会告诉你原因，别当成已经撤掉了。\n" +
-        "撤回前先 list_my_proposals 确认那条确实是 pending，别凭上一轮的印象撤。",
+      description: t("withdraw_proposal"),
       parameters: {
         type: "object",
         properties: {
-          actionId: { type: "string", description: "要撤回的提案 id" },
-          reason: { type: "string", description: "一句话说明为什么撤回" },
+          actionId: { type: "string", description: t("withdraw_proposal.actionId") },
+          reason: { type: "string", description: t("withdraw_proposal.reason") },
         },
         required: ["actionId"],
         additionalProperties: false,
@@ -711,20 +655,13 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "list_my_proposals",
-      description:
-        "列出你（当前用户）提交过的配置变更提案，以及每一条现在是待确认、已生效还是被拒绝。\n" +
-        "**你在界面上点过确认之后，用这个来核实**，不要靠猜：propose_* 只是把变更放进待确认队列，" +
-        "你自己看不到队列状态，所以之前几次只能说「不知道有没有生效」。\n" +
-        "确认后再用 list_providers 读回配置，两个一对比就知道改动到底落下没有。\n" +
-        "**status 是 failed 时先读 result**：那是服务端执行时写下的原因（媒体服务商会是校验器列出的完整问题清单）。" +
-        "有 result 就照它改，不要靠推断猜是哪一步错了。",
+      description: t("list_my_proposals"),
       parameters: {
         type: "object",
         properties: {
           status: {
             type: "string",
-            description:
-              "只看某一种状态：pending（待确认）/ applied（已生效）/ rejected（被拒绝）/ failed（应用失败）。省略则全部返回。",
+            description: t("list_my_proposals.status"),
             enum: ["pending", "applied", "rejected", "failed"],
           },
         },
@@ -736,8 +673,7 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "list_providers",
-      description:
-        "列出所有聊天服务商的配置（密钥永不返回）。诊断「模型路由到哪个上游」「为什么某个模型不通」时先用它。",
+      description: t("list_providers"),
       parameters: { type: "object", properties: {}, additionalProperties: false },
     },
   },
@@ -745,14 +681,13 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "probe_provider_host",
-      description:
-        "用某个服务商已存的密钥去探测候选 base URL 是否认证通过，返回上游真实模型列表。MiniMax 这类分区域的厂商用它来确认密钥属于哪个区域 —— 不要靠猜，探测结果才是答案。只读，不改任何配置。",
+      description: t("probe_provider_host"),
       parameters: {
         type: "object",
         properties: {
-          providerId: { type: "string", description: "用哪个服务商已存的密钥" },
-          baseUrl: { type: "string", description: "要探测的 base URL，例如 https://api.minimaxi.com/v1" },
-          path: { type: "string", description: "模型列表路径，默认 /v1/models" },
+          providerId: { type: "string", description: t("probe_provider_host.providerId") },
+          baseUrl: { type: "string", description: t("probe_provider_host.baseUrl") },
+          path: { type: "string", description: t("probe_provider_host.path") },
         },
         required: ["providerId", "baseUrl"],
         additionalProperties: false,
@@ -763,15 +698,13 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "list_media_providers",
-      description:
-        "列出所有媒体服务商及其模型与 spec 摘要（图片/视频/语音）。默认不给 spec 正文，" +
-        "要改某一份 spec 时加 full=true 单独取。",
+      description: t("list_media_providers"),
       parameters: {
         type: "object",
         properties: {
           full: {
             type: "boolean",
-            description: "true 时返回每份 spec 的完整 JSON（体积很大，只在真的要改 spec 时用）。",
+            description: t("list_media_providers.full"),
           },
         },
         additionalProperties: false,
@@ -782,33 +715,26 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "get_media_spec_reference",
-      description:
-        "读媒体适配协议的原文，或者当前内置的 spec 模板。\n" +
-        "写 spec 之前先读它 —— spec 的字段名和映射语法以这份原文为准，不要凭印象写。\n" +
-        "what=\"protocol\"：协议全文（很长，用 offset/limit 分段读，读到 nextOffset 就接着读下一段）。\n" +
-        "what=\"templates\"：本部署内置的模板，一字不差的可套用副本。list_media_providers 报 templateDrift 时用它取回完整模板值。\n" +
-        "注意：模板不等于正确。已存的 spec 可能带着模板里没有的、故意的本地修正（ASR 的文件路径就是这样），" +
-        "整份套用会把那些修正冲掉 —— 只按 templateDrift 列出的路径逐条改。",
+      description: t("get_media_spec_reference"),
       parameters: {
         type: "object",
         properties: {
           what: {
             type: "string",
             enum: ["protocol", "templates"],
-            description: "protocol = 协议原文；templates = 内置模板",
+            description: t("get_media_spec_reference.what"),
           },
           capability: {
             type: "string",
-            description:
-              "只取这个能力的模板，例如 audio.tts、image.generate、audio.stt。留空返回全部。",
+            description: t("get_media_spec_reference.capability"),
           },
           offset: {
             type: "integer",
-            description: "what=\"protocol\" 时的起始字符位置，从 0 开始。",
+            description: t("get_media_spec_reference.offset"),
           },
           limit: {
             type: "integer",
-            description: "what=\"protocol\" 时这一次返回多少字符。",
+            description: t("get_media_spec_reference.limit"),
           },
         },
         required: ["what"],
@@ -820,15 +746,12 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "propose_provider_update",
-      description:
-        "提出一次聊天服务商配置变更。这不会立刻生效 —— 它生成一份 before/after 对比，等管理员在界面上确认后才执行。" +
-        "可改：API 地址、上游格式（responses/chat）、请求头、优先级、模型映射、两个协议面、启用开关、每个兼容接口的参数规则（textSpecs）。" +
-        "只能改已存在的服务商，不能新建。",
+      description: t("propose_provider_update"),
       parameters: {
         type: "object",
         properties: {
-          providerId: { type: "string", description: "要修改的服务商 id" },
-          summary: { type: "string", description: "一句话说明这次变更的目的" },
+          providerId: { type: "string", description: t("propose_provider_update.providerId") },
+          summary: { type: "string", description: t("propose_provider_update.summary") },
           baseUrl: { type: "string" },
           anthropicBaseUrl: { type: "string" },
           anthropicMode: { type: "string", enum: ["native", "translated"] },
@@ -837,33 +760,21 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
           enabled: { type: "boolean" },
           priority: {
             type: "integer",
-            description: "数值越小越优先被选中；并列时取第一个匹配的",
+            description: t("propose_provider_update.priority"),
           },
           activeMode: {
             type: "string",
             enum: ["simple", "advanced"],
-            description:
-              "规则读哪一套：advanced 生效，simple 完全不执行。**配了 textSpecs 却留在这里没有切换，" +
-              "等于规则一条都没跑** —— 界面上看得到，行为上不存在。" +
-              "不确定就先查 list_providers：它会告诉你这个服务商现在存的是什么、" +
-              "有几条规则、引擎实际读哪一套。",
+            description: t("propose_provider_update.activeMode"),
           },
           modelMapping: {
             type: "object",
-            description:
-              "客户端模型名 → 上游模型名 的【完整】替换表。注意：整份替换，不是增量。想只加一个映射就必须先用 list_providers 拿到现状、合并、再把整张表传回来 —— 只传新增的那一条会把其余所有模型删掉。" +
-              "\n表里新增的模型会按「免费」创建（这个工具不设置价格），所以会撞上 free-model 闸门；" +
-              "已经在表里的模型价格原样保留，不会被这次改动清零。",
+            description: t("propose_provider_update.modelMapping"),
             additionalProperties: { type: "string" },
           },
           textSpecs: {
             type: "array",
-            description:
-              "上游协议文档列表，【按 protocol 合并】：同名的替换、没提到的保留、" +
-              "传 null 清空全部。所以给某一个接口加规则不用重发另外两个。\n" +
-              "不确定该选哪个 protocol，先调 list_text_protocols，不要凭印象写。\n" +
-              "只有厂商确实和 OpenAI 兼容接口不一样时才需要写；'大多数厂商什么都不用配'。\n" +
-              "protocol 只能取那三个接口之一，而且对应协议面必须是开的，否则规则不会生效。",
+            description: t("propose_provider_update.textSpecs"),
             items: {
               type: "object",
               properties: {
@@ -881,24 +792,16 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
           },
           headers: {
             type: "object",
-            description:
-              "附在上游请求上的固定请求头，整份替换，传 null 清空。" +
-              "例如 {\"api-version\": \"2024-08-01-preview\"}。" +
-              "只有 Azure 一类要求固定头的厂商才需要。",
+            description: t("propose_provider_update.headers"),
             additionalProperties: { type: "string" },
           },
           upstreamFormat: {
             type: "string",
-            description:
-              "OpenAI 侧上游说的是哪种协议：responses（原生，/v1/responses 原样透传）或 chat。" +
-              "注意 chat→responses 没有请求转换：客户端调 /v1/chat/completions 时永远发往 <API 地址>/chat/completions。",
+            description: t("propose_provider_update.upstreamFormat"),
           },
           confirmFindings: {
             type: "array",
-            description:
-              'free-model 闸门的确认清单，逐条模型写「code:模型名」，例如 all_zero:agnes-3.0-flash。**不要原样重发一遍**，再说一次得到的是同一个拒绝。\n' +
-              "只有当 modelMapping 里新增的模型确实免费（厂商文档或官方定价页明写）时才需要写。" +
-              "已经在表里的模型这次不会被重新定价，所以不需要在这里声明它们的零价。",
+            description: t("propose_provider_update.confirmFindings"),
             items: { type: "string" },
           },
         },
@@ -911,11 +814,7 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "list_text_protocols",
-      description:
-        "列出可配置的文本协议预设和参数策略的六种模式，配使用建议。\n" +
-        "配置服务商前如果不确定该选哪个协议、或者不知道某个参数该 passthrough 还是 clamp，先调这个 —— 不要凭印象写 protocol。\n" +
-        "绝大多数 OpenAI 兼容中转选 openai-chat 就够了，什么都不用改。\n" +
-        "**规则的确切语义**（模式、裁决顺序、协议字段）在协议原文里，用 get_text_spec_reference(what=\"protocol\") 读。",
+      description: t("list_text_protocols"),
       parameters: { type: "object", properties: {}, additionalProperties: false },
     },
   },
@@ -923,32 +822,26 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "get_text_spec_reference",
-      description:
-        "读文本（普通服务商）适配协议的原文，或者当前内置的协议预设。\n" +
-        "写 textSpecs 之前先读它 —— 字段名、参数模式的语义、裁决顺序以这份原文为准，不要凭印象写。\n" +
-        "what=\"protocol\"：协议全文（很长，用 offset/limit 分段读，读到 nextOffset 就接着读下一段）。\n" +
-        "what=\"presets\"：内置预设，一字不差的可套用副本；preset 字段就是可以直接放进 propose_provider_update 的 textSpecs 数组里的那个对象。\n" +
-        "该选哪个协议、用哪种模式，先调 list_text_protocols —— 那是建议；这里是原文和可套用的值。",
+      description: t("get_text_spec_reference"),
       parameters: {
         type: "object",
         properties: {
           what: {
             type: "string",
             enum: ["protocol", "presets"],
-            description: "protocol = 协议原文；presets = 内置预设",
+            description: t("get_text_spec_reference.what"),
           },
           protocol: {
             type: "string",
-            description:
-              "只取这个协议的预设，例如 openai-chat、anthropic-messages。留空返回全部可配置的协议。",
+            description: t("get_text_spec_reference.protocol"),
           },
           offset: {
             type: "integer",
-            description: "what=\"protocol\" 时的起始字符位置，从 0 开始。",
+            description: t("get_text_spec_reference.offset"),
           },
           limit: {
             type: "integer",
-            description: "what=\"protocol\" 时这一次返回多少字符。",
+            description: t("get_text_spec_reference.limit"),
           },
         },
         additionalProperties: false,
@@ -959,76 +852,50 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "propose_model_config_update",
-      description:
-        "提出一次【单个模型】的配置变更，需要管理员确认才执行。\n" +
-        "改的是网关真实生效的东西：上下文长度、最大输出、思考等级、积分价格、是否启用、显示名、上游模型名。\n" +
-        "思考等级是**本部署声明**的，不是自动检测出来的：查厂商官方文档确认这个模型接受哪几档，再照原样写进 reasoningLevels；厂商文档里没有就留空数组。\n" +
-        "文档里显示的上下文和价格读的就是这些值，所以改这里等于同时改文档。\n" +
-        "媒体模型（图片/视频/语音）由 spec 驱动，这里改不了，请用 propose_media_provider_update。\n\n" +
-        "**被拦下来的时候**：先判断是值真的错了、还是这条检查误伤了一个已经就对的配置。值错了就改值；" +
-        "确实如此（比如厂商的定价页确写它免费）就在 confirmFindings 里写上「code:模型名」。" +
-        "**不要原样重发一遍**，同样的内容会得到同样的拒绝。",
+      description: t("propose_model_config_update"),
       parameters: {
         type: "object",
         properties: {
-          providerId: { type: "string", description: "该模型所属的服务商 id，用 list_providers 查" },
-          clientId: { type: "string", description: "客户端在 model 字段里填的模型名" },
-          summary: { type: "string", description: "一句话说明这次变更的目的" },
+          providerId: { type: "string", description: t("propose_model_config_update.providerId") },
+          clientId: { type: "string", description: t("propose_model_config_update.clientId") },
+          summary: { type: "string", description: t("propose_model_config_update.summary") },
           displayName: { type: "string" },
           upstreamId: { type: "string" },
           purpose: {
             type: "string",
             enum: ["chat", "embedding", "rerank", "moderation"],
-            description:
-              "这个模型是做什么用的：chat（对话）、embedding（向量）、rerank（重排）、moderation（审核）。\n" +
-              "决定它在管理员给账号授权时归到哪一组 —— 设就是对话模型。",
+            description: t("propose_model_config_update.purpose"),
           },
-          contextLength: { type: "integer", description: "上下文长度（输入 token 上限）" },
+          contextLength: { type: "integer", description: t("propose_model_config_update.contextLength") },
           maxOutputTokens: { type: "integer" },
           reasoningLevels: {
             type: "array",
             items: { type: "string" },
-            description:
-              "这个模型接受的思考等级，照厂商文档的原样写，不要翻译也不要归一化。例：MiniMax-M3.1-Flash-Preview 接受 low, medium, high, xhigh, max。空数组 = 这个模型不支持思考等级。先查官方文档确认再写，不确定就别写。\n" +
-              "注意：这个字段是**界面上给用户选的档位**，不是「能不能关思考」。同一个模型可能档位写了五档、却一个都关不掉（发 disabled 直接 400），也可能档位根本不调深度、真正的开关在另一个字段上。分不清就照文档写档位，别把开关混进来。",
+            description: t("propose_model_config_update.reasoningLevels"),
           },
           reasoningEffortSupported: {
             type: "boolean",
-            description:
-              "这个模型是否支持 reasoning_effort 思考等级。\n" +
-              "**厂商文档明确写了它不读这个参数，就填 false**（例：MiniMax-M3 只有 thinking 开关，" +
-              "reasoning_effort 会被直接忽略）。填 false 之后，助手设置里对应的下拉会置灰——" +
-              "因为那是一个选了、存了、发出去了、但完全不生效的控件。\n" +
-              "不确定就**不要传**：没声明过和声明过「不支持」是两回事，只有传了才会置灰。",
+            description: t("propose_model_config_update.reasoningEffortSupported"),
           },
           thinkingSwitchSupported: {
             type: "boolean",
-            description:
-              "这个模型是否接受 thinking 开关（关掉思考）。\n" +
-              "**厂商会拒绝关闭请求时填 false**：M2.x 系列收下 disabled 却照样思考，" +
-              "M3.1-Flash-Preview 直接返回 400。只有 MiniMax-M3 认这个开关。\n" +
-              "填 false 之后助手设置里的「思考开关」会置灰。不确定就不要传。",
+            description: t("propose_model_config_update.thinkingSwitchSupported"),
           },
-          inputCost: { type: "number", description: "每 100 万输入 token 的积分" },
-          outputCost: { type: "number", description: "每 100 万输出 token 的积分" },
+          inputCost: { type: "number", description: t("propose_model_config_update.inputCost") },
+          outputCost: { type: "number", description: t("propose_model_config_update.outputCost") },
           cachedInputCost: {
             type: "number",
-            description:
-              "每 100 万「命中上游提示缓存」的输入 token 的积分。不填 = 按 inputCost 算（安全默认，老模型不受影响）；填 0 = 缓存命中免费。读和写分开，因为厂商一个免费、一个加价。",
+            description: t("propose_model_config_update.cachedInputCost"),
           },
           cacheWriteCost: {
             type: "number",
-            description: "每 100 万「写入」上游提示缓存的输入 token 的积分。不填 = 按 inputCost 算。",
+            description: t("propose_model_config_update.cacheWriteCost"),
           },
-          enabled: { type: "boolean", description: "false = 网关不再路由到这个模型，客户端会 404" },
+          enabled: { type: "boolean", description: t("propose_model_config_update.enabled") },
           confirmFindings: {
             type: "array",
             items: { type: "string" },
-            description:
-              "你确认过、因而不再拦下来的检查项，格式「code:模型名」，例如 " +
-              "\"all_zero:agnes-2.5-flash\"。**只在厂商文档或官方定价页确写它免费时才用。**\n" +
-              "只有真正会被这次改动碰到的字段才会被拦；模型本来就是 0 价、而你只是在改上下文长度，" +
-              "那样根本不会被拦，也不需要在这里声明。",
+            description: t("propose_model_config_update.confirmFindings"),
           },
         },
         required: ["providerId", "clientId", "summary"],
@@ -1040,30 +907,21 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "propose_doc_pages",
-      description:
-        "提出一次【参数指南页面】的变更，需要管理员确认才执行。\n" +
-        "这些页面构成读者文档里的「参数指南」——和「接入指南」是并列的两本，接入指南讲怎么接上，参数指南讲每个参数有哪些值。\n" +
-        "适合写音色列表、尺寸与取值范围、字段含义这类要反复回来查的东西；限流和使用约定不属于这里。\n" +
-        "**写的是本部署映射之后的接口，不是上游厂商的原生接口。** 厂商文档用来确认上游的字段名和取值，\n" +
-        "接口路径、我们转发和不转发什么、哪些转换是我们做的——这些必须来自 read_docs 和 list_providers。\n" +
-        "把厂商原生接口照抄进来，用户照着调就会踩坑。\n" +
-        "每页正文很长（一张音色表就三百多行），所以一页只写一类，别把整本塞进一页。\n" +
-        "pages 是【完整】替换，不是增量：只发新加的那一页会把其余所有页面删掉。想加一页必须先用 list_doc_pages 拿回现状、合并、再整份传回。\n" +
-        "id 会变成读者能收藏的锚点，一旦发布就不要改；id 只能是小写字母、数字和中划线。",
+      description: t("propose_doc_pages"),
       parameters: {
         type: "object",
         properties: {
-          summary: { type: "string", description: "一句话说明这次变更的目的" },
+          summary: { type: "string", description: t("propose_doc_pages.summary") },
           pages: {
             type: "array",
-            description: "完整的页面列表。顺序就是读者看到的顺序。",
+            description: t("propose_doc_pages.pages"),
             items: {
               type: "object",
               properties: {
-                id: { type: "string", description: "URL 锚点，小写字母/数字/中划线，发布后不要改" },
+                id: { type: "string", description: t("propose_doc_pages.pages.id") },
                 title: { type: "string" },
-                body: { type: "string", description: "Markdown 正文" },
-                hidden: { type: "boolean", description: "true = 草稿，读者看不到" },
+                body: { type: "string", description: t("propose_doc_pages.pages.body") },
+                hidden: { type: "boolean", description: t("propose_doc_pages.pages.hidden") },
                 order: { type: "integer" },
               },
               required: ["id", "title", "body"],
@@ -1080,9 +938,7 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "list_doc_pages",
-      description:
-        "读回当前【参数指南】的页面。改之前必须先调这个 —— " +
-        "propose_doc_pages 是整份替换，不知道现状就改会把页面全删掉。",
+      description: t("list_doc_pages"),
       parameters: { type: "object", properties: {}, additionalProperties: false },
     },
   },
@@ -1090,36 +946,25 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "propose_media_provider_update",
-      description:
-        "提出一次媒体服务商配置变更，同样需要管理员确认才执行。只能改已存在的媒体服务商，不能新建。\n" +
-        "改已有 spec 的字段请用 specEdits（按下标指明、只写要改的字段），不要把整个 specs 数组重发一遍 —— 数组有十几 KB，重发极易在传输中损坏。\n" +
-        "只有新增或删除整个能力 spec 时才用 specs。",
+      description: t("propose_media_provider_update"),
       parameters: {
         type: "object",
         properties: {
           providerId: { type: "string" },
-          summary: { type: "string", description: "一句话说明这次变更的目的" },
+          summary: { type: "string", description: t("propose_media_provider_update.summary") },
           baseUrl: { type: "string" },
           models: {
             type: "object",
-            description:
-              "模型表的【完整】替换。整份替换，不是增量：想加一个模型必须先 list_media_providers 取回现状、合并、再整份传回，否则其余模型会被删掉。",
+            description: t("propose_media_provider_update.models"),
             additionalProperties: true,
           },
           specEdits: {
             type: "array",
-            description:
-              "推荐用法：按下标修改已有 spec 的字段。只写要改的字段，其余原样保留。" +
-              "下标从 list_media_providers 返回的 specs 数组顺序数起（从 0 开始）。" +
-              "这样你不需要重发整个 spec，也就不会把它写坏。\n" +
-              "除下面列出的几个字段外，spec 上的**任何**顶层字段都可以作为键写进来 —— " +
-              "transport、request、response、voices、errors、limits、metadata 等都算，" +
-              "值就是完整的 JSON 对象。合并是逐条浅合并：你在某个键上写的值会整个替换那个键，" +
-              "所以要改嵌套结构里的一处，就得把那个键的完整新值写出来（模板用 get_media_spec_reference 取）。",
+            description: t("propose_media_provider_update.specEdits"),
             items: {
               type: "object",
               properties: {
-                index: { type: "integer", description: "要修改的 spec 在现有列表中的下标，从 0 开始" },
+                index: { type: "integer", description: t("propose_media_provider_update.specEdits.index") },
                 displayName: { type: "string" },
                 enabled: { type: "boolean" },
                 models: { type: "array", items: { type: "string" } },
@@ -1130,10 +975,7 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
           },
           specs: {
             type: "array",
-            description:
-              "【完整】替换整个 specs 数组。只在新增或删除整个能力 spec 时用；改字段请用 specEdits。" +
-              "重发整个数组有十几 KB，在传输中损坏过（模型会写出 _request 这种不存在的字段），" +
-              "而损坏的 JSON 解析出来是空对象，管理员只会看到一个没有理由的失败。",
+            description: t("propose_media_provider_update.specs"),
             items: { type: "object" },
           },
           enabled: { type: "boolean" },
@@ -1147,56 +989,47 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "propose_provider_create",
-      description:
-        "提出一次「新建聊天服务商」的变更，管理员在界面上确认并补填 API 密钥后才会真正创建。这个工具不接收密钥，也不该向用户索取 —— 密钥由管理员在确认时自己填，所以你提议的内容里绝不能包含任何密钥。同样需要管理员点确认。" +
-        "**这个工具不能设置价格**：新建的每个模型都会以 0/0 写入，所以会被 free-model 闸门拦下。" +
-        "如果这些模型其实收费，请在闸门提示里用 confirmFindings 逐条确认「确认就是免费」之前，" +
-        "先问用户定价是多少 —— 定价要由管理员在确认界面上补，不要在这里编一个数字。",
+      description: t("propose_provider_create"),
       parameters: {
         type: "object",
         properties: {
-          name: { type: "string", description: "服务商的显示名称" },
-          kind: { type: "string", enum: ["openai", "anthropic"], description: "上游协议，默认 openai" },
-          summary: { type: "string", description: "一句话说明这次变更的目的" },
-          baseUrl: { type: "string", description: "上游 base URL，例如 https://api.minimaxi.com/v1" },
+          name: { type: "string", description: t("propose_provider_create.name") },
+          kind: { type: "string", enum: ["openai", "anthropic"], description: t("propose_provider_create.kind") },
+          summary: { type: "string", description: t("propose_provider_create.summary") },
+          baseUrl: { type: "string", description: t("propose_provider_create.baseUrl") },
           upstreamFormat: {
             type: "string",
             enum: ["responses", "chat", "anthropic", "gemini"],
-            description:
-              "上游接口风格，默认 responses。anthropic 或 gemini 表示上游只说那种协议，OpenAI 侧由网关转换。",
+            description: t("propose_provider_create.upstreamFormat"),
           },
-          priority: { type: "integer", description: "数值越小越优先" },
+          priority: { type: "integer", description: t("propose_provider_create.priority") },
           modelMapping: {
             type: "object",
-            description: "客户端模型名 → 上游模型名。新建时这张表就是全部，所以传完整的一份。",
+            description: t("propose_provider_create.modelMapping"),
             additionalProperties: { type: "string" },
           },
           openaiEnabled: {
             type: "boolean",
-            description:
-              "OpenAI 协议面。上游说 chat/responses 时是直连；上游说 anthropic/gemini 时表示由网关转换来服务。",
+            description: t("propose_provider_create.openaiEnabled"),
           },
-          anthropicEnabled: { type: "boolean", description: "Anthropic 协议面，上游说 /v1/messages 时开" },
+          anthropicEnabled: { type: "boolean", description: t("propose_provider_create.anthropicEnabled") },
           anthropicMode: {
             type: "string",
             enum: ["native", "translated"],
-            description:
-              "Anthropic 协议面怎么服务：native = 厂商自己的 /v1/messages；translated = 厂商不说 Anthropic，由网关转换。只说 OpenAI 兼容协议的厂商要用 translated，Anthropic 客户端才调得动它。",
+            description: t("propose_provider_create.anthropicMode"),
           },
           anthropicBaseUrl: {
             type: "string",
-            description: "Anthropic 面的 base URL。留空会根据 baseUrl 推导；上游两套形状不同域时才填。",
+            description: t("propose_provider_create.anthropicBaseUrl"),
           },
           headers: {
             type: "object",
-            description: "附在上游请求上的固定请求头，例如 {\"api-version\": \"2024-08-01-preview\"}。",
+            description: t("propose_provider_create.headers"),
             additionalProperties: { type: "string" },
           },
           textSpecs: {
             type: "array",
-            description:
-              "每个兼容接口的参数规则，建库时一并写入。只有厂商和 OpenAI 兼容接口确实不同时才需要。" +
-              "新建时留空 activeMode 会按「有规则就用」推断，规则会生效；只有显式传 simple 才会让规则不执行。",
+            description: t("propose_provider_create.textSpecs"),
             items: {
               type: "object",
               properties: {
@@ -1215,16 +1048,11 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
           activeMode: {
             type: "string",
             enum: ["simple", "advanced"],
-            description:
-              "规则读哪一套：advanced 执行 textSpecs，simple 完全不执行。" +
-              "新建时一般不用传 —— 留空会按有没有规则推断。只有在明确要求「先存规则、暂不启用」时才传 simple。" +
-              "没有规则时传 advanced 没有意义，会被拒绝。",
+            description: t("propose_provider_create.activeMode"),
           },
           confirmFindings: {
             type: "array",
-            description:
-              'free-model 闸门的确认清单，逐条模型写「code:模型名」，例如 all_zero:MiniMax-M2。' +
-              "只有当用户明确说过这个模型确实免费时才写。不要原样重发一遍 —— 再说一次得到的是同一个拒绝。",
+            description: t("propose_provider_create.confirmFindings"),
             items: { type: "string" },
           },
         },
@@ -1237,25 +1065,22 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "propose_media_provider_create",
-      description:
-        "提出一次「新建媒体服务商」的变更，同样需要管理员确认并补填 API 密钥。models 和 specs 是新建时的完整内容，传完整的一份。不要向用户索取密钥。",
+      description: t("propose_media_provider_create"),
       parameters: {
         type: "object",
         properties: {
           name: { type: "string" },
-          summary: { type: "string", description: "一句话说明这次变更的目的" },
+          summary: { type: "string", description: t("propose_media_provider_create.summary") },
           baseUrl: { type: "string" },
           priority: { type: "integer" },
           models: {
             type: "object",
-            description: "模型表，【完整】的一份。每个值至少要有 upstreamId。",
+            description: t("propose_media_provider_create.models"),
             additionalProperties: { type: "object" },
           },
           specs: {
             type: "array",
-            description:
-              "能力 spec 数组。【完整】的一份，并且必须与 list_media_providers 返回的形状逐字一致 —— 那才是校验器接受的形状。" +
-              "正确做法：先 list_media_providers 取回现有的 spec，整份复制，再只改要改的字段。",
+            description: t("propose_media_provider_create.specs"),
             items: { type: "object" },
           },
         },
@@ -1268,16 +1093,13 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "list_search_providers",
-      description:
-        "列出所有搜索提供商（网页搜索的后端），包括它们当前实际请求的地址、用的协议（spec）、以及与内置模板的差异。\n" +
-        "**地址那一行是最终生效的地址** —— 旧记录的地址按旧规则解释，新记录按协议解释，别自己推断。\n" +
-        "改某一份 spec 前用 full=true 取回完整 JSON。",
+      description: t("list_search_providers"),
       parameters: {
         type: "object",
         properties: {
           full: {
             type: "boolean",
-            description: "true 时返回每条记录完整的 spec JSON（只在真的要改 spec 时用）。",
+            description: t("list_search_providers.full"),
           },
         },
         additionalProperties: false,
@@ -1288,27 +1110,22 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "get_search_spec_reference",
-      description:
-        "读搜索适配协议的原文，或者当前内置的协议模板。\n" +
-        "写 spec 之前先读它 —— 字段名和语法以这份原文为准，不要凭印象写。\n" +
-        "what=\"protocol\"：协议全文（用 offset/limit 分段读，读到 nextOffset 就接着读下一段）。\n" +
-        "what=\"templates\"：本部署内置的模板，一字不差的可套用副本。\n" +
-        "语法和媒体适配协议是同一套：值写成 \"$.query\" 是取作用域里的值，写成 \"{{…}}\" 是模板，其余是字面量。",
+      description: t("get_search_spec_reference"),
       parameters: {
         type: "object",
         properties: {
           what: {
             type: "string",
             enum: ["protocol", "templates"],
-            description: "protocol = 协议原文；templates = 内置模板",
+            description: t("get_search_spec_reference.what"),
           },
           offset: {
             type: "integer",
-            description: "what=\"protocol\" 时的起始字符位置，从 0 开始。",
+            description: t("get_search_spec_reference.offset"),
           },
           limit: {
             type: "integer",
-            description: "what=\"protocol\" 时这一次返回多少字符。",
+            description: t("get_search_spec_reference.limit"),
           },
         },
         additionalProperties: false,
@@ -1319,41 +1136,33 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "propose_search_provider_create",
-      description:
-        "提出一次「新建搜索提供商」的变更，管理员在界面上确认并补填 API 密钥后才会真正创建。\n" +
-        "这个工具不接收密钥，也不该向用户索取 —— 密钥由管理员在确认时自己填。\n" +
-        "**优先用内置模板**：kind 填 searxng / tavily / brave，工具会带上对应的默认协议；" +
-        "只有在接一个没有模板的厂商时才自己写 spec。",
+      description: t("propose_search_provider_create"),
       parameters: {
         type: "object",
         properties: {
-          name: { type: "string", description: "显示名称" },
+          name: { type: "string", description: t("propose_search_provider_create.name") },
           kind: {
             type: "string",
-            description:
-              "厂商标签。用内置模板时填 searxng / tavily / brave；自带 spec 时可以填任何名字，spec.vendor 会写进用量统计。",
+            description: t("propose_search_provider_create.kind"),
           },
-          summary: { type: "string", description: "一句话说明这次变更的目的" },
+          summary: { type: "string", description: t("propose_search_provider_create.summary") },
           baseUrl: {
             type: "string",
-            description:
-              "服务地址。**服务根地址**，不是完整端点 —— 端点路径由协议里的 transport.path 决定。自带 spec 时如果 spec.baseUrl 有值，这一条优先。",
+            description: t("propose_search_provider_create.baseUrl"),
           },
           apiKeyHint: {
             type: "string",
-            description:
-              "一句话说明这个密钥是给哪个厂商的（例如「Tavily 的 key」）。不要写密钥本身。",
+            description: t("propose_search_provider_create.apiKeyHint"),
           },
-          priority: { type: "integer", description: "数值越小越优先" },
+          priority: { type: "integer", description: t("propose_search_provider_create.priority") },
           creditsPerCall: {
             type: "integer",
-            description: "每次调用扣多少整数积分；0 表示免费。不填按 1。",
+            description: t("propose_search_provider_create.creditsPerCall"),
           },
           enabled: { type: "boolean" },
           spec: {
             type: "object",
-            description:
-              "可选的完整搜索协议。没有内置模板的厂商才需要写，形状必须与 get_search_spec_reference 返回的模板逐字一致。",
+            description: t("propose_search_provider_create.spec"),
             additionalProperties: true,
           },
         },
@@ -1366,22 +1175,20 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "propose_search_provider_update",
-      description:
-        "提出一次搜索提供商配置变更，同样需要管理员确认才执行。只能改已存在的搜索提供商，不能新建。\n" +
-        "只写要改的字段，其余原样保留。spec 是整份替换 —— 要改就先用 list_search_providers(full=true) 取回现状再改。",
+      description: t("propose_search_provider_update"),
       parameters: {
         type: "object",
         properties: {
           providerId: { type: "string" },
-          summary: { type: "string", description: "一句话说明这次变更的目的" },
+          summary: { type: "string", description: t("propose_search_provider_update.summary") },
           kind: { type: "string" },
-          baseUrl: { type: "string", description: "服务根地址" },
+          baseUrl: { type: "string", description: t("propose_search_provider_update.baseUrl") },
           enabled: { type: "boolean" },
           priority: { type: "integer" },
           creditsPerCall: { type: "integer" },
           spec: {
             type: "object",
-            description: "整份替换的搜索协议。传 null 表示清掉这份协议，回到内置模板。",
+            description: t("propose_search_provider_update.spec"),
             additionalProperties: true,
           },
         },
@@ -1394,17 +1201,28 @@ const ADMIN_TOOLS: AssistantToolDef[] = [
     type: "function",
     function: {
       name: "list_users",
-      description: "列出所有用户及其角色、配额和密钥数。",
+      description: t("list_users"),
       parameters: { type: "object", properties: {}, additionalProperties: false },
     },
   },
-];
+  ];
+}
 
+/**
+ * The tool catalogue the model is offered, in the reader's language.
+ *
+ * The locale is the last argument and defaults to the deployment's own
+ * language, so every caller that predates the switch keeps exactly the
+ * catalogue it had before. The descriptions come out of one table in
+ * `tool-text.ts` — the shape stays here, the wording lives there.
+ */
 export function toolDefinitions(
   isAdmin: boolean,
   opts: { webSearch?: boolean } = {},
+  locale: Locale = DEFAULT_LOCALE,
 ): AssistantToolDef[] {
-  const list = isAdmin ? [...USER_TOOLS, ...ADMIN_TOOLS] : [...USER_TOOLS];
+  const t = (key: string): string => toolDescription(locale, key);
+  const list = isAdmin ? [...userTools(t), ...adminTools(t)] : [...userTools(t)];
   // `undefined` means on: every caller that has no opinion keeps today's
   // catalogue, and only an explicit "this turn has search off" removes it.
   return opts.webSearch === false
@@ -1434,7 +1252,7 @@ export const ASK_USER_MARKER = "<!-- ask_user -->";
  * The question is also written into the transcript, so the next turn can see
  * what it asked rather than only that it asked.
  */
-function askUser(args: Record<string, unknown>): ToolResult {
+function askUser(args: Record<string, unknown>, ctx: ToolContext): ToolResult {
   const parsed = z
     .object({
       question: z.string().trim().min(1).max(500),
@@ -1444,7 +1262,7 @@ function askUser(args: Record<string, unknown>): ToolResult {
     })
     .safeParse(args);
   if (!parsed.success) {
-    return fail("ask_user 需要一个非空的 question。");
+    return fail(ctx, "askUserNeedsQuestion");
   }
   const { question, options, placeholder, hint } = parsed.data;
 
@@ -1489,7 +1307,7 @@ export async function executeTool(
   switch (name) {
     // ---- shared --------------------------------------------------------
     case "ask_user":
-      return askUser(args);
+      return askUser(args, ctx);
     case "list_gateway_models":
       return listGatewayModels(ctx);
     case "test_gateway_model":
@@ -1501,7 +1319,7 @@ export async function executeTool(
     case "read_docs":
       return readDocsTool(args, ctx);
     case "fetch_page":
-      return fetchPageTool(args);
+      return fetchPageTool(args, ctx);
     case "web_search":
       // Hiding the definition is not enough: a model that has seen the tool in
       // an earlier turn can emit the name anyway, and this turn said no.
@@ -1512,7 +1330,7 @@ export async function executeTool(
       // "turn on the switch next to the input box" when the administrator
       // turned the feature off is asking them for something that is not there.
       if (ctx.webSearchEnabled === false) {
-        return fail(webSearchOffMessage(ctx.webSearchDisabledReason));
+        return fail(ctx, webSearchOffKey(ctx.webSearchDisabledReason));
       }
       return webSearchTool(args, ctx);
     case "generate_image":
@@ -1526,7 +1344,7 @@ export async function executeTool(
 
     // ---- admin only ----------------------------------------------------
     case "audit_provider_config":
-      return auditProviderConfig(args);
+      return auditProviderConfig(args, ctx);
     case "propose_model_configs_update":
       return proposeModelConfigsUpdate(args, ctx);
     case "withdraw_proposal":
@@ -1534,67 +1352,67 @@ export async function executeTool(
     case "list_my_proposals":
       return listMyProposals(args, ctx);
     case "list_providers":
-      if (!isAdmin) return fail("这是管理员功能。");
+      if (!isAdmin) return fail(ctx, "adminOnly");
       return listProvidersTool();
     case "list_text_protocols":
-      if (!isAdmin) return fail("这是管理员功能。");
+      if (!isAdmin) return fail(ctx, "adminOnly");
       return listTextProtocolsTool();
     case "get_text_spec_reference":
-      if (!isAdmin) return fail("这是管理员功能。");
-      return textSpecReferenceTool(args);
+      if (!isAdmin) return fail(ctx, "adminOnly");
+      return textSpecReferenceTool(args, ctx);
     case "probe_provider_host":
-      if (!isAdmin) return fail("这是管理员功能。");
-      return probeProviderHost(args);
+      if (!isAdmin) return fail(ctx, "adminOnly");
+      return probeProviderHost(args, ctx);
     case "list_media_providers":
-      if (!isAdmin) return fail("这是管理员功能。");
+      if (!isAdmin) return fail(ctx, "adminOnly");
       return listMediaProvidersTool(args.full === true);
     case "get_media_spec_reference":
-      if (!isAdmin) return fail("这是管理员功能。");
-      return mediaSpecReferenceTool(args);
+      if (!isAdmin) return fail(ctx, "adminOnly");
+      return mediaSpecReferenceTool(args, ctx);
     case "list_search_providers":
-      if (!isAdmin) return fail("这是管理员功能。");
+      if (!isAdmin) return fail(ctx, "adminOnly");
       return listSearchProvidersTool(args.full === true);
     case "get_search_spec_reference":
-      if (!isAdmin) return fail("这是管理员功能。");
-      return searchSpecReferenceTool(args);
+      if (!isAdmin) return fail(ctx, "adminOnly");
+      return searchSpecReferenceTool(args, ctx);
     case "list_voices":
       // Not admin-only: the voice list is a read about what this account can
       // speak with, exactly like `/v1/audio/voices`, and gating it would make
       // the assistant unable to answer the question the user asked it.
       return listVoicesTool();
     case "propose_provider_update":
-      if (!isAdmin) return fail("这是管理员功能。");
+      if (!isAdmin) return fail(ctx, "adminOnly");
       return proposeProviderUpdate(args, ctx);
     case "propose_model_config_update":
-      if (!isAdmin) return fail("这是管理员功能。");
+      if (!isAdmin) return fail(ctx, "adminOnly");
       return proposeModelConfigUpdate(args, ctx);
     case "list_doc_pages":
-      if (!isAdmin) return fail("这是管理员功能。");
+      if (!isAdmin) return fail(ctx, "adminOnly");
       return listDocPagesTool();
     case "propose_doc_pages":
-      if (!isAdmin) return fail("这是管理员功能。");
+      if (!isAdmin) return fail(ctx, "adminOnly");
       return proposeDocPages(args, ctx);
     case "propose_media_provider_update":
-      if (!isAdmin) return fail("这是管理员功能。");
+      if (!isAdmin) return fail(ctx, "adminOnly");
       return proposeMediaProviderUpdate(args, ctx);
     case "propose_provider_create":
-      if (!isAdmin) return fail("这是管理员功能。");
+      if (!isAdmin) return fail(ctx, "adminOnly");
       return proposeProviderCreate(args, ctx);
     case "propose_media_provider_create":
-      if (!isAdmin) return fail("这是管理员功能。");
+      if (!isAdmin) return fail(ctx, "adminOnly");
       return proposeMediaProviderCreate(args, ctx);
     case "propose_search_provider_create":
-      if (!isAdmin) return fail("这是管理员功能。");
+      if (!isAdmin) return fail(ctx, "adminOnly");
       return proposeSearchProviderCreate(args, ctx);
     case "propose_search_provider_update":
-      if (!isAdmin) return fail("这是管理员功能。");
+      if (!isAdmin) return fail(ctx, "adminOnly");
       return proposeSearchProviderUpdate(args, ctx);
     case "list_users":
-      if (!isAdmin) return fail("这是管理员功能。");
+      if (!isAdmin) return fail(ctx, "adminOnly");
       return listUsersTool();
 
     default:
-      return fail(`未知工具：${name}`);
+      return fail(ctx, "unknownTool", { tool: name });
   }
 }
 
@@ -1680,8 +1498,8 @@ async function testGatewayModel(
   ctx: ToolContext,
 ): Promise<ToolResult> {
   const model = z.string().min(1).safeParse(args.model);
-  if (!model.success) return fail("缺少 model 参数。");
-  if (!ctx.relayKey && !ctx.account) return fail(NO_CREDENTIAL_MESSAGE);
+  if (!model.success) return fail(ctx, "missingModel");
+  if (!ctx.relayKey && !ctx.account) return fail(ctx, "noCredential");
 
   const prompt =
     typeof args.prompt === "string" && args.prompt.trim() ? args.prompt : "用一句话介绍你自己。";
@@ -1730,7 +1548,7 @@ async function testGatewayModel(
         answer: (parsed.choices?.[0]?.message?.content ?? "").slice(0, 1200),
       });
     } catch (err) {
-      return fail(`调用失败：${err instanceof Error ? err.message : String(err)}`);
+      return fail(ctx, "callFailed", { message: err instanceof Error ? err.message : String(err) });
     }
   }
 
@@ -1765,7 +1583,7 @@ async function testGatewayModel(
       answer: answer.slice(0, 1200),
     });
   } catch (err) {
-    return fail(`调用失败：${err instanceof Error ? err.message : String(err)}`);
+    return fail(ctx, "callFailed", { message: err instanceof Error ? err.message : String(err) });
   }
 }
 
@@ -1846,12 +1664,19 @@ function readDocsTool(args: Record<string, unknown>, ctx: ToolContext): ToolResu
 
   const wantsAdmin = topic.toLowerCase().startsWith("admin");
   if (wantsAdmin && !canReadAdmin) {
-    return fail("admin: 文档只有管理员能读。你是普通用户看不到这一页。");
+    return fail(ctx, "adminDocsOnly");
   }
 
   const result = reader.read(topic, locale, wantsAdmin ? "admin" : "user");
   if (!result.ok) {
-    return fail(`${result.reason}${result.available ? `\n可用：${result.available.map((a) => a.topic).join(", ")}` : ""}`);
+    return fail(
+      ctx,
+      result.available ? "docTopicUnavailable" : "docReadFailed",
+      {
+        reason: result.reason,
+        available: result.available ? result.available.map((a) => a.topic).join(", ") : "",
+      },
+    );
   }
   return ok({ topic: result.topic, title: result.title, truncated: result.truncated, text: result.text });
 }
@@ -1879,12 +1704,32 @@ const MAX_REFERENCE_BYTES = 8 * 1024 * 1024;
 
 const ATTACHMENT_ALIASES = new Set(["attachment", "@attachment", "上传的图片", "附件"]);
 
-export async function resolveReferenceImage(
+/**
+ * A refusal, as the key of the row that carries it.
+ *
+ * The image and the audio resolvers both answer with prose the person reads,
+ * so the prose has to follow their language. Returning the key rather than
+ * the sentence keeps the wording in one table and lets the caller decide how
+ * to present it.
+ */
+interface Refusal {
+  key: string;
+  vars?: Record<string, string | number>;
+}
+
+/**
+ * The reference image, as a refusal key when it cannot be resolved.
+ *
+ * The internal twin of {@link resolveReferenceImage}: same walk over the same
+ * attachments, but the refusal comes back as a key so the caller can hand it
+ * to `fail` and get the reader's language.
+ */
+async function resolveReferenceImageRefusal(
   value: string,
   ctx: ToolContext,
-): Promise<{ ok: true; dataUrl: string } | { ok: false; reason: string }> {
+): Promise<{ ok: true; dataUrl: string } | { ok: false; refusal: Refusal }> {
   const raw = value.trim();
-  if (!raw) return { ok: false, reason: "image 是空的。" };
+  if (!raw) return { ok: false, refusal: { key: "referenceImageEmpty" } };
 
   if (raw.startsWith("data:")) return { ok: true, dataUrl: raw };
 
@@ -1893,34 +1738,46 @@ export async function resolveReferenceImage(
   }
 
   if (!ATTACHMENT_ALIASES.has(raw)) {
-    return {
-      ok: false,
-      reason:
-        "image 只接受三种写法：attachment（用用户这一条消息里附的图片）、一个 http(s) 图片网址、或者一个 data URL。",
-    };
+    return { ok: false, refusal: { key: "referenceImageForms" } };
   }
 
   const pictures = (ctx.attachments ?? []).filter((a) => a.kind === "image");
   if (pictures.length === 0) {
-    return { ok: false, reason: "这一条消息里没有附上图片，所以没有可用的参考图。" };
+    return { ok: false, refusal: { key: "noAttachedImage" } };
   }
   // Newest wins: the user may have sent a correction.
   const attachment = pictures[pictures.length - 1];
 
   const stored = await getAssistantArtifact(attachment.id, ctx.user.id);
   if (!stored?.bytes) {
-    return { ok: false, reason: `附件 ${attachment.name} 已经读不出来了，请重新发一次。` };
+    return { ok: false, refusal: { key: "attachmentUnreadable", vars: { name: attachment.name } } };
   }
   if (stored.bytes.byteLength > MAX_REFERENCE_BYTES) {
     return {
       ok: false,
-      reason: `附件 ${attachment.name} 有 ${(stored.bytes.byteLength / 1024 / 1024).toFixed(1)}MB，超过 ${MAX_REFERENCE_BYTES / 1024 / 1024}MB 的参考图上限。`,
+      refusal: {
+        key: "attachmentTooLarge",
+        vars: {
+          name: attachment.name,
+          size: (stored.bytes.byteLength / 1024 / 1024).toFixed(1),
+          limit: MAX_REFERENCE_BYTES / 1024 / 1024,
+        },
+      },
     };
   }
   return {
     ok: true,
     dataUrl: `data:${attachment.contentType};base64,${Buffer.from(stored.bytes).toString("base64")}`,
   };
+}
+
+export async function resolveReferenceImage(
+  value: string,
+  ctx: ToolContext,
+): Promise<{ ok: true; dataUrl: string } | { ok: false; reason: string }> {
+  const resolved = await resolveReferenceImageRefusal(value, ctx);
+  if (resolved.ok) return resolved;
+  return { ok: false, reason: toolRefusal(ctx.locale, resolved.refusal.key, resolved.refusal.vars) };
 }
 
 /**
@@ -1946,17 +1803,29 @@ async function resolveReferenceAudio(
   value: string,
   ctx: ToolContext,
 ): Promise<{ ok: true; dataUrl: string; name: string } | { ok: false; reason: string }> {
+  const resolved = await resolveReferenceAudioRefusal(value, ctx);
+  if (resolved.ok) return resolved;
+  return { ok: false, reason: toolRefusal(ctx.locale, resolved.refusal.key, resolved.refusal.vars) };
+}
+
+/**
+ * The audio a caller means, as a refusal key when it cannot be resolved.
+ *
+ * The internal twin of {@link resolveReferenceAudio}: same three shapes, same
+ * attachment rules, but the refusal comes back as a key so the caller can
+ * hand it to `fail` and get the reader's language.
+ */
+async function resolveReferenceAudioRefusal(
+  value: string,
+  ctx: ToolContext,
+): Promise<{ ok: true; dataUrl: string; name: string } | { ok: false; refusal: Refusal }> {
   const raw = value.trim();
-  if (!raw) return { ok: false, reason: "audio 是空的。" };
+  if (!raw) return { ok: false, refusal: { key: "referenceAudioEmpty" } };
   if (raw.startsWith("data:") || /^https?:\/\//i.test(raw)) {
     return { ok: true, dataUrl: raw, name: "音频" };
   }
   if (!ATTACHMENT_ALIASES.has(raw)) {
-    return {
-      ok: false,
-      reason:
-        "audio 只接受三种写法：attachment（用用户这一条消息里附的音频）、一个 http(s) 音频网址、或者一个 data URL。",
-    };
+    return { ok: false, refusal: { key: "referenceAudioForms" } };
   }
 
   const clips = (ctx.attachments ?? []).filter((a) => a.kind === "audio");
@@ -1967,17 +1836,13 @@ async function resolveReferenceAudio(
     // for a while this still sent people looking for it. Whatever it names has
     // to be something AssistantChat.tsx actually renders. The paperclip is a
     // file input accepting audio/*, and it is the only way in now.
-    return {
-      ok: false,
-      reason:
-        "这一条消息里没有附上音频。请让他用输入框旁边的回形针（添加图片、音频或视频）挑一个音频文件，连同这条消息一起发过来。",
-    };
+    return { ok: false, refusal: { key: "noAttachedAudio" } };
   }
   // Newest wins, same as the picture case: the user may have sent a correction.
   const attachment = clips[clips.length - 1];
   const stored = await getAssistantArtifact(attachment.id, ctx.user.id);
   if (!stored?.bytes) {
-    return { ok: false, reason: `附件 ${attachment.name} 已经读不出来了，请重新发一次。` };
+    return { ok: false, refusal: { key: "attachmentUnreadable", vars: { name: attachment.name } } };
   }
   return {
     ok: true,
@@ -1999,30 +1864,28 @@ async function transcribeAudio(
   args: Record<string, unknown>,
   ctx: ToolContext,
 ): Promise<ToolResult> {
-  if (!ctx.relayKey && !ctx.account) return fail(NO_CREDENTIAL_MESSAGE);
+  if (!ctx.relayKey && !ctx.account) return fail(ctx, "noCredential");
   const model = z.string().min(1).safeParse(args.model);
   if (!model.success) {
     // A missing model is a question with an answer in this deployment, not
     // something to send upstream and read a 400 about.
     const stt = await listSttModels();
     if (stt.length === 0) {
-      return fail(
-        "这个网关还没有配置语音识别模型。请在「媒体服务商」里给某个服务商加一个 audio.stt 的协议（例如 MiniMax 的 asr-1.0）。",
-      );
+      return fail(ctx, "noSttModel");
     }
-    return fail(`请指定语音识别模型。可选：${stt.join("、")}。`);
+    return fail(ctx, "sttModelRequired", { models: stt.join("、") });
   }
 
-  const resolved = await resolveReferenceAudio(
+  const resolved = await resolveReferenceAudioRefusal(
     typeof args.audio === "string" ? args.audio : "attachment",
     ctx,
   );
-  if (!resolved.ok) return fail(resolved.reason);
+  if (!resolved.ok) return fail(ctx, resolved.refusal.key, resolved.refusal.vars);
 
   if (!ctx.account) {
     // The account path is the only one that can read a stored attachment
     // without a bearer token, and every other media tool resolves the same way.
-    return fail(NO_CREDENTIAL_MESSAGE);
+    return fail(ctx, "noCredential");
   }
 
   const language = typeof args.language === "string" ? args.language.trim() : "";
@@ -2088,11 +1951,11 @@ async function mediaGenerate(
   kind: "image" | "speech" | "video",
 ): Promise<ToolResult> {
   const model = z.string().min(1).safeParse(args.model);
-  if (!model.success) return fail("缺少 model 参数。");
-  if (!ctx.relayKey && !ctx.account) return fail(NO_CREDENTIAL_MESSAGE);
+  if (!model.success) return fail(ctx, "missingModel");
+  if (!ctx.relayKey && !ctx.account) return fail(ctx, "noCredential");
 
   const prompt = typeof args.prompt === "string" ? args.prompt : typeof args.input === "string" ? args.input : "";
-  if (!prompt.trim()) return fail("缺少提示词 / 输入文本。");
+  if (!prompt.trim()) return fail(ctx, "missingPrompt");
 
   // MiniMax's t2a_v2 rejects a request with no `voice_setting.voice_id`, so a
   // model that omits the optional-looking `voice` argument gets a bare
@@ -2112,8 +1975,8 @@ async function mediaGenerate(
   // take it raw — so the only thing this has to get right is handing it over.
   let reference: string | undefined;
   if (kind === "image" && typeof args.image === "string" && args.image.trim()) {
-    const resolved = await resolveReferenceImage(args.image, ctx);
-    if (!resolved.ok) return fail(resolved.reason);
+    const resolved = await resolveReferenceImageRefusal(args.image, ctx);
+    if (!resolved.ok) return fail(ctx, resolved.refusal.key, resolved.refusal.vars);
     reference = resolved.dataUrl;
   }
 
@@ -2187,7 +2050,7 @@ async function mediaGenerate(
         artifacts: artifactsFromItems(items, artifactKind),
       };
     } catch (err) {
-      return fail(`调用失败：${err instanceof Error ? err.message : String(err)}`);
+      return fail(ctx, "callFailed", { message: err instanceof Error ? err.message : String(err) });
     }
   }
 
@@ -2265,7 +2128,7 @@ async function mediaGenerate(
       ),
     };
   } catch (err) {
-    return fail(`调用失败：${err instanceof Error ? err.message : String(err)}`);
+    return fail(ctx, "callFailed", { message: err instanceof Error ? err.message : String(err) });
   }
 }
 
@@ -2340,7 +2203,7 @@ async function withdrawProposal(
   ctx: ToolContext,
 ): Promise<ToolResult> {
   const actionId = typeof args.actionId === "string" ? args.actionId.trim() : "";
-  if (!actionId) return fail("要撤回哪一条？给我 actionId。");
+  if (!actionId) return fail(ctx, "actionIdRequired");
 
   const reason =
     typeof args.reason === "string" && args.reason.trim()
@@ -2349,27 +2212,24 @@ async function withdrawProposal(
 
   const before = await getAssistantAction(ctx.user.id, actionId);
   if (!before) {
-    return fail(`找不到提案 ${actionId}，它可能不属于当前账号，或者已经被清理了。`);
+    return fail(ctx, "proposalNotFound", { actionId });
   }
   if (before.status !== "pending") {
-    const how =
-      before.status === "applied"
-        ? "它已经生效了，撤回不会把配置改回去"
-        : "它已经被处理过了";
+    const applied = before.status === "applied";
     return fail(
-      `提案 ${actionId} 撤不了：当前状态是 ${before.status}，${how}。` +
-        (before.status === "applied"
-          ? "要改回去请重新提一条，管理员确认后才会生效。"
-          : ""),
+      ctx,
+      applied ? "actionNotWithdrawableApplied" : "actionNotWithdrawableHandled",
+      {
+        actionId,
+        status: before.status,
+        how: toolRefusal(ctx.locale, applied ? "withdrawStatusApplied" : "withdrawStatusHandled"),
+      },
     );
   }
 
   const withdrawn = await withdrawAssistantAction(ctx.user.id, actionId, `助手撤回：${reason}`);
   if (!withdrawn) {
-    return fail(
-      `提案 ${actionId} 撤不掉了——状态在查询和撤回之间变了（可能刚被确认）。` +
-        "用 list_my_proposals 重新看一眼。",
-    );
+    return fail(ctx, "actionWithdrawRace", { actionId });
   }
   return ok({ actionId, status: "rejected", reason, summary: before.summary });
 }
@@ -2377,7 +2237,7 @@ async function withdrawProposal(
 async function listMyProposals(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
   const status = args.status;
   if (status !== undefined && typeof status !== "string") {
-    return fail("status 只能是字符串。");
+    return fail(ctx, "statusNotString");
   }
   const parsed = status as
     | "pending"
@@ -2386,7 +2246,7 @@ async function listMyProposals(args: Record<string, unknown>, ctx: ToolContext):
     | "failed"
     | undefined;
   if (parsed !== undefined && !["pending", "applied", "rejected", "failed"].includes(parsed)) {
-    return fail("status 只能是 pending / applied / rejected / failed 之一。");
+    return fail(ctx, "statusInvalid");
   }
 
   const actions = await listAssistantActions(ctx.user.id, parsed, 50);
@@ -2580,7 +2440,7 @@ function listTextProtocolsTool(): ToolResult {
  * one job each, rather than one tool with two jobs and no way to say which
  * half you want.
  */
-async function textSpecReferenceTool(args: Record<string, unknown>): Promise<ToolResult> {
+async function textSpecReferenceTool(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
   const what = args.what === "presets" ? "presets" : "protocol";
 
   if (what === "presets") {
@@ -2595,10 +2455,10 @@ async function textSpecReferenceTool(args: Record<string, unknown>): Promise<Too
     // with no UI to notice.
     const unusable = ids.filter((id) => !(CONFIGURABLE_PROTOCOLS as readonly string[]).includes(id));
     if (unusable.length > 0) {
-      return fail(
-        `协议「${unusable.join("、")}」没有可用预设：本部署没有它对应的客户端端点，配了也不会被任何请求选中。` +
-          `可配置的是：${CONFIGURABLE_PROTOCOLS.join("、")}。`,
-      );
+      return fail(ctx, "protocolNoPreset", {
+        protocols: unusable.join("、"),
+        available: CONFIGURABLE_PROTOCOLS.join("、"),
+      });
     }
 
     return ok({
@@ -2624,7 +2484,9 @@ async function textSpecReferenceTool(args: Record<string, unknown>): Promise<Too
   }
 
   const { text, error } = await readTextProtocolDoc();
-  if (!text) return fail(error ?? "读不到文本适配协议原文。");
+  if (!text) return fail(ctx, "textProtocolUnreadable", {
+      reason: error ?? toolRefusal(ctx.locale, "textProtocolUnreadable"),
+    });
 
   const total = text.length;
   const offset = Math.max(0, typeof args.offset === "number" ? Math.trunc(args.offset) : 0);
@@ -2645,19 +2507,22 @@ async function textSpecReferenceTool(args: Record<string, unknown>): Promise<Too
 }
 
 /**
- * The numbers a proposal may set, with the labels used to reject a bad one.
+ * The numbers a proposal may set, with the label used to reject a bad one.
  *
  * The thinking levels are deliberately absent. They are words, and a list of
  * them cannot go through a `Number(...)` coercion — see
  * {@link buildModelConfigPatch}.
+ *
+ * The label is a key rather than a word, because the refusal that names it is
+ * read in the reader's language.
  */
 const NUMERIC_PATCH_FIELDS = [
-  ["contextLength", "上下文长度", true],
-  ["maxOutputTokens", "最大输出", true],
-  ["inputCost", "输入价格", false],
-  ["outputCost", "输出价格", false],
-  ["cachedInputCost", "缓存读价格", false],
-  ["cacheWriteCost", "缓存写价格", false],
+  ["contextLength", "modelConfigFieldContextLength", true],
+  ["maxOutputTokens", "modelConfigFieldMaxOutputTokens", true],
+  ["inputCost", "modelConfigFieldInputPrice", false],
+  ["outputCost", "modelConfigFieldOutputPrice", false],
+  ["cachedInputCost", "modelConfigFieldCacheReadPrice", false],
+  ["cacheWriteCost", "modelConfigFieldCacheWritePrice", false],
 ] as const;
 
 /**
@@ -2669,9 +2534,14 @@ const NUMERIC_PATCH_FIELDS = [
  * a question; the only checks anyone had were on the schema the tool *advertises*,
  * and that schema was correct the whole time.
  *
- * Returns `{ error }` for a message to show the model verbatim.
+ * Returns `{ error }` for a message to show the model verbatim. The locale
+ * decides the language of that message; it defaults to the deployment's own,
+ * so a caller that predates the switch keeps the wording it had.
  */
-export function buildModelConfigPatch(args: Record<string, unknown>):
+export function buildModelConfigPatch(
+  args: Record<string, unknown>,
+  locale: Locale = DEFAULT_LOCALE,
+):
   | { patch: Record<string, unknown> }
   | { error: string } {
   const patch: Record<string, unknown> = {};
@@ -2692,7 +2562,11 @@ export function buildModelConfigPatch(args: Record<string, unknown>):
   if (args.purpose !== undefined) {
     const purpose = typeof args.purpose === "string" ? args.purpose.trim() : "";
     if (!(MODEL_PURPOSES as readonly string[]).includes(purpose)) {
-      return { error: `用途必须是 ${MODEL_PURPOSES.join(" / ")} 之一。` };
+      return {
+        error: toolRefusal(locale, "modelConfigPurposeInvalid", {
+          purposes: MODEL_PURPOSES.join(" / "),
+        }),
+      };
     }
     patch.purpose = purpose;
   }
@@ -2707,22 +2581,31 @@ export function buildModelConfigPatch(args: Record<string, unknown>):
   // filtered on the write path, once, for every writer.
   if (args.reasoningLevels !== undefined) {
     const levels = args.reasoningLevels;
-    if (!Array.isArray(levels)) return { error: "思考等级必须是一个字符串数组。" };
-    if (!levels.every((l) => typeof l === "string" && l.trim().length > 0)) {
-      return { error: "思考等级必须是一个非空字符串组成的数组。" };
+    if (!Array.isArray(levels)) {
+      return { error: toolRefusal(locale, "modelConfigLevelsNotArray") };
     }
-    if (levels.length > 24) return { error: "思考等级最多 24 个。" };
+    if (!levels.every((l) => typeof l === "string" && l.trim().length > 0)) {
+      return { error: toolRefusal(locale, "modelConfigLevelsNotStrings") };
+    }
+    if (levels.length > 24) {
+      return { error: toolRefusal(locale, "modelConfigLevelsTooMany") };
+    }
     // Written even when empty: that is how a model stops offering levels a
     // vendor has withdrawn.
     patch.reasoningLevels = levels.map((l) => l.trim());
   }
 
-  for (const [key, label, mustBeInteger] of NUMERIC_PATCH_FIELDS) {
+  for (const [key, labelKey, mustBeInteger] of NUMERIC_PATCH_FIELDS) {
     const value = args[key];
     if (value === undefined) continue;
     const n = typeof value === "number" ? value : Number(value);
-    if (!Number.isFinite(n) || n < 0) return { error: `${label}必须是一个非负数字。` };
-    if (mustBeInteger && !Number.isInteger(n)) return { error: `${label}必须是整数。` };
+    const label = toolRefusal(locale, labelKey);
+    if (!Number.isFinite(n) || n < 0) {
+      return { error: toolRefusal(locale, "modelConfigNotANumber", { field: label }) };
+    }
+    if (mustBeInteger && !Number.isInteger(n)) {
+      return { error: toolRefusal(locale, "modelConfigNotAnInteger", { field: label }) };
+    }
     patch[key] = n;
   }
   if (typeof args.enabled === "boolean") patch.enabled = args.enabled;
@@ -2742,7 +2625,9 @@ export function buildModelConfigPatch(args: Record<string, unknown>):
     patch.thinkingSwitchSupported = args.thinkingSwitchSupported;
   }
 
-  if (Object.keys(patch).length === 0) return { error: "没有提供任何要修改的字段。" };
+  if (Object.keys(patch).length === 0) {
+    return { error: toolRefusal(locale, "noFieldsToChange") };
+  }
   return { patch };
 }
 
@@ -2784,6 +2669,7 @@ export function buildModelConfigPatch(args: Record<string, unknown>):
  */
 async function auditProviderConfig(
   args: Record<string, unknown>,
+  ctx: ToolContext,
 ): Promise<ToolResult> {
   const wanted =
     typeof args.providerId === "string" && args.providerId.trim()
@@ -2792,7 +2678,7 @@ async function auditProviderConfig(
   const providers = await listProviders();
   const subjects = wanted ? providers.filter((p) => p.id === wanted) : providers;
   if (subjects.length === 0) {
-    return fail(wanted ? `找不到服务商 ${wanted}。` : "没有任何服务商。");
+    return fail(ctx, wanted ? "providerNotFound" : "noProviders", wanted ? { providerId: wanted } : undefined);
   }
 
   const report = subjects.map((p) => {
@@ -2882,18 +2768,18 @@ async function proposeModelConfigsUpdate(
   ctx: ToolContext,
 ): Promise<ToolResult> {
   const providerId = z.string().min(1).safeParse(args.providerId);
-  if (!providerId.success) return fail("需要 providerId，先用 list_providers 查。");
+  if (!providerId.success) return fail(ctx, "providerIdRequired");
 
   const raw = args.models;
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    return fail("models 必须是一个对象：模型名 → 该模型要设的字段。");
+    return fail(ctx, "modelsNotObject");
   }
   const names = Object.keys(raw as Record<string, unknown>);
-  if (names.length === 0) return fail("models 是空的，没有要改的模型。");
-  if (names.length > 200) return fail("一次最多改 200 个模型。");
+  if (names.length === 0) return fail(ctx, "modelsEmpty");
+  if (names.length > 200) return fail(ctx, "tooManyModels");
 
   const provider = await getProviderById(providerId.data);
-  if (!provider) return fail(`找不到服务商 ${providerId.data}。`);
+  if (!provider) return fail(ctx, "providerNotFound", { providerId: providerId.data });
 
   const live = provider.modelConfigs ?? {};
   const targets: Array<{ clientId: string; patch: Record<string, unknown> }> = [];
@@ -2901,17 +2787,17 @@ async function proposeModelConfigsUpdate(
 
   for (const name of names) {
     if (!(name in (provider.modelMapping ?? {})) && !(name in live)) {
-      return fail(
-        `服务商 ${provider.name} 里没有名为 ${name} 的模型。` +
-          `现有的：${Object.keys(provider.modelMapping ?? {}).join(", ") || "（无）"}。` +
-          "新增模型请用 propose_provider_update 改 modelMapping。",
-      );
+      return fail(ctx, "modelNotInProvider", {
+        providerName: provider.name,
+        model: name,
+        existing: Object.keys(provider.modelMapping ?? {}).join(", ") || "（无）",
+      });
     }
-    const built = buildModelConfigPatch((raw as Record<string, unknown>)[name] as Record<
-      string,
-      unknown
-    >);
-    if ("error" in built) return fail(`${name}：${built.error}`);
+    const built = buildModelConfigPatch(
+      (raw as Record<string, unknown>)[name] as Record<string, unknown>,
+      ctx.locale,
+    );
+    if ("error" in built) return fail(ctx, "modelConfigInvalid", { model: name, error: built.error });
     targets.push({ clientId: name, patch: built.patch });
     preview[name] = { ...(live[name] ?? {}), ...built.patch };
   }
@@ -2941,7 +2827,7 @@ async function proposeModelConfigsUpdate(
   const findings = auditModelConfigs(preview as Record<string, Record<string, unknown>>, { patches });
   const { blocking, acknowledged } = partitionFindings(findings, args.confirmFindings);
   if (blocking.length > 0) {
-    return fail(renderFindingsRefusal(blocking, findings));
+    return fail(ctx, "findingsBlocked", { details: renderFindingsRefusal(blocking, findings) });
   }
 
   /**
@@ -2966,7 +2852,7 @@ async function proposeModelConfigsUpdate(
    * differently about what a proposal may contain.
    */
   const gate = checkProposal("provider.update" as ProposalKind, { modelConfigTargets: targets });
-  if (!gate.ok) return fail(gate.message!);
+  if (!gate.ok) return fail(ctx, "proposalRejected", { reason: gate.message! });
   const action = await createAssistantAction({
     userId: ctx.user.id,
     kind: "provider.update",
@@ -3009,22 +2895,24 @@ async function proposeModelConfigUpdate(
 ): Promise<ToolResult> {
   const providerId = z.string().min(1).safeParse(args.providerId);
   const clientId = z.string().min(1).safeParse(args.clientId);
-  if (!providerId.success || !clientId.success) return fail("需要 providerId 和 clientId。");
+  if (!providerId.success || !clientId.success) return fail(ctx, "providerAndClientIdRequired");
 
   const provider = await getProviderById(providerId.data);
-  if (!provider) return fail(`找不到服务商 ${providerId.data}。`);
+  if (!provider) return fail(ctx, "providerNotFound", { providerId: providerId.data });
 
   const existing = (provider.modelConfigs ?? {})[clientId.data];
   if (!existing) {
-    return fail(
-      `服务商 ${provider.name} 里没有名为 ${clientId.data} 的模型配置。` +
-        `现有的：${Object.keys(provider.modelConfigs ?? {}).join(", ") || "（无）"}。` +
-        `如果这是一个新模型，先用 propose_provider_update 改 modelMapping。`,
-    );
+    return fail(ctx, "modelConfigMissing", {
+      providerName: provider.name,
+      clientId: clientId.data,
+      existing: Object.keys(provider.modelConfigs ?? {}).join(", ") || "（无）",
+    });
   }
 
-  const built = buildModelConfigPatch(args);
-  if ("error" in built) return fail(built.error);
+  const built = buildModelConfigPatch(args, ctx.locale);
+  if ("error" in built) {
+    return fail(ctx, "modelConfigInvalid", { model: clientId.data, error: built.error });
+  }
   const patch = built.patch;
 
   /**
@@ -3059,7 +2947,7 @@ async function proposeModelConfigUpdate(
   );
   const { blocking, acknowledged } = partitionFindings(findings, args.confirmFindings);
   if (blocking.length > 0) {
-    return fail(renderFindingsRefusal(blocking, findings));
+    return fail(ctx, "findingsBlocked", { details: renderFindingsRefusal(blocking, findings) });
   }
 
   const summary =
@@ -3076,7 +2964,7 @@ async function proposeModelConfigUpdate(
    * differently about what a proposal may contain.
    */
   const gate = checkProposal("provider.update" as ProposalKind, { modelConfigTarget: { clientId: clientId.data, patch } });
-  if (!gate.ok) return fail(gate.message!);
+  if (!gate.ok) return fail(ctx, "proposalRejected", { reason: gate.message! });
   const action = await createAssistantAction({
     userId: ctx.user.id,
     kind: "provider.update",
@@ -3172,7 +3060,7 @@ async function proposeDocPages(
   args: Record<string, unknown>,
   ctx: ToolContext,
 ): Promise<ToolResult> {
-  if (!Array.isArray(args.pages)) return fail("pages 必须是数组。");
+  if (!Array.isArray(args.pages)) return fail(ctx, "pagesNotArray");
 
   const pages: DocPage[] = [];
   const problems: string[] = [];
@@ -3213,7 +3101,7 @@ async function proposeDocPages(
   }
   const dupes = pages.map((p) => p.id).filter((id, i, all) => all.indexOf(id) !== i);
   for (const dupe of new Set(dupes)) problems.push(`id「${dupe}」重复了`);
-  if (problems.length) return fail(`这些页面不能用：\n- ${problems.join("\n- ")}`);
+  if (problems.length) return fail(ctx, "pagesInvalid", { problems: problems.join("\n- ") });
 
   const advice = docPageAdvice(pages);
 
@@ -3233,7 +3121,7 @@ async function proposeDocPages(
    * differently about what a proposal may contain.
    */
   const gate = checkProposal("doc_pages.update" as ProposalKind, { docPages: pages });
-  if (!gate.ok) return fail(gate.message!);
+  if (!gate.ok) return fail(ctx, "proposalRejected", { reason: gate.message! });
   const action = await createAssistantAction({
     userId: ctx.user.id,
     kind: "doc_pages.update",
@@ -3258,13 +3146,13 @@ async function proposeDocPages(
   });
 }
 
-async function probeProviderHost(args: Record<string, unknown>): Promise<ToolResult> {
+async function probeProviderHost(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
   const providerId = z.string().min(1).safeParse(args.providerId);
   const baseUrl = z.string().min(1).safeParse(args.baseUrl);
-  if (!providerId.success || !baseUrl.success) return fail("需要 providerId 和 baseUrl。");
+  if (!providerId.success || !baseUrl.success) return fail(ctx, "providerIdAndBaseUrlRequired");
 
   const provider = await getProviderById(providerId.data);
-  if (!provider) return fail(`找不到服务商 ${providerId.data}。`);
+  if (!provider) return fail(ctx, "providerNotFound", { providerId: providerId.data });
 
   const res = await probeUpstream({
     baseUrl: baseUrl.data,
@@ -3460,7 +3348,7 @@ const MAX_PROTOCOL_CHUNK_CHARS = 40_000;
  * reports drift. Admin-only for the same reason `list_media_providers` is: it
  * describes this deployment's media surface.
  */
-async function mediaSpecReferenceTool(args: Record<string, unknown>): Promise<ToolResult> {
+async function mediaSpecReferenceTool(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
   const what = args.what === "templates" ? "templates" : "protocol";
   const capability = typeof args.capability === "string" ? args.capability.trim() : "";
 
@@ -3476,11 +3364,13 @@ async function mediaSpecReferenceTool(args: Record<string, unknown>): Promise<To
       .filter((t) => t.specs.length > 0);
 
     if (templates.length === 0) {
-      return fail(
-        capability
-          ? `没有哪个模板含能力「${capability}」。可用能力：${[...new Set(Object.values(MEDIA_TEMPLATES).flatMap((t) => t.specs.map((s) => s.capability)))].join(", ")}`
-          : "本部署没有内置任何媒体模板。",
-      );
+      if (!capability) return fail(ctx, "noMediaTemplates");
+      return fail(ctx, "mediaTemplateMissingCapability", {
+        capability,
+        capabilities: [
+          ...new Set(Object.values(MEDIA_TEMPLATES).flatMap((t) => t.specs.map((s) => s.capability))),
+        ].join(", "),
+      });
     }
 
     return ok({
@@ -3492,7 +3382,11 @@ async function mediaSpecReferenceTool(args: Record<string, unknown>): Promise<To
   }
 
   const { text, error } = await readProtocolDoc();
-  if (!text) return fail(error ?? "读不到媒体适配协议原文。");
+  if (!text) {
+    return fail(ctx, "mediaProtocolUnreadable", {
+      reason: error ?? toolRefusal(ctx.locale, "mediaProtocolUnreadable"),
+    });
+  }
 
   const total = text.length;
   const offset = Math.max(0, typeof args.offset === "number" ? Math.trunc(args.offset) : 0);
@@ -3517,10 +3411,10 @@ async function proposeProviderUpdate(
   ctx: ToolContext,
 ): Promise<ToolResult> {
   const providerId = z.string().min(1).safeParse(args.providerId);
-  if (!providerId.success) return fail("缺少 providerId。");
+  if (!providerId.success) return fail(ctx, "missingProviderId");
 
   const provider = await getProviderById(providerId.data);
-  if (!provider) return fail(`找不到服务商 ${providerId.data}。`);
+  if (!provider) return fail(ctx, "providerNotFound", { providerId: providerId.data });
 
   const patch: Record<string, unknown> = {};
   // Which per-model fields the `modelMapping` branch below actually writes, so
@@ -3571,7 +3465,7 @@ async function proposeProviderUpdate(
       args.upstreamFormat !== "anthropic" &&
       args.upstreamFormat !== "gemini"
     ) {
-      return fail('upstreamFormat 只能是 "chat"、"responses"、"anthropic" 或 "gemini"。');
+      return fail(ctx, "upstreamFormatInvalid");
     }
     // The trap worth naming: `responses` means /v1/responses reaches the vendor
     // untouched, but a /v1/chat/completions request still goes to
@@ -3602,7 +3496,7 @@ async function proposeProviderUpdate(
       }
       patch.headers = headers;
     } else {
-      return fail("headers 必须是一个字符串键值对对象，例如 {\"api-version\": \"2024-08-01-preview\"}。");
+      return fail(ctx, "headersNotObject");
     }
   }
   if (args.modelMapping && typeof args.modelMapping === "object") {
@@ -3693,7 +3587,7 @@ async function proposeProviderUpdate(
     if (args.textSpecs === null) {
       patch.textSpecs = [];
     } else if (!Array.isArray(args.textSpecs)) {
-      return fail("textSpecs 必须是数组，每一项是一份协议文档。");
+      return fail(ctx, "textSpecsNotArray");
     } else {
       // Merged by `protocol` rather than replaced: a provider can carry up to
       // three, one per interface, and asking the model to resend all of them to
@@ -3716,7 +3610,7 @@ async function proposeProviderUpdate(
       for (const entry of args.textSpecs as unknown[]) {
         const parsed = parseTextSpec(entry);
         if (!parsed.ok) {
-          return fail(`这份协议不能用，已列出问题：\n- ${parsed.errors.join("\n- ")}`);
+          return fail(ctx, "textSpecInvalid", { errors: parsed.errors.join("\n- ") });
         }
         byProtocol.set(parsed.spec.protocol, JSON.stringify(parsed.spec));
       }
@@ -3724,7 +3618,7 @@ async function proposeProviderUpdate(
       const list = [...byProtocol.values()];
       const check = validateTextSpecs(list);
       if (!check.ok) {
-        return fail(`这组协议不能同时生效：\n- ${check.errors.join("\n- ")}`);
+        return fail(ctx, "textSpecsConflict", { errors: check.errors.join("\n- ") });
       }
 
       // A rule for an interface nothing calls is saved, looks configured, and
@@ -3788,7 +3682,7 @@ async function proposeProviderUpdate(
   }
 
   if (Object.keys(patch).length === 0) {
-    return fail("没有提供任何要修改的字段。");
+    return fail(ctx, "noFieldsToChange");
   }
   const summary =
     typeof args.summary === "string" && args.summary.trim() ? args.summary.trim() : "未说明的变更";
@@ -3818,7 +3712,7 @@ async function proposeProviderUpdate(
     });
     const { blocking, acknowledged } = partitionFindings(findings, args.confirmFindings);
     if (blocking.length > 0) {
-      return fail(renderFindingsRefusal(blocking, findings));
+      return fail(ctx, "findingsBlocked", { details: renderFindingsRefusal(blocking, findings) });
     }
     finalSummary = acknowledgedSummary(summary, acknowledged);
   }
@@ -3836,7 +3730,7 @@ async function proposeProviderUpdate(
    * differently about what a proposal may contain.
    */
   const gate = checkProposal("provider.update" as ProposalKind, patch);
-  if (!gate.ok) return fail(gate.message!);
+  if (!gate.ok) return fail(ctx, "proposalRejected", { reason: gate.message! });
   const action = await createAssistantAction({
     userId: ctx.user.id,
     kind: "provider.update",
@@ -3881,17 +3775,26 @@ async function proposeProviderUpdate(
 export function applySpecEdits(
   current: unknown[],
   edits: unknown,
-): { specs: Record<string, unknown>[]; error?: string } {
-  if (!Array.isArray(edits)) return { specs: current as Record<string, unknown>[], error: "specEdits 不是数组" };
+  locale: Locale = DEFAULT_LOCALE,
+): { specs: Record<string, unknown>[]; error?: string; refusal?: Refusal } {
+  if (!Array.isArray(edits)) {
+    return {
+      specs: current as Record<string, unknown>[],
+      error: toolRefusal(locale, "specEditsNotArray"),
+      refusal: { key: "specEditsNotArray" },
+    };
+  }
 
   const specs = JSON.parse(JSON.stringify(current)) as Record<string, unknown>[];
   for (const [i, raw] of edits.entries()) {
     const edit = raw as Record<string, unknown>;
     const index = typeof edit?.index === "number" ? edit.index : -1;
     if (index < 0 || index >= specs.length) {
+      const vars = { index: i, value: index, count: specs.length };
       return {
         specs,
-        error: `specEdits[${i}].index 越界：现在是 ${index}，而当前只有 ${specs.length} 个 spec`,
+        error: toolRefusal(locale, "specEditsIndexOutOfRange", vars),
+        refusal: { key: "specEditsIndexOutOfRange", vars },
       };
     }
     // Shallow merge, per spec. A nested override would need the model to
@@ -3912,10 +3815,10 @@ async function proposeMediaProviderUpdate(
   ctx: ToolContext,
 ): Promise<ToolResult> {
   const providerId = z.string().min(1).safeParse(args.providerId);
-  if (!providerId.success) return fail("缺少 providerId。");
+  if (!providerId.success) return fail(ctx, "missingProviderId");
 
   const provider = await getMediaProviderById(providerId.data);
-  if (!provider) return fail(`找不到媒体服务商 ${providerId.data}。`);
+  if (!provider) return fail(ctx, "mediaProviderNotFound", { providerId: providerId.data });
 
   const patch: Record<string, unknown> = {};
   if (typeof args.baseUrl === "string") patch.baseUrl = args.baseUrl.trim();
@@ -3925,14 +3828,14 @@ async function proposeMediaProviderUpdate(
   if (args.specEdits !== undefined) {
     // Resolved here rather than stored as edits, so the approval still applies
     // a *whole* spec array and the diff the admin reads is the result.
-    const merged = applySpecEdits(provider.specs ?? [], args.specEdits);
-    if (merged.error) return fail(merged.error);
+    const merged = applySpecEdits(provider.specs ?? [], args.specEdits, ctx.locale);
+    if (merged.refusal) return fail(ctx, merged.refusal.key, merged.refusal.vars);
     patch.specs = merged.specs;
   } else if (Array.isArray(args.specs)) {
     patch.specs = args.specs;
   }
 
-  if (Object.keys(patch).length === 0) return fail("没有提供任何要修改的字段。");
+  if (Object.keys(patch).length === 0) return fail(ctx, "noFieldsToChange");
 
   const summary =
     typeof args.summary === "string" && args.summary.trim() ? args.summary.trim() : "未说明的变更";
@@ -3949,7 +3852,7 @@ async function proposeMediaProviderUpdate(
    * differently about what a proposal may contain.
    */
   const gate = checkProposal("media_provider.update" as ProposalKind, patch);
-  if (!gate.ok) return fail(gate.message!);
+  if (!gate.ok) return fail(ctx, "proposalRejected", { reason: gate.message! });
   const action = await createAssistantAction({
     userId: ctx.user.id,
     kind: "media_provider.update",
@@ -3993,9 +3896,7 @@ async function proposeProviderCreate(
   // call has already put it in the persisted tool-call row — so the refusal is
   // the model learning not to do that a second time.
   if ("apiKey" in args || "api_key" in args) {
-    return fail(
-      "不要在工具参数里放 API 密钥。这个工具不接收它，管理员会在确认界面上自己填。你也不该向用户索取密钥。",
-    );
+    return fail(ctx, "apiKeyInArguments");
   }
 
   // Trimmed *before* the length check, not after. `"   "` satisfies
@@ -4004,7 +3905,7 @@ async function proposeProviderCreate(
   // nothing to pick it out by. The same bug once shipped as a 404 on an
   // all-whitespace thread title.
   const name = z.string().transform((v) => v.trim()).pipe(z.string().min(1).max(120)).safeParse(args.name);
-  if (!name.success) return fail("缺少 name。");
+  if (!name.success) return fail(ctx, "missingName");
 
   const spec: Record<string, unknown> = { name: name.data };
   if (typeof args.kind === "string") spec.kind = args.kind;
@@ -4018,7 +3919,7 @@ async function proposeProviderCreate(
     for (const [k, v] of Object.entries(args.modelMapping as Record<string, unknown>)) {
       if (typeof v === "string") mapping[k] = v;
     }
-    if (Object.keys(mapping).length === 0) return fail("modelMapping 是空的。");
+    if (Object.keys(mapping).length === 0) return fail(ctx, "modelMappingEmpty");
     spec.modelMapping = mapping;
     // Same reason the update path does this: a mapped model with no config
     // falls back to a generic context window, which is how a 200k model ends
@@ -4065,7 +3966,7 @@ async function proposeProviderCreate(
       }
       spec.headers = headers;
     } else {
-      return fail("headers 必须是一个字符串键值对对象，例如 {\"api-version\": \"2024-08-01-preview\"}。");
+      return fail(ctx, "headersNotObject");
     }
   }
 
@@ -4081,13 +3982,13 @@ async function proposeProviderCreate(
     if (args.textSpecs === null) {
       specs = [];
     } else if (!Array.isArray(args.textSpecs)) {
-      return fail("textSpecs 必须是数组，每一项是一份协议文档。");
+      return fail(ctx, "textSpecsNotArray");
     } else {
       const byProtocol = new Map<string, string>();
       for (const entry of args.textSpecs as unknown[]) {
         const parsed = parseTextSpec(entry);
         if (!parsed.ok) {
-          return fail(`这份协议不能用，已列出问题：\n- ${parsed.errors.join("\n- ")}`);
+          return fail(ctx, "textSpecInvalid", { errors: parsed.errors.join("\n- ") });
         }
         byProtocol.set(parsed.spec.protocol, JSON.stringify(parsed.spec));
       }
@@ -4149,7 +4050,7 @@ async function proposeProviderCreate(
     const findings = auditModelConfigs(configs, { patches });
     const { blocking, acknowledged } = partitionFindings(findings, args.confirmFindings);
     if (blocking.length > 0) {
-      return fail(renderFindingsRefusal(blocking, findings));
+      return fail(ctx, "findingsBlocked", { details: renderFindingsRefusal(blocking, findings) });
     }
     finalSummary = acknowledgedSummary(summary, acknowledged);
   }
@@ -4165,7 +4066,7 @@ async function proposeProviderCreate(
    * differently about what a proposal may contain.
    */
   const gate = checkProposal("provider.create" as ProposalKind, spec);
-  if (!gate.ok) return fail(gate.message!);
+  if (!gate.ok) return fail(ctx, "proposalRejected", { reason: gate.message! });
   const action = await createAssistantAction({
     userId: ctx.user.id,
     kind: "provider.create",
@@ -4197,23 +4098,21 @@ async function proposeMediaProviderCreate(
   ctx: ToolContext,
 ): Promise<ToolResult> {
   if ("apiKey" in args || "api_key" in args) {
-    return fail(
-      "不要在工具参数里放 API 密钥。这个工具不接收它，管理员会在确认界面上自己填。你也不该向用户索取密钥。",
-    );
+    return fail(ctx, "apiKeyInArguments");
   }
 
   const name = z.string().transform((v) => v.trim()).pipe(z.string().min(1).max(120)).safeParse(args.name);
-  if (!name.success) return fail("缺少 name。");
+  if (!name.success) return fail(ctx, "missingName");
   if (!args.models || typeof args.models !== "object") {
-    return fail("缺少 models。新建媒体服务商必须给出模型表。");
+    return fail(ctx, "missingModels");
   }
 
   const models = args.models as Record<string, unknown>;
-  if (Object.keys(models).length === 0) return fail("models 是空的。");
+  if (Object.keys(models).length === 0) return fail(ctx, "mediaModelsEmpty");
   for (const [id, cfg] of Object.entries(models)) {
-    if (!cfg || typeof cfg !== "object") return fail(`模型 ${id} 的配置不是对象。`);
+    if (!cfg || typeof cfg !== "object") return fail(ctx, "mediaModelNotObject", { modelId: id });
     if (typeof (cfg as { upstreamId?: unknown }).upstreamId !== "string") {
-      return fail(`模型 ${id} 缺少 upstreamId。`);
+      return fail(ctx, "mediaModelMissingUpstreamId", { modelId: id });
     }
   }
 
@@ -4238,7 +4137,7 @@ async function proposeMediaProviderCreate(
    * differently about what a proposal may contain.
    */
   const gate = checkProposal("media_provider.create" as ProposalKind, spec);
-  if (!gate.ok) return fail(gate.message!);
+  if (!gate.ok) return fail(ctx, "proposalRejected", { reason: gate.message! });
   const action = await createAssistantAction({
     userId: ctx.user.id,
     kind: "media_provider.create",
@@ -4380,7 +4279,7 @@ async function listSearchProvidersTool(full = false): Promise<ToolResult> {
  * is a file, and the templates are a module value. Both are here so a spec can
  * be written against the real text rather than against a recollection of it.
  */
-async function searchSpecReferenceTool(args: Record<string, unknown>): Promise<ToolResult> {
+async function searchSpecReferenceTool(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
   const what = args.what === "templates" ? "templates" : "protocol";
 
   if (what === "templates") {
@@ -4398,7 +4297,11 @@ async function searchSpecReferenceTool(args: Record<string, unknown>): Promise<T
   }
 
   const { text, error } = await readSearchProtocolDoc();
-  if (!text) return fail(error ?? "读不到搜索适配协议原文。");
+  if (!text) {
+    return fail(ctx, "searchProtocolUnreadable", {
+      reason: error ?? toolRefusal(ctx.locale, "searchProtocolUnreadable"),
+    });
+  }
 
   const total = text.length;
   const offset = Math.max(0, typeof args.offset === "number" ? Math.trunc(args.offset) : 0);
@@ -4421,15 +4324,13 @@ async function proposeSearchProviderCreate(
   ctx: ToolContext,
 ): Promise<ToolResult> {
   if ("apiKey" in args || "api_key" in args) {
-    return fail(
-      "不要在工具参数里放 API 密钥。这个工具不接收它，管理员会在确认界面上自己填。你也不该向用户索取密钥。",
-    );
+    return fail(ctx, "apiKeyInArguments");
   }
 
   const name = z.string().transform((v) => v.trim()).pipe(z.string().min(1).max(120)).safeParse(args.name);
-  if (!name.success) return fail("缺少 name。");
+  if (!name.success) return fail(ctx, "missingName");
   const kind = z.string().transform((v) => v.trim()).pipe(z.string().min(1).max(60)).safeParse(args.kind);
-  if (!kind.success) return fail("缺少 kind。");
+  if (!kind.success) return fail(ctx, "missingKind");
 
   const spec: Record<string, unknown> = { name: name.data, kind: kind.data };
   if (typeof args.baseUrl === "string") spec.baseUrl = args.baseUrl.trim();
@@ -4447,7 +4348,7 @@ async function proposeSearchProviderCreate(
   const diff = renderSearchCreateDiff(spec, summary);
 
   const gate = checkProposal("search_provider.create" as ProposalKind, spec);
-  if (!gate.ok) return fail(gate.message!);
+  if (!gate.ok) return fail(ctx, "proposalRejected", { reason: gate.message! });
   const action = await createAssistantAction({
     userId: ctx.user.id,
     kind: "search_provider.create",
@@ -4471,10 +4372,10 @@ async function proposeSearchProviderUpdate(
   ctx: ToolContext,
 ): Promise<ToolResult> {
   const providerId = z.string().min(1).safeParse(args.providerId);
-  if (!providerId.success) return fail("缺少 providerId。");
+  if (!providerId.success) return fail(ctx, "missingProviderId");
 
   const provider = await getSearchProviderById(providerId.data);
-  if (!provider) return fail(`找不到搜索提供商 ${providerId.data}。`);
+  if (!provider) return fail(ctx, "searchProviderNotFound", { providerId: providerId.data });
 
   const patch: Record<string, unknown> = {};
   if (typeof args.kind === "string") patch.kind = args.kind.trim();
@@ -4489,7 +4390,7 @@ async function proposeSearchProviderUpdate(
   if (args.spec !== undefined) patch.spec = args.spec;
 
   if (Object.keys(patch).length === 0) {
-    return fail("没有要改的字段。");
+    return fail(ctx, "noSearchFieldsToChange");
   }
 
   const summary =
@@ -4497,7 +4398,7 @@ async function proposeSearchProviderUpdate(
   const diff = renderSearchProviderDiff(provider, patch, summary);
 
   const gate = checkProposal("search_provider.update" as ProposalKind, patch);
-  if (!gate.ok) return fail(gate.message!);
+  if (!gate.ok) return fail(ctx, "proposalRejected", { reason: gate.message! });
   const action = await createAssistantAction({
     userId: ctx.user.id,
     kind: "search_provider.update",
@@ -4557,7 +4458,7 @@ async function listUsersTool(): Promise<ToolResult> {  const { users } = await l
 }
 
 /**
- * Why this turn cannot search, in the words the model should say out loud.
+ * Why this turn cannot search, as the key of the refusal to use.
  *
  * The three reasons are three different requests, and the old single message
  * asked for the wrong one: "请在输入框旁边打开开关" is a request the user can
@@ -4566,21 +4467,18 @@ async function listUsersTool(): Promise<ToolResult> {  const { users } = await l
  * composer toggle is disabled and the honest answer is "the administrator
  * switched this off", which the model can say and the user can act on by
  * asking the administrator.
+ *
+ * A key rather than a sentence, because the sentence is read in the reader's
+ * language and the three of them live in the table beside every other refusal.
  */
-function webSearchOffMessage(reason?: "user" | "admin" | "no_backend"): string {
+function webSearchOffKey(reason?: "user" | "admin" | "no_backend"): string {
   switch (reason) {
     case "admin":
-      return (
-        "网页搜索已被管理员关闭（管理台 → 搜索）。请直接告诉用户，不要凭记忆补搜索结果。"
-      );
+      return "searchOffByAdmin";
     case "no_backend":
-      return (
-        "这个部署没有配置任何搜索后端。请告诉用户：请在「AI 助手 → 设置」里配置他自己的" +
-        "OpenAI 兼容搜索服务，或请管理员在「管理台 → 搜索」里添加一个提供商。" +
-        "不要凭记忆补搜索结果。"
-      );
+      return "searchNoBackend";
     default:
-      return "本轮已关闭网页搜索。需要联网时请让用户在输入框旁边打开开关。";
+      return "searchOffThisTurn";
   }
 }
 
@@ -4617,7 +4515,7 @@ async function webSearchTool(
   ctx: ToolContext,
 ): Promise<ToolResult> {
   const query = typeof args.query === "string" ? args.query.trim() : "";
-  if (!query) return fail("缺少 query。");
+  if (!query) return fail(ctx, "missingQuery");
   // The user's preference is the ceiling the model may not exceed; the
   // operator's hard limit caps that in turn.
   const cap = Math.min(ctx.webSearchLimit ?? MAX_SEARCH_RESULTS, MAX_SEARCH_RESULTS);
@@ -4638,7 +4536,7 @@ async function webSearchTool(
     // places, or the panel is a button that does not do what it says.
     const config = await loadSearchConfig();
     if (!config.enabled) {
-      return fail("网页搜索已被管理员关闭（管理台 → 搜索）。请直接告诉用户，不要凭记忆补搜索结果。");
+      return fail(ctx, "searchOffByAdmin");
     }
     /**
      * The user's own service first, the deployment's providers after it.
@@ -4649,12 +4547,7 @@ async function webSearchTool(
      */
     backend = await resolveSearchBackendForAccount(ctx.user.id);
     if (!backend) {
-      return fail(
-        "没有可用的搜索后端。请在「AI 助手 → 设置」里配置你自己的搜索服务" +
-          "（OpenAI 兼容的搜索接口），或请管理员在「管理台 → 搜索」里添加一个提供商" +
-          "——网页搜索也可以由管理员用 TAVILY_API_KEY / BRAVE_SEARCH_API_KEY / SEARXNG_URL 配置。" +
-          "没配置之前不要声称自己「搜索过」。",
-      );
+      return fail(ctx, "searchBackendMissing");
     }
 
     /**
@@ -4675,18 +4568,14 @@ async function webSearchTool(
     if (backend.source !== "user") {
       const credential = await getAssistantCredential(ctx.user.id);
       if (!credential?.enabled) {
-        return fail(
-          "站点的搜索服务需要「用我的账号身份」：请先在「AI 助手 → 设置」里创建并打开助手凭据" +
-            "（不需要填任何密钥，系统签发、你看不到明文）；" +
-            "或者改用你自己的搜索服务（用自己的密钥，不经过本中转站计费）。",
-        );
+        return fail(ctx, "searchNeedsCredential");
       }
     }
 
     // The account's own row: the quota and the balance that gets charged live
     // on the user record, not on the session's copy of it.
     const account = await getUserById(ctx.user.id);
-    if (!account) return fail("找不到当前账号。");
+    if (!account) return fail(ctx, "accountNotFound");
 
     /**
      * Whose bill is it?
@@ -4710,10 +4599,7 @@ async function webSearchTool(
      */
     const apiKeyId = charge === "account" ? await attributionKeyFor(account.id) : "";
     if (charge === "account" && !apiKeyId) {
-      return fail(
-        "这个账号还没有密钥，无法记账 —— 请先在「我的密钥与额度」里创建一把；" +
-          "或者在「AI 助手 → 设置」里配置你自己的搜索服务（那种不经过本中转站计费）。",
-      );
+      return fail(ctx, "searchNoApiKey");
     }
 
     const settled = await runSearch({
@@ -4754,13 +4640,9 @@ async function webSearchTool(
        * the user goes looking at the wrong thing.
        */
       const own = backend?.source === "user";
-      return fail(
-        own
-          ? `${err.message}（这是你自己的搜索服务。在「AI 助手 → 设置」里可以切回站点的搜索服务。）`
-          : err.message,
-      );
+      return fail(ctx, own ? "searchUserBackendFailed" : "searchFailed", { message: err.message });
     }
-    return fail(`搜索失败：${err instanceof Error ? err.message : String(err)}`);
+    return fail(ctx, "searchFailed", { message: err instanceof Error ? err.message : String(err) });
   }
 }
 
@@ -4776,9 +4658,9 @@ async function webSearchTool(
  * private network" is a fact the model can report and work around; an
  * exception would end the turn and lose whatever it had already established.
  */
-async function fetchPageTool(args: Record<string, unknown>): Promise<ToolResult> {
+async function fetchPageTool(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
   const url = z.string().min(1).max(2000).safeParse(args.url);
-  if (!url.success) return fail("缺少 url。");
+  if (!url.success) return fail(ctx, "missingUrl");
   try {
     const page = await fetchPage(url.data);
     return ok({
@@ -4796,8 +4678,8 @@ async function fetchPageTool(args: Record<string, unknown>): Promise<ToolResult>
       text: page.text,
     });
   } catch (err) {
-    if (err instanceof WebFetchError) return fail(err.message);
-    return fail(`抓取失败：${err instanceof Error ? err.message : String(err)}`);
+    if (err instanceof WebFetchError) return fail(ctx, "webFetchRefused", { message: err.message });
+    return fail(ctx, "fetchFailed", { message: err instanceof Error ? err.message : String(err) });
   }
 }
 

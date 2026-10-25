@@ -33,7 +33,7 @@ vi.mock("next/headers", () => ({
 }));
 
 import { validateMediaSpecs, parseMediaSpec } from "@/lib/media/spec";
-import { applySpecEdits, executeTool } from "@/lib/assistant/tools";
+import { applySpecEdits, executeTool, toolDefinitions } from "@/lib/assistant/tools";
 import { __resetDbForTest } from "@/lib/db/sqlite";
 import { createUser } from "@/lib/db/users";
 import type { User } from "@/lib/db/types";
@@ -162,7 +162,11 @@ describe("editing a spec without retyping it", () => {
   it("the tool offers the patch, and says why", () => {
     const TOOLS = readFileSync(join(process.cwd(), "src", "lib", "assistant", "tools.ts"), "utf-8");
     expect(TOOLS).toMatch(/specEdits/);
-    expect(TOOLS).toMatch(/不要把整个 specs 数组重发一遍|重发极易在传输中损坏/);
+    // The wording moved out of `tools.ts` and into the two-language table in
+    // `tool-text.ts`, so the guard reads the catalogue the model is handed
+    // rather than a slice of the source file. The rule it checks is unchanged.
+    const def = toolDefinitions(true).find((t) => t.function.name === "propose_media_provider_update")!;
+    expect(def.function.description).toMatch(/不要把整个 specs 数组重发一遍|重发极易在传输中损坏/);
   });
 
   it("and the prompt says so before any tool is chosen", () => {
@@ -265,8 +269,15 @@ describe("the read tool stops teaching the wrong shape", () => {
 
   it("tells the model to copy a spec rather than compose one", () => {
     // Both the read that shows them and the write that validates them.
-    expect(TOOLS).toMatch(/与 list_media_providers 返回的形状逐字一致/);
-    expect(TOOLS).toMatch(/整份复制，再只改/);
+    //
+    // The wording moved out of `tools.ts` and into the two-language table in
+    // `tool-text.ts`, so the guard reads the catalogue the model is handed.
+    const def = toolDefinitions(true).find((t) => t.function.name === "propose_media_provider_create")!;
+    const specs = (
+      def.function.parameters as { properties?: Record<string, { description?: string }> }
+    ).properties?.specs;
+    expect(specs?.description).toMatch(/与 list_media_providers 返回的形状逐字一致/);
+    expect(specs?.description).toMatch(/整份复制，再只改/);
   });
 
   it("and the prompt says so in words, before any tool is chosen", () => {

@@ -210,7 +210,10 @@ describe("the parameters guide, and what the assistant can do with it", () => {
     for (const name of ["list_doc_pages", "propose_doc_pages"]) {
       expect(TOOLS, `${name} is not offered to the model`).toContain(`name: "${name}"`);
       expect(TOOLS, `${name} is not admin-gated`).toMatch(
-        new RegExp(`case "${name}":\\s*\\n\\s*if \\(!isAdmin\\) return fail\\("这是管理员功能。\\"\\)`),
+        // The refusal became a key into the two-language table in `tool-text.ts` when
+        // the wording moved out of `tools.ts`, so the guard names the new shape.
+        // The rule it checks is unchanged: these two are admin-only.
+        new RegExp(`case "${name}":\\s*\\n\\s*if \\(!isAdmin\\) return fail\\(ctx, "adminOnly"\\)`),
       );
     }
     expect(ACTION_ROUTE, "the apply route does not re-validate the pages").toMatch(

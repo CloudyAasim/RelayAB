@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { DICTS, LOCALE_COOKIE } from "@/lib/i18n/dict";
+import { TOOL_DESCRIPTIONS } from "@/lib/assistant/tool-text";
 
 /**
  * Guards on how the dictionary is *used* from application code.
@@ -190,6 +191,12 @@ describe("i18n: keys referenced by app code", () => {
     const unknown: string[] = [];
     for (const file of files) {
       for (const key of literalKeys(file.source)) {
+        // The assistant's tool catalogue has its own `t`, over its own
+        // two-language table in `tool-text.ts` — the wording moved out of
+        // `tools.ts` into that table so it could be translated. Those keys are
+        // tool-text keys, not dictionary keys, and the scanner cannot tell the
+        // two apart: both are a dotted string in a `t("…")` call.
+        if (key in TOOL_DESCRIPTIONS) continue;
         if (!(key in DICTS["zh-CN"]) || !(key in DICTS.en)) {
           unknown.push(`${file.rel}: ${key}`);
         }

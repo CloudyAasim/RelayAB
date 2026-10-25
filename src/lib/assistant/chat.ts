@@ -611,7 +611,7 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
   // `undefined` means on: callers that predate the toggle keep the old
   // behavior, and only an explicit false removes the tool.
   const webSearch = opts.webSearchEnabled !== false;
-  const tools = toolDefinitions(isAdmin, { webSearch });
+  const tools = toolDefinitions(isAdmin, { webSearch }, locale);
   const ctx: ToolContext = {
     user,
     ...(credential.kind === "key" ? { relayKey: credential.relayKey } : {}),

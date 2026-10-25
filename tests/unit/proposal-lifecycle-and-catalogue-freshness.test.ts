@@ -16,6 +16,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { toolDefinitions } from "@/lib/assistant/tools";
+import { TOOL_REFUSALS } from "@/lib/assistant/tool-text";
 
 const ROOT = process.cwd();
 const read = (...p: string[]): string => readFileSync(join(ROOT, ...p), "utf8");
@@ -49,8 +50,11 @@ describe("a proposal can be taken back", () => {
   it("and a refusal says so rather than reporting success", () => {
     // The model has to be able to tell the user "already applied, that is not a
     // withdrawal" instead of leaving them believing a queue is clean.
-    expect(TOOLS).toContain("撤不了");
-    expect(TOOLS).toContain("它已经生效了");
+    //
+    // The wording moved out of `tools.ts` and into the two-language table in
+    // `tool-text.ts`, so the guard reads the table rather than the source file.
+    expect(TOOL_REFUSALS.actionNotWithdrawableApplied["zh-CN"]).toContain("撤不了");
+    expect(TOOL_REFUSALS.withdrawStatusApplied["zh-CN"]).toContain("它已经生效了");
   });
 });
 

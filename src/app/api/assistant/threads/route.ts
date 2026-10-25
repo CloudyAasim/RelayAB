@@ -10,6 +10,8 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { createAssistantThread, listAssistantThreads } from "@/lib/db/assistant";
+import { getServerLocale } from "@/lib/i18n/server";
+import { translate } from "@/lib/i18n/dict";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +35,9 @@ export async function POST(): Promise<Response> {
       { status: 401 },
     );
   }
-  const thread = await createAssistantThread(me.id);
+  // The title is the reader's language: it is the name of the conversation in
+  // their own list, and it is stored — so it has to be right the first time.
+  const locale = await getServerLocale();
+  const thread = await createAssistantThread(me.id, translate(locale, "assistant.newThread"));
   return NextResponse.json({ ok: true, data: { thread } });
 }

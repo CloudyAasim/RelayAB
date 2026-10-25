@@ -29,6 +29,8 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { toolDefinitions } from "@/lib/assistant/tools";
+
 const ROOT = process.cwd();
 const PANEL = readFileSync(
   join(ROOT, "src", "app", "(user)", "dashboard", "assistant", "PendingActions.tsx"),
@@ -113,11 +115,13 @@ describe("the assistant can read the reason too", () => {
   });
 
   it("and the tool description says to read it", () => {
-    const start = TOOLS.indexOf('name: "list_my_proposals"');
-    expect(start).toBeGreaterThan(-1);
-    const body = TOOLS.slice(start, TOOLS.indexOf("parameters:", start));
-    expect(body).toMatch(/result/);
+    // The description itself moved out of `tools.ts` and into the two-language
+    // table in `tool-text.ts`, so the guard reads the catalogue the model is
+    // actually handed rather than a slice of the source file. The wording it
+    // is checking — "read `result` first" — is unchanged.
+    const def = toolDefinitions(true).find((t) => t.function.name === "list_my_proposals")!;
+    expect(def.function.description).toMatch(/result/);
     // "照它改，不要靠推断猜" — the alternative that was actually taken.
-    expect(body).toMatch(/猜/);
+    expect(def.function.description).toMatch(/猜/);
   });
 });

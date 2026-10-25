@@ -17,6 +17,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderDocPagesDiff } from "@/lib/assistant/diff";
+import { TOOL_DESCRIPTIONS, TOOL_REFUSALS } from "@/lib/assistant/tool-text";
 
 const ROOT = process.cwd();
 const TOOLS = readFileSync(join(ROOT, "src", "lib", "assistant", "tools.ts"), "utf-8");
@@ -147,17 +148,32 @@ describe("the pages diff does not hide what it removes", () => {
 });
 
 describe("the model tool edits one model and leaves the rest alone", () => {
+  // The wording these three guards check moved out of `tools.ts` and into the
+  // two-language table in `tool-text.ts`: the tool descriptions into
+  // TOOL_DESCRIPTIONS, the refusals into TOOL_REFUSALS. They read the table
+  // rather than a slice of the source file, because the table is what the
+  // model is actually handed and what the person actually reads.
+
   it("it says the parameter is a full replacement, as the mapping one does", () => {
     // Same trap, twice in a row, is enough to write it down.
-    expect(TOOLS).toContain("不是增量");
+    //
+    // The wording moved out of `tools.ts` and into the two-language table in
+    // `tool-text.ts`, so the guard reads that table rather than the source
+    // file. It was a whole-catalogue check before and still is: the point is
+    // that the "replaced, not merged" rule is stated in a description the model
+    // reads, and the keys say which ones say it.
+    const saying = Object.entries(TOOL_DESCRIPTIONS)
+      .filter(([, text]) => text["zh-CN"].includes("不是增量"))
+      .map(([key]) => key);
+    expect(saying, "no description says the table is replaced rather than merged").not.toEqual([]);
   });
 
   it("it refuses a model the provider does not have, and lists what it does have", () => {
-    expect(TOOLS).toMatch(/里没有名为[\s\S]*?现有的：/);
+    expect(TOOL_REFUSALS.modelNotInProvider["zh-CN"]).toMatch(/里没有名为[\s\S]*?现有的：/);
   });
 
   it("it validates numbers before proposing, not after", () => {
-    expect(TOOLS).toMatch(/非负数字/);
-    expect(TOOLS).toMatch(/必须是整数/);
+    expect(TOOL_REFUSALS.modelConfigNotANumber["zh-CN"]).toMatch(/非负数字/);
+    expect(TOOL_REFUSALS.modelConfigNotAnInteger["zh-CN"]).toMatch(/必须是整数/);
   });
 });

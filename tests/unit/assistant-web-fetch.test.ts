@@ -14,8 +14,6 @@
  * network — the point is which URLs are refused *before* a request is made.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import {
   isPrivateAddress,
   assertPublicHost,
@@ -69,8 +67,6 @@ function resetRebind(): void {
   rebindQueries = 0;
   cdnQueries = 0;
 }
-
-const TOOLS_SOURCE = readFileSync(join(process.cwd(), "src", "lib", "assistant", "tools.ts"), "utf-8");
 
 /** A stub that fails the test if it is ever asked for a blocked address. */
 function guardedFetch(handler?: (url: string) => Response) {
@@ -371,7 +367,11 @@ describe("the prompt tells the model what it can and cannot do", () => {
   });
 
   it("has a tool description that says the same at the moment of the call", () => {
-    expect(TOOLS_SOURCE).toMatch(/name: "fetch_page"[\s\S]{0,400}先调它再回答/);
+    // The wording moved out of `tools.ts` and into the two-language table in
+    // `tool-text.ts`, so the guard reads the catalogue the model is handed
+    // rather than a slice of the source file.
+    const def = toolDefinitions(true).find((t) => t.function.name === "fetch_page")!;
+    expect(def.function.description).toMatch(/先调它再回答/);
   });
 });
 

@@ -340,6 +340,13 @@ export async function getAssistantThread(
 
 export async function createAssistantThread(
   userId: string,
+  /**
+   * The conversation's name.
+   *
+   * The callers pass it in the reader's language — it is stored, so it has to
+   * be right the first time. The default is a last resort for a caller that
+   * has no title to offer.
+   */
   title = "新对话",
   webSearch: boolean | null = null,
 ): Promise<AssistantThread> {
