@@ -3,16 +3,17 @@
  *
  * Which search backend serves a request.
  *
- * The rule is now one sentence: **exactly one service answers.**
+ * The rule is one sentence: **exactly one service answers.**
  *
  * ## The three cases
  *
  *  - **No rows at all**: the environment path (Tavily → Brave → SearXNG),
  *    unchanged from before providers existed. An upgrade must not silently turn
  *    search off.
- *  - **Rows exist**: the **default** row answers. The default is the row
- *    somebody marked as such, or — when nobody has — the first enabled row by
- *    `priority ASC, name ASC, id ASC`.
+ *  - **Rows exist**: the service the operator marked as the default answers,
+ *    and when nobody marked one, the only service that can answer answers.
+ *    With several able to answer and no default, the request is refused and
+ *    the refusal names them.
  *  - **A caller names a service**: that row answers, if it is enabled.
  *
  * ## What does *not* happen
@@ -42,6 +43,7 @@ import {
   type SearchProviderRecord,
 } from "../db/search-providers";
 import { getAssistantSettings } from "../db/assistant";
+import { getSettings } from "../db/settings";
 import { effectiveSearchConfig } from "./effective";
 import { userSearchBackend } from "./user";
 import {
@@ -179,6 +181,7 @@ export function namedSearchProvider(
  */
 export function backendForRows(
   rows: readonly SearchProviderRecord[],
+  opts: { defaultServiceId?: string | null } = {},
 ): { backend: SearchBackend | null; row: SearchProviderRecord | null; reason: string | null } {
   const usable = searchServices(rows);
   if (usable.length === 0) {
@@ -193,10 +196,11 @@ export function backendForRows(
     }
     return { backend: null, row: null, reason: "没有启用任何搜索服务" };
   }
-  if (usable.length > 1) {
-    return { backend: null, row: null, reason: unnamedSearchProvider(rows).problem };
+  const unnamed = unnamedSearchProvider(rows, opts);
+  if (unnamed.problem) {
+    return { backend: null, row: unnamed.row, reason: unnamed.problem };
   }
-  const row = rows.find((candidate) => candidate.serviceId === usable[0].id) ?? null;
+  const row = unnamed.row;
   if (!row) {
     return { backend: null, row: null, reason: "没有可用的搜索服务" };
   }
@@ -232,26 +236,69 @@ export function searchServices(
 /**
  * The service that answers when the caller did not name one.
  *
- * **There is no default.** A deployment may offer several, and the one that
- * answers is the one somebody chose — the client by name, the person in their
- * own settings. A hidden default would be precisely the invisible choice this
- * is here to remove: the account would be charged to one vendor's price and
- * served by another without anybody having said so.
+ * **There is no default** — unless the operator marked one.
  *
- * So there are only two answers here:
+ * A deployment may offer several, and the one that answers is the one somebody
+ * chose: the client by name, the person in their own settings. A hidden
+ * default would be precisely the invisible choice this is here to remove: the
+ * account would be charged to one vendor's price and served by another
+ * without anybody having said so.
  *
+ * **But a client that speaks the other search APIs does not get a say.** There
+ * is no field in them for "which engine", so a deployment with more than one
+ * service has to say which one answers on its own — otherwise every request
+ * from every such client fails with "please name one".
+ *
+ * That is what the operator's marked default is: **a visible choice**, made in
+ * the panel, answered by name in every reply, and refused by name when it
+ * cannot be honoured. It never changes what a caller who *did* name a service
+ * gets.
+ *
+ * So there are three answers here:
+ *
+ *  - **the marked default** answers, if it can;
  *  - **exactly one** service can answer → it answers. There was no choice to
  *    make, and the response says which one it was.
- *  - **more than one** can answer → nobody chose, so nobody is searched with.
+ *  - **more than one** can answer and nobody chose → nobody is searched with.
  *    The request is refused, and the refusal names the services on offer.
  */
 export function unnamedSearchProvider(
   rows: readonly SearchProviderRecord[],
+  opts: { defaultServiceId?: string | null } = {},
 ): { row: SearchProviderRecord | null; problem: string | null } {
   const usable = searchServices(rows);
   if (usable.length === 0) {
     return { row: null, problem: null };
   }
+
+  const wanted = opts.defaultServiceId?.trim();
+  if (wanted) {
+    // A marked default that cannot be honoured is refused **by name**. Falling
+    // through to another service would be the invisible substitution this whole
+    // resolver exists to prevent — and the prices differ.
+    const marked = rows.find((candidate) => candidate.serviceId === wanted);
+    if (!marked) {
+      return {
+        row: null,
+        problem: `默认搜索服务「${wanted}」已经不存在了，请在「管理 → 网页搜索」里重新指定。`,
+      };
+    }
+    if (!marked.enabled) {
+      return {
+        row: null,
+        problem: `默认搜索服务「${marked.serviceId}」已经停用，请在「管理 → 网页搜索」里重新指定。`,
+      };
+    }
+    const usability = searchServiceUsability(marked);
+    if (!usability.usable) {
+      return {
+        row: null,
+        problem: `默认搜索服务「${marked.serviceId}」现在用不了：${usability.reason}。`,
+      };
+    }
+    return { row: marked, problem: null };
+  }
+
   if (usable.length === 1) {
     const row = rows.find((candidate) => candidate.serviceId === usable[0].id) ?? null;
     return { row, problem: null };
@@ -292,7 +339,11 @@ export async function resolveActiveSearchBackendWithReason(
       reason: null,
     };
   }
-  return backendForRows(rows);
+  // The operator's marked default, if there is one. Read here rather than
+  // passed in, because this is the one place that decides, and a caller that
+  // could pass its own default would be a second way to answer.
+  const settings = await getSettings();
+  return backendForRows(rows, { defaultServiceId: settings.searchDefaultServiceId ?? null });
 }
 
 /**
@@ -414,7 +465,9 @@ export async function activeSearchBackendInfo(
     };
   }
 
-  const { backend, row, reason } = backendForRows(list);
+  const { backend, row, reason } = backendForRows(list, {
+    defaultServiceId: (await getSettings()).searchDefaultServiceId ?? null,
+  });
   if (!backend) {
     return {
       // No backend answered, so there is no backend to attribute one to. The

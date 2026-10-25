@@ -145,6 +145,24 @@ export interface SearchResponseFields {
   title: SearchFieldSelector;
   url: SearchFieldSelector;
   snippet: SearchFieldSelector;
+  /**
+   * The rest are optional, and a spec that does not name one simply does not
+   * return it.
+   *
+   * They are optional because a relay cannot invent them: the vendor either
+   * answers a relevance score or it does not, and a made-up one is worse than
+   * a missing one.
+   */
+  /** The vendor's longer text, for a model to read. */
+  summary?: SearchFieldSelector;
+  /** The page body, when the vendor returns one. */
+  content?: SearchFieldSelector;
+  /** The vendor's relevance score. Read as a number, not as text. */
+  score?: SearchFieldSelector;
+  /** When the result was published, as the vendor writes it. */
+  date?: SearchFieldSelector;
+  /** The site the result came from. */
+  siteName?: SearchFieldSelector;
 }
 
 export interface SearchResponse {
@@ -199,9 +217,10 @@ export interface SearchSpec {
  *
  * They are **paths**, not bare names, because that is what the media
  * protocol's `{{…}}` syntax takes — one notation for both protocols. `$.query`
- * is the search term, `$.limit` is how many hits were asked for.
+ * is the search term, `$.limit` is how many hits were asked for, and
+ * `$.need_content` is whether the caller wants the page bodies with them.
  */
-export const SEARCH_TEMPLATE_PATHS = ["$.query", "$.limit"] as const;
+export const SEARCH_TEMPLATE_PATHS = ["$.query", "$.limit", "$.need_content"] as const;
 export type SearchTemplatePath = (typeof SEARCH_TEMPLATE_PATHS)[number];
 
 // ---------------------------------------------------------------------------
@@ -226,7 +245,16 @@ const SPEC_KEYS = new Set([
 const TRANSPORT_KEYS = new Set(["method", "path", "headers", "query", "body"]);
 const AUTH_KEYS = new Set(["type", "name", "prefix", "required"]);
 const RESPONSE_KEYS = new Set(["items", "fields"]);
-const FIELD_KEYS = new Set(["title", "url", "snippet"]);
+const FIELD_KEYS = new Set([
+  "title",
+  "url",
+  "snippet",
+  "summary",
+  "content",
+  "score",
+  "date",
+  "siteName",
+]);
 const LIMITS_KEYS = new Set(["timeoutMs", "maxResults"]);
 
 /**
@@ -464,6 +492,11 @@ export function parseSearchSpec(raw: unknown): SearchSpecParse {
         }
         checkField(fieldsRaw[key], `response.fields.${key}`, errors);
       }
+      // The rest are optional, but a named one still has to be a path.
+      for (const key of ["summary", "content", "score", "date", "siteName"]) {
+        if (!(key in fieldsRaw)) continue;
+        checkField(fieldsRaw[key], `response.fields.${key}`, errors);
+      }
     }
   }
 
@@ -586,4 +619,23 @@ export function readSearchField(hit: unknown, field: SearchFieldSelector): strin
     return String(value);
   }
   return "";
+}
+
+/**
+ * Read one field of one hit, as a number.
+ *
+ * The relevance score is the one field here that is a number on every
+ * vendor's side, and a stringified one cannot be compared — sorting by
+ * `"0.97"` puts it after `"0.5"`, and the client has to know that. Read as
+ * a number here instead.
+ */
+export function readSearchNumber(
+  hit: unknown,
+  field: SearchFieldSelector | undefined,
+): number | undefined {
+  if (field === undefined) return undefined;
+  const raw = readSearchField(hit, field);
+  if (raw === "") return undefined;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : undefined;
 }

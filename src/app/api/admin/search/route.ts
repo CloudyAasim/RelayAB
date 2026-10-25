@@ -46,9 +46,16 @@ const UpdateSchema = z
     // Whole credits. The ceiling is a sanity bound, not a pricing opinion: a
     // typo that adds three zeros should be refused rather than billed.
     creditsPerCall: z.number().int().min(0).max(100_000).optional(),
+    /**
+     * The service that answers when a caller names none.
+     *
+     * `null` clears it, which puts the deployment back to "the only service
+     * that can answer answers, and a refusal when several can".
+     */
+    defaultServiceId: z.string().trim().min(1).max(64).nullable().optional(),
   })
   .strict()
-  .refine((v) => v.creditsPerCall !== undefined, {
+  .refine((v) => v.creditsPerCall !== undefined || v.defaultServiceId !== undefined, {
     message: "nothing to update",
   });
 
@@ -66,6 +73,7 @@ export async function GET(): Promise<Response> {
       config,
       stored: {
         creditsPerCall: settings.searchCreditsPerCall ?? null,
+        defaultServiceId: settings.searchDefaultServiceId ?? null,
       },
       maxResults: MAX_SEARCH_RESULTS,
     },
@@ -103,6 +111,12 @@ export async function PUT(req: Request): Promise<Response> {
     ...(parsed.data.creditsPerCall !== undefined
       ? { searchCreditsPerCall: parsed.data.creditsPerCall }
       : {}),
+    // An empty string is how "no default" is written: the setting is deleted
+    // rather than stored empty, because a stored empty value would read as a
+    // service nobody has.
+    ...(parsed.data.defaultServiceId !== undefined
+      ? { searchDefaultServiceId: parsed.data.defaultServiceId ?? "" }
+      : {}),
   });
   return NextResponse.json({
     ok: true,
@@ -110,6 +124,7 @@ export async function PUT(req: Request): Promise<Response> {
       config: await loadSearchConfig(settings),
       stored: {
         creditsPerCall: settings.searchCreditsPerCall ?? null,
+        defaultServiceId: settings.searchDefaultServiceId ?? null,
       },
     },
   });

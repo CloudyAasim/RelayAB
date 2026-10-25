@@ -95,7 +95,7 @@ describe("GET /api/admin/search", () => {
       ok: boolean;
       data: {
         config: { enabled: boolean; creditsPerCall: number; backendConfigured: boolean; backendName: string };
-        stored: { creditsPerCall: number | null };
+        stored: { creditsPerCall: number | null; defaultServiceId: string | null };
       };
     };
     expect(body.ok).toBe(true);
@@ -106,7 +106,9 @@ describe("GET /api/admin/search", () => {
       backendName: "SearXNG",
     });
     // Nothing saved yet: the panel must be able to tell a default from a choice.
-    expect(body.data.stored).toEqual({ creditsPerCall: null });
+    // The default search service is part of that — a panel that cannot say
+    // which row is the default cannot show one.
+    expect(body.data.stored).toEqual({ creditsPerCall: null, defaultServiceId: null });
   });
 });
 

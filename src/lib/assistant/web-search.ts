@@ -124,7 +124,12 @@ export interface SearchBackend {
    * gateway's own port, and read the answer back out of the search results.
    */
   publicOnly?: boolean;
-  search(query: string, limit: number, fetchImpl: typeof fetch): Promise<WebSearchResult[]>;
+  search(
+    query: string,
+    limit: number,
+    fetchImpl: typeof fetch,
+    needContent?: boolean,
+  ): Promise<WebSearchResult[]>;
 }
 
 export interface CreateSearchBackendInput {
@@ -217,12 +222,13 @@ export function createSearchBackend(input: CreateSearchBackendInput): SearchBack
     endpointBase,
     ...(apiKey ? { apiKey } : {}),
     credentialHint: input.credentialHint,
-    async search(query, limit, fetchImpl) {
+    async search(query, limit, fetchImpl, needContent) {
       return executeSearch(spec, endpointBase, {
         query,
         limit,
         apiKey,
         displayName: describe,
+        ...(needContent !== undefined ? { needContent } : {}),
         ...(input.credentialHint ? { credentialHint: input.credentialHint } : {}),
         ...(input.publicOnly ? { publicOnly: true } : {}),
         fetchImpl,
@@ -321,6 +327,13 @@ export async function searchWeb(
     fetchImpl?: typeof fetch;
     env?: NodeJS.ProcessEnv;
     /**
+     * Whether the caller wants the page bodies with the results.
+     *
+     * It is a request, not a promise: a vendor whose spec does not ask for a
+     * body simply does not send one, and the caller gets the shorter text.
+     */
+    needContent?: boolean;
+    /**
      * A backend already chosen by the resolver (database providers first).
      *
      * When present it wins; when absent the environment path is used, which is
@@ -350,7 +363,7 @@ export async function searchWeb(
 
   let results: WebSearchResult[];
   try {
-    results = await backend.search(query, limit, fetchImpl);
+    results = await backend.search(query, limit, fetchImpl, opts.needContent);
   } catch (err) {
     if (err instanceof WebSearchError) throw err;
     if (err instanceof Error && err.name === "TimeoutError") {

@@ -120,6 +120,13 @@ export default async function SearchAdminPage() {
   );
   /** The services that can answer, which is what a client can ask for. */
   const services = searchServices(records);
+  /**
+   * The service the operator marked as the default.
+   *
+   * Read from the settings rather than from the resolver, because the settings
+   * are what the mark *is* — the resolver only answers with it.
+   */
+  const defaultServiceId = settings.searchDefaultServiceId ?? null;
 
   return (
     <SectionPageLayout>
@@ -203,7 +210,18 @@ export default async function SearchAdminPage() {
                 {providers.map((p) => (
                   <TR key={p.id}>
                     <TD>
-                      <div className="font-medium text-foreground">{p.name}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-foreground">{p.name}</span>
+                        {/*
+                          The one that answers when a caller names none.
+                          Marked on the row rather than left to be inferred
+                          from the order of the list — a default you have to
+                          guess at is not a default.
+                        */}
+                        {defaultServiceId === p.serviceId && (
+                          <Badge tone="primary">{t("admin.searchProviders.defaultBadge")}</Badge>
+                        )}
+                      </div>
                       <div className="font-mono text-xs text-muted-foreground">{p.id}</div>
                     </TD>
                     <TD>
@@ -258,7 +276,11 @@ export default async function SearchAdminPage() {
                       )}
                     </TD>
                     <TD className="text-right">
-                      <SearchProviderActions provider={p} templates={TEMPLATE_OPTIONS} />
+                      <SearchProviderActions
+                        provider={p}
+                        templates={TEMPLATE_OPTIONS}
+                        isDefault={defaultServiceId === p.serviceId}
+                      />
                     </TD>
                   </TR>
                 ))}

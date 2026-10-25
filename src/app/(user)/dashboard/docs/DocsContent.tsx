@@ -127,6 +127,7 @@ export function DocsContent({
             <p>{t("docs.search.line1")}</p>
             <p className="text-xs text-muted-foreground">{t("docs.search.sharesBase")}</p>
             <CodeBlock label={t("docs.search.baseUrl")} value={`${openaiBase}/search`} />
+            <p className="text-xs text-muted-foreground">{t("docs.search.aliasDesc")}</p>
             <CodeBlock
               label={t("docs.search.header")}
               value="Authorization: Bearer sk-relay-xxxx..."
@@ -150,6 +151,10 @@ export function DocsContent({
               value={`{ "query": "智谱 bigmodel 图像生成 API 文档", "limit": 5, "service": "searxng" }`}
             />
             <p className="text-xs text-muted-foreground">{t("docs.search.requestHint")}</p>
+            <p className="text-xs text-muted-foreground">{t("docs.search.countHint")}</p>
+            <p className="text-xs text-muted-foreground">
+              {t("docs.search.needContentHint")}
+            </p>
             <p className="text-xs text-muted-foreground">
               <MarkdownText text={t("docs.search.serviceHint")} />
             </p>
@@ -173,6 +178,9 @@ export function DocsContent({
 }`}
             />
             <p className="text-xs text-muted-foreground">{t("docs.search.responseHint")}</p>
+            <p className="text-xs text-muted-foreground">
+              <MarkdownText text={t("docs.search.fieldsDesc")} />
+            </p>
             <CodeBlock
               label={t("docs.search.balanceHeader")}
               value={`x-ratelimit-limit: 20000000
@@ -184,6 +192,7 @@ x-ratelimit-unit: credits`}
             <p className="rounded-md border border-border bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">
               <MarkdownText text={t("docs.search.billing")} />
             </p>
+            <p className="text-xs text-muted-foreground">{t("docs.search.emptyFree")}</p>
             <p className="rounded-md border border-border bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">
               {t("docs.search.note")}
             </p>
@@ -240,6 +249,78 @@ x-ratelimit-unit: credits`}
             />
             <p className="text-xs text-muted-foreground">
               <MarkdownText text={t("docs.search.servicesHint")} />
+            </p>
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title={
+              <span className="flex items-center gap-2">
+                <Search className="h-4 w-4 text-muted-foreground" />
+                {t("docs.fetch.title")}
+              </span>
+            }
+            description={t("docs.fetch.desc")}
+          />
+          <div className="space-y-3 text-xs text-foreground/90 sm:space-y-4 sm:text-sm">
+            <p className="text-xs text-muted-foreground">{t("docs.fetch.aliasDesc")}</p>
+            <CodeBlock
+              label={t("docs.fetch.requestTitle")}
+              value={`{ "url": "https://docs.bigmodel.cn/api-reference/模型-api/图像生成" }`}
+            />
+            <p className="text-xs text-muted-foreground">{t("docs.fetch.requestHint")}</p>
+            <h3 className="text-sm font-semibold">{t("docs.fetch.responseTitle")}</h3>
+            <CodeBlock
+              label={t("docs.fetch.responseTitle")}
+              value={`{
+  "url": "https://docs.bigmodel.cn/api-reference/模型-api/图像生成",
+  "finalUrl": "https://docs.bigmodel.cn/api-reference/模型-api/图像生成",
+  "title": "图像生成API - 平台介绍 - 智谱",
+  "content": "# 图像生成 API\\n\\n请求体字段 …",
+  "truncated": false
+}`}
+            />
+            <p className="text-xs text-muted-foreground">{t("docs.fetch.responseHint")}</p>
+            <p className="rounded-md border border-border bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">
+              {t("docs.fetch.billing")}
+            </p>
+            <p className="text-xs text-muted-foreground">{t("docs.fetch.note")}</p>
+          </div>
+        </Card>
+
+        {/*
+          The hosted search, in its own card.
+
+          It is a third way in — not the search endpoint and not the fetch one,
+          but a chat request that asks the model to search — so it is written
+          down where a client author looking for "how do I make the model look
+          things up" will find it.
+        */}
+        <Card>
+          <CardHeader
+            title={
+              <span className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-muted-foreground" />
+                {t("docs.search.hostedTitle")}
+              </span>
+            }
+            description={t("docs.search.hostedDesc")}
+          />
+          <div className="space-y-3 text-xs text-foreground/90 sm:space-y-4 sm:text-sm">
+            <CodeBlock
+              label={t("docs.search.requestTitle")}
+              value={`curl ${openaiBase}/chat/completions \\
+  -H "Authorization: Bearer $RELAYAB_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "你的模型",
+    "messages": [{"role": "user", "content": "今天的新闻有什么？"}],
+    "web_search_options": {"search_context_size": "medium"}
+  }'`}
+            />
+            <p className="text-xs text-muted-foreground">
+              <MarkdownText text={t("docs.search.hostedNote")} />
             </p>
           </div>
         </Card>

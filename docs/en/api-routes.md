@@ -782,11 +782,13 @@ at its `/api/...` path.
 | `GET /api/admin/users/[id]/delete-form` | Confirmation form before deleting a user |
 | `GET /api/user/keys` · `GET/PATCH/DELETE /api/user/keys/[id]` | The user's own key management |
 | `GET /api/user/profile` | The signed-in user's own profile |
-| `POST/GET /v1/search` | Paid web search (Bearer `sk-relay-…`); billed at a fixed price per call. The `service` field names which of the deployment's search services to use |
+| `POST/GET /v1/search` | Paid web search (Bearer `sk-relay-…`); billed at a fixed price per call. The `service` field names which of the deployment's search services to use; with no name, the service the operator marked as the default answers. `count` is another name for `limit`, and `need_content: true` asks the search service for the page bodies. **A search that found nothing is not charged** |
+| `POST /v1/tools/search` | The other name for `/v1/search`: the same endpoint, the same price |
+| `POST /v1/fetch` | Fetch one page and get it back as Markdown (Bearer auth, **not charged**); `/v1/tools/fetch` is the same endpoint |
 | `GET /v1/search/services` | The catalogue of the deployment's search services (the same idea as `GET /v1/models`); `id` is the name a search request's `service` field takes |
-| `GET/PUT /api/admin/search` | Read / save the **environment fallback price** (the feature-wide switch was folded into each provider row's `enabled`) |
+| `GET/PUT /api/admin/search` | Read / save the **environment fallback price** and the **default search service** (the feature-wide switch was folded into each provider row's `enabled`) |
 | `GET/POST /api/admin/search-providers` | List / create search backends (SearXNG, Tavily, Brave), each with its own per-call price and **client-visible name** |
-| `GET/PATCH/DELETE /api/admin/search-providers/[id]` | View / update / delete one backend; a blank `apiKey` keeps the stored key. **There is no "default service"**: the caller names the one it wants |
+| `GET/PATCH/DELETE /api/admin/search-providers/[id]` | View / update / delete one backend; a blank `apiKey` keeps the stored key. **A default service is marked here**, and the default row carries the "default" badge in the panel |
 | `POST /api/admin/search-providers/[id]/test` | Run one query through that backend; **billed as usual** (the panel's test button goes through the same settlement), and it works while the backend is disabled |
 
 ---

@@ -113,11 +113,17 @@ body     = transport.body（POST 才有），序列化成 JSON
 ```
 items   = response.items 指向的数组
 每一条：title = response.fields.title，url = response.fields.url，snippet = response.fields.snippet
+        summary / content / score / date / siteName 是可选的：不写就没有，厂商给了才有
 ```
 
 - **URL 不合格的条目直接丢掉**：`javascript:`、`file://`、空地址、带账号密码的地址、相对地址。剩下的条目按 URL 去重，保留厂商给的顺序。
 - 标题和摘要里的 HTML 标签会被去掉，实体（`&amp;` 之类）会解码，长度分别截到 200 / 320 字符。
 - **`response.fields` 的某个字段可以写成 `{"$firstPresent": ["$.content", "$.snippet"]}`**：取第一个厂商真的填了的。厂商对「摘要」这个字段的名字不统一（`content` / `snippet` / `description`），用这个写法就不必猜。
+- **可选字段**（`summary` / `content` / `score` / `date` / `siteName`）**厂商给了才有，不会替它编**：一个中转层编出来的相关度比没有更糟。
+  - `summary` 是给模型读的较长文本（截到 1000 字符），`content` 是网页正文（截到 8000 字符）。
+  - `score` 是**厂商自己的**分制（各家不同），`date` 是厂商写的发布时间，`siteName` 是结果来自哪个站。
+- **和别的字段说得一样的话会被丢掉**：厂商只有一个文本字段时，常把它同时映射给 `snippet` 和 `summary`（截到两个长度）；短文本截出来是一样的，那就不算两条信息 —— 重复的那个没有的那个字段会被丢掉。
+- **请求里可以问要不要正文**：`{{$.need_content}}` 在调用方要求正文时是 `true`，否则是 `false`。厂商不支持就当它没听见。
 
 ### 0.4 完整契约表
 
@@ -140,6 +146,11 @@ items   = response.items 指向的数组
 | `response.fields.title` | 路径 或 `$firstPresent` | ✅ | |
 | `response.fields.url` | 路径 或 `$firstPresent` | ✅ | |
 | `response.fields.snippet` | 路径 或 `$firstPresent` | ✅ | |
+| `response.fields.summary` | 路径 或 `$firstPresent` | | 给模型读的较长文本，截到 1000 字符。 |
+| `response.fields.content` | 路径 或 `$firstPresent` | | 网页正文，截到 8000 字符。 |
+| `response.fields.score` | 路径 或 `$firstPresent` | | 厂商自己的相关度分（各家不同）。 |
+| `response.fields.date` | 路径 或 `$firstPresent` | | 厂商写的发布时间。 |
+| `response.fields.siteName` | 路径 或 `$firstPresent` | | 结果来自哪个站。 |
 | `limits.timeoutMs` | number | | 请求超时，1–600000，默认 15000。 |
 | `limits.maxResults` | number | | 厂商能接受的最大条数，1–100。**会真的生效**：请求条数被它压住（发给厂商的条数也是压过之后的那个数）。 |
 

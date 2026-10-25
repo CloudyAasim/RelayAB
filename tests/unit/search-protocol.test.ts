@@ -322,8 +322,28 @@ describe("reading the answer", () => {
       ],
     });
     expect(results).toEqual([
-      { title: "Image API", url: "https://docs.example/images", snippet: "How to generate images." },
+      {
+        title: "Image API",
+        url: "https://docs.example/images",
+        snippet: "How to generate images.",
+        // No `summary` here, and that is the point: Tavily's `content` is the
+        // only text it has, so the spec maps it to both the short line and the
+        // long read — and on a short result the two are the same string. A
+        // second field saying the same thing is not more information, so the
+        // duplicate goes and the snippet keeps it.
+      },
     ]);
+  });
+
+  it("keeps the longer read when there really is one", () => {
+    const long = "x".repeat(400);
+    const results = parseSearchResults(spec, {
+      results: [{ title: "Image API", url: "https://docs.example/images", content: long }],
+    });
+    // The snippet is cut at 320 characters and the summary at 1000, so a text
+    // that is longer than the snippet's cap is genuinely more: both are kept.
+    expect(results[0].snippet).toHaveLength(320);
+    expect(results[0].summary).toHaveLength(400);
   });
 
   it("reads a result array that is one level deeper", () => {

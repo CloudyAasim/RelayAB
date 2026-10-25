@@ -730,11 +730,13 @@ OpenAI 则**没有**任何列表接口，只能在 spec 里声明。同一 id �
 | `GET /api/admin/users/[id]/delete-form` | 删除用户前的确认表单 |
 | `GET /api/user/keys` · `GET/PATCH/DELETE /api/user/keys/[id]` | 用户自己的 Key 管理 |
 | `GET /api/user/profile` | 已登录用户的个人资料 |
-| `POST/GET /v1/search` | 计费网页搜索（Bearer `sk-relay-…`），按次固定扣费。可用 `service` 字段点名要站点的哪一个搜索服务 |
+| `POST/GET /v1/search` | 计费网页搜索（Bearer `sk-relay-…`），按次固定扣费。可用 `service` 字段点名要站点的哪一个搜索服务；不点名时由管理员指定的默认服务应答。`count` 是 `limit` 的别名，`need_content: true` 会向搜索服务要网页正文。**搜不到结果不扣费** |
+| `POST /v1/tools/search` | `/v1/search` 的另一个名字：同一个接口、同一个价格 |
+| `POST /v1/fetch` | 抓一个网页，返回 Markdown 正文（Bearer 鉴权，**不计费**）；`/v1/tools/fetch` 是同一个接口 |
 | `GET /v1/search/services` | 站点的搜索服务目录（和 `GET /v1/models` 一个道理），`id` 就是搜索请求里 `service` 字段能写的名字 |
-| `GET/PUT /api/admin/search` | 读取 / 保存网页搜索**环境回退价格**（总开关已并入各提供商行的 `enabled`） |
+| `GET/PUT /api/admin/search` | 读取 / 保存网页搜索**环境回退价格**，以及**默认搜索服务**（总开关已并入各提供商行的 `enabled`） |
 | `GET/POST /api/admin/search-providers` | 列出 / 新建搜索后端（SearXNG、Tavily、Brave），每条带自己的每次调用价格与**客户端可见名称** |
-| `GET/PATCH/DELETE /api/admin/search-providers/[id]` | 查看 / 修改 / 删除单个后端；`apiKey` 留空表示保留原密钥。**没有「默认服务」**：用哪一个由调用方点名 |
+| `GET/PATCH/DELETE /api/admin/search-providers/[id]` | 查看 / 修改 / 删除单个后端；`apiKey` 留空表示保留原密钥。**默认服务是在这里指定的**，面板上默认的那一行带「默认」标记 |
 | `POST /api/admin/search-providers/[id]/test` | 用该后端跑一次查询；**照常计费**（面板上的测试按钮也走同一套结算），停用状态下也能测 |
 
 ---

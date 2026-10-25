@@ -18,6 +18,21 @@ import type { ChatCompletionRequest, ProxyDeps, ProxyResult } from "./types";
 import { chatToResponsesRequest, responsesToChatResponse } from "./converters/chat";
 import { proxyChatDirect } from "./dialects/chat";
 import { proxyOpenAIResponse } from "./responses";
+import { runBilledSearch } from "../search/billing";
+import { WebSearchError } from "../assistant/web-search";
+import { searchErrorHttp } from "../search/types";
+import {
+  applyChatSearchAnnotations,
+  buildSearchContext,
+  chatSearchLimit,
+  lastChatUserText,
+  sourcesFromResults,
+  stripHostedSearchFields,
+  wantsHostedChatSearch,
+  withChatSearchAnnotationStream,
+  withChatSearchContext,
+  type WebSearchSource,
+} from "./web-search-tool";
 
 // ---------------------------------------------------------------------------
 // Main entry
@@ -92,6 +107,26 @@ export async function proxyChatCompletion(args: {
   const provider = providers[0];
 
   /**
+   * The hosted web search, when the upstream cannot do it.
+   *
+   * A Chat Completions upstream has no such tool: a `web_search` tool in the
+   * body is either refused outright or answered by a model that was never told
+   * how to answer it. So the deployment searches, puts the results in front of
+   * the model, and puts the sources on the answer.
+   *
+   * It happens here, **before** the request is dispatched, so that a request
+   * which travels through the pivot is searched once and not twice.
+   */
+  let sources: WebSearchSource[] = [];
+  let chatReq: ChatCompletionRequest = req;
+  if (wantsHostedChatSearch(req)) {
+    const prepared = await prepareHostedChatSearch({ req, user, apiKey });
+    if ("error" in prepared) return prepared.error;
+    chatReq = prepared.req;
+    sources = prepared.sources;
+  }
+
+  /**
    * A provider whose upstream speaks a protocol the Chat Completions body
    * cannot be sent to is reached by translating: the request becomes a
    * Responses request, the Responses proxy turns that into the vendor's own
@@ -109,7 +144,7 @@ export async function proxyChatCompletion(args: {
   const dialect = providerFaces(provider).openai?.format;
   if (dialect === "anthropic" || dialect === "gemini") {
     const viaPivot = await proxyOpenAIResponse({
-      req: chatToResponsesRequest(req) as Parameters<typeof proxyOpenAIResponse>[0]["req"],
+      req: chatToResponsesRequest(chatReq) as Parameters<typeof proxyOpenAIResponse>[0]["req"],
       apiKey,
       user,
       signal,
@@ -121,25 +156,113 @@ export async function proxyChatCompletion(args: {
     // The pivot speaks Responses; the client asked for Chat chunks. The
     // frames are translated on the way out.
     if (viaPivot.body) {
-      const mapper = chatFrameMapper(req.model);
+      const mapper = chatFrameMapper(chatReq.model);
       return {
         ok: true,
         status: 200,
-        body: sseRewrite(viaPivot.body, {
+        body: withSources(sseRewrite(viaPivot.body, {
           map: mapper.map,
           onEnd: mapper.onEnd,
           signal,
-        }),
+        }), sources),
         contentType: "text/event-stream; charset=utf-8",
       };
     }
+    const data = responsesToChatResponse(viaPivot.data, chatReq);
+    if (sources.length > 0) applyChatSearchAnnotations(data, sources);
     return {
       ok: true,
       status: 200,
-      data: responsesToChatResponse(viaPivot.data, req),
+      data,
     };
   }
 
   // A Chat Completions body, straight to a Chat Completions upstream.
-  return proxyChatDirect({ req, apiKey, user, signal, deps, provider });
+  const direct = await proxyChatDirect({ req: chatReq, apiKey, user, signal, deps, provider });
+  if (!direct.ok) return direct;
+  if (sources.length > 0) {
+    if (direct.data) applyChatSearchAnnotations(direct.data, sources);
+    else if (direct.body) direct.body = withSources(direct.body, sources);
+  }
+  return direct;
+}
+
+/**
+ * Put the sources on a stream, when there are any.
+ *
+ * A stream without sources is returned untouched: wrapping it for nothing
+ * would change bytes the client did not ask to have changed.
+ */
+function withSources(
+  body: ReadableStream<Uint8Array>,
+  sources: WebSearchSource[],
+): ReadableStream<Uint8Array> {
+  if (sources.length === 0) return body;
+  return withChatSearchAnnotationStream(body, sources);
+}
+
+/**
+ * Answer the hosted web search tool, and put the results in front of the model.
+ *
+ * The search goes through the same settlement every other search goes
+ * through, so the account is charged the same price it would have paid for a
+ * search it had asked for itself.
+ */
+async function prepareHostedChatSearch(args: {
+  req: ChatCompletionRequest;
+  user: User;
+  apiKey: ApiKey;
+}): Promise<{ req: ChatCompletionRequest; sources: WebSearchSource[] } | { error: ProxyResult }> {
+  const { req, user, apiKey } = args;
+  const query = lastChatUserText(req.messages);
+  if (!query) {
+    return {
+      error: {
+        ok: false,
+        status: 400,
+        error: {
+          code: "web_search_no_query",
+          message: "web_search needs a question to search for",
+        },
+      },
+    };
+  }
+
+  let settled;
+  try {
+    settled = await runBilledSearch({
+      query,
+      limit: chatSearchLimit(req.web_search_options),
+      user,
+      apiKeyId: apiKey.id,
+    });
+  } catch (err) {
+    if (err instanceof WebSearchError) {
+      // The client asked for a search and the deployment cannot search. Saying
+      // so is the honest answer; answering as if it had searched would be a lie
+      // the model would then tell the user.
+      const http = searchErrorHttp(err.code);
+      return {
+        error: {
+          ok: false,
+          status: http.status,
+          error: { code: http.code, message: err.message },
+        },
+      };
+    }
+    throw err;
+  }
+
+  const sources = sourcesFromResults(settled.outcome.results);
+  // Nothing found is still an answer: the model is told the search found
+  // nothing, and says so, rather than filling the gap from memory.
+  const context = buildSearchContext(query, sources);
+  const stripped = stripHostedSearchFields(req);
+  return {
+    req: {
+      ...stripped,
+      messages: withChatSearchContext(req.messages, context) as ChatCompletionRequest["messages"],
+    },
+    sources,
+  };
 }

@@ -86,7 +86,14 @@ describe("a hop down to plain HTTP is reported rather than ignored", () => {
   });
 
   it("and a page that never downgrades is untouched", () => {
-    expect(WEBFETCH).toMatch(/: \{ text: body \}\)/);
+    // The body is put together from a warning and the text now, so that the
+    // plain form and the Markdown form carry the same warning — a reader who
+    // gets the Markdown must not be the one who does not learn the page was
+    // tampered with. The warning is empty when nothing downgraded, so the
+    // page reads exactly as it did before.
+    expect(WEBFETCH).toMatch(/const warning = downgraded/);
+    expect(WEBFETCH).toMatch(/text: `\$\{warning\}\$\{body\}`,/);
+    expect(WEBFETCH).toMatch(/: "";/);
   });
 
   it("without costing a reachable documentation page", () => {

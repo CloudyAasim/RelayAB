@@ -73,7 +73,7 @@ export async function proxyResponsesNative(args: {
   } else if (Array.isArray(req.input)) {
     inputText = req.input
       .filter((i) => i.type === "input_text" && i.content)
-      .map((i) => i.content)
+      .map((i) => (typeof i.content === "string" ? i.content : ""))
       .join(" ");
   }
 

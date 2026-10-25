@@ -192,7 +192,10 @@ describe("a successful search", () => {
   });
 
   it("reports the remaining balance in the quota headers", async () => {
-    stubSearch([]);
+    // A call that found something: an empty result set is free now, and a free
+    // call would leave the balance where it was and test nothing about the
+    // arithmetic.
+    stubSearch([{ title: "A", url: "https://a.example", content: "aa" }]);
     const res = await post({ query: "x" });
     expect(res.headers.get("x-ratelimit-limit")).toBe("100000");
     // 100 积分 granted minus the 1 积分 this call cost, in storage units.
@@ -210,9 +213,26 @@ describe("a successful search", () => {
     expect(user?.quotaUsed).toBe(1000);
   });
 
+  it("does not charge for a search that found nothing", async () => {
+    // The rule the other search APIs have: the account asked a question and
+    // got no answer, and charging for that is charging for nothing. The call
+    // is still recorded — with zero credits — so an operator whose own vendor
+    // bills for empty searches can count them.
+    stubSearch([]);
+    const res = await post({ query: "x" });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { credits: number }).credits).toBe(0);
+    expect((await getUserById(userId))?.quotaUsed).toBe(0);
+    const usage = await listUsageByKey(keyId);
+    expect(usage).toHaveLength(1);
+    expect(usage[0]).toMatchObject({ creditsUsed: 0, status: "success" });
+  });
+
   it("honours SEARCH_CREDITS_PER_CALL", async () => {
     process.env.SEARCH_CREDITS_PER_CALL = "3";
-    stubSearch([]);
+    // A call that found something: an empty result set is free now, so it
+    // would test the price of nothing.
+    stubSearch([{ title: "A", url: "https://a.example", content: "aa" }]);
     const res = await post({ query: "x" });
     expect(((await res.json()) as { credits: number }).credits).toBe(3);
     const user = await getUserById(userId);
@@ -225,7 +245,7 @@ describe("a successful search", () => {
     // edit look broken after the next restart.
     await updateSettings({ searchCreditsPerCall: 2 });
     process.env.SEARCH_CREDITS_PER_CALL = "5";
-    stubSearch([]);
+    stubSearch([{ title: "A", url: "https://a.example", content: "aa" }]);
     const res = await post({ query: "x" });
     expect(((await res.json()) as { credits: number }).credits).toBe(2);
     expect((await getUserById(userId))?.quotaUsed).toBe(2000);

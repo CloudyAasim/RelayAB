@@ -82,6 +82,13 @@ export interface BilledSearchArgs {
    * charged as well as which vendor answered.
    */
   serviceId?: string;
+  /**
+   * Whether the caller wants the page bodies with the results.
+   *
+   * It is a request, not a promise: a vendor whose spec does not ask for a
+   * body simply does not send one.
+   */
+  needContent?: boolean;
   fetchImpl?: typeof fetch;
   env?: NodeJS.ProcessEnv;
 }
@@ -110,6 +117,8 @@ export interface SearchRunArgs {
   charge: SearchCharge;
   apiKeyId?: string;
   touchKey?: boolean;
+  /** Whether the caller wants the page bodies with the results. */
+  needContent?: boolean;
   fetchImpl?: typeof fetch;
 }
 
@@ -183,6 +192,7 @@ export async function runBilledSearch(args: BilledSearchArgs): Promise<BilledSea
     charge: "account",
     ...(args.apiKeyId ? { apiKeyId: args.apiKeyId } : {}),
     ...(args.touchKey !== undefined ? { touchKey: args.touchKey } : {}),
+    ...(args.needContent !== undefined ? { needContent: args.needContent } : {}),
     ...(args.fetchImpl ? { fetchImpl: args.fetchImpl } : {}),
   });
 }
@@ -256,9 +266,25 @@ export async function runSearch(args: SearchRunArgs): Promise<BilledSearchResult
     limit: args.limit,
     fetchImpl: args.fetchImpl,
     backend,
+    ...(args.needContent !== undefined ? { needContent: args.needContent } : {}),
   });
 
-  const creditsUsed = credits * CREDIT_SCALE;
+  /**
+   * A search that found nothing is not a billable call.
+   *
+   * The account asked a question and got no answer — charging for that is
+   * charging for nothing. The other search APIs bill the same way, and a client
+   * that has to pay for an empty result set will simply stop asking.
+   *
+   * **What the operator is giving away.** The vendor still charged *them* for
+   * the call: a query that matched nothing was still a request to Tavily. So on
+   * a paid backend this is the operator's cost with no revenue against it —
+   * which is why a self-hosted one (the common case here) makes the rule free.
+   * The call is still recorded, with zero credits, so a deployment that sees
+   * its vendor bill rise without its own rising can count the empty searches.
+   */
+  const billable = results.results.length > 0;
+  const creditsUsed = billable ? credits * CREDIT_SCALE : 0;
 
   // The repository hands back the fresh row, so the balance the caller reports
   // is the one after the charge and not a second read that might disagree.
@@ -296,7 +322,7 @@ export async function runSearch(args: SearchRunArgs): Promise<BilledSearchResult
     results: results.results,
   };
 
-  return { outcome, credits, creditsUsed, user: updated };
+  return { outcome, credits: billable ? credits : 0, creditsUsed, user: updated };
 }
 
 /**

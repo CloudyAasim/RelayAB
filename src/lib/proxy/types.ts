@@ -61,9 +61,31 @@ export interface ChatCompletionRequest {
   [k: string]: unknown;
 }
 
+/**
+ * One block of a Responses message.
+ *
+ * The Responses API lets a message carry its content as a list of blocks —
+ * that is how a picture gets in beside the text — so the type has to allow
+ * it, or a request that the API accepts would not typecheck here.
+ */
+export interface ResponsesContentBlock {
+  type?: string;
+  text?: string;
+  [k: string]: unknown;
+}
+
+/** One item of a Responses `input` list. */
+export interface ResponsesInputItem {
+  type: string;
+  role?: string;
+  content?: string | ResponsesContentBlock[];
+  audio?: unknown;
+  [k: string]: unknown;
+}
+
 export interface ResponseAPIRequest {
   model: string;
-  input?: string | Array<{ type: string; content?: string; audio?: unknown }>;
+  input?: string | ResponsesInputItem[];
   tools?: unknown[];
   stream?: boolean;
   [k: string]: unknown;

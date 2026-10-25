@@ -31,6 +31,7 @@
  */
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
+import { htmlToMarkdown } from "./web-markdown";
 
 /** Enough of a documentation page to answer from, and not a memory problem. */
 export const MAX_FETCH_BYTES = 200_000;
@@ -267,6 +268,19 @@ const ENTITIES: Record<string, string> = {
  * Block-level tags become newlines so the output is not one run-on line, which
  * is most of what makes raw HTML useless to a model.
  */
+/**
+ * The page's own title, when it has one.
+ *
+ * Read out of the document head, because a page without a name is a page a
+ * reader has to describe from its contents. A page whose title is written in
+ * a script (or in several languages) simply has no title here.
+ */
+function htmlTitle(html: string): string {
+  const match = /<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(html);
+  if (!match) return "";
+  return htmlToText(match[1]).trim().slice(0, 200);
+}
+
 export function htmlToText(html: string): string {
   return html
     .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
@@ -319,6 +333,27 @@ export interface WebFetchResult {
   bytes: number;
   truncated: boolean;
   text: string;
+  /**
+   * The page as Markdown, when it was an HTML page.
+   *
+   * The same content, with its structure: a heading is still a heading, a link
+   * is still a link, a list is still a list. The other search APIs hand back
+   * Markdown, and the difference is what a reader can do with it — a
+   * documentation page flattened into sentences is a documentation page whose
+   * headings are gone.
+   *
+   * Absent for a page that was not HTML: a Markdown document fetched from
+   * `.md` is already Markdown, and the text carries it unchanged.
+   */
+  markdown?: string;
+  /**
+   * The page's own title, when it has one.
+   *
+   * Read out of the document head, because a page without a name is a page a
+   * reader has to describe from its contents. Empty when the page has no
+   * title or is not HTML.
+   */
+  title?: string;
   /**
    * Set when `text` came from a different document than the requested page.
    *
@@ -570,6 +605,19 @@ export async function fetchPage(
     );
     const isHtml = /html|xml/i.test(contentType) || /^\s*<(?:!doctype|html)/i.test(text);
     const body = isHtml ? htmlToText(text) : text;
+    const title = isHtml ? htmlTitle(text) : "";
+    const markdown = isHtml ? htmlToMarkdown(text) : "";
+
+    /**
+     * The warning a reader has to see before the content, in both spellings.
+     *
+     * A hop that left HTTPS is not a detail: the body that follows is
+     * something a third party could have written, and the reader of this
+     * result is a model that will quote it as fact.
+     */
+    const warning = downgraded
+      ? "【注意：这个地址在跳转过程中从 HTTPS 降级到了 HTTP，正文未经加密传输，内容可能被中间人改写。以下内容请谨慎采信。】\n\n"
+      : "";
 
     const page: WebFetchResult = {
       url: rawUrl,
@@ -578,13 +626,13 @@ export async function fetchPage(
       contentType,
       bytes,
       truncated,
+      ...(title ? { title } : {}),
+      ...(markdown ? { markdown: `${warning}${markdown}` } : {}),
       // Prefixed into the text rather than left as a field: the reader of this
       // result is the model, and a flag in a JSON envelope is one more thing to
       // notice while doing something else. A sentence at the top of the content
       // is read as part of the content.
-      ...(downgraded
-        ? { text: `【注意：这个地址在跳转过程中从 HTTPS 降级到了 HTTP，正文未经加密传输，内容可能被中间人改写。以下内容请谨慎采信。】\n\n${body}` }
-        : { text: body }),
+      text: `${warning}${body}`,
       downgraded,
     };
 
@@ -776,6 +824,9 @@ async function discoverDocs(
       contentType: "text/markdown",
       bytes: markdownText.bytes,
       truncated: markdownText.truncated,
+      // The Markdown source *is* Markdown, so it is also the Markdown form of
+      // the page: no conversion, and nothing lost.
+      markdown: markdownText.text,
       text:
         `【已自动改用该页的 Markdown 原文：${markdownText.url}` +
         `（抓取到的页面正文 ${page.text.length} 字符${sparse ? "，过少" : "，主要是导航"}）】` +

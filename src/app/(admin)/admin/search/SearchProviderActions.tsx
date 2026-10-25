@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Pencil, Power, PowerOff, Search, Trash2 } from "lucide-react";
+import { Pencil, Power, PowerOff, Search, Star, Trash2 } from "lucide-react";
 
 import { useT } from "@/components/i18n/I18nProvider";
 import { Button } from "@/components/ui/Button";
@@ -12,14 +12,41 @@ import { SearchProviderTestModal } from "./SearchProviderTestModal";
 export function SearchProviderActions({
   provider,
   templates,
+  isDefault = false,
 }: {
   provider: SearchProviderRow;
   templates?: SearchTemplateOption[];
+  /** Whether this row is the one that answers when a caller names none. */
+  isDefault?: boolean;
 }) {
   const t = useT();
   const [editOpen, setEditOpen] = useState(false);
   const [testOpen, setTestOpen] = useState(false);
   const [pending, startTransition] = useTransition();
+
+  /**
+   * Mark this row as the default, or unmark it.
+   *
+   * The default is what answers when a client names no service — which is every
+   * client that speaks the other search APIs, because none of them has a field
+   * for it. So the mark is not a preference, it is the answer to "which one
+   * runs when nobody says".
+   */
+  async function markDefault(): Promise<void> {
+    const res = await fetch("/api/admin/search", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ defaultServiceId: isDefault ? null : provider.serviceId }),
+    });
+    const data = (await res.json().catch(() => null)) as
+      | { ok: boolean; error?: { message?: string } }
+      | null;
+    if (!data?.ok) {
+      alert(data?.error?.message ?? t("common.failed"));
+      return;
+    }
+    startTransition(() => window.location.reload());
+  }
 
   async function toggle(): Promise<void> {
     const res = await fetch(`/api/admin/search-providers/${provider.id}`, {
@@ -77,6 +104,25 @@ export function SearchProviderActions({
         className={provider.enabled ? "text-muted-foreground hover:text-destructive" : "text-foreground"}
       >
         {provider.enabled ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
+      </Button>
+      <Button
+        size="icon"
+        variant="ghost"
+        title={
+          isDefault
+            ? t("admin.searchProviders.unsetDefault")
+            : t("admin.searchProviders.setDefault")
+        }
+        aria-label={
+          isDefault
+            ? t("admin.searchProviders.unsetDefault")
+            : t("admin.searchProviders.setDefault")
+        }
+        onClick={markDefault}
+        disabled={pending}
+        className={isDefault ? "text-primary" : "text-muted-foreground"}
+      >
+        <Star className="h-4 w-4" fill={isDefault ? "currentColor" : "none"} />
       </Button>
       <Button
         size="icon"

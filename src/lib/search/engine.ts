@@ -19,11 +19,13 @@
  */
 import { getPath, resolveTemplate } from "../spec/primitives";
 import { plainText, usableUrl } from "./normalize";
-import { readSearchField, type SearchSpec } from "./spec";
+import { readSearchField, readSearchNumber, type SearchSpec } from "./spec";
 import { assertPublicHost } from "../assistant/web-fetch";
 import {
   MAX_SEARCH_BYTES,
   MAX_SNIPPET_CHARS,
+  MAX_SUMMARY_CHARS,
+  MAX_CONTENT_CHARS,
   MAX_TITLE_CHARS,
   SEARCH_TIMEOUT_MS,
   WebSearchError,
@@ -43,6 +45,15 @@ export interface SearchExecutionArgs {
   limit: number;
   /** The credential, when the vendor needs one. */
   apiKey?: string;
+  /**
+   * Whether the caller wants the page bodies with the results.
+   *
+   * It is a request, not a promise: a vendor whose spec does not ask for a
+   * body simply does not send one, and the caller gets the shorter text. The
+   * spec decides what to ask the vendor for — this only says whether the
+   * caller would like it.
+   */
+  needContent?: boolean;
   /** What to call the backend in an error message. */
   displayName: string;
   /**
@@ -80,12 +91,23 @@ function hostOf(url: string): string | null {
 /**
  * The values a template may fill in.
  *
- * Only these two. A spec that asks for a third one is refused at save time,
+ * Only these three. A spec that asks for a fourth one is refused at save time,
  * because a request that sends a literal `{{foo}}` upstream looks like a
  * search for the text `{{foo}}` and returns confidently wrong results.
  */
-export function searchTemplateScope(args: { query: string; limit: number }): Record<string, unknown> {
-  return { query: args.query, limit: args.limit };
+export function searchTemplateScope(args: {
+  query: string;
+  limit: number;
+  needContent?: boolean;
+}): Record<string, unknown> {
+  return {
+    query: args.query,
+    limit: args.limit,
+    // Whether the caller wants page bodies. A spec may or may not act on it —
+    // Tavily turns it into `include_raw_content`, and a vendor that has no
+    // such switch ignores it. The scope carries it so a spec *can* act on it.
+    need_content: args.needContent === true,
+  };
 }
 
 /**
@@ -160,7 +182,7 @@ function resolveValue(value: unknown, scope: Record<string, unknown>): unknown {
 export function buildSearchRequest(
   spec: SearchSpec,
   baseUrl: string,
-  args: { query: string; limit: number; apiKey?: string },
+  args: { query: string; limit: number; apiKey?: string; needContent?: boolean },
 ): BuiltSearchRequest {
   const scope = searchTemplateScope(args);
   const rawBase = baseUrl.trim();
@@ -324,18 +346,55 @@ export function parseSearchResults(spec: SearchSpec, payload: unknown, limit?: n
   const items = readSearchItems(spec, payload);
   if (!items) return [];
 
+  const fields = spec.response.fields;
   const seen = new Set<string>();
   const out: WebSearchResult[] = [];
   for (const hit of items) {
     if (!hit || typeof hit !== "object") continue;
-    const url = usableUrl(readSearchField(hit, spec.response.fields.url));
+    const url = usableUrl(readSearchField(hit, fields.url));
     if (!url || seen.has(url)) continue;
     seen.add(url);
-    out.push({
-      title: plainText(readSearchField(hit, spec.response.fields.title), MAX_TITLE_CHARS) || url,
+    const result: WebSearchResult = {
+      title: plainText(readSearchField(hit, fields.title), MAX_TITLE_CHARS) || url,
       url,
-      snippet: plainText(readSearchField(hit, spec.response.fields.snippet), MAX_SNIPPET_CHARS),
-    });
+      snippet: plainText(readSearchField(hit, fields.snippet), MAX_SNIPPET_CHARS),
+    };
+    // The rest is what the vendor answered. A vendor that returns no score
+    // gets no score — a relay that made one up would be worse than one that
+    // admits the vendor did not say.
+    const summary = fields.summary
+      ? plainText(readSearchField(hit, fields.summary), MAX_SUMMARY_CHARS)
+      : "";
+    const content = fields.content
+      ? plainText(readSearchField(hit, fields.content), MAX_CONTENT_CHARS)
+      : "";
+    /**
+     * A field that says the same thing as another one is not carrying more.
+     *
+     * Several vendors have exactly **one** text field, and the specs map it to
+     * both the short line and the long read — cut at two lengths, so a short
+     * page produces the same text twice. And some put the *snippet* in a field
+     * called `content`, which the openai-compatible shape falls back to for the
+     * snippet for exactly that reason.
+     *
+     * The duplicate goes and the shorter field keeps it: a reader that sees
+     * the same string in `snippet` and in `summary` is being told there is
+     * more to it than there is.
+     */
+    const keptSummary = summary && summary !== result.snippet ? summary : "";
+    const keptContent =
+      content && content !== result.snippet && content !== keptSummary ? content : "";
+    if (keptSummary) result.summary = keptSummary;
+    if (keptContent) result.content = keptContent;
+    const score = readSearchNumber(hit, fields.score);
+    if (score !== undefined) result.score = score;
+    const date = fields.date ? plainText(readSearchField(hit, fields.date), 64) : "";
+    if (date) result.date = date;
+    const siteName = fields.siteName
+      ? plainText(readSearchField(hit, fields.siteName), MAX_TITLE_CHARS)
+      : "";
+    if (siteName) result.siteName = siteName;
+    out.push(result);
     if (typeof limit === "number" && out.length >= limit) break;
   }
   return out;

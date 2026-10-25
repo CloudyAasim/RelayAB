@@ -391,16 +391,42 @@ const zhCN: Dict = {
   "docs.search.errorsQuotaTip": "先看响应头里的 x-ratelimit-remaining：那是这次调用之后账户的余额。",
   "docs.search.note": "返回的是搜索摘要，不是文档正文。要核对字段名或参数取值，请再打开原始页面。",
   "docs.search.serviceHint":
-    "service 是可选的：填了就用那个搜索服务（名字见 GET /v1/search/services）。**不填不会有人替你选**：站点只有一个能用的就用它；有多个而你不填，请求会直接失败，并把可选的那几个列出来。**点名了就只用它**：那个服务没开或不能用时，请求会直接报错，不会悄悄换成别的服务去搜。响应里的 service 字段是实际服务的那个。",
+    "service 是可选的：填了就用那个搜索服务（名字见 GET /v1/search/services）。**不填就由管理员指定的默认服务应答** —— 面板上带「默认」标记的那一行；没有默认、而站点有多个服务可用时，请求会直接失败，并把可选的那几个列出来。**点名了就只用它**：那个服务没开或不能用时，请求会直接报错，不会悄悄换成别的服务去搜。响应里的 service 字段是实际服务的那个。",
   "docs.search.servicesTitle": "搜索服务列表",
   "docs.search.servicesDesc":
     "GET /v1/search/services，返回本部署配置的搜索服务（和 GET /v1/models 是一个道理）。可以用 id 字段在搜索请求里点名要哪一个。",
   "docs.search.servicesExample": "curl 示例",
   "docs.search.servicesResponse": "响应体",
   "docs.search.servicesHint":
-    "列表里只列**现在能用**的服务：停用的、缺密钥的都不在里面。列表里的 id 都可以直接填进搜索请求的 service 字段；点了名却不认识、或者那个服务不能用了，会按名字报错，而不是换成别的服务。**这里没有默认的那一个**：站点有多个服务时，不点名就不会有人替你选。",
-  "docs.search.assistant": "在 AI 助手页面，输入框旁边的地球图标控制当前对话是否联网；助手设置里可以设新对话的默认开关和每次返回多少条结果。也可以在同一个设置里选**用站点的搜索还是你自己的搜索服务**（OpenAI 兼容的搜索接口，地址就是完整端点）：用自己的服务时，助手的搜索走它，费用由你的服务商收，不经过本中转站计费；用站点的搜索时，这次搜索按站点的价格扣你的积分。**用站点的哪一个搜索服务也由你选**：站点只配了一个就不用选；配了多个而你没选，助手会拒绝联网并让你去选一个，不会替你挑。",
+    "列表里只列**现在能用**的服务：停用的、缺密钥的都不在里面。列表里的 id 都可以直接填进搜索请求的 service 字段；点了名却不认识、或者那个服务不能用了，会按名字报错，而不是换成别的服务。**不点名的时候**：由管理员指定的默认服务应答 —— 面板上带「默认」标记的那一行；没有默认、却有多个服务可用时，请求会直接失败，并把可选的那几个列出来。",
+  "docs.search.assistant": "在 AI 助手页面，输入框旁边的地球图标控制当前对话是否联网；助手设置里可以设新对话的默认开关和每次返回多少条结果。也可以在同一个设置里选**用站点的搜索还是你自己的搜索服务**（OpenAI 兼容的搜索接口，地址就是完整端点）：用自己的服务时，助手的搜索走它，费用由你的服务商收，不经过本中转站计费；用站点的搜索时，这次搜索按站点的价格扣你的积分。**用站点的哪一个搜索服务也由你选**：在助手设置里选了就用你选的那个；没选时用管理员指定的默认服务（面板上带「默认」标记的那一行）；既没选、站点也没有默认、却有多个服务可用时，助手会拒绝联网并让你去选一个，不会替你挑。",
   "docs.search.ownServiceNote": "**你自己填的搜索服务地址必须能从公网访问到** —— 不能是 127.0.0.1、局域网地址或云厂商的元数据地址。那个请求是本中转站替你发的，填内网等于让任何登录账号借中转站探测你的内网，所以这类地址会被直接拒绝。填域名的话会在请求发出时再解析一次，解析到内网同样拒绝。",
+  "docs.search.aliasTitle": "另一个名字",
+  "docs.search.aliasDesc":
+    "POST /v1/tools/search 和 /v1/search 是同一个接口：同样的请求、同样的响应、同一个价格，写哪个都行。",
+  "docs.search.fieldsTitle": "结果里还有什么",
+  "docs.search.fieldsDesc":
+    "每条结果还可能带 summary（更长的摘要）、content（网页正文）、score（相关度）、date（发布时间）、site_name（站点名）。**厂商给了才有** —— 搜索服务没返回的字段，这里不会替你编一个。",
+  "docs.search.countHint": "count 是 limit 的别名，写哪个都行；两个都写时以 limit 为准。",
+  "docs.search.needContentHint":
+    "need_content: true 会向搜索服务要网页正文。它更贵，而且只有部分厂商给得出。",
+  "docs.search.emptyFree": "搜不到结果不扣费 —— 问了没问到，不该收钱。",
+  "docs.search.hostedTitle": "让模型自己联网",
+  "docs.search.hostedDesc":
+    "在 /v1/chat/completions 里带上 web_search_options（或在 /v1/responses 里带上 web_search 工具），本中转站就替模型搜一次：结果会放进问题里，答案上会标出来源。",
+  "docs.search.hostedNote":
+    "搜的是**最后一条用户消息**当查询词，只搜一次。来源标在 choices[0].message.annotations 里（流式时在最后一帧）。这次搜索按搜索服务的定价扣积分，和你自己调 /v1/search 一样。",
+  "docs.fetch.title": "抓取网页",
+  "docs.fetch.desc": "给一个网址，拿回那一页的 Markdown 正文 —— 给 Agent 和 RAG 用的那一半。",
+  "docs.fetch.aliasDesc": "POST /v1/tools/fetch 和 /v1/fetch 是同一个接口。",
+  "docs.fetch.requestTitle": "请求体",
+  "docs.fetch.requestHint": "url 必填，只支持 http 和 https。",
+  "docs.fetch.responseTitle": "响应",
+  "docs.fetch.responseHint":
+    "content 是 Markdown 正文；finalUrl 是跳转之后真正落地的那一页；truncated 表示正文被截断了。",
+  "docs.fetch.billing": "抓取不扣费：搜索花的是厂商的钱，抓取花的是带宽。",
+  "docs.fetch.note":
+    "只允许公网地址 —— 指向内网、环回地址或云厂商元数据地址的网址会被直接拒绝。",
   "docs.basics.title": "基本概念",
   "docs.basics.desc": "本服务提供兼容 OpenAI Chat Completions / Responses 与 Anthropic Messages 的接口。",
   "docs.basics.line1": "你只需要关心三件事：",
@@ -839,11 +865,14 @@ const zhCN: Dict = {
   "admin.searchProviders.serviceIdHint":
     "客户端点名要用这个搜索服务时写的名字，像模型名一样（例如 searxng）。只能用字母、数字、点、下划线和短横线，每个搜索服务都要不一样。留空就按名称自动生成。",
   "admin.searchProviders.noDefault":
-    "这里**没有默认的那一个**：站点可以配多个搜索服务，用哪一个由调用方自己点名 —— 客户端在请求里带 service 字段（目录在 GET /v1/search/services），助手那边由每个账号在设置里选。只有一个能用时它就是唯一能用的；有两个以上而调用方没点名，请求会直接失败并列出可选的那几个。",
+    "**点名才算数**：客户端在请求里带 service 字段（目录在 GET /v1/search/services），助手那边由每个账号在设置里选。没有点名时，由管理员指定的默认服务应答 —— 面板上带「默认」标记的那一行就是；没有默认、却有多个服务可用时，请求会直接失败，并把可选的那几个列出来。",
   "admin.searchProviders.unusable": "不可用",
+  "admin.searchProviders.defaultBadge": "默认",
+  "admin.searchProviders.setDefault": "设为默认搜索服务",
+  "admin.searchProviders.unsetDefault": "取消默认",
   "admin.searchProviders.notWorking": "现在没有可用的搜索服务：{reason}。请求会直接失败，不会悄悄换成别的服务。",
   "admin.searchProviders.priorityHint":
-    "数字越小越靠前 —— 只影响列表里的排列顺序，不决定谁服务（用哪个由客户端点名，或由用户在助手设置里选）。",
+    "数字越小越靠前 —— 只影响列表里的排列顺序，不决定谁服务（用哪个由客户端点名、由用户在助手设置里选，或由管理员指定的默认服务）。",
   "admin.searchProviders.priorityInvalid": "优先级要是一个 0 或更大的整数。",
   "admin.searchProviders.kind": "类型",
   "admin.searchProviders.kinds.searxng": "SearXNG",
@@ -1028,13 +1057,13 @@ const zhCN: Dict = {
   "admin.docs.media.rule2": "先填 baseUrl（不要带 /v1，spec 的 path 已含版本段），再填 models（客户端模型名 → 上游模型名 + 每件积分）与 specs。",
   "admin.docs.media.rule3": "图片模型会出现在 OpenAI 的 /v1/models（带 relay 元数据），但不会出现在 Anthropic 的模型列表。",
   "admin.docs.search.title": "网页搜索",
-  "admin.docs.search.desc": "网页搜索的后端。助手的 web_search 和对外接口 /v1/search 用的是同一批后端。站点可以配多个搜索服务，**用哪一个由调用方自己点名，没有默认的那一个**。后端在「搜索提供商」里像聊天/媒体提供商一样管理，环境变量只在没有任何提供商记录时回退。",
-  "admin.docs.search.arch": "两边都调用同一个 resolver。**没有默认的那一个**：客户端用 `service` 字段点名要哪一个（目录在 `GET /v1/search/services`），助手那边由每个账号在设置里选；只有一个能用时它就是唯一能用的，有多个而没点名，请求会直接失败并列出可选的那几个。**不会偷偷换人**：点名的那一条不能用时，请求失败并说清原因，而不是悄悄用下一条 —— 每一行都有自己的价格，悄悄换一条等于换了收费。没有提供商行时回退到 SEARXNG_URL / TAVILY_API_KEY / BRAVE_SEARCH_API_KEY。SearXNG 会并发查询上游搜索引擎、去重排序后返回 JSON，全程不调用大模型。",
+  "admin.docs.search.desc": "网页搜索的后端。助手的 web_search 和对外接口 /v1/search 用的是同一批后端。站点可以配多个搜索服务：**调用方点名了就是它，没点名就由管理员指定的默认服务应答**。后端在「搜索提供商」里像聊天/媒体提供商一样管理，环境变量只在没有任何提供商记录时回退。",
+  "admin.docs.search.arch": "两边都调用同一个 resolver。**默认的那一个由管理员指定**：客户端用 `service` 字段点名要哪一个（目录在 `GET /v1/search/services`），助手那边由每个账号在设置里选；两处都没选时，由面板上标了「默认」的那一行应答 —— 只有一个能用时它就是唯一能用的，有多个而既没有默认也没点名，请求会直接失败并列出可选的那几个。**不会偷偷换人**：点名的、或被指定为默认的那一条不能用时，请求会按名字失败并说清原因，而不是悄悄用下一条 —— 每一行都有自己的价格，悄悄换一条等于换了收费。没有提供商行时回退到 SEARXNG_URL / TAVILY_API_KEY / BRAVE_SEARCH_API_KEY。SearXNG 会并发查询上游搜索引擎、去重排序后返回 JSON，全程不调用大模型。",
   "admin.docs.search.config": "提供商（SearXNG / Tavily / Brave，或任何用协议描述的厂商）、密钥、启用状态、排列顺序和每次调用积分都存在数据库里。每行还有一个**客户端可见名称**（像模型名一样，客户端用 `service` 字段点名它）：只能是字母、数字、点、下划线和短横线，且彼此不能重名 —— 客户端就是靠它点名，一个名字只能对应一个服务。**没有总开关：启用/停用就是开关** —— 至少有一条启用时搜索可用，全部停用时两个入口都拒绝。改完立即生效，不需要重新部署。价格属于每个提供商，**点了哪个服务就按哪个服务的价格收**；只有环境回退（没有任何提供商记录）时才用面板上的回退价格。",
-  "admin.docs.search.panel": "「管理 → 搜索提供商」可以新增/编辑/删除/启停/排序、**填客户端可见名称**、设置单次价格、给没有内置模板的厂商写一份协议（spec），并对单个提供商跑一次测试。**这里没有「设为默认」**：站点可以有多个搜索服务，用哪一个由调用方自己说 —— 客户端在请求里带 `service`（目录在 `GET /v1/search/services`），助手那边由每个账号在自己的设置里选；面板不替任何人做这个选择。**测试是计费的**：按该提供商的单次价格扣你的积分、写进用量 —— 厂商照样收钱，测试不该白嫖。停用状态下也能测，这正是排查它的时候；账号余额不够这一次的价格时会先被拒绝。**测试框在「测试」页**，与模型测试合并；站点有多个搜索服务时，框里要先选测哪一个。用量统计在「用量」页，与聊天、媒体共用同一份报告。",
+  "admin.docs.search.panel": "「管理 → 搜索提供商」可以新增/编辑/删除/启停/排序、**填客户端可见名称**、设置单次价格、给没有内置模板的厂商写一份协议（spec），并对单个提供商跑一次测试。**这里有「设为默认」**：站点可以有多个搜索服务，面板上可以指定其中一个作为默认 —— 它在列表里带「默认」标记，没有点名的时候由它应答；调用方自己点了名的请求不受影响，它用不了时按名字报错，不会悄悄换成别的服务。**测试是计费的**：按该提供商的单次价格扣你的积分、写进用量 —— 厂商照样收钱，测试不该白嫖。停用状态下也能测，这正是排查它的时候；账号余额不够这一次的价格时会先被拒绝。**测试框在「测试」页**，与模型测试合并；站点有多个搜索服务时，框里要先选测哪一个。用量统计在「用量」页，与聊天、媒体共用同一份报告。",
   "admin.docs.search.security": "SearXNG 不暴露公网：Dokku 代理已禁用，只有 relay-ab 通过 relay-net 访问。若要公开，至少要在网关层加每密钥限流。**用户自己填的搜索服务地址必须能从公网访问到**（不能是 127.0.0.1、局域网地址或云厂商的元数据地址）—— 那个请求是网关替你发的，填内网等于让任何账号借网关探测你的内网；填域名时会在请求时再解析一次，解析到内网同样拒绝。",
-  "admin.docs.search.trouble": "测试失败时看错误原文：search_unavailable 是没有配置后端；search_unreachable 是容器网络或 SearXNG 没起来；quota_exceeded_credits 是账号余额不够这一次的价格（429，客户端应当停止调用而不是退避重试）；上游引擎被限流时结果可能变少，但不会报错。**站点配了多个搜索服务而调用方没点名**，会看到「这个部署有多个搜索服务…请指定用哪一个」—— 这不是故障，是让调用方说清楚要用哪个；**点了名但那个服务不能用**（缺密钥、密钥解不开、没地址），会按名字报错并说清原因，**不会悄悄换成别的服务去搜**（每一行都有自己的价格，悄悄换一条等于换了收费）。",
-  "admin.docs.search.assistant": "助手的输入框旁边有每对话开关，关闭时 web_search 不会出现在工具定义里；即使模型硬发这个调用，网关也会直接拒绝。助手设置里的默认值和结果数按用户保存。**助手的搜索是计费的**：走站点的搜索提供商时，按该提供商的价格扣账号积分，和 /v1/search 走同一个结算路径（余额不够会先被拒，请求不会发到厂商）。**用站点的哪一个搜索服务，由账号自己在助手设置里选** —— 站点只有一个时不用选；有多个而没选，助手会拒绝搜索并让用户去选，不会替他挑一个。**用户也可以在助手设置里填自己的搜索服务**（OpenAI 兼容的搜索接口，地址就是完整端点，且必须公网可达）——那样由用户自己的密钥付费，不经过本中转站计费。管理员把站点的提供商全部停用时，助手也不搜索：站点的开关说了算。",
+  "admin.docs.search.trouble": "测试失败时看错误原文：search_unavailable 是没有配置后端；search_unreachable 是容器网络或 SearXNG 没起来；quota_exceeded_credits 是账号余额不够这一次的价格（429，客户端应当停止调用而不是退避重试）；上游引擎被限流时结果可能变少，但不会报错。**站点配了多个搜索服务、又没有指定默认，而调用方没点名**，会看到「这个部署有多个搜索服务…请指定用哪一个」—— 这不是故障，是让调用方说清楚要用哪个；**点名的那一个不能用**（缺密钥、密钥解不开、没地址），或者**被指定为默认的那一行不能用**（被删了、停用了），都会按名字报错并说清原因，**不会悄悄换成别的服务去搜**（每一行都有自己的价格，悄悄换一条等于换了收费）。",
+  "admin.docs.search.assistant": "助手的输入框旁边有每对话开关，关闭时 web_search 不会出现在工具定义里；即使模型硬发这个调用，网关也会直接拒绝。助手设置里的默认值和结果数按用户保存。**助手的搜索是计费的**：走站点的搜索提供商时，按该提供商的价格扣账号积分，和 /v1/search 走同一个结算路径（余额不够会先被拒，请求不会发到厂商）。**用站点的哪一个搜索服务，由账号自己在助手设置里选** —— 在助手设置里选了就用选中的那个；没选时用管理员指定的默认服务（面板上带「默认」标记的那一行）；既没选、站点也没有默认、却有多个服务可用时，助手会拒绝搜索并让用户去选，不会替他挑一个。**用户也可以在助手设置里填自己的搜索服务**（OpenAI 兼容的搜索接口，地址就是完整端点，且必须公网可达）——那样由用户自己的密钥付费，不经过本中转站计费。管理员把站点的提供商全部停用时，助手也不搜索：站点的开关说了算。",
   "admin.docs.copyProtocolHint": "整份协议一键复制，发给 AI 让它按你的供应商文档写 spec：",
   "admin.docs.copyProtocolMarkdown": "复制 Markdown 原文",
   "admin.docs.copyProtocolPlain": "复制纯文本",
@@ -1907,16 +1936,45 @@ const en: Dict = {
   "docs.search.errorsQuotaTip": "Look at x-ratelimit-remaining in the response headers first: that is the account's balance after the call.",
   "docs.search.note": "These are search snippets, not the document. Open the original page before relying on a field name or parameter value.",
   "docs.search.serviceHint":
-    "service is optional: give it and that search service answers (the names are listed by GET /v1/search/services). **Naming none does not mean somebody picks for you**: with one service on offer it answers, and with several the request fails and lists the ones you could choose. **Naming one means that one only**: if it is switched off or cannot answer, the request fails by name — it is never quietly answered by a different service. The service field in the response names the one that answered.",
+    "service is optional: give it and that search service answers (the names are listed by GET /v1/search/services). **With no name, the service the operator marked as the default answers** — the row carrying the \"default\" badge in the panel; with no default and several services able to answer, the request fails and lists the ones you could choose. **Naming one means that one only**: if it is switched off or cannot answer, the request fails by name — it is never quietly answered by a different service. The service field in the response names the one that answered.",
   "docs.search.servicesTitle": "Search services",
   "docs.search.servicesDesc":
     "GET /v1/search/services lists the search services this deployment offers — the same idea as GET /v1/models. The id field is what you name in a search request.",
   "docs.search.servicesExample": "curl example",
   "docs.search.servicesResponse": "Response body",
   "docs.search.servicesHint":
-    "Only the services that **can answer right now** are listed: a switched-off one and one without a key are not in it. Every id in the list can be put straight into the service field of a search request; naming one that does not exist, or that cannot answer, is refused by name rather than answered by another service. **There is no default one here**: when a deployment offers several, naming none means nobody is searched with.",
-  "docs.search.assistant": "On the AI assistant page, the globe button beside the input controls whether that conversation searches; the assistant settings set the default for new conversations and how many results each search returns. The same settings let you choose **the deployment's search or a search service of your own** (an OpenAI-compatible search endpoint, where the address is the whole endpoint): with your own service the assistant searches through it, your vendor bills you, and nothing is charged here; with the deployment's, the search costs the deployment's price on your balance. **Which of the deployment's services the assistant uses is your choice too**: there is nothing to pick when the deployment has one, and with several and nothing picked the assistant refuses to search and asks you to choose rather than choosing for you.",
+    "Only the services that **can answer right now** are listed: a switched-off one and one without a key are not in it. Every id in the list can be put straight into the service field of a search request; naming one that does not exist, or that cannot answer, is refused by name rather than answered by another service. **When nobody names one**: the service the operator marked as the default answers — the row carrying the \"default\" badge in the panel; with no default and several able to answer, the request is refused and the options are listed.",
+  "docs.search.assistant": "On the AI assistant page, the globe button beside the input controls whether that conversation searches; the assistant settings set the default for new conversations and how many results each search returns. The same settings let you choose **the deployment's search or a search service of your own** (an OpenAI-compatible search endpoint, where the address is the whole endpoint): with your own service the assistant searches through it, your vendor bills you, and nothing is charged here; with the deployment's, the search costs the deployment's price on your balance. **Which of the deployment's services the assistant uses is your choice too**: pick one in the settings and that is the one; with nothing picked the service the operator marked as the default answers — the row carrying the \"default\" badge in the panel; with nothing picked, no default, and several able to answer, the assistant refuses to search and asks you to choose rather than choosing for you.",
   "docs.search.ownServiceNote": "**A search service you configure yourself has to be reachable from the public internet** — not 127.0.0.1, not a private-network address, not a cloud metadata address. The request is made by this gateway on your behalf, so a private address would let any signed-in account use the gateway to probe inside your network, and such an address is refused outright. A hostname is resolved again when the request is made, and one that resolves to a private address is refused too.",
+  "docs.search.aliasTitle": "The other name for it",
+  "docs.search.aliasDesc":
+    "POST /v1/tools/search and /v1/search are the same endpoint: the same request, the same answer, the same price. Use whichever you already have.",
+  "docs.search.fieldsTitle": "What else a result carries",
+  "docs.search.fieldsDesc":
+    "A result may also carry summary (the longer text), content (the page body), score (relevance), date (when it was published) and site_name (the site it came from). **Only when the vendor answered them** — a field the search service did not send is not made up here.",
+  "docs.search.countHint": "count is another name for limit; limit wins when both are there.",
+  "docs.search.needContentHint":
+    "need_content: true asks the search service for the page bodies. It costs the operator more, and only some vendors answer with them.",
+  "docs.search.emptyFree":
+    "A search that found nothing is not charged: the account asked a question and got no answer.",
+  "docs.search.hostedTitle": "Let the model search",
+  "docs.search.hostedDesc":
+    "Send web_search_options with a /v1/chat/completions request (or the web_search tool with /v1/responses) and this relay searches once for the model: the results go in front of it and the answer carries the sources.",
+  "docs.search.hostedNote":
+    "The query is the **last user message**, and there is one search. The sources are marked on choices[0].message.annotations (in the last frame when streaming). The search is charged at the search service's price, exactly like calling /v1/search yourself.",
+  "docs.fetch.title": "Fetch a page",
+  "docs.fetch.desc":
+    "Give it a URL and it returns that page as Markdown — the other half, for agents and RAG.",
+  "docs.fetch.aliasDesc": "POST /v1/tools/fetch and /v1/fetch are the same endpoint.",
+  "docs.fetch.requestTitle": "Request body",
+  "docs.fetch.requestHint": "url is required; http and https only.",
+  "docs.fetch.responseTitle": "Response",
+  "docs.fetch.responseHint":
+    "content is the page as Markdown; finalUrl is where the redirects ended up; truncated says the body was cut short.",
+  "docs.fetch.billing":
+    "A fetch is not charged: a search costs the operator a vendor call, a fetch costs them bandwidth.",
+  "docs.fetch.note":
+    "Only public addresses are allowed — a URL that points inside a network, at a loopback address or at a cloud metadata address is refused outright.",
   "docs.basics.title": "Basics",
   "docs.basics.desc": "RelayAB exposes spec-compatible OpenAI Chat Completions / Responses and Anthropic Messages endpoints.",
   "docs.basics.line1": "You only need three things:",
@@ -2358,12 +2416,15 @@ const en: Dict = {
   "admin.searchProviders.serviceIdHint":
     "The name a client uses to ask for this search service, the way a model name does (e.g. searxng). Letters, digits, dot, underscore and dash only, and it has to be unique. Left blank, one is derived from the name.",
   "admin.searchProviders.noDefault":
-    "There is **no default one here**: a deployment can offer several search services, and the one that answers is the one the caller chose — a client names it with the `service` field (the catalogue is at GET /v1/search/services), and the assistant side is chosen by each account in their own settings. With one service it is the only one there is; with more than one and no name given, the request fails and the refusal lists the ones on offer.",
+    "**Naming it is what counts**: a client names the service in the request (`service`; the catalogue is at GET /v1/search/services), and the assistant side is chosen by each account in their own settings. With no name, the service the operator marked as the default answers — the row carrying the \"default\" badge in the panel. With no default and several services able to answer, the request is refused and the options are listed.",
   "admin.searchProviders.unusable": "Cannot answer",
+  "admin.searchProviders.defaultBadge": "Default",
+  "admin.searchProviders.setDefault": "Make this the default search service",
+  "admin.searchProviders.unsetDefault": "Remove the default",
   "admin.searchProviders.notWorking":
     "There is no working search service right now: {reason}. Requests fail rather than quietly going to a different service.",
   "admin.searchProviders.priorityHint":
-    "Smaller numbers come first — it only orders the list, it does not decide who serves (the caller names the service, or the user picks one in the assistant settings).",
+    "Smaller numbers come first — it only orders the list, it does not decide who serves (the caller names the service, the user picks one in the assistant settings, or the operator marked a default).",
   "admin.searchProviders.priorityInvalid": "The priority must be a whole number of 0 or more.",
   "admin.searchProviders.kind": "Kind",
   "admin.searchProviders.kinds.searxng": "SearXNG",
@@ -2549,13 +2610,13 @@ const en: Dict = {
   "admin.docs.media.rule2": "Set baseUrl first (no trailing /v1 — the spec path already carries the version), then models (client id -> upstream id + credits per item) and specs.",
   "admin.docs.media.rule3": "Image models show up on the OpenAI /v1/models (with relay metadata) but never on the Anthropic model list.",
   "admin.docs.search.title": "Web search",
-  "admin.docs.search.desc": "The backends for web search. The assistant's web_search and the public /v1/search endpoint use the same backends. A deployment can offer several search services, and **the one that answers is the one the caller names — there is no default one**. Providers are managed like chat and media providers under Search providers; the environment is only a fallback when no provider rows exist.",
-  "admin.docs.search.arch": "Both call the same resolver. **There is no default one**: a client names the service it wants with the `service` field (the catalogue is at `GET /v1/search/services`), and the assistant side is chosen by each account in their own settings; with one service it is the only one there is, and with more than one and no name given the request fails and the refusal lists the ones on offer. **It never quietly swaps vendors**: when the named service cannot answer, the request fails and says why, rather than falling through to the next one — each row carries its own price, so a quiet substitution would change the price too. With no provider rows it falls back to SEARXNG_URL / TAVILY_API_KEY / BRAVE_SEARCH_API_KEY. SearXNG queries the upstream engines in parallel and returns JSON; no language model is involved.",
+  "admin.docs.search.desc": "The backends for web search. The assistant's web_search and the public /v1/search endpoint use the same backends. A deployment can offer several search services: **the one the caller names is the one that answers, and with no name the service the operator marked as the default answers**. Providers are managed like chat and media providers under Search providers; the environment is only a fallback when no provider rows exist.",
+  "admin.docs.search.arch": "Both call the same resolver. **The default one is the operator's to mark**: a client names the service it wants with the `service` field (the catalogue is at `GET /v1/search/services`), and the assistant side is chosen by each account in their own settings; when neither named one, the row carrying the \"default\" badge in the panel answers — with one service it is the only one there is, and with several, no default and no name given, the request fails and the refusal lists the ones on offer. **It never quietly swaps vendors**: when the named service, or the one marked as the default, cannot answer, the request fails by name and says why, rather than falling through to the next one — each row carries its own price, so a quiet substitution would change the price too. With no provider rows it falls back to SEARXNG_URL / TAVILY_API_KEY / BRAVE_SEARCH_API_KEY. SearXNG queries the upstream engines in parallel and returns JSON; no language model is involved.",
   "admin.docs.search.config": "Providers (SearXNG / Tavily / Brave, or any vendor described by a spec), keys, enablement, list order and per-call price live in the database. Each row also has a **client-visible name** (like a model name, which a client passes in the `service` field): letters, digits, dot, underscore and dash only, and no two rows may share one — the client names a service by it, so a name can only mean one service. **There is no feature switch: enable/disable is the switch** — search works while at least one row is enabled, and both entry points refuse once they are all disabled. Changes take effect immediately with no redeploy. The price belongs to each provider, and **naming one means that one's price**; the fallback price on the panel applies only to the environment backend, which has no row.",
-  "admin.docs.search.panel": "Admin -> Search providers can add, edit, delete, disable and reorder providers, **set the client-visible name**, set each one's per-call price, write a spec for a vendor that has no built-in template, and run one test against a provider. **There is no \"set as default\" here**: a deployment can offer several search services, and the one that answers is the one the caller names — a client passes `service` (the catalogue is at `GET /v1/search/services`), and the assistant side is chosen by each account in their own settings. The panel does not make that choice for anybody. **The test is billed**: it costs that provider's per-call price from your credits and is recorded in usage — the vendor charges either way, so a test should not be a free ride. A disabled provider can still be tested, which is exactly when it is needed; an account whose balance cannot cover the call is refused first. **The test box is on the Testing page**, together with the model testers; when the deployment has several search services, the box asks which one to test. Usage statistics live on the Usage page, in the same report as chat and media.",
+  "admin.docs.search.panel": "Admin -> Search providers can add, edit, delete, disable and reorder providers, **set the client-visible name**, set each one's per-call price, write a spec for a vendor that has no built-in template, and run one test against a provider. **There is a \"set as default\" here**: a deployment can offer several search services, and the panel can mark one of them as the default — it carries the \"default\" badge in the list and answers the requests that name none. A request that names a service is unaffected, and when the default cannot answer the request fails by name rather than quietly going to another service. **The test is billed**: it costs that provider's per-call price from your credits and is recorded in usage — the vendor charges either way, so a test should not be a free ride. A disabled provider can still be tested, which is exactly when it is needed; an account whose balance cannot cover the call is refused first. **The test box is on the Testing page**, together with the model testers; when the deployment has several search services, the box asks which one to test. Usage statistics live on the Usage page, in the same report as chat and media.",
   "admin.docs.search.security": "SearXNG is not public: the Dokku proxy is disabled and only relay-ab reaches it over relay-net. If it is ever exposed, add per-key rate limiting at the gateway first. **A search service a user configures must be reachable from the public internet** (not 127.0.0.1, not a private-network address, not a cloud metadata address) — the gateway makes that request on their behalf, so a private address would let any account use the gateway to probe inside your network. A hostname is resolved again when the request is made, and one that resolves to a private address is refused too.",
-  "admin.docs.search.trouble": "Read the error text from the test: search_unavailable means no backend is configured; search_unreachable means the container network or SearXNG is down; quota_exceeded_credits means the balance cannot cover this call (429 — a client should stop calling rather than back off and retry); when an upstream engine throttles, results may shrink but the call does not error. **When the deployment has several search services and the caller named none**, the refusal says \"this deployment has several search services … name one\" — that is not a failure, it is the caller being asked to say which one it wants; **when a named service cannot answer** (no key, a key that no longer decrypts, no address), the refusal names it and says why, and **no other service is quietly used instead** (each row carries its own price, so a quiet substitution would change the price too).",
-  "admin.docs.search.assistant": "The assistant composer has a per-conversation switch; when it is off, web_search is absent from the tool definitions, and a forced call is refused by the gateway. The assistant settings store the per-user default and result count. **The assistant's search is billed**: through the deployment's providers it costs the account that provider's price, through the same settlement /v1/search uses (an account that cannot pay is refused before the vendor is called). **Which of the deployment's services the assistant searches with is the account's own choice**, made in the assistant settings — there is nothing to pick when the deployment has one, and with several and nothing picked the assistant refuses to search and asks the user to choose rather than picking one for them. **A user can also configure a search service of their own** in the assistant settings — an OpenAI-compatible search endpoint, where the address is the whole endpoint and it has to be publicly reachable — and then their own key pays their own vendor, with nothing charged here. When the administrator disables every provider, the assistant does not search either: the deployment's switch governs.",
+  "admin.docs.search.trouble": "Read the error text from the test: search_unavailable means no backend is configured; search_unreachable means the container network or SearXNG is down; quota_exceeded_credits means the balance cannot cover this call (429 — a client should stop calling rather than back off and retry); when an upstream engine throttles, results may shrink but the call does not error. **When the deployment has several search services, no default, and the caller named none**, the refusal says \"this deployment has several search services … name one\" — that is not a failure, it is the caller being asked to say which one it wants; **when a named service cannot answer** (no key, a key that no longer decrypts, no address), or **when the row marked as the default cannot answer** (deleted, switched off), the refusal names it and says why, and **no other service is quietly used instead** (each row carries its own price, so a quiet substitution would change the price too).",
+  "admin.docs.search.assistant": "The assistant composer has a per-conversation switch; when it is off, web_search is absent from the tool definitions, and a forced call is refused by the gateway. The assistant settings store the per-user default and result count. **The assistant's search is billed**: through the deployment's providers it costs the account that provider's price, through the same settlement /v1/search uses (an account that cannot pay is refused before the vendor is called). **Which of the deployment's services the assistant searches with is the account's own choice**, made in the assistant settings — pick one and that is the one; with nothing picked the service the operator marked as the default answers, the row carrying the \"default\" badge in the panel; with nothing picked, no default, and several able to answer, the assistant refuses to search and asks the user to choose rather than picking one for them. **A user can also configure a search service of their own** in the assistant settings — an OpenAI-compatible search endpoint, where the address is the whole endpoint and it has to be publicly reachable — and then their own key pays their own vendor, with nothing charged here. When the administrator disables every provider, the assistant does not search either: the deployment's switch governs.",
   "admin.docs.copyProtocolHint": "Copy the whole protocol in one click, then let an AI write the spec against your vendor's docs:",
   "admin.docs.copyProtocolMarkdown": "Copy Markdown source",
   "admin.docs.copyProtocolPlain": "Copy plain text",

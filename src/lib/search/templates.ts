@@ -92,6 +92,13 @@ export const SEARXNG_TEMPLATE: SearchTemplate = {
         title: "$.title",
         url: "$.url",
         snippet: { $firstPresent: ["$.content", "$.snippet"] },
+        // SearXNG returns the page text under `content`, and it is the only
+        // longer text it has — so the same field is both the short line a
+        // screen shows and the longer read a model wants, cut at two lengths.
+        summary: "$.content",
+        // SearXNG's own relevance score, on SearXNG's own scale.
+        score: "$.score",
+        date: "$.publishedDate",
       },
     },
     limits: { timeoutMs: 15_000 },
@@ -124,7 +131,10 @@ export const TAVILY_TEMPLATE: SearchTemplate = {
         search_depth: "basic",
         max_results: "$.limit",
         include_answer: false,
-        include_raw_content: false,
+        // Whether the caller wants the page bodies. Tavily only returns them
+        // when asked, and the request is what decides it — the same way the
+        // search term and the count are decided.
+        include_raw_content: "$.need_content",
       },
     },
     auth: { type: "bearer" },
@@ -134,6 +144,13 @@ export const TAVILY_TEMPLATE: SearchTemplate = {
         title: "$.title",
         url: "$.url",
         snippet: { $firstPresent: ["$.content", "$.snippet"] },
+        // Tavily's `content` is the text it tuned for models: longer than the
+        // short line, and the thing a model can actually quote.
+        summary: "$.content",
+        score: "$.score",
+        date: "$.published_date",
+        // The raw page, when the request asked for it.
+        content: "$.raw_content",
       },
     },
     limits: { timeoutMs: 15_000 },
@@ -176,6 +193,14 @@ export const BRAVE_TEMPLATE: SearchTemplate = {
         title: "$.title",
         url: "$.url",
         snippet: { $firstPresent: ["$.description", "$.snippet"] },
+        // Brave's second snippet, when it has one — the longer text it offers
+        // is more of the same kind rather than a different one.
+        summary: "$.extra_snippets[0]",
+        // Brave names the site the result came from.
+        siteName: "$.profile",
+        // Brave's freshness is a phrase ("2 days ago"), not a timestamp, so it
+        // is deliberately not mapped to a date: a `date` field that holds a
+        // sentence is worse than no date at all.
       },
     },
     limits: { timeoutMs: 15_000 },
@@ -241,6 +266,14 @@ export const OPENAI_COMPATIBLE_TEMPLATE: SearchTemplate = {
         url: "$.url",
         // The three names the shape goes by, in the order they are tried.
         snippet: { $firstPresent: ["$.snippet", "$.content", "$.description"] },
+        // This shape is the one `/v1/search` speaks, so it also carries the
+        // rest of it — a gateway pointed at another instance of this gateway
+        // gets the longer text and the metadata too, not just the short line.
+        summary: "$.summary",
+        content: "$.content",
+        score: "$.score",
+        date: "$.date",
+        siteName: "$.site_name",
       },
     },
     limits: { timeoutMs: 15_000 },

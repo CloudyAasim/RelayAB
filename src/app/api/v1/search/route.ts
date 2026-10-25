@@ -29,6 +29,8 @@ import {
   MAX_SEARCH_RESULTS,
   WebSearchError,
 } from "@/lib/assistant/web-search";
+import { searchErrorHttp } from "@/lib/search/types";
+import type { WebSearchResult } from "@/lib/search/types";
 import { runBilledSearch } from "@/lib/search/billing";
 import { loadSearchConfig } from "@/lib/search/config";
 
@@ -38,23 +40,12 @@ export const dynamic = "force-dynamic";
 /**
  * A search failure, in the shape the gateway already uses for upstream errors.
  *
- * `not_configured` is 503 rather than 500: the deployment is missing a
- * backend, not failing at a request. A caller can retry later; nothing about
- * the request was wrong.
+ * The status and the code come from one shared table, so this door and the
+ * chat proxy's hosted search cannot answer the same failure two different
+ * ways.
  */
 function searchErrorResponse(err: WebSearchError, headers?: Record<string, string>): Response {
-  const map: Record<WebSearchError["code"], { status: number; code: string }> = {
-    not_configured: { status: 503, code: "search_unavailable" },
-    bad_key: { status: 502, code: "search_auth_failed" },
-    rate_limited: { status: 429, code: "rate_limited" },
-    upstream_error: { status: 502, code: "search_upstream_error" },
-    unreachable: { status: 502, code: "search_unreachable" },
-    // The account cannot pay for this call. 429, like the proxy's
-    // `quota_exceeded_credits`: the request was fine, the balance was not, and
-    // the client should top up rather than retry.
-    quota_exceeded: { status: 429, code: "quota_exceeded_credits" },
-  };
-  const mapped = map[err.code];
+  const mapped = searchErrorHttp(err.code);
   return proxyError(mapped.status, mapped.code, err.message, headers);
 }
 
@@ -63,10 +54,27 @@ interface SearchBody {
   q?: unknown;
   limit?: unknown;
   /**
+   * How many results to ask for — the other name for it.
+   *
+   * `count` is what the other search APIs call it, and a client that was
+   * written against one of them sends `count` and nothing else. Both spellings
+   * are accepted; `limit` wins when both are there, because it is the one this
+   * endpoint has always documented.
+   */
+  count?: unknown;
+  /**
+   * Whether the page bodies come with the results.
+   *
+   * It is a request, not a promise: a vendor that returns no body simply does
+   * not send one, and the answer carries the shorter text instead. The fetch
+   * endpoint is the way to ask for a whole page.
+   */
+  need_content?: unknown;
+  /**
    * The **client-visible name** of the search service to use, the way a chat
    * request names a model.
    *
-   * Omitted means "the deployment's default service". A name that does not
+   * Omitted means the deployment's default service. A name that does not
    * exist, or that names a service which is switched off or cannot answer, is
    * refused **by name** — the request is never answered by searching through
    * some other service, because those carry their own price and a quiet
@@ -80,6 +88,32 @@ function parseLimit(raw: unknown): number {
   const parsed = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : NaN;
   if (!Number.isFinite(parsed)) return 6;
   return Math.min(Math.max(Math.trunc(parsed), 1), MAX_SEARCH_RESULTS);
+}
+
+function parseNeedContent(raw: unknown): boolean {
+  if (typeof raw === "boolean") return raw;
+  if (typeof raw === "string") return raw === "true" || raw === "1";
+  return false;
+}
+
+/**
+ * One hit, in the shape a client reads.
+ *
+ * The three that are always there, and the rest **when the vendor answered
+ * them**: a relay cannot invent a relevance score, and a made-up one is worse
+ * than a missing one.
+ */
+function publicResult(result: WebSearchResult): Record<string, unknown> {
+  return {
+    title: result.title,
+    url: result.url,
+    snippet: result.snippet,
+    ...(result.summary ? { summary: result.summary } : {}),
+    ...(result.content ? { content: result.content } : {}),
+    ...(result.score !== undefined ? { score: result.score } : {}),
+    ...(result.date ? { date: result.date } : {}),
+    ...(result.siteName ? { site_name: result.siteName } : {}),
+  };
 }
 
 async function handle(req: Request, body: SearchBody): Promise<Response> {
@@ -117,7 +151,8 @@ async function handle(req: Request, body: SearchBody): Promise<Response> {
       `query is too long (${query.length} characters, maximum ${MAX_QUERY_CHARS})`,
     );
   }
-  const limit = parseLimit(body.limit);
+  const limit = parseLimit(body.limit ?? body.count);
+  const needContent = parseNeedContent(body.need_content);
 
   /**
    * The service to search with.
@@ -139,6 +174,7 @@ async function handle(req: Request, body: SearchBody): Promise<Response> {
       limit,
       user: owner,
       apiKeyId: auth.key.id,
+      ...(needContent ? { needContent: true } : {}),
       ...(serviceId ? { serviceId } : {}),
     });
   } catch (err) {
@@ -161,7 +197,7 @@ async function handle(req: Request, body: SearchBody): Promise<Response> {
       // The service that answered, so a caller that named one can see that it
       // got the one it asked for.
       ...(outcome.serviceId ? { service: outcome.serviceId } : {}),
-      results: outcome.results,
+      results: outcome.results.map(publicResult),
       // Whole 积分, the same unit an operator types into the panel.
       credits,
     },
@@ -190,7 +226,8 @@ export async function GET(req: Request): Promise<Response> {
   const url = new URL(req.url);
   return handle(req, {
     query: url.searchParams.get("q") ?? url.searchParams.get("query"),
-    limit: url.searchParams.get("limit"),
+    limit: url.searchParams.get("limit") ?? url.searchParams.get("count") ?? undefined,
+    need_content: url.searchParams.get("need_content") ?? undefined,
     service: url.searchParams.get("service") ?? undefined,
   });
 }

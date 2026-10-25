@@ -55,6 +55,23 @@ export interface AppSettings {
    */
   searchCreditsPerCall?: number;
   /**
+   * The service that answers when the caller did not name one.
+   *
+   * Absent means "nobody chose": the request is then answered by the only
+   * service that can answer, or refused with the list when several can.
+   *
+   * It is a **deployment-level** setting, not a per-account one, and that is
+   * the point. A client that speaks the other search APIs does not say which
+   * engine it wants — there is no field for it — so the deployment has to
+   * decide. And the decision has to be visible: a service nobody can see
+   * answering is a service nobody can hold to account, especially when every
+   * service carries its own price.
+   *
+   * The value is the row's **client-visible name** (`serviceId`), because that
+   * is what a caller would name.
+   */
+  searchDefaultServiceId?: string;
+  /**
    * Per-model documentation overrides, keyed by client-visible model id.
    *
    * The *facts* — which models exist, their context window, their price —
@@ -116,6 +133,7 @@ const SUPPORT_CONTACT_KEY = "supportContact";
 const PUBLIC_CATALOG_KEY = "publicCatalog";
 const SEARCH_ENABLED_KEY = "searchEnabled";
 const SEARCH_CREDITS_PER_CALL_KEY = "searchCreditsPerCall";
+const SEARCH_DEFAULT_SERVICE_ID_KEY = "searchDefaultServiceId";
 const MODEL_NOTES_KEY = "modelNotes";
 const DOC_PAGES_KEY = "docPages";
 
@@ -180,6 +198,12 @@ export async function getSettings(): Promise<AppSettings> {
   const searchPrice = rawPrice ? Number(rawPrice) : NaN;
   if (Number.isInteger(searchPrice) && searchPrice >= 0) out.searchCreditsPerCall = searchPrice;
 
+  // The default service, by its client-visible name. Absent means nobody
+  // chose one — which is a different answer from "the empty string names
+  // nothing", and the two must not be confused.
+  const defaultService = byKey.get(SEARCH_DEFAULT_SERVICE_ID_KEY)?.trim();
+  if (defaultService) out.searchDefaultServiceId = defaultService;
+
   return out;
 }
 
@@ -208,6 +232,13 @@ export async function updateSettings(settings: Partial<AppSettings>): Promise<Ap
       // Validated by the admin route before it gets here; stored as text
       // because the column is TEXT and this is the only numeric setting.
       write(SEARCH_CREDITS_PER_CALL_KEY, String(Math.max(0, Math.trunc(settings.searchCreditsPerCall))));
+    }
+    if (settings.searchDefaultServiceId !== undefined) {
+      const wanted = settings.searchDefaultServiceId.trim();
+      if (wanted) write(SEARCH_DEFAULT_SERVICE_ID_KEY, wanted);
+      // An empty string means "no default" — the setting has to go, because a
+      // stored empty value would read as a service nobody has.
+      else run("DELETE FROM settings WHERE key = ?", [SEARCH_DEFAULT_SERVICE_ID_KEY]);
     }
     if (settings.modelNotes !== undefined) {
       const notes = settings.modelNotes ?? {};
