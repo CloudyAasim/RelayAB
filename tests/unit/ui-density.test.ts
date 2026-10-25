@@ -177,11 +177,28 @@ describe("a squeezed cell keeps its shape", () => {
   });
 
   it("and the recent-requests table keeps its identifiers whole", () => {
+    // Every value in this table is one thing, not a sentence: a timestamp, an
+    // account, a model name, two numbers, a cache figure, a badge. A cell that
+    // can wrap cuts one of them in half — 「admin（管理员）」 became
+    // 「admin（管理」/「员）」, 「MiniMax-M3.1-Flash」 became three fragments,
+    // and 「按上游用量」 became a column of stacked glyphs.
+    //
+    // The page has two tables, so the one under test is picked by the key it
+    // holds rather than by being the first one on the page.
     const overview = read("src", "app", "(admin)", "admin", "page.tsx");
-    // A model name and a pair of cache figures are tokens. Breaking them
-    // turns one value into several that read as several.
-    expect(overview).toContain('className="font-mono text-xs whitespace-nowrap"');
-    expect(overview).toContain('className="hidden xl:table-cell text-right text-xs whitespace-nowrap"');
+    const tables = [...overview.matchAll(/<Table bare>([\s\S]*?)<\/Table>/g)].map((m) => m[1]);
+    const table = tables.find((t) => t.includes("admin.overview.recentUsageModel")) ?? "";
+    expect(table, "the recent-requests table is gone").not.toBe("");
+
+    // `<TH\b` would also match `<THead>`, which is a section and not a cell.
+    const cells = [
+      ...(table.match(/<TH(?:\s[^>]*)?>/g) ?? []),
+      ...(table.match(/<TD(?:\s[^>]*)?>/g) ?? []),
+    ];
+    expect(cells.length, "the recent-requests table has no cells").toBeGreaterThan(0);
+    for (const cell of cells) {
+      expect(cell, `a cell that can wrap: ${cell}`).toContain("whitespace-nowrap");
+    }
   });
 
   it("and the model column does not promise a mapping the table never shows", () => {
@@ -208,19 +225,6 @@ describe("a squeezed cell keeps its shape", () => {
     const overview = read("src", "app", "(admin)", "admin", "page.tsx");
     expect(overview).toContain('t("admin.overview.recentUsageTokens")');
     expect(overview).toContain('t("admin.overview.recentUsageCredits")');
-
-    // No header in this table may wrap: a header that wraps is a header row
-    // twice as tall as it needs to be, and 「总词元用」/「量」 is a phrase cut
-    // in half rather than a phrase.
-    //
-    // The page has two tables, so the header row is picked by the key it
-    // holds rather than by being the first one on the page.
-    const heads = [...overview.matchAll(/<THead>([\s\S]*?)<\/THead>/g)].map((m) => m[1]);
-    const head = heads.find((h) => h.includes("admin.overview.recentUsageModel")) ?? "";
-    expect(head, "the recent-requests table has no header row").not.toBe("");
-    for (const th of head.match(/<TH[^>]*>/g) ?? []) {
-      expect(th, `a header that can wrap: ${th}`).toContain("whitespace-nowrap");
-    }
   });
 });
 

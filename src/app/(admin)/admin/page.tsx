@@ -246,17 +246,19 @@ export default async function AdminOverviewPage() {
                     <TD className="whitespace-nowrap text-muted-foreground">
                       {formatDate(row.createdAt, timeZone)}
                     </TD>
-                    <TD className="hidden sm:table-cell font-mono text-xs">
+                    {/* An identity, not prose: 「admin（管理员）」 broken into
+                        「admin（管理」/「员）」 is one account's name cut in two. */}
+                    <TD className="hidden sm:table-cell font-mono text-xs whitespace-nowrap">
                       {userLabelById.get(row.userId) ?? row.userId}
                     </TD>
                     {/* An identifier, not prose: 「MiniMax-M3.1-Flash」 broken
                         into 「MiniMax-」/「M3.1-」/「Flash」 is not a model
                         name any more, it is three fragments of one. */}
                     <TD className="font-mono text-xs whitespace-nowrap">{row.model}</TD>
-                    <TD className="text-right">
+                    <TD className="whitespace-nowrap text-right">
                       {row.status === "success" ? formatNumber(row.totalTokens) : "—"}
                     </TD>
-                    <TD className="text-right">
+                    <TD className="whitespace-nowrap text-right">
                       {row.status === "success" ? formatNumber(row.creditsUsed / 1000) : "—"}
                     </TD>
                     <TD className="hidden xl:table-cell text-right text-xs whitespace-nowrap">
@@ -271,7 +273,7 @@ export default async function AdminOverviewPage() {
                         <span className="text-muted-foreground">—</span>
                       )}
                     </TD>
-                    <TD>
+                    <TD className="whitespace-nowrap">
                       {row.status !== "success" ? (
                         <Badge tone="danger">{t("admin.overview.billingFailed")}</Badge>
                       ) : row.billingMode === "estimated" ? (
