@@ -29,11 +29,11 @@ export default async function SettingsPage() {
           <Card>
             {/* First, because it is the one that is easy to miss everywhere
                 else: it decides whether the assistant can spend your quota at
-                all, and the place you look for it is the assistant itself. */}
-            <CardHeader
-              title={t("settings.assistantCredential.title")}
-              description={t("settings.assistantCredential.desc")}
-            />
+                all, and the place you look for it is the assistant itself.
+
+                No description: the switch below says what it does, in more
+                detail than a line under the title could. */}
+            <CardHeader title={t("settings.assistantCredential.title")} />
             <AccountCredentialPanel />
           </Card>
           <Card>
@@ -54,10 +54,9 @@ export default async function SettingsPage() {
             <TimezoneForm initialTimezone={fresh?.timezone ?? DEFAULT_TIMEZONE} />
           </Card>
           <Card>
-            <CardHeader
-              title={t("settings.password.title")}
-              description={t("settings.password.desc")}
-            />
+            {/* No description: the three fields below are labelled 当前密码、
+                新密码、确认新密码, which is the whole sentence. */}
+            <CardHeader title={t("settings.password.title")} />
             <ChangePasswordForm />
           </Card>
         </div>

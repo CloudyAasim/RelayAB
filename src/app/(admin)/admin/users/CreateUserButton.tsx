@@ -44,8 +44,7 @@ export function CreateUserButton() {
     <>
       <Button onClick={() => setOpen(true)}>{t("admin.users.create")}</Button>
       <Modal open={open} onClose={() => setOpen(false)}
-             title={t("admin.users.create")}
-             description={t("admin.users.create.username")}>
+             title={t("admin.users.create")}>
         <form onSubmit={onSubmit} className="space-y-4">
           <Input
             label={t("admin.users.create.username")}

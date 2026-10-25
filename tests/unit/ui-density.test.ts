@@ -244,6 +244,29 @@ describe("the layout says it, so the page does not", () => {
     }
   });
 
+  it("a form does not describe itself with its own field labels", () => {
+    // The 「新建用户」 modal said 「用户名」 above a field labelled 「用户名」,
+    // and the password card said 「先输入当前密码，然后输入两次新密码」 above
+    // three fields that say exactly that.
+    const createUser = read("src", "app", "(admin)", "admin", "users", "CreateUserButton.tsx");
+    expect(createUser).not.toContain('description={t("admin.users.create.username")}');
+
+    const login = read("src", "app", "(auth)", "login", "page.tsx");
+    expect(login).not.toContain("login.signInDesc");
+
+    const settings = read("src", "app", "(user)", "dashboard", "settings", "page.tsx");
+    expect(settings).not.toContain("settings.assistantCredential.desc");
+    expect(settings).not.toContain("settings.password.desc");
+  });
+
+  it("and a card does not repeat what the field below it says", () => {
+    // The 「用户额度配置」 card said the pool belongs to the account and every
+    // key draws from it — and the 「积分池总量」 field underneath said the same
+    // thing, a card's worth apart.
+    const users = read("src", "app", "(admin)", "admin", "users", "page.tsx");
+    expect(users).not.toContain("admin.users.allocation.desc");
+  });
+
   it("and the dictionary has no key left over for the sentences that went", () => {
     // A removed sentence whose key stayed is a trap: the next page that
     // reaches for it gets text nobody remembers approving.
@@ -257,6 +280,10 @@ describe("the layout says it, so the page does not", () => {
       "settings.subtitle",
       "dashboard.apiKeys.description",
       "admin.stat.tokensHint",
+      "login.signInDesc",
+      "settings.assistantCredential.desc",
+      "settings.password.desc",
+      "admin.users.allocation.desc",
     ]) {
       expect(dict, `"${key}" is no longer used by anything`).not.toContain(`"${key}":`);
     }

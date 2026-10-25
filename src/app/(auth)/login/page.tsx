@@ -84,7 +84,9 @@ export default function LoginPage() {
 
           {/* Form card */}
           <Card>
-            <CardHeader title={t("login.signIn")} description={t("login.signInDesc")} />
+            {/* No description: the form below is labelled 用户名 and 密码, and
+                the button says 登录. */}
+            <CardHeader title={t("login.signIn")} />
             {/*
               `method="post"` is a security requirement, not decoration: the
               default for a form is GET, so before hydration (or with JS off)

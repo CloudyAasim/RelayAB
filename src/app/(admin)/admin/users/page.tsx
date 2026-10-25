@@ -110,8 +110,13 @@ export default async function UsersPage() {
                 {t("admin.users.allocation.title")}
               </span>
             }
-            description={t("admin.users.allocation.desc")}
           />
+          {/*
+            No description: the pool's own field says what the pool is, that
+            every key of the account draws from it, and what happens when it
+            runs out. Saying it here as well was the same sentence twice, a
+            card's worth apart.
+          */}
           <AllocationEditor users={publicUsers} modelGroups={modelGroups} />
         </Card>
       </SectionPageLayout.Content>

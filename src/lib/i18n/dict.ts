@@ -63,7 +63,6 @@ const zhCN: Dict = {
   // ===== Login =====
   "login.pageTitle": "登录你的账号",
   "login.signIn": "登录",
-  "login.signInDesc": "输入用户名和密码继续。",
   "login.username": "用户名",
   "login.password": "密码",
   "login.submit": "登录",
@@ -187,7 +186,7 @@ const zhCN: Dict = {
   // ===== Settings page (password change) =====
   "settings.title": "账号设置",
   "settings.profile.title": "个人资料",
-  "settings.profile.desc": "显示名会出现在右上角的用户菜单里，随时可以修改。",
+  "settings.profile.desc": "显示名会出现在右上角的用户菜单里。",
   "settings.displayName.label": "显示名",
   "settings.displayName.hint": "1–64 个字符，可以使用中文。",
   "settings.displayName.usernameHint": "登录用户名 {username} 不可修改。",
@@ -202,7 +201,6 @@ const zhCN: Dict = {
   "timezone.utc": "UTC（协调世界时）",
   "timezone.shanghai": "上海（UTC+8）",
   "settings.password.title": "修改密码",
-  "settings.password.desc": "需要先输入当前密码，然后输入两次新密码进行验证。",
   "settings.password.current": "当前密码",
   "settings.password.new": "新密码",
   "settings.password.confirm": "再次输入新密码",
@@ -284,7 +282,7 @@ const zhCN: Dict = {
   "admin.modelNotes.annotated": "已写 {n} 个",
   "admin.modelNotes.noMatch": "没有匹配的模型。",
   "admin.modelConfig.title": "模型配置与说明",
-  "admin.modelConfig.desc": "这里改的是网关真实生效的配置：模型别名、上下文、最大输出、积分价格、是否启用。保存后文档和网关读的是同一份数据。",
+  "admin.modelConfig.desc": "保存后文档和网关读的是同一份数据。",
   "admin.modelConfig.summary": "共 {total} 个模型 · 已写说明 {annotated} 个 · 网关已停用 {disabled} 个",
   "admin.modelConfig.collapse": "收起",
   "admin.modelConfig.expand": "展开",
@@ -669,14 +667,13 @@ const zhCN: Dict = {
 
   // ===== Admin Users: allocation editor =====
   "admin.users.allocation.title": "用户额度配置",
-  "admin.users.allocation.desc": "为每个账号分配积分总额与可访问的模型。积分属于账号：该账号下的所有密钥共用这一份，用完即全部停止。",
   "admin.users.allocation.quota": "账号积分池",
   "admin.users.allocation.pool": "积分池总量",
   "admin.users.allocation.poolValue": "{amount} {unit}",
   "admin.users.allocation.poolUsed": "已消耗",
   "admin.users.allocation.poolUsedValue": "{used} / {total}（剩 {remaining}）",
   "admin.users.allocation.noPool": "未分配",
-  "admin.users.allocation.poolHint": "该用户可消耗的总积分。其所有密钥共用这一份。",
+  "admin.users.allocation.poolHint": "该用户可消耗的总积分。其所有密钥共用这一份，用完即全部停止。",
   "admin.users.allocation.quickTopUp": "快速增加：",
   "admin.users.allocation.consumedSoFar": "已消耗 {used}",
   "admin.users.allocation.resetUsage": "同时把已消耗清零",
@@ -1246,7 +1243,6 @@ const zhCN: Dict = {
 
   "assistant.credential.switch": "允许助手用我的账号调用",
   "settings.assistantCredential.title": "AI 助手权限",
-  "settings.assistantCredential.desc": "决定助手能不能以你的身份调用本部署、消耗你自己的额度。",
   "assistant.credential.status.loading": "读取中…",
   "assistant.credential.status.none": "未创建",
   "assistant.credential.status.off": "已创建 · 未开启",
@@ -1582,7 +1578,6 @@ const en: Dict = {
   // ===== Login =====
   "login.pageTitle": "Sign in to your account",
   "login.signIn": "Sign in",
-  "login.signInDesc": "Enter your username and password to continue.",
   "login.username": "Username",
   "login.password": "Password",
   "login.submit": "Sign in",
@@ -1704,7 +1699,7 @@ const en: Dict = {
   // ===== Settings page (password change) =====
   "settings.title": "Account Settings",
   "settings.profile.title": "Profile",
-  "settings.profile.desc": "Your display name shows in the top-right user menu and can be changed at any time.",
+  "settings.profile.desc": "Your display name shows in the top-right user menu.",
   "settings.displayName.label": "Display name",
   "settings.displayName.hint": "1–64 characters.",
   "settings.displayName.usernameHint": "Your login username {username} cannot be changed.",
@@ -1719,7 +1714,6 @@ const en: Dict = {
   "timezone.utc": "UTC (Coordinated Universal Time)",
   "timezone.shanghai": "Shanghai (UTC+8)",
   "settings.password.title": "Change Password",
-  "settings.password.desc": "Enter your current password, then type the new password twice to confirm.",
   "settings.password.current": "Current password",
   "settings.password.new": "New password",
   "settings.password.confirm": "Confirm new password",
@@ -1804,7 +1798,7 @@ const en: Dict = {
   "admin.modelNotes.annotated": "{n} written",
   "admin.modelNotes.noMatch": "No model matches that.",
   "admin.modelConfig.title": "Model configuration and notes",
-  "admin.modelConfig.desc": "What you change here is what the gateway actually does: the model name clients call, its context window, output cap, credit prices, and whether it answers at all. The documentation and the gateway then read the same values.",
+  "admin.modelConfig.desc": "The documentation and the gateway read the same values.",
   "admin.modelConfig.summary": "{total} models · {annotated} with a note · {disabled} switched off",
   "admin.modelConfig.collapse": "Collapse",
   "admin.modelConfig.expand": "Expand",
@@ -2192,14 +2186,13 @@ const en: Dict = {
 
   // ===== Admin Users: allocation editor =====
   "admin.users.allocation.title": "User Quota Allocation",
-  "admin.users.allocation.desc": "Grant each account a credit pool and pick the models it may call. The pool belongs to the account: every key it holds draws from that one balance, and when it runs out they all stop.",
   "admin.users.allocation.quota": "Account credit pool",
   "admin.users.allocation.pool": "Credit pool",
   "admin.users.allocation.poolValue": "{amount} {unit}",
   "admin.users.allocation.poolUsed": "Consumed",
   "admin.users.allocation.poolUsedValue": "{used} / {total} ({remaining} left)",
   "admin.users.allocation.noPool": "Not granted",
-  "admin.users.allocation.poolHint": "Total credits this account may spend. All of their keys share it.",
+  "admin.users.allocation.poolHint": "Total credits this account may spend. All of their keys share it, and when it runs out they all stop.",
   "admin.users.allocation.quickTopUp": "Quick add:",
   "admin.users.allocation.consumedSoFar": "{used} consumed",
   "admin.users.allocation.resetUsage": "Also reset consumption to zero",
@@ -2780,8 +2773,6 @@ const en: Dict = {
 
   "assistant.credential.switch": "Let the assistant call as me",
   "settings.assistantCredential.title": "Assistant permissions",
-  "settings.assistantCredential.desc":
-    "Whether the assistant may call this deployment as you and spend your own quota.",
   "assistant.credential.status.loading": "Loading…",
   "assistant.credential.status.none": "Not created",
   "assistant.credential.status.off": "Created · off",
