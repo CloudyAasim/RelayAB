@@ -73,8 +73,34 @@ describe("the settings offer the model's parameters, and only the caller's", () 
     );
   });
 
-  it("and the columns exist on an existing deployment, not only in a fresh schema", () => {
-    for (const column of [
+  it("which box a parameter sits in is what the section means", () => {
+    // The context window is not a sampling knob: it decides how much of the
+    // conversation is kept, and a wrong value drops **whole** earlier turns
+    // rather than truncating one. That is a setting a person reaches for on
+    // purpose, so it stays on the open form.
+    //
+    // The output cap, the temperature and nucleus sampling change the shape of
+    // an answer, and they are the three everybody leaves at the vendor's
+    // default — so they are the ones folded away.
+    const advanced = PANEL.match(/<details[\s\S]*?<\/details>/)?.[0] ?? "";
+    expect(advanced, "the folded sampling section is gone").not.toBe("");
+    expect(advanced, "the output cap left the sampling section").toContain(
+      "assistant-max-output",
+    );
+    expect(advanced, "the context window moved into the sampling section").not.toContain(
+      "assistant-context-length",
+    );
+
+    const open = PANEL.slice(0, PANEL.indexOf("<details"));
+    expect(open, "the context window is not on the open form").toContain(
+      "assistant-context-length",
+    );
+    expect(open, "the output cap is still on the open form").not.toContain(
+      "assistant-max-output",
+    );
+  });
+
+  it("and the columns exist on an existing deployment, not only in a fresh schema", () => {    for (const column of [
       "context_length",
       "max_output_tokens",
       "temperature",

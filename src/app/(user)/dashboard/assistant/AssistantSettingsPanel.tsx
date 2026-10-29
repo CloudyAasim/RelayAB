@@ -965,23 +965,38 @@ export function AssistantSettingsPanel({
               </p>
             )}
           </div>
+          {/*
+            The context window stays on the open form.
+
+            It is not a sampling knob: it decides how much of the conversation
+            is kept, and a wrong value drops **whole** earlier turns rather
+            than truncating one. That is a setting a person reaches for on
+            purpose, so it does not belong folded away with the parameters
+            everybody leaves at the vendor's default.
+          */}
           <ParamField
-            id="assistant-max-output"
-            label={t("assistant.settings.maxOutput")}
-            wire="max_tokens"
+            id="assistant-context-length"
+            label={t("assistant.settings.contextLength")}
+            wire="context_length"
             min={1}
-            value={maxOutputTokens}
-            onChange={setMaxOutputTokens}
+            value={contextLength}
+            onChange={setContextLength}
           />
         </div>
 
         {/*
           The sampling parameters, folded away.
 
-          They change the shape of an answer rather than its length or its
-          effort, they are the two everybody leaves at the vendor's default, and
-          four boxes in a 384px drawer is four things to read past the two that
-          matter. Open it when you mean it.
+          The temperature, nucleus sampling and the output cap change the shape
+          of an answer rather than how much of the conversation is kept, and
+          they are the three everybody leaves at the vendor's default — three
+          boxes to read past in a 384px drawer. Open it when you mean it.
+
+          The output cap is one of them: `max_tokens` says how long an answer
+          may be, which is a question about this request rather than about the
+          model. It used to sit on the open form beside the thinking controls,
+          among the two settings that say what the model is — and what the
+          model is and how long this answer may be are not the same question.
         */}
         <details className="mt-3 rounded-md border border-border/70 px-2.5 py-1.5">
           <summary className="cursor-pointer list-none text-xs font-medium text-muted-foreground marker:hidden">
@@ -1008,14 +1023,19 @@ export function AssistantSettingsPanel({
               value={topP}
               onChange={setTopP}
             />
-            <ParamField
-              id="assistant-context-length"
-              label={t("assistant.settings.contextLength")}
-              wire="context_length"
-              min={1}
-              value={contextLength}
-              onChange={setContextLength}
-            />
+            {/* Its own row: three boxes in two columns leave a hole in the
+                corner of the drawer, and a hole in a grid reads as something
+                that fell out. */}
+            <div className="col-span-2">
+              <ParamField
+                id="assistant-max-output"
+                label={t("assistant.settings.maxOutput")}
+                wire="max_tokens"
+                min={1}
+                value={maxOutputTokens}
+                onChange={setMaxOutputTokens}
+              />
+            </div>
           </div>
         </details>
 
