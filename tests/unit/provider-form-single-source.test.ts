@@ -31,6 +31,7 @@ import {
   facesFromProvider,
   headersToText,
   parseHeaders,
+  routesFromProvider,
   type ProviderFormValues,
   type ProviderRecord,
 } from "@/lib/admin/provider-payload";
@@ -43,6 +44,7 @@ const EDIT = read("src", "app", "(admin)", "admin", "providers", "ProviderAction
 const CREATE = read("src", "app", "(admin)", "admin", "providers", "CreateProviderButton.tsx");
 const FORM = read("src", "app", "(admin)", "admin", "providers", "form", "ProviderForm.tsx");
 const HOOK = read("src", "app", "(admin)", "admin", "providers", "form", "use-provider-form.ts");
+const PAYLOAD = read("src", "lib", "admin", "provider-payload.ts");
 
 const MODALS = [
   ["edit", EDIT],
@@ -67,6 +69,14 @@ const values: ProviderFormValues = {
   modelRows: [newModelRow({ clientId: "abab", upstreamId: "abab-6" })],
   textSpecs: ['{"protocol":"openai-chat"}'],
   activeMode: "advanced",
+  routes: {
+    "openai-chat": { kind: "passthrough" },
+    "openai-responses": { kind: "route", dialect: "chat" },
+    "anthropic-messages": { kind: "passthrough" },
+    "gemini-generate": { kind: "unsupported" },
+  },
+  protocolMode: "advanced",
+  upstreamDialects: ["chat", "anthropic"],
 };
 
 /** How the two call sites actually invoke the builder. */
@@ -101,7 +111,11 @@ describe("the request body is built in one place", () => {
     expect(body.openaiEnabled).toBe(true);
     expect(body.anthropicEnabled).toBe(true);
     expect(body.anthropicBaseUrl).toBe("https://api.minimaxi.com/anthropic");
-    expect(body.upstreamFormat).toBe("responses");
+    // The face flags are a **summary of the route table** now, not a second
+    // answer: the routes are what the editor writes, and the columns that
+    // came before them are read by the endpoints that have no table of their
+    // own. So the dialect is the first one the routes name.
+    expect(body.upstreamFormat).toBe("chat");
     expect(body.modelMapping).toEqual({ abab: "abab-6" });
   });
 });
@@ -151,7 +165,11 @@ describe("creating and editing differ only where they must", () => {
     expect(faces.anthropicEnabled).toBe(true);
     expect(faces.openaiEnabled).toBe(false);
     expect(faces.upstreamFormat).toBe("anthropic");
-    expect(buildProviderPayload({ ...values, faces }).upstreamFormat).toBe("anthropic");
+    // The round trip goes through the **routes** now: they are what the form
+    // edits and what the builder sends, and the columns that came before them
+    // are a summary of the same answer.
+    const routes = routesFromProvider(legacy);
+    expect(buildProviderPayload({ ...values, faces, routes }).upstreamFormat).toBe("anthropic");
   });
 
   it("reports the effective dialect, so what is saved is what the engine acts on", () => {
@@ -186,7 +204,13 @@ it("so turning the OpenAI side on for such a row survives the round trip", () =>
       upstreamFormat: "anthropic",
     };
     const faces = { ...facesFromProvider(legacy), openaiEnabled: true };
-    const body = buildProviderPayload({ ...values, kind: "anthropic", faces });
+    // The routes are what the form edits now, so the round trip is the one the
+    // editor does: the legacy row's routes, with the OpenAI side turned on.
+    const routes = {
+      ...routesFromProvider(legacy),
+      "openai-chat": { kind: "route", dialect: "anthropic" } as const,
+    };
+    const body = buildProviderPayload({ ...values, kind: "anthropic", faces, routes });
     expect(body.openaiEnabled).toBe(true);
     expect(body.upstreamFormat).toBe("anthropic");
     expect(body.kind).toBe("anthropic");
@@ -240,26 +264,38 @@ describe("neither modal keeps its own copy of the form", () => {
     expect(HOOK, "the hook no longer validates the protocol list").toMatch(/validateTextSpecs/);
   });
 
-  it("the two modes are alternatives: one block each, never both", () => {
-    // Simple answers "which interfaces answer", advanced answers "how does each
-    // one handle parameters". Rendering them together is what made them
-    // contradict each other — a switch saying a set is off beside a list
-    // offering to configure the same set. A branch makes one impossible.
+  it("the modes are alternatives: one block each, never both", () => {
+    // Simple answers "which interfaces answer, and how", advanced answers "how
+    // does each one handle parameters". Rendering them together is what made
+    // them contradict each other — a route table saying a surface is
+    // unsupported beside a rules list offering to configure it. A branch makes
+    // one impossible.
     expect(FORM).toMatch(
-      /mode === "simple" \?[\s\S]{0,120}<ProviderFacesField[\s\S]{0,200}<ProviderInterfacesList/,
+      /protocolMode === "simple"[\s\S]{0,400}<ProviderSurfaceRoutes[\s\S]{0,900}<ProviderInterfacesList/,
     );
-    for (const name of ["ProviderFacesField", "ProviderInterfacesList"]) {
+    for (const name of ["ProviderSurfaceRoutes", "ProviderInterfacesList"]) {
       expect((FORM.match(new RegExp(`<${name}[\\s>]`, "g")) ?? []).length, name).toBe(1);
     }
-    // And no `&&` spelling that would leave one of them showing in both modes.
-    expect(FORM).not.toMatch(/mode === "simple" &&/);
+    // And the two branches are separate blocks — one block each — so the simple
+    // branch cannot render the rules list as well.
+    const simple = FORM.slice(
+      FORM.indexOf('protocolMode === "simple"'),
+      FORM.indexOf('protocolMode === "advanced"'),
+    );
+    expect(simple).toContain("ProviderSurfaceRoutes");
+    expect(simple, "the simple branch renders the rules list too").not.toContain(
+      "ProviderInterfacesList",
+    );
   });
 
   it("the face flags are saved whichever mode is open", () => {
     // They are columns the proxy routes on, not derivable from the rules: a
-    // provider can serve Chat Completions with no rule at all. So advanced mode
-    // does not write them, it leaves them exactly as simple mode set them.
-    expect(FORM).toMatch(/value=\{values\.faces\}/);
+    // provider can serve Chat Completions with no rule at all. So they are
+    // written in both modes — and now they are written **from the route
+    // table**, which is where the operator says what each surface does.
+    expect(FORM).toMatch(/anthropicBaseUrl=\{values\.faces\.anthropicBaseUrl\}/);
+    expect(PAYLOAD).toMatch(/openaiEnabled: derived\.openaiEnabled/);
+    expect(PAYLOAD).toMatch(/anthropicEnabled: derived\.anthropicEnabled/);
   });
 });
 
@@ -270,10 +306,17 @@ describe("the mode is a saved value, not a view", () => {
     // only true reading of the screen was "this is a display option". The whole
     // point of keeping both configurations is that the engine knows which one
     // is live, which means the choice has to arrive.
-    for (const mode of ["simple", "advanced"] as const) {
-      expect(asEdit({ ...values, activeMode: mode }).activeMode).toBe(mode);
-      expect(asCreate({ ...values, activeMode: mode }).activeMode).toBe(mode);
+    //
+    // Three configurations now, and the third one — passthrough, where nothing
+    // is translated at all — is a choice too.
+    for (const mode of ["simple", "advanced", "passthrough"] as const) {
+      expect(asEdit({ ...values, protocolMode: mode }).protocolMode).toBe(mode);
+      expect(asCreate({ ...values, protocolMode: mode }).protocolMode).toBe(mode);
     }
+    // And the legacy column follows the new one: a row in passthrough mode has
+    // no rules applying, which is what `simple` means to the reader of it.
+    expect(asEdit({ ...values, protocolMode: "passthrough" }).activeMode).toBe("simple");
+    expect(asEdit({ ...values, protocolMode: "advanced" }).activeMode).toBe("advanced");
   });
 
   it("the inactive configuration still goes with it", () => {
@@ -301,17 +344,19 @@ describe("the mode is a saved value, not a view", () => {
 });
 
 describe("each mode's block says what it is for", () => {
-  it("the face block is about which endpoints answer", () => {
-    const faces = read(
-      "src", "app", "(admin)", "admin", "providers", "ProviderFacesField.tsx",
+  it("the route table is about which endpoints answer, and how", () => {
+    const routes = read(
+      "src", "app", "(admin)", "admin", "providers", "ProviderSurfaceRoutes.tsx",
     );
-    expect(faces).toMatch(/openaiEnabled: boolean;/);
-    expect(faces).toMatch(/anthropicEnabled: boolean;/);
-    expect(faces).toMatch(/admin\.providers\.faces\.noneWarning/);
+    // One row per surface, and three answers each.
+    expect(routes).toMatch(/SURFACES\.map\(/);
+    expect(routes).toContain("admin.providers.routes.unsupported");
+    expect(routes).toContain("admin.providers.routes.passthrough");
+    expect(routes).toContain("admin.providers.routes.route");
     // It is the only place the Anthropic base URL is set.
-    expect(faces).toMatch(/anthropicBaseUrl/);
+    expect(routes).toMatch(/anthropicBaseUrl/);
     // No rules here — that is the other mode's job.
-    expect(faces).not.toMatch(/textSpec/);
+    expect(routes).not.toMatch(/textSpec/);
   });
 
   it("the rules list is one flat row per interface, and always all of them", () => {
@@ -328,13 +373,13 @@ describe("each mode's block says what it is for", () => {
   });
 
   it("neither block carries the other's job", () => {
-    const faces = read(
-      "src", "app", "(admin)", "admin", "providers", "ProviderFacesField.tsx",
+    const routes = read(
+      "src", "app", "(admin)", "admin", "providers", "ProviderSurfaceRoutes.tsx",
     );
     const list = read(
       "src", "app", "(admin)", "admin", "providers", "ProviderInterfacesList.tsx",
     );
-    expect(faces, "the face block is editing rules").not.toMatch(/textSpecs/);
+    expect(routes, "the route block is editing rules").not.toMatch(/textSpecs/);
     expect(list, "the rules list is switching interfaces").not.toMatch(/openaiEnabled/);
   });
 

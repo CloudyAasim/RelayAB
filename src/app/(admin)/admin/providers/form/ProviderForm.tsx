@@ -23,7 +23,10 @@ import { Input } from "@/components/ui/Input";
 import { Switch } from "@/components/ui/Switch";
 import { useT } from "@/components/i18n/I18nProvider";
 import { ProviderModeSwitch } from "@/app/(admin)/admin/providers/ProviderModeSwitch";
-import { ProviderFacesField } from "@/app/(admin)/admin/providers/ProviderFacesField";
+import {
+  ProviderSurfaceRoutes,
+  ProviderUpstreamDialects,
+} from "@/app/(admin)/admin/providers/ProviderSurfaceRoutes";
 import { ProviderInterfacesList } from "@/app/(admin)/admin/providers/ProviderInterfacesList";
 import { ProviderModelsEditor } from "@/app/(admin)/admin/providers/ProviderModelsEditor";
 import type { ProviderModelRow } from "@/app/(admin)/admin/providers/model-rows";
@@ -51,28 +54,58 @@ export function ProviderForm({
   apiKeyRequired?: boolean;
 }) {
   const t = useT();
-  const { values, patch, setFaces, setModelRows, setTextSpecs, mode, setMode, specVerdict } = form;
+  const {
+    values,
+    patch,
+    setFaces,
+    setModelRows,
+    setTextSpecs,
+    setRoutes,
+    setUpstreamDialects,
+    protocolMode,
+    setProtocolMode,
+    specVerdict,
+  } = form;
 
   return (
     <>
-      <ProviderModeSwitch mode={mode} onChange={setMode} interfaceCount={values.textSpecs.length} />
+      <ProviderModeSwitch
+        mode={protocolMode}
+        onChange={setProtocolMode}
+        interfaceCount={values.textSpecs.length}
+      />
 
       {/*
-        Two modes, two different halves of the same provider.
+        Three configurations, three different halves of the same provider.
 
-        Simple: the interface switches — which endpoints answer. Advanced: the
-        per-interface parameter rules. They are alternatives, so neither can
-        contradict the other on screen: there is no switch to contradict while
-        you are writing rules, and no rule list to re-read while you are
-        switching a face.
+        Simple: the route table — which surface answers, and how. Advanced: the
+        upstream declared on its own, plus the per-interface parameter rules.
+        Passthrough: nothing is translated at all.
 
-        The face flags are stored either way and saved either way — they are
-        columns the proxy routes on and cannot be derived from the rules.
+        They are alternatives, so none of them can contradict another on screen.
       */}
-      {mode === "simple" ? (
-        <ProviderFacesField value={values.faces} onChange={setFaces} kind={values.kind} />
-      ) : (
-        <ProviderInterfacesList textSpecs={values.textSpecs} onTextSpecsChange={setTextSpecs} />
+      {protocolMode === "simple" && (
+        <ProviderSurfaceRoutes
+          routes={values.routes}
+          onChange={setRoutes}
+          anthropicBaseUrl={values.faces.anthropicBaseUrl}
+          onAnthropicBaseUrlChange={(next) => setFaces({ ...values.faces, anthropicBaseUrl: next })}
+        />
+      )}
+      {protocolMode === "advanced" && (
+        <>
+          <ProviderUpstreamDialects
+            dialects={values.upstreamDialects}
+            onChange={setUpstreamDialects}
+            className="mb-4"
+          />
+          <ProviderInterfacesList textSpecs={values.textSpecs} onTextSpecsChange={setTextSpecs} />
+        </>
+      )}
+      {protocolMode === "passthrough" && (
+        <p className="rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+          {t("admin.providers.routes.passthroughNote")}
+        </p>
       )}
 
       {aboveFields}
@@ -170,7 +203,7 @@ export function ProviderForm({
         hint={modelsHint ?? t("admin.providers.syncHint")}
       />
 
-      {!specVerdict.ok && mode !== "advanced" && (
+      {!specVerdict.ok && protocolMode !== "advanced" && (
         <p className="text-sm text-destructive">{specVerdict.errors[0]}</p>
       )}
     </>

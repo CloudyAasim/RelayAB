@@ -24,6 +24,7 @@
  * speaks, and the answer is translated back into an Anthropic message.
  */
 import { providerFaces, type ApiKey, type Provider, type User } from "@/lib/db/types";
+import { routesOf } from "@/lib/protocol/surface-routes";
 import { findAnthropicProvidersForModel } from "@/lib/db/providers";
 import { checkKeyStatus, reasonToHttp } from "@/lib/auth/apikey";
 import { shouldRejectBeforeRequest } from "@/lib/quota/calculator";
@@ -49,7 +50,7 @@ export async function proxyAnthropicSurface(args: {
     return { ok: false, status: 400, error: { code: "missing_model", message: "model is required" } };
   }
 
-  // The row this surface picks: the ones with an Anthropic face.
+  // The row this surface picks: the ones that answer this surface.
   const candidates = await findAnthropicProvidersForModel(model);
   const provider: Provider | undefined = candidates[0];
   const face = provider ? providerFaces(provider).anthropic : null;
@@ -64,7 +65,25 @@ export async function proxyAnthropicSurface(args: {
     };
   }
 
-  if (face.mode === "native") {
+  /**
+   * How this surface is answered, as the row's route says.
+   *
+   * `passthrough` is the vendor's own `/v1/messages` — the path that has
+   * always worked, and it is left exactly as it was. A route to another
+   * dialect means the request is rewritten on the way out.
+   */
+  const route = routesOf(provider)["anthropic-messages"];
+  if (route.kind === "unsupported") {
+    return {
+      ok: false,
+      status: 400,
+      error: {
+        code: "model_not_mapped",
+        message: `No Anthropic provider configured for model '${model}'`,
+      },
+    };
+  }
+  if (route.kind === "passthrough") {
     // The vendor serves Anthropic itself: the request goes out as it is. This
     // is the path that has always worked, and it is left exactly as it was.
     return proxyAnthropicMessage({ req, apiKey, user, signal, deps, provider });
@@ -93,6 +112,7 @@ export async function proxyAnthropicSurface(args: {
     user,
     signal,
     deps,
+    surface: "anthropic-messages",
   });
   if (!viaPivot.ok) return viaPivot;
 

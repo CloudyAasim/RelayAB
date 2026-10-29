@@ -10,9 +10,10 @@
 import { checkKeyStatus, reasonToHttp } from "../auth/apikey";
 import { shouldRejectBeforeRequest } from "../quota/calculator";
 import { findOpenAIProvidersForModel } from "../db/providers";
-import { providerFaces, type ApiKey, type User } from "../db/types";
+import { type ApiKey, type User } from "../db/types";
 import type { ProxyDeps, ProxyResult, ResponseAPIRequest } from "./types";
 import { proxyResponsesViaDialect } from "./pivot";
+import { dialectForSurface, servesSurface, type SurfaceId } from "../protocol/surface-routes";
 import { runBilledSearch } from "../search/billing";
 import { WebSearchError } from "../assistant/web-search";
 import { searchErrorHttp } from "../search/types";
@@ -42,6 +43,14 @@ export async function proxyOpenAIResponse(args: {
   /** Incoming request signal — streams settle their usage when it aborts. */
   signal?: AbortSignal;
   deps?: ProxyDeps;
+  /**
+   * Which client surface this came in on.
+   *
+   * The route table is keyed by surface, so this is what decides both which
+   * providers may answer and which dialect the answer comes back in. It
+   * defaults to the Responses surface, which is what the hub used to assume.
+   */
+  surface?: SurfaceId;
 }): Promise<ProxyResult> {
   const { apiKey, user, signal, deps } = args;
   /** The request as it will go upstream — the search may add to it. */
@@ -73,7 +82,14 @@ export async function proxyOpenAIResponse(args: {
   // Chat Completions, the request goes out as Chat Completions and a failure is
   // reported as a failure. Silently retrying over a different protocol hides
   // real breakage (and paid for a doomed round trip on every request).
-  const providers = await findOpenAIProvidersForModel(req.model);
+  //
+  // The **surface** decides which providers are candidates and which dialect
+  // the answer comes back in: a provider that does not answer this surface is
+  // not a candidate for it, whatever the model mapping says.
+  const surface = args.surface ?? "openai-responses";
+  const providers = (await findOpenAIProvidersForModel(req.model)).filter((p) =>
+    servesSurface(p, surface),
+  );
   if (providers.length === 0) {
     return {
       ok: false,
@@ -82,6 +98,8 @@ export async function proxyOpenAIResponse(args: {
     };
   }
   const provider = providers[0];
+  /** The dialect this surface is answered in, as the provider's route says. */
+  const format = dialectForSurface(provider, surface) ?? "responses";
 
   /**
    * The hosted web search tool, when the upstream cannot forward it.
@@ -91,7 +109,6 @@ export async function proxyOpenAIResponse(args: {
    * converted dialect cannot forward it — there is no such thing in the shape
    * it speaks — so the gateway answers it here.
    */
-  const format = providerFaces(provider).openai?.format;
   const converted = format === "chat" || format === "anthropic" || format === "gemini";
   let sources: WebSearchSource[] = [];
   if (converted && wantsHostedWebSearch(req.tools)) {
@@ -101,7 +118,15 @@ export async function proxyOpenAIResponse(args: {
     sources = prepared.sources;
   }
 
-  const result = await proxyResponsesViaDialect({ req, provider, apiKey, user, signal, deps });
+  const result = await proxyResponsesViaDialect({
+    req,
+    provider,
+    apiKey,
+    user,
+    signal,
+    deps,
+    surface,
+  });
 
   // The sources go on the answer, so a client that renders citations has
   // something to render.

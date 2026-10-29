@@ -24,8 +24,32 @@
  * {@link ProviderPayloadOptions} rather than re-forked at each call site.
  */
 
-import type { ProviderFacesValue, UpstreamFormat } from "@/app/(admin)/admin/providers/ProviderFacesField";
 import { rowsToPayload, type ProviderModelRow } from "@/app/(admin)/admin/providers/model-rows";
+import { type UpstreamFormat } from "@/lib/db/types";
+import {
+  emptyRoutes,
+  routesOf,
+  serializeRoutes,
+  targetDialect,
+  type Dialect,
+  type SurfaceRoutes,
+} from "@/lib/protocol/surface-routes";
+
+/**
+ * The face flags — the summary of the route table.
+ *
+ * They are still written, because the endpoints that are not text generation
+ * (embeddings, rerank, moderation, the model catalogue) read them, and they
+ * have no per-surface table of their own. The route table is the answer for the
+ * four text surfaces; these stay as the summary of it.
+ */
+export interface ProviderFacesValue {
+  openaiEnabled: boolean;
+  upstreamFormat: UpstreamFormat;
+  anthropicEnabled: boolean;
+  anthropicBaseUrl: string;
+  anthropicMode: "native" | "translated";
+}
 
 /** The stored shape the edit form reads back. */
 export interface ProviderRecord {
@@ -46,6 +70,12 @@ export interface ProviderRecord {
   textSpecs?: string[];
   /** Which configuration is live. Absent/null = "follow the rules if any". */
   activeMode?: string | null;
+  /** How each client surface reaches this provider. */
+  surfaceRoutes?: string[];
+  /** Which configuration is in effect: simple, advanced or passthrough. */
+  protocolMode?: string | null;
+  /** The dialects the vendor's own API speaks. */
+  upstreamDialects?: string[];
 }
 
 /** Everything the form holds, as strings where the inputs are strings. */
@@ -61,7 +91,7 @@ export interface ProviderFormValues {
   modelRows: ProviderModelRow[];
   textSpecs: string[];
   /**
-   * Which of the two configurations is live.
+   * Which configuration is live.
    *
    * Part of `values` rather than separate state, because it is a thing that gets
    * saved. It used to be a second `useState` that the payload never read, which
@@ -69,6 +99,19 @@ export interface ProviderFormValues {
    * and the row was the truth. One value, read by the builder, sent on save.
    */
   activeMode: "simple" | "advanced";
+  /**
+   * How each client surface reaches this provider — the canonical answer, one
+   * row per surface.
+   */
+  routes: SurfaceRoutes;
+  /**
+   * Which configuration is in effect: the route table decides (`simple`), the
+   * upstream is declared apart from the downstream (`advanced`), or nothing is
+   * translated (`passthrough`).
+   */
+  protocolMode: "simple" | "advanced" | "passthrough";
+  /** The dialects the vendor's own API speaks. Advanced mode reads it. */
+  upstreamDialects: Dialect[];
 }
 
 export interface ProviderPayload {
@@ -99,6 +142,22 @@ export interface ProviderPayload {
   textSpecs?: string[];
   /** Always sent: an explicit choice beats an inferred one on the next read. */
   activeMode: "simple" | "advanced";
+  /**
+   * How each client surface reaches this provider — one entry per surface.
+   *
+   * Always sent, and always in the canonical form: this is the answer the
+   * engine reads, and the columns that came before it are only a fallback for
+   * rows that have never been saved since.
+   */
+  surfaceRoutes: string[];
+  /**
+   * Which configuration is in effect: the route table decides (`simple`), the
+   * upstream is declared apart from the downstream (`advanced`), or nothing is
+   * translated at all (`passthrough`).
+   */
+  protocolMode: "simple" | "advanced" | "passthrough";
+  /** The dialects the vendor's own API speaks. Advanced mode reads it. */
+  upstreamDialects: string[];
 }
 
 export interface ProviderPayloadOptions {
@@ -152,6 +211,16 @@ export function buildProviderPayload(
   const { modelMapping, modelConfigs } = rowsToPayload(values.modelRows);
   const { name, kind, baseUrl, apiKey, priority, enabled, headers, faces } = values;
 
+  /**
+   * The face flags, derived from the routes.
+   *
+   * They are still written because the endpoints that are not text generation —
+   * embeddings, rerank, moderation, the model catalogue — read them, and they
+   * have no per-surface table of their own. The route table is the answer for
+   * the four text surfaces; these stay as the summary of it.
+   */
+  const derived = facesFromRoutes(values.routes);
+
   return {
     name: name || options.nameFallback || "",
     kind,
@@ -160,7 +229,7 @@ export function buildProviderPayload(
     priority: Number(priority) || 0,
     enabled,
     ...(parseHeaders(headers) ? { headers: parseHeaders(headers) } : {}),
-    openaiEnabled: faces.openaiEnabled,
+    openaiEnabled: derived.openaiEnabled,
     /**
      * "anthropic" is kept, not rewritten.
      *
@@ -171,17 +240,54 @@ export function buildProviderPayload(
      * translation**, and rewriting it would silently turn the next request
      * into a Responses body pointed at an Anthropic-only upstream.
      */
-    upstreamFormat: faces.upstreamFormat,
-    anthropicEnabled: faces.anthropicEnabled,
+    upstreamFormat: derived.upstreamFormat,
+    anthropicEnabled: derived.anthropicEnabled,
     anthropicBaseUrl: faces.anthropicBaseUrl || null,
-    anthropicMode: faces.anthropicMode,
+    anthropicMode: derived.anthropicMode,
     modelMapping,
     modelConfigs,
     // The whole list goes either way. Switching to simple turns the rules off;
     // it does not delete them, and a spec written while in advanced is still
     // here when they switch back.
     ...(options.textSpecs ? { textSpecs: options.textSpecs } : {}),
-    activeMode: values.activeMode,
+    activeMode: values.protocolMode === "advanced" ? "advanced" : "simple",
+    surfaceRoutes: serializeRoutes(values.routes),
+    protocolMode: values.protocolMode,
+    upstreamDialects: values.upstreamDialects,
+  };
+}
+
+/**
+ * The face flags, as the route table says them.
+ *
+ * The OpenAI face speaks **one** dialect for three surfaces, so the flags take
+ * the first one the routes name — and the Anthropic face is on when its surface
+ * is answered, natively when the request goes out as it arrived.
+ */
+export function facesFromRoutes(routes: SurfaceRoutes): ProviderFacesValue {
+  const openaiSurfaces = ["openai-chat", "openai-responses", "gemini-generate"] as const;
+  const openaiTargets = openaiSurfaces
+    .map((surface) => targetDialect(routes[surface], surface))
+    .filter((dialect): dialect is Dialect => dialect !== null);
+  const anthropicRoute = routes["anthropic-messages"];
+  const anthropicTarget = targetDialect(anthropicRoute, "anthropic-messages");
+
+  return {
+    openaiEnabled: openaiTargets.length > 0,
+    /**
+     * The vendor's own protocol.
+     *
+     * The OpenAI face's dialect when it is on — and the Anthropic face's when
+     * it is not, because a Claude-only vendor has no OpenAI dialect to name
+     * and must keep saying `anthropic`: rewriting it to `responses` would
+     * point the next request at a `/v1/responses` endpoint the vendor does not
+     * have.
+     */
+    upstreamFormat:
+      openaiTargets[0] ?? anthropicTarget ?? ("responses" as UpstreamFormat),
+    anthropicEnabled: anthropicTarget !== null,
+    anthropicBaseUrl: "",
+    anthropicMode: anthropicRoute.kind === "passthrough" ? "native" : "translated",
   };
 }
 
@@ -221,6 +327,18 @@ export function facesFromProvider(provider: ProviderRecord): ProviderFacesValue 
     // it was doing before the choice existed.
     anthropicMode: provider.anthropicMode ?? "native",
   };
+}
+
+/**
+ * The routes a stored row means.
+ *
+ * The route table when the row has one, and the columns that came before it
+ * otherwise — so a row that has never been saved since still opens on the
+ * routing it has always had.
+ */
+export function routesFromProvider(provider: ProviderRecord): SurfaceRoutes {
+  const routes = routesOf(provider);
+  return routes;
 }
 
 export function headersToText(headers: Record<string, string> | null | undefined): string {

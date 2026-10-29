@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 /**
  * src/app/(admin)/admin/providers/form/use-provider-form.ts
@@ -15,13 +15,20 @@ import {
   buildProviderPayload,
   facesFromProvider,
   headersToText,
+  type ProviderFacesValue,
   type ProviderFormValues,
   type ProviderPayloadOptions,
   type ProviderRecord,
 } from "@/lib/admin/provider-payload";
 import { rowsFromProvider, type ProviderModelRow } from "@/app/(admin)/admin/providers/model-rows";
-import type { ProviderFacesValue } from "@/app/(admin)/admin/providers/ProviderFacesField";
+
 import { validateTextSpecs, activeModeOf } from "@/lib/protocol/text-specs";
+import {
+  emptyRoutes,
+  routesOf,
+  type Dialect,
+  type SurfaceRoutes,
+} from "@/lib/protocol/surface-routes";
 
 const EMPTY_MODEL_ROWS: ProviderModelRow[] = [];
 
@@ -45,6 +52,15 @@ export function emptyFormValues(): ProviderFormValues {
     modelRows: EMPTY_MODEL_ROWS,
     textSpecs: [],
     activeMode: "simple",
+    // A new provider answers the two OpenAI-shaped surfaces and nothing else,
+    // which is what a row that has never been configured has always done.
+    routes: {
+      ...emptyRoutes(),
+      "openai-chat": { kind: "passthrough" },
+      "openai-responses": { kind: "passthrough" },
+    },
+    protocolMode: "simple",
+    upstreamDialects: ["responses"],
   };
 }
 
@@ -64,6 +80,17 @@ export function formValuesFromProvider(provider: ProviderRecord): ProviderFormVa
     // with no choice and a rule on it opens in advanced, which is what it has
     // been doing — the editor does not get a second opinion.
     activeMode: activeModeOf(provider),
+    // The routes, from the table when the row has one and from the columns that
+    // came before it otherwise.
+    routes: routesOf(provider),
+    protocolMode:
+      provider.protocolMode === "advanced" || provider.protocolMode === "passthrough"
+        ? provider.protocolMode
+        : "simple",
+    upstreamDialects: (provider.upstreamDialects ?? []).filter(
+      (d): d is Dialect =>
+        d === "chat" || d === "responses" || d === "anthropic" || d === "gemini",
+    ),
   };
 }
 
@@ -94,6 +121,35 @@ export function useProviderForm(
   const mode = values.activeMode;
   const setMode = useCallback(
     (next: "simple" | "advanced") => setValues((prev) => ({ ...prev, activeMode: next })),
+    [],
+  );
+
+  /**
+   * The three configurations, as one value.
+   *
+   * `passthrough` is the third one: nothing is translated at all, so every
+   * surface is answered in its own vocabulary — which only a vendor that speaks
+   * all four can be in.
+   */
+  const protocolMode = values.protocolMode;
+  const setProtocolMode = useCallback(
+    (next: "simple" | "advanced" | "passthrough") =>
+      setValues((prev) => ({
+        ...prev,
+        protocolMode: next,
+        // The legacy column follows: a row in passthrough mode has no rules
+        // applying, which is what `simple` means to the reader of that column.
+        activeMode: next === "advanced" ? "advanced" : "simple",
+      })),
+    [],
+  );
+
+  const setRoutes = useCallback(
+    (routes: SurfaceRoutes) => setValues((prev) => ({ ...prev, routes })),
+    [],
+  );
+  const setUpstreamDialects = useCallback(
+    (dialects: Dialect[]) => setValues((prev) => ({ ...prev, upstreamDialects: dialects })),
     [],
   );
 
@@ -163,6 +219,10 @@ export function useProviderForm(
     setTextSpecs,
     mode,
     setMode,
+    protocolMode,
+    setProtocolMode,
+    setRoutes,
+    setUpstreamDialects,
     specVerdict,
     configuredProtocols,
     reset,

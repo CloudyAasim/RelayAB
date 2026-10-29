@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { LegacyModal as Modal } from "@/components/ui/Modal";
 import { useT } from "@/components/i18n/I18nProvider";
 import { RefreshCw, Pencil, Trash2, Zap } from "lucide-react";
-import type { UpstreamFormat } from "./ProviderFacesField";
+import type { UpstreamFormat } from "@/lib/db/types";
 import { mergeFetchedModels } from "./model-rows";
 import { ModelPickerModal, type PickedEntry } from "./ModelPickerModal";
 import { ProviderForm } from "./form/ProviderForm";

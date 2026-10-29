@@ -10,6 +10,7 @@ import { createProvider, listProviders } from "@/lib/db/providers";
 import { toPublicProvider, ModelConfigPatchSchema } from "@/lib/db/types";
 import { getCurrentUser } from "@/lib/auth/session";
 import { validateTextSpecs } from "@/lib/protocol/text-specs";
+import { parseRoutes } from "@/lib/protocol/surface-routes";
 
 export const PostSchema = z.object({
   name: z.string().min(1).max(64),
@@ -52,6 +53,38 @@ export const PostSchema = z.object({
    * should keep doing. `simple` switches them off without deleting them.
    */
   activeMode: z.enum(["simple", "advanced"]).nullable().optional(),
+  /**
+   * How each client surface reaches this provider — the canonical answer.
+   *
+   * Validated here rather than on read, for the same reason the specs are: a
+   * route that does not parse is a configuration that looks set and is not.
+   */
+  surfaceRoutes: z
+    .array(z.string().max(20_000))
+    .max(8)
+    .optional()
+    .superRefine((value, ctx) => {
+      if (value === undefined) return;
+      const parsed = parseRoutes(value);
+      if (parsed) return;
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "接口路由表里有一条读不出来",
+      });
+    }),
+  /**
+   * Which configuration is in effect.
+   *
+   * `null` is accepted and means "no opinion" — the row then follows the
+   * columns that came before it, which is what every row created before this
+   * field existed should keep doing.
+   */
+  protocolMode: z.enum(["simple", "advanced", "passthrough"]).nullable().optional(),
+  /** The dialects the vendor's own API speaks. Advanced mode reads it. */
+  upstreamDialects: z
+    .array(z.enum(["chat", "responses", "anthropic", "gemini"]))
+    .max(4)
+    .optional(),
 });
 
 export async function GET(): Promise<Response> {
@@ -122,6 +155,9 @@ export async function POST(req: Request): Promise<Response> {
       anthropicMode: parsed.data.anthropicMode ?? "native",
       textSpecs: parsed.data.textSpecs ?? [],
       activeMode: parsed.data.activeMode ?? null,
+      surfaceRoutes: parsed.data.surfaceRoutes ?? [],
+      protocolMode: parsed.data.protocolMode ?? null,
+      upstreamDialects: parsed.data.upstreamDialects ?? [],
     });
     return NextResponse.json({
       ok: true,

@@ -395,8 +395,7 @@ export const ProviderSchema = z.object({
   openaiEnabled: z.boolean().default(true),
   /**
    * Whether this provider ALSO serves the Anthropic Messages surface
-   * (`/anthropic/v1/messages`, `/v1/messages`).
-   *
+   * (`/anthropic/v1/messages`, `/v1/messages`).   *
    * The two faces share the API key, model mapping and model configs — those
    * are identical for a given vendor, so configuring the same vendor twice
    * (once per protocol) is no longer necessary. Only the protocol and, usually,
@@ -458,9 +457,39 @@ export const ProviderSchema = z.object({
    * always done" — rules if it has any.
    */
   activeMode: z.enum(["simple", "advanced"]).nullable().default(null),
+  /**
+   * How each client surface reaches this provider — one entry per surface.
+   *
+   * The canonical answer to "which protocol is this row", replacing the five
+   * columns that used to answer it between them. Each entry says one of three
+   * things: not answered, passed through as it arrived, or routed to a dialect
+   * through the hub.
+   *
+   * Stored as a JSON array. Empty is read as "this row predates the table", and
+   * the columns that came before it are read instead — so a provider's traffic
+   * cannot change because a column was added.
+   */
+  surfaceRoutes: z.array(z.string()).default([]).optional(),
+  /**
+   * Which configuration is in effect.
+   *
+   * `simple` — the route table decides. `advanced` — the upstream is declared
+   * apart from the downstream, and each surface gets its own adaptation
+   * document. `passthrough` — nothing is translated at all.
+   *
+   * `null` means "this row predates the choice, keep doing what it did".
+   */
+  protocolMode: z.enum(["simple", "advanced", "passthrough"]).nullable().default(null).optional(),
+  /**
+   * The dialects the vendor's own API speaks — the upstream, declared apart
+   * from the downstream. Only advanced mode reads it; simple mode derives it
+   * from the routes.
+   */
+  upstreamDialects: z.array(z.string()).default([]).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
-});export type Provider = z.infer<typeof ProviderSchema>;
+});
+export type Provider = z.infer<typeof ProviderSchema>;
 
 export type PublicProvider = Omit<Provider, "encryptedApiKey">;
 

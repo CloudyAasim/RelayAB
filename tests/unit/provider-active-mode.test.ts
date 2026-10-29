@@ -102,9 +102,16 @@ describe("the choice is stored, not inferred on every read", () => {
     // SQL without a matching bound value is the classic way this goes wrong,
     // and both statements here are positional `?` lists.
     expect(repo, "update does not write the choice").toMatch(
-      /merged\.activeMode \?\? null,\s*\n\s*merged\.updatedAt,/,
+      // The three columns the route table added sit between this one and
+      // `updated_at` now, in both the column list and the bind list — which is
+      // the point of the assertion: the two are positional `?` lists, and a
+      // column added to the SQL without a matching bound value is the classic
+      // way this goes wrong.
+      /merged\.activeMode \?\? null,\s*\n\s*JSON\.stringify\(merged\.surfaceRoutes \?\? \[\]\),\s*\n\s*merged\.protocolMode \?\? null,\s*\n\s*JSON\.stringify\(merged\.upstreamDialects \?\? \[\]\),\s*\n\s*merged\.updatedAt,/,
     );
-    expect(repo, "the UPDATE has no column for it").toMatch(/active_mode = \?, updated_at = \?/);
+    expect(repo, "the UPDATE has no column for it").toMatch(
+      /active_mode = \?, surface_routes = \?, protocol_mode = \?,\s*\n\s*upstream_dialects = \?, updated_at = \?/,
+    );
     // And the update leaves it alone when the patch says nothing about it, so
     // renaming a provider does not silently flip which config is live.
     expect(repo).toMatch(

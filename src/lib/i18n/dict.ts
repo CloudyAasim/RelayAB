@@ -268,8 +268,7 @@ const zhCN: Dict = {
   "admin.textSpec.mode.current": "当前",
   "admin.textSpec.mode.configured": "已配置 {n} 个接口",
   "admin.textSpec.mode.brokenEntry": "这条有问题",
-  "admin.providers.faces.title": "协议面",
-  "admin.providers.faces.hint": "决定这条 Provider 响应哪些客户端接口。协议面只出现在简易模式；高级模式由每个接口各自的规则来声明。",
+
   "admin.textSpec.title": "上游协议",
   "admin.textSpec.desc": "按兼容接口分别声明：网关拿到请求参数后怎么处理。留空则原样透传——这是中转站该有的默认。",
   "admin.textSpec.none": "尚未配置：客户端传的参数原样送到上游。",
@@ -831,27 +830,26 @@ const zhCN: Dict = {
     "上游说 Anthropic Messages（/v1/messages）。OpenAI 侧的请求由网关转成 Anthropic 的形状再发出去，答案再转回来。图片会带过去（data URL 变成 base64，远程地址变成 url 源）。但 Anthropic 没有「要一段 JSON」这个模式 —— 那种请求会被拒绝（400），而不是给一段散文；它自己的做法是用带 schema 的工具。",
   "admin.providers.format.hint.gemini":
     "上游是 Google 原生 Gemini 接口。网关把请求转成 Gemini 的形状（contents / systemInstruction / generationConfig），上游答完再转回客户端要的那一套。流式回答会整段一次送到。",
-  "admin.providers.faces.openai.label": "OpenAI 侧 — /v1/chat/completions、/v1/responses",
-  "admin.providers.faces.openai.hint": "关闭后这条 Provider 不响应 /v1/chat/completions 与 /v1/responses。",
-  "admin.providers.faces.openai.translated":
-    "上游说 Anthropic Messages，OpenAI 侧没有原生的方言可选：勾上这一项表示「由网关转换」来服务 OpenAI / Responses / Gemini 客户端。流式请求照样逐块到达。",
-  "admin.providers.faces.openai.translatedGemini":
-    "上游是 Google 原生 Gemini 接口（POST /v1beta/models/<模型名>:generateContent），不是 OpenAI 兼容协议：OpenAI 侧由「网关转换」来服务。流式请求照样逐块到达。",
-  "admin.providers.faces.anthropic.label": "Anthropic Messages 侧 — /v1/messages、/anthropic/v1/messages",
-  "admin.providers.faces.anthropic.hint": "关闭后这条 Provider 不响应 /v1/messages 与 /anthropic/v1/messages。",
-  "admin.providers.faces.anthropic.baseUrl": "Anthropic 基址",
-  "admin.providers.faces.anthropic.modeLabel": "这一侧怎么服务",
-  "admin.providers.faces.anthropic.mode.native": "厂商自己的 Anthropic 端点（请求原样发过去）",
-  "admin.providers.faces.anthropic.mode.translated": "由网关转换（厂商不说 Anthropic）",
-  "admin.providers.faces.anthropic.modeHint.native":
-    "厂商自己提供 /v1/messages（基址由上面的 API 地址推导，或在这里显式填写）。请求会以 Anthropic 的形状原样发过去。",
-  "admin.providers.faces.anthropic.modeHint.translated":
-    "厂商不说 Anthropic：网关把请求转成它说的那种协议（OpenAI 兼容 / Anthropic / Gemini），答案再转回 Anthropic。适合只提供 OpenAI 兼容接口的厂商 —— 少了这一步，Anthropic 客户端（Claude Code 等）调它只会拿到 404。",
-  "admin.providers.faces.anthropic.baseUrlHint": "留空则由上面的 API 地址推导（去掉结尾的 /v1）。厂商的 Anthropic 端点与 OpenAI 不同时请显式填写：MiniMax 是 https://api.minimaxi.com/anthropic，不是 https://api.minimaxi.com/v1。",
-  "admin.providers.faces.anthropic.geminiNote":
-    "注意：Google 的基址下面没有 Anthropic 端点。这一侧只有在另外填了一个 Anthropic 基址时才会真的生效，否则 /v1/messages 不会用这一条 Provider。",
-  "admin.providers.faces.noneWarning": "两个协议面都关闭，这条 Provider 不会被任何接口使用。",
-  "admin.providers.faces.anthropicTip.endpoint": "/anthropic/v1/messages 会被转发到 <Anthropic 基址>/v1/messages",
+
+  "admin.providers.routes.anthropicBaseUrl": "Anthropic 基址",
+  "admin.providers.routes.anthropicBaseUrlHint": "留空则由上面的 API 地址推导（去掉结尾的 /v1）。厂商的 Anthropic 端点与 OpenAI 不同时请显式填写：MiniMax 是 https://api.minimaxi.com/anthropic，不是 https://api.minimaxi.com/v1。",
+
+  "admin.providers.routes.title": "接口路由",
+  "admin.providers.routes.hint":
+    "每个客户端接口单独决定怎么走：留空 = 不支持这个协议；原样透传 = 请求原样发给上游；路由到… = 由网关改写成那个协议的形状，答案再转回来。",
+  "admin.providers.routes.unsupported": "不支持",
+  "admin.providers.routes.passthrough": "原样透传",
+  "admin.providers.routes.route": "路由到",
+  "admin.providers.routes.mode.passthrough": "透传模式",
+  "admin.providers.routes.mode.passthroughBody": "所有接口原样转发，网关不做任何改写。",
+  "admin.providers.routes.passthroughNote":
+    "透传模式：每个接口都按它自己的协议原样发给上游。前提是这家厂家四种协议都会说 —— 少一种，那个接口就调不通。",
+  "admin.providers.routes.upstream.title": "上游接口",
+  "admin.providers.routes.upstream.hint":
+    "这家厂家自己的 API 会说哪几种协议。说得上的接口直接走，说不上的由网关改写 —— 声明其中一种，这条 Provider 就能连上。",
+  "admin.providers.routes.upstream.none":
+    "还没选任何协议 —— 这样这条 Provider 不会响应任何请求。",
+
   "admin.providers.syncHint": "按已保存的配置拉取；如果改了地址或 密钥，请先保存再获取",
   "admin.providers.edit": "编辑提供商",
   "admin.providers.edit.leaveBlank": "留空以保持不变",
@@ -1871,8 +1869,7 @@ const en: Dict = {
   "admin.textSpec.mode.current": "current",
   "admin.textSpec.mode.configured": "{n} interfaces configured",
   "admin.textSpec.mode.brokenEntry": "this one is wrong",
-  "admin.providers.faces.title": "Protocol faces",
-  "admin.providers.faces.hint": "Decides which client endpoints this provider answers. The face switches appear in simple mode only; advanced mode declares them through each interface's own rule.",
+
   "admin.textSpec.title": "Upstream protocols",
   "admin.textSpec.desc": "Per compatibility interface: what the gateway does with the request parameters. Left empty, everything is forwarded as sent — the right default for a relay.",
   "admin.textSpec.none": "Not configured: the client's parameters are forwarded to the upstream as sent.",
@@ -2440,27 +2437,26 @@ const en: Dict = {
     "The upstream speaks Anthropic Messages (/v1/messages). The gateway rewrites the OpenAI side's request into Anthropic's shape and the answer back. Pictures travel (a data URL becomes base64, a remote address becomes a url source). But Anthropic has no \"ask for a piece of JSON\" mode — such a request is refused (400) rather than answered with prose; its own way of asking for JSON is a tool with a schema.",
   "admin.providers.format.hint.gemini":
     "The upstream is Google's own Gemini API. The gateway rewrites the request into Gemini's shape (contents / systemInstruction / generationConfig) and the answer back into the one the client asked for. A streamed answer arrives in one piece.",
-  "admin.providers.faces.openai.label": "OpenAI side — /v1/chat/completions, /v1/responses",
-  "admin.providers.faces.openai.hint": "Turn off to stop this provider answering /v1/chat/completions and /v1/responses.",
-  "admin.providers.faces.openai.translated":
-    "The upstream speaks Anthropic Messages and the OpenAI side has no native dialect: turning it on means the gateway translates for OpenAI / Responses / Gemini clients. A streamed answer still arrives piece by piece.",
-  "admin.providers.faces.openai.translatedGemini":
-    "This upstream is Google's own Gemini API (POST /v1beta/models/<model>:generateContent), not an OpenAI-compatible one: the OpenAI side is served by the gateway translating. A streamed answer still arrives piece by piece.",
-  "admin.providers.faces.anthropic.label": "Anthropic Messages side — /v1/messages, /anthropic/v1/messages",
-  "admin.providers.faces.anthropic.hint": "Turn off to stop this provider answering /v1/messages and /anthropic/v1/messages.",
-  "admin.providers.faces.anthropic.baseUrl": "Anthropic base URL",
-  "admin.providers.faces.anthropic.modeLabel": "How this side is served",
-  "admin.providers.faces.anthropic.mode.native": "The vendor's own Anthropic endpoint (the request goes as it is)",
-  "admin.providers.faces.anthropic.mode.translated": "The gateway translates (the vendor speaks no Anthropic)",
-  "admin.providers.faces.anthropic.modeHint.native":
-    "The vendor serves /v1/messages itself (the base is derived from the API URL above, or written here). The request goes out in Anthropic's own shape.",
-  "admin.providers.faces.anthropic.modeHint.translated":
-    "The vendor speaks no Anthropic: the gateway rewrites the request into the protocol it does speak (OpenAI-compatible / Anthropic / Gemini) and the answer back into Anthropic. It is what makes a vendor with only an OpenAI-compatible API usable from an Anthropic client — without it, Claude Code and friends get a 404 from it.",
-  "admin.providers.faces.anthropic.baseUrlHint": "Leave empty to derive it from the API URL above (one trailing /v1 is stripped). Set it explicitly when the vendor's Anthropic endpoint differs from its OpenAI one: MiniMax is https://api.minimaxi.com/anthropic, not https://api.minimaxi.com/v1.",
-  "admin.providers.faces.anthropic.geminiNote":
-    "Note: Google's base has no Anthropic endpoint under it. This side only really works when a separate Anthropic base URL is given — otherwise /v1/messages will not use this provider.",
-  "admin.providers.faces.noneWarning": "Both faces are off — this provider will not be used by any endpoint.",
-  "admin.providers.faces.anthropicTip.endpoint": "/anthropic/v1/messages is forwarded to <Anthropic base>/v1/messages",
+
+  "admin.providers.routes.anthropicBaseUrl": "Anthropic base URL",
+  "admin.providers.routes.anthropicBaseUrlHint": "Leave empty to derive it from the API URL above (one trailing /v1 is stripped). Set it explicitly when the vendor's Anthropic endpoint differs from its OpenAI one: MiniMax is https://api.minimaxi.com/anthropic, not https://api.minimaxi.com/v1.",
+
+  "admin.providers.routes.title": "Interface routing",
+  "admin.providers.routes.hint":
+    "Each client interface decides for itself how it is answered: blank = this protocol is not supported; passed through = the request goes out as it arrived; routed to… = the gateway rewrites it into that dialect's shape and rewrites the answer back.",
+  "admin.providers.routes.unsupported": "Not supported",
+  "admin.providers.routes.passthrough": "Passed through",
+  "admin.providers.routes.route": "Routed to",
+  "admin.providers.routes.mode.passthrough": "Passthrough",
+  "admin.providers.routes.mode.passthroughBody": "Every interface is forwarded as it arrives, with nothing rewritten.",
+  "admin.providers.routes.passthroughNote":
+    "Passthrough: every interface goes out in its own protocol, untouched. That needs a vendor who speaks all four — with one missing, that interface cannot be reached.",
+  "admin.providers.routes.upstream.title": "Upstream interfaces",
+  "admin.providers.routes.upstream.hint":
+    "Which protocols this vendor's own API speaks. An interface it speaks is served directly; one it does not is rewritten by the gateway — declare one and this provider is reachable.",
+  "admin.providers.routes.upstream.none":
+    "No protocol declared yet — this provider would answer nothing.",
+
   "admin.providers.syncHint": "Fetches with the saved configuration; save first if you changed the URL or key",
   "admin.providers.edit": "Edit Provider",
   "admin.providers.edit.leaveBlank": "Leave blank to keep unchanged",

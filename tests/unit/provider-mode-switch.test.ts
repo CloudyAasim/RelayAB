@@ -32,7 +32,7 @@ const read = (...p: string[]) => readFileSync(join(ROOT, ...p), "utf-8");
 const EDIT = read("src", "app", "(admin)", "admin", "providers", "ProviderActions.tsx");
 const CREATE = read("src", "app", "(admin)", "admin", "providers", "CreateProviderButton.tsx");
 const PAGE = read("src", "app", "(admin)", "admin", "providers", "page.tsx");
-const FIELD = read("src", "app", "(admin)", "admin", "providers", "ProviderFacesField.tsx");
+const ROUTES = read("src", "app", "(admin)", "admin", "providers", "ProviderSurfaceRoutes.tsx");
 const MODE = read("src", "app", "(admin)", "admin", "providers", "ProviderModeSwitch.tsx");
 /**
  * The two modals stopped spelling the form out in the refactor: they render
@@ -56,62 +56,55 @@ const ANTHROPIC = read("src", "lib", "proxy", "anthropic.ts");
 const spec = (protocol: string) => JSON.stringify(protocolPreset(protocol as never));
 
 describe("which interfaces are on is the simple mode's business", () => {
-  it("both checkboxes are independent, so one provider can serve both", () => {
-    // This predates the two modes and is the actual answer to "can one provider
-    // take OpenAI-compatible and Anthropic calls": one row, two faces, one key
-    // and one model table shared between them.
+  it("each surface decides for itself, so one provider can serve several", () => {
+    // This predates the modes and is the actual answer to "can one provider
+    // take OpenAI-compatible and Anthropic calls": one row, one key and one
+    // model table shared between them.
     //
-    // The OpenAI side used to be forced off for an Anthropic vendor
-    // (`value.openaiEnabled && !legacyAnthropicOnly`), which made the checkbox a
-    // control that could not be moved: ticking it changed the stored flag and
-    // nothing else. Now the two are genuinely independent, and for an
-    // Anthropic vendor the OpenAI side means "the gateway translates" — the
-    // only way a Claude model is reachable from an OpenAI client.
-    const FACES = read("src", "app", "(admin)", "admin", "providers", "ProviderFacesField.tsx");
-    expect(FACES).toMatch(/openaiEnabled: boolean;/);
-    expect(FACES).toMatch(/anthropicEnabled: boolean;/);
-    expect(FACES).toMatch(/const openaiOn = value\.openaiEnabled;/);
-    expect(FACES).not.toMatch(/!legacyAnthropicOnly/);
-    // And the panel says what turning it on means for such a vendor, rather
-    // than offering a format dropdown whose choice would be ignored.
-    expect(FACES).toMatch(/admin\.providers\.faces\.openai\.translated/);
-    // "Neither on" is warned about, which is only worth doing because "both on"
-    // is legitimate.
-    expect(FACES).toMatch(/admin\.providers\.faces\.noneWarning/);
+    // It used to be two checkboxes, and the two could not disagree about the
+    // dialect: one "OpenAI side" spoke one dialect for three surfaces. So a
+    // vendor publishing both `/v1/chat/completions` and `/v1/responses` could
+    // not serve one natively and the other by translation — there was nowhere
+    // to say so.
+    //
+    // Now each surface says it, and the three answers are all available:
+    // not answered, passed through as it arrived, or routed to a dialect.
+    expect(ROUTES).toMatch(/const DIALECTS: readonly Dialect\[\] = \["chat", "responses", "anthropic", "gemini"\]/);
+    for (const value of ["chat", "responses", "anthropic", "gemini"]) {
+      expect(ROUTES, `the ${value} dialect is not on offer`).toContain(`"${value}"`);
+    }
+    // And the three answers, each with the wording the operator needs.
+    expect(ROUTES).toContain("admin.providers.routes.unsupported");
+    expect(ROUTES).toContain("admin.providers.routes.passthrough");
+    expect(ROUTES).toContain("admin.providers.routes.route");
   });
 
-  it("the dialect can be chosen unless the vendor type already says it", () => {
-    // A row typed "anthropic" speaks Anthropic, and the vendor type is what
-    // says so — a dropdown there would be a second place to say the same
-    // thing, and the two would drift.
-    //
-    // Every other row can be moved off whatever it was. That matters for the
-    // rows whose stored dialect reads "anthropic" while their type says
-    // something else: with the dropdown hidden they would be stuck there for
-    // good, with no way out of it.
-    const FACES = read("src", "app", "(admin)", "admin", "providers", "ProviderFacesField.tsx");
-    expect(FACES).toMatch(/const chooseDialect = kind !== "anthropic";/);
-    expect(FACES).toMatch(/openaiOn && chooseDialect/);
-    // And all four dialects are on offer: Responses, Chat, Anthropic Messages
-    // and Google's Gemini.
-    for (const value of ["responses", "chat", "anthropic", "gemini"]) {
-      expect(FACES, `the ${value} dialect is not on offer`).toMatch(
-        new RegExp(`<option value="${value}">`),
-      );
-    }
+  it("and the surfaces it offers are the ones the gateway serves", () => {
+    expect(SURFACES.map((s) => s.id)).toEqual([
+      "openai-chat",
+      "openai-responses",
+      "anthropic-messages",
+      "gemini-generate",
+    ]);
+    // The rows are rendered from that list, so a surface the gateway serves is
+    // a row the operator can fill in.
+    expect(ROUTES).toMatch(/SURFACES\.map\(/);
   });
 
   it("advanced mode does not render it, so nothing on screen can contradict it", () => {
-    // The two blocks are alternatives, not halves of one form. Rendering them
+    // The blocks are alternatives, not halves of one form. Rendering them
     // together is what let a switch say a set was off beside a list offering to
     // configure the same set; a branch makes that arrangement impossible.
     //
-    // Boundary-aware: `indexOf("<ProviderFacesField")` also finds
-    // `<ProviderFacesFieldGone`, so renaming the tag to hide it would sail
+    // Boundary-aware: `indexOf("<ProviderSurfaceRoutes")` also finds
+    // `<ProviderSurfaceRoutesGone`, so renaming the tag to hide it would sail
     // straight past a plain substring search.
     const at = (src: string, tag: string) => src.search(new RegExp(`${tag}[\\s>]`));
     expect(FORM, "the mode branch is gone").toMatch(
-      /mode === "simple" \?[\s\S]{0,240}<ProviderInterfacesList/,
+      /protocolMode === "simple"[\s\S]{0,240}<ProviderSurfaceRoutes/,
+    );
+    expect(FORM, "the advanced branch is gone").toMatch(
+      /protocolMode === "advanced"[\s\S]{0,400}<ProviderInterfacesList/,
     );
     expect(at(FORM, "<ProviderModeSwitch"), "no mode switch").toBeGreaterThan(-1);
 
@@ -119,18 +112,19 @@ describe("which interfaces are on is the simple mode's business", () => {
       expect(src, "this modal does not render the shared form").toMatch(/<ProviderForm\b/);
       // Neither block is re-introduced at the modal level, which is how they
       // drifted apart the first time.
-      expect(at(src, "<ProviderFacesField"), "a modal keeps its own face block").toBe(-1);
+      expect(at(src, "<ProviderSurfaceRoutes"), "a modal keeps its own route block").toBe(-1);
       expect(at(src, "<ProviderInterfacesList"), "a modal keeps its own rules list").toBe(-1);
     }
   });
 
-  it("and the flags are saved whichever mode is open", () => {
-    // They are columns the proxy routes on and cannot be derived from the rules:
-    // a provider can serve Chat Completions with no rule at all. So advanced mode
-    // leaves them exactly as simple mode set them.
+  it("and the face flags are a summary of it, saved whichever mode is open", () => {
+    // They are still columns the proxy routes on — the endpoints that are not
+    // text generation read them, and they have no per-surface table of their
+    // own — so they are written from the routes rather than left behind.
     const payload = read("src", "lib", "admin", "provider-payload.ts");
-    expect(payload).toMatch(/openaiEnabled: faces\.openaiEnabled/);
-    expect(payload).toMatch(/anthropicEnabled: faces\.anthropicEnabled/);
+    expect(payload).toMatch(/openaiEnabled: derived\.openaiEnabled/);
+    expect(payload).toMatch(/anthropicEnabled: derived\.anthropicEnabled/);
+    expect(payload).toMatch(/export function facesFromRoutes/);
   });
 });
 
@@ -142,8 +136,10 @@ describe("the two modes are exclusive, and say so", () => {
       expect(src).toMatch(/<ProviderForm\b/);
     }
     expect(FORM).toContain("ProviderModeSwitch");
-    expect(FORM).toContain("ProviderFacesField");
+    expect(FORM).toContain("ProviderSurfaceRoutes");
     expect(FORM).toContain("ProviderInterfacesList");
+    // And the third configuration: everything passed through untouched.
+    expect(FORM).toContain("protocolMode === \"passthrough\"");
   });
 
   it("as cards with a written state, not a pressed tint", () => {
@@ -295,11 +291,11 @@ describe("the modes configure different fields of the same row", () => {
     // was the name, base URL, API key and the entire model table. The name of
     // this test was right and its assertion enforced the bug.
     //
-    // The branch wraps *one block*, not the form: simple renders the face
-    // switches, advanced renders the rules. The fields are outside it, so
+    // The branch wraps *one block*, not the form: simple renders the route
+    // table, advanced renders the rules. The fields are outside it, so
     // neither mode can hide the API key.
     expect(FORM).toMatch(
-      /mode === "simple" \?[\s\S]{0,240}<ProviderInterfacesList[\s\S]{0,80}\}/,
+      /protocolMode === "simple"[\s\S]{0,240}<ProviderSurfaceRoutes/,
     );
     for (const field of ["admin.providers.create.apiKey", "admin.providers.create.baseUrl"]) {
       expect(FORM, `the ${field} field is not rendered by the form`).toContain(field);
@@ -384,7 +380,12 @@ describe("the endpoint refuses an invalid spec on both verbs", () => {
     // so a create answered 200 with nothing stored.
     expect(API_POST).toMatch(/textSpecs: parsed\.data\.textSpecs \?\? \[\]/);
     expect(DB).toMatch(/textSpecs: input\.textSpecs \?\? \[\],/);
-    expect(DB).toMatch(/anthropic_base_url, anthropic_mode,\n\s+text_specs, active_mode, created_at, updated_at\)/);
+    // The column list grew when the route table arrived (surface_routes,
+    // protocol_mode, upstream_dialects); the order and the names around it are
+    // what this assertion is about.
+    expect(DB).toMatch(
+      /anthropic_base_url, anthropic_mode,\n\s+text_specs, active_mode, surface_routes, protocol_mode,\n\s+upstream_dialects, created_at, updated_at\)/,
+    );
     expect(DB).toMatch(/anthropic_enabled = \?, anthropic_base_url = \?, anthropic_mode = \?,\s+text_specs = \?/);
     // The old column is read, never written: it would make the value list and
     // the column list disagree, and `updated_at` would go in as undefined.

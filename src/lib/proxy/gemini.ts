@@ -224,6 +224,10 @@ export async function proxyGeminiGenerate(args: {
     user,
     signal,
     deps,
+    // The Gemini surface is its own surface: which providers may answer it and
+    // which dialect the answer comes back in are both read from the row's
+    // route for **this** surface.
+    surface: "gemini-generate",
   });
 
   if (!result.ok) return result;

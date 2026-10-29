@@ -90,6 +90,19 @@ export interface CreateProviderInput {
    * `activeModeOf` reads an absent value as advanced-when-there-are-rules.
    */
   activeMode?: "simple" | "advanced" | null;
+  /**
+   * How each client surface reaches this provider — one entry per surface.
+   * Empty means "this row predates the table", and the older columns are read
+   * instead.
+   */
+  surfaceRoutes?: string[];
+  /**
+   * Which configuration is in effect. Omitted means "whatever it has always
+   * done".
+   */
+  protocolMode?: "simple" | "advanced" | "passthrough" | null;
+  /** The dialects the vendor's own API speaks. Advanced mode reads it. */
+  upstreamDialects?: string[];
 }
 
 export interface UpdateProviderInput {
@@ -120,6 +133,20 @@ export interface UpdateProviderInput {
    * which is what a row written before the field existed reads as.
    */
   activeMode?: "simple" | "advanced" | null;
+  /**
+   * How each client surface reaches this provider — one entry per surface.
+   * Empty means "this row predates the table", and the older columns are read
+   * instead.
+   */
+  surfaceRoutes?: string[];
+  /**
+   * Which configuration is in effect. `undefined` leaves the stored choice
+   * alone; an explicit `null` hands the row back to "whatever it has always
+   * done".
+   */
+  protocolMode?: "simple" | "advanced" | "passthrough" | null;
+  /** The dialects the vendor's own API speaks. Advanced mode reads it. */
+  upstreamDialects?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -154,6 +181,9 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
     anthropicMode: input.anthropicMode ?? "native",
     textSpecs: input.textSpecs ?? [],
     activeMode: input.activeMode ?? null,
+    surfaceRoutes: input.surfaceRoutes ?? [],
+    protocolMode: input.protocolMode ?? null,
+    upstreamDialects: input.upstreamDialects ?? [],
     createdAt: now,
     updatedAt: now,
   });
@@ -167,8 +197,9 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
        (id, name, kind, base_url, encrypted_api_key, model_mapping,
         model_configs, enabled, priority, headers, upstream_format,
         openai_enabled, anthropic_enabled, anthropic_base_url, anthropic_mode,
-        text_specs, active_mode, created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        text_specs, active_mode, surface_routes, protocol_mode,
+        upstream_dialects, created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       provider.id,
       provider.name,
@@ -191,6 +222,9 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
       provider.anthropicMode,
       JSON.stringify(provider.textSpecs ?? []),
       provider.activeMode ?? null,
+      JSON.stringify(provider.surfaceRoutes ?? []),
+      provider.protocolMode ?? null,
+      JSON.stringify(provider.upstreamDialects ?? []),
       provider.createdAt,
       provider.updatedAt,
     ],
@@ -361,6 +395,17 @@ export async function updateProvider(
       // `undefined` leaves the choice as it is, which is how a PATCH that only
       // touches the name does not silently reset it.
       activeMode: patch.activeMode === undefined ? existing.activeMode : patch.activeMode,
+      // The same rule for the three newer columns: `undefined` leaves them as
+      // they are, and an explicit empty list is the operator saying "no route
+      // table" — which is a different statement from "not configured yet".
+      surfaceRoutes:
+        patch.surfaceRoutes === undefined ? existing.surfaceRoutes ?? [] : patch.surfaceRoutes,
+      protocolMode:
+        patch.protocolMode === undefined ? existing.protocolMode : patch.protocolMode,
+      upstreamDialects:
+        patch.upstreamDialects === undefined
+          ? existing.upstreamDialects ?? []
+          : patch.upstreamDialects,
       updatedAt: new Date().toISOString(),
     });
 
@@ -373,7 +418,8 @@ export async function updateProvider(
          model_mapping = ?, model_configs = ?, enabled = ?, priority = ?,
          headers = ?, upstream_format = ?, openai_enabled = ?,
          anthropic_enabled = ?, anthropic_base_url = ?, anthropic_mode = ?,
-         text_specs = ?, active_mode = ?, updated_at = ?
+         text_specs = ?, active_mode = ?, surface_routes = ?, protocol_mode = ?,
+         upstream_dialects = ?, updated_at = ?
        WHERE id = ?`,
       [
         merged.name,
@@ -392,6 +438,9 @@ export async function updateProvider(
         merged.anthropicMode,
         JSON.stringify(merged.textSpecs ?? []),
         merged.activeMode ?? null,
+        JSON.stringify(merged.surfaceRoutes ?? []),
+        merged.protocolMode ?? null,
+        JSON.stringify(merged.upstreamDialects ?? []),
         merged.updatedAt,
         id,
       ],

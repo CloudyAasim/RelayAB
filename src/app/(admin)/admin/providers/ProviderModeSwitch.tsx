@@ -22,13 +22,18 @@ export function ProviderModeSwitch({
   onChange,
   interfaceCount,
 }: {
-  mode: "simple" | "advanced";
-  onChange: (mode: "simple" | "advanced") => void;
+  mode: "simple" | "advanced" | "passthrough";
+  onChange: (mode: "simple" | "advanced" | "passthrough") => void;
   /** How many interfaces have a rule written, for the advanced card. */
   interfaceCount: number;
 }) {
   const t = useT();
-  const card = (id: "simple" | "advanced", title: string, body: string, badge: string | null) => {
+  const card = (
+    id: "simple" | "advanced" | "passthrough",
+    title: string,
+    body: string,
+    badge: string | null,
+  ) => {
     const on = mode === id;
     return (
       <button
@@ -83,6 +88,12 @@ export function ProviderModeSwitch({
             : interfaceCount > 0
               ? t("admin.textSpec.mode.configured", { n: interfaceCount })
               : null,
+        )}
+        {card(
+          "passthrough",
+          t("admin.providers.routes.mode.passthrough"),
+          t("admin.providers.routes.mode.passthroughBody"),
+          mode === "passthrough" ? t("admin.textSpec.mode.current") : null,
         )}
       </div>
     </div>

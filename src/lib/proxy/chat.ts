@@ -12,6 +12,7 @@ import { checkKeyStatus, reasonToHttp } from "../auth/apikey";
 import { shouldRejectBeforeRequest } from "../quota/calculator";
 import { findProvidersForModel } from "../db/providers";
 import { providerFaces, type ApiKey, type Provider, type User } from "../db/types";
+import { dialectForSurface, servesSurface } from "../protocol/surface-routes";
 import { sseRewrite } from "./stream-tap";
 import { chatFrameMapper } from "../protocol/stream-frames";
 import type { ChatCompletionRequest, ProxyDeps, ProxyResult } from "./types";
@@ -89,14 +90,15 @@ export async function proxyChatCompletion(args: {
     return { ok: false, status: http.status, error: { code: http.code, message: http.message } };
   }
 
-  // 2. Pick a provider that supports this model.
-  // A provider whose upstream speaks something other than Chat Completions
-  // cannot accept a Chat Completions body, so it is eligible for the
-  // /anthropic endpoint and for the other surfaces **by translation**, which
-  // is handled further down.
+  // 2. Pick a provider that supports this model **and answers this surface**.
+  //
+  // The route table decides both: a provider that does not answer
+  // `/v1/chat/completions` is not a candidate for it, whatever the model
+  // mapping says — and a provider whose upstream speaks something other than
+  // Chat Completions is reached by translation, which is handled further down.
   const providers = args.provider
     ? [args.provider]
-    : (await findProvidersForModel(req.model)).filter((p) => providerFaces(p).openai !== null);
+    : (await findProvidersForModel(req.model)).filter((p) => servesSurface(p, "openai-chat"));
   if (providers.length === 0) {
     return {
       ok: false,
@@ -134,21 +136,20 @@ export async function proxyChatCompletion(args: {
    * sent straight to an Anthropic or Gemini endpoint would be refused by the
    * upstream.
    *
-   * A **Responses** upstream is deliberately not in this list. It has a
-   * `/chat/completions` endpoint or it has not, and which one is the
-   * operator's configuration to make: the Chat face has always posted a Chat
-   * Completions body there, and switching it to the Responses endpoint would
-   * change which endpoint a working deployment uses — and cost it the
-   * incremental stream it has today.
+   * Which dialect it is comes from the row's route for **this** surface, so a
+   * vendor that publishes both `/v1/chat/completions` and `/v1/responses` can
+   * serve the one natively and the other by translation — which a single
+   * "upstream format" could never say.
    */
-  const dialect = providerFaces(provider).openai?.format;
-  if (dialect === "anthropic" || dialect === "gemini") {
+  const dialect = dialectForSurface(provider, "openai-chat");
+  if (dialect && dialect !== "chat") {
     const viaPivot = await proxyOpenAIResponse({
       req: chatToResponsesRequest(chatReq) as Parameters<typeof proxyOpenAIResponse>[0]["req"],
       apiKey,
       user,
       signal,
       deps,
+      surface: "openai-chat",
     });
     if (!viaPivot.ok) {
       return { ok: false, status: viaPivot.status, error: viaPivot.error };

@@ -119,6 +119,9 @@ CREATE TABLE IF NOT EXISTS providers (
   anthropic_base_url TEXT,
   text_specs         TEXT,
   active_mode        TEXT,
+  surface_routes     TEXT,
+  protocol_mode      TEXT,
+  upstream_dialects  TEXT,
   created_at         TEXT NOT NULL,
   updated_at         TEXT NOT NULL
 );
@@ -623,6 +626,20 @@ const ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; type: string
   // matters, because the other mode is a different thing entirely rather than
   // a newer spelling of the same one.
   { table: "providers", column: "anthropic_mode", type: "TEXT NOT NULL DEFAULT 'native'" },
+  // How each client surface reaches this provider: one entry per surface, each
+  // saying "not answered", "passed through as it arrived" or "routed to a
+  // dialect". Null means "this row predates the table", and the columns that
+  // came before it are read instead — so upgrading cannot change a provider's
+  // traffic, only what the editor writes from now on.
+  { table: "providers", column: "surface_routes", type: "TEXT" },
+  // Which configuration is in effect: `simple` (the route table decides), or
+  // `advanced` (the upstream is declared apart from the downstream and each
+  // surface gets its own adaptation document). Null means "this row predates the
+  // choice, keep doing what it did".
+  { table: "providers", column: "protocol_mode", type: "TEXT" },
+  // The dialects the vendor's own API speaks — the upstream, declared apart
+  // from the downstream. Only advanced mode reads it.
+  { table: "providers", column: "upstream_dialects", type: "TEXT" },
   // What the upstream served from, and wrote into, its own prompt cache. Two
   // columns rather than one because they are opposite events that look alike in
   // a usage table, and because only the read is a discount. Nullable so "this
@@ -880,6 +897,19 @@ export function rowToProvider(row: Record<string, unknown>): Provider {
     // what it was doing before the column existed.
     anthropicMode:
       row.anthropic_mode === "translated" ? "translated" : ("native" as const),
+    // The route table: one entry per client surface. Null on a row written
+    // before it existed, and the columns that came before it are read instead —
+    // so a provider's traffic does not change because a column was added.
+    surfaceRoutes: parseJson<string[]>(String(row.surface_routes ?? "[]"), []),
+    // Which configuration is in effect. Null means "this row predates the
+    // choice", which is not the same statement as `simple` and must not be
+    // back-filled to it.
+    protocolMode:
+      row.protocol_mode === "advanced" || row.protocol_mode === "passthrough"
+        ? row.protocol_mode
+        : null,
+    // The dialects the vendor's own API speaks.
+    upstreamDialects: parseJson<string[]>(String(row.upstream_dialects ?? "[]"), []),
     // A row written before the list existed holds one document. Folded into a
     // one-entry list here, at the boundary, so nothing downstream needs to know
     // the old shape ever existed — and `ADD COLUMN` cannot drop the column, so
