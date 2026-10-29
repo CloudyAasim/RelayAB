@@ -27,6 +27,14 @@ interface ChatMessage {
   content?: ChatContent;
   tool_calls?: ChatToolCall[];
   tool_call_id?: string;
+  /**
+   * What the model thought, when the protocol says it has to be sent back.
+   *
+   * MiniMax puts it in `content` (inside `<think>` tags), DeepSeek and the
+   * other OpenAI-compatible vendors put it in this field. Both read it from
+   * either place, so this is where it goes.
+   */
+  reasoning_content?: string;
   [k: string]: unknown;
 }
 
@@ -127,16 +135,62 @@ function responsesContentToChatContent(content: unknown): ChatContent {
 }
 
 /**
+ * The thinking a Responses client sent back, as plain text.
+ *
+ * A client that is told to echo the assistant's reasoning does so, and the
+ * item carries it in whichever shape its vendor uses: a `reasoning_text`
+ * string, a `content` array of `reasoning_text` blocks, or a `summary` array.
+ * All of them are read, because the one thing worse than not understanding a
+ * vendor's spelling is understanding only one of them.
+ *
+ * Empty when the item carries no readable text — an encrypted reasoning blob
+ * is not something this gateway can replay, and sending an empty string would
+ * be worse than sending nothing.
+ */
+function reasoningTextOf(item: Record<string, unknown>): string {
+  const direct = item.reasoning_text ?? item.reasoning;
+  if (typeof direct === "string" && direct.trim()) return direct;
+  if (typeof item.content === "string" && item.content.trim()) return item.content;
+
+  const parts: string[] = [];
+  for (const field of [item.content, item.summary]) {
+    if (!Array.isArray(field)) continue;
+    for (const block of field) {
+      if (!block || typeof block !== "object") continue;
+      const text = (block as Record<string, unknown>).text;
+      if (typeof text === "string" && text) parts.push(text);
+    }
+  }
+  return parts.join("");
+}
+
+/**
  * Convert a Responses `input` value into a Chat Completions `messages` array.
  *
  * Handles the item types a Responses client actually sends:
  *   - plain strings, `{ role, content }` and `{ type: "message", … }`
  *   - `function_call`        → assistant message carrying `tool_calls`
  *   - `function_call_output` → `role: "tool"` message
- *   - `reasoning`            → dropped (server-side state, nothing to replay)
+ *   - `reasoning`            → the assistant's thinking, carried across
+ *
+ * The reasoning used to be dropped here, on the grounds that it was "server-side
+ * state, nothing to replay". That is exactly backwards for the vendors that
+ * require it: DeepSeek refuses the continuation outright ("The `reasoning_text`
+ * in the thinking mode must be passed back to the API"), and MiniMax says the
+ * thinking has to be kept or the model's performance suffers. A gateway that
+ * drops it on the way through breaks the conversation it was built to carry.
+ *
+ * So the text is read out of the item and hung on the assistant message that
+ * follows it — which is where the vendor expects to find it.
  */
 function responsesInputToChatMessages(input: unknown): ChatMessage[] {
   const messages: ChatMessage[] = [];
+  /**
+   * The thinking waiting for the assistant turn it belongs to. A Responses
+   * `input` puts the reasoning item immediately before the assistant's own
+   * item, so it is read one step ahead and attached when that item arrives.
+   */
+  let pendingReasoning = "";
 
   const pushMessage = (
     role: string,
@@ -145,9 +199,14 @@ function responsesInputToChatMessages(input: unknown): ChatMessage[] {
   ): void => {
     const mapped = responsesContentToChatContent(content);
     const hasContent = !(typeof mapped === "string" && mapped.length === 0);
-    if (!hasContent && !extra.tool_calls) return;
+    const reasoning = role === "assistant" ? pendingReasoning : "";
+    // A user turn ends the pairing: reasoning that arrives before one belongs
+    // to a turn that is no longer in the window.
+    pendingReasoning = "";
+    if (!hasContent && !extra.tool_calls && !reasoning) return;
     const message: ChatMessage = { role, ...extra };
     if (hasContent) message.content = mapped;
+    if (reasoning) message.reasoning_content = reasoning;
     messages.push(message);
   };
 
@@ -164,7 +223,10 @@ function responsesInputToChatMessages(input: unknown): ChatMessage[] {
     const it = item as Record<string, unknown>;
     const type = typeof it.type === "string" ? it.type : "";
 
-    if (type === "reasoning") return;
+    if (type === "reasoning") {
+      pendingReasoning = reasoningTextOf(it);
+      return;
+    }
 
     if (type === "function_call") {
       const callId = String(it.call_id ?? it.id ?? `call_${messages.length}`);
@@ -423,7 +485,7 @@ export function chatToResponsesResponse(
   originalReq: ResponseAPIRequest,
 ): Record<string, unknown> {
   const message = chatResp.choices?.[0]?.message as
-    | { role?: string; content?: unknown; tool_calls?: unknown }
+    | { role?: string; content?: unknown; tool_calls?: unknown; reasoning_content?: unknown }
     | undefined;
   const text = typeof message?.content === "string" ? message.content : "";
   const id = chatResp.id ?? `resp_${Date.now()}`;
@@ -435,6 +497,29 @@ export function chatToResponsesResponse(
   // `function_call` items, otherwise the client's agent loop has nothing to
   // execute and the conversation stalls after the first turn.
   const output: unknown[] = [];
+
+  /**
+   * The thinking, as a Responses `reasoning` item.
+   *
+   * It goes first because that is where the protocol puts it, and because a
+   * client that is going to echo it back has to find it in the same place the
+   * vendor's own Responses API would have put it.
+   *
+   * Without this the client never learns what the model thought, so it cannot
+   * send it back, so the next turn is a continuation without the reasoning —
+   * which is what DeepSeek refuses and what MiniMax says costs the model
+   * performance. The gateway has to carry it across the boundary.
+   */
+  const reasoning = typeof message?.reasoning_content === "string" ? message.reasoning_content : "";
+  if (reasoning) {
+    output.push({
+      id: `rs_${id}`,
+      type: "reasoning",
+      summary: [],
+      content: [{ type: "reasoning_text", text: reasoning }],
+    });
+  }
+
   const rawToolCalls = Array.isArray(message?.tool_calls) ? message.tool_calls : [];
   for (const call of rawToolCalls) {
     if (!call || typeof call !== "object") continue;

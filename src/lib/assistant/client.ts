@@ -44,6 +44,15 @@ export interface ChatMessage {
    * difference from what every other message here has always sent.
    */
   content: string | ContentPart[];
+  /**
+   * What the model thought, when the upstream asks for it to be sent back.
+   *
+   * MiniMax says the thinking has to be kept or the model's performance
+   * suffers; DeepSeek refuses the continuation without it. The upstream's own
+   * reply is where it comes from, and it is replayed on the assistant turn it
+   * belongs to — never dropped, and never invented.
+   */
+  reasoning_content?: string;
   tool_calls?: Array<{ id: string; type: "function"; function: { name: string; arguments: string } }>;
   tool_call_id?: string;
   name?: string;

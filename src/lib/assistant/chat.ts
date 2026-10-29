@@ -979,8 +979,12 @@ const MAX_INLINE_BYTES = 16 * 1024 * 1024;
  * assistant call whose results are not in the window goes, and a result whose
  * call is not in the window goes. Both halves or neither, which is what the
  * protocol actually requires.
+ *
+ * Exported so the guard can call it: this is the one function whose whole job
+ * is "what does the model see", and reading it off the source would only prove
+ * that the source says so.
  */
-async function toWireMessages(
+export async function toWireMessages(
   rows: Awaited<ReturnType<typeof listAssistantMessages>>,
   userId: string,
   locale?: Locale,
@@ -1000,6 +1004,14 @@ async function toWireMessages(
       withTools.push({
         role: "assistant",
         content: row.content,
+        // The thinking goes back with the turn it belongs to. It was kept in
+        // the transcript all along (`assistant_messages.reasoning`) and shown
+        // on screen; what it was not is *sent* — so the model read its own
+        // history as if it had never thought about any of it. MiniMax puts the
+        // thinking in `content` (inside `<think>` tags) and DeepSeek and the
+        // other OpenAI-compatible vendors put it in `reasoning_content`; both
+        // read it from either place.
+        ...(row.reasoning ? { reasoning_content: row.reasoning } : {}),
         tool_calls: row.toolCalls.map((c) => ({
           id: c.id,
           type: "function" as const,
@@ -1011,7 +1023,15 @@ async function toWireMessages(
     withTools.push(
       row.attachments.length
         ? { role: row.role, content: await withAttachments(row, userId, locale) }
-        : { role: row.role, content: row.content },
+        : {
+            role: row.role,
+            content: row.content,
+            // Same reasoning, on the turns that answered without a tool call:
+            // an interleaved-thinking model needs it there too.
+            ...(row.role === "assistant" && row.reasoning
+              ? { reasoning_content: row.reasoning }
+              : {}),
+          },
     );
   }
 

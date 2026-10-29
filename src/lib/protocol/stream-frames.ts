@@ -37,6 +37,14 @@
 export interface StreamFacts {
   /** The text this frame delivers, if any. */
   text?: string;
+  /**
+   * The thinking this frame delivers, if any.
+   *
+   * A frame can carry the model's reasoning separately from its answer, and
+   * for the vendors that require it the reasoning has to reach the client —
+   * otherwise the client has nothing to echo back on the next turn.
+   */
+  reasoning?: string;
   /** The input tokens this frame reports, if any. */
   inputTokens?: number;
   /** The output tokens this frame reports, if any. */
@@ -79,6 +87,10 @@ export function readStreamFacts(payload: unknown): StreamFacts {
     if (typeof root.delta === "string") facts.text = root.delta;
     return facts;
   }
+  if (type === "response.reasoning_text.delta") {
+    if (typeof root.delta === "string") facts.reasoning = root.delta;
+    return facts;
+  }
   if (type === "response.completed") {
     const response = asRecord(root.response);
     const usage = asRecord(response?.usage);
@@ -98,6 +110,9 @@ export function readStreamFacts(payload: unknown): StreamFacts {
     const first = asRecord(choices[0]);
     const delta = asRecord(first?.delta);
     if (typeof delta?.content === "string" && delta.content) facts.text = delta.content;
+    // The thinking, in whichever of the two spellings the vendor used.
+    const thinking = delta?.reasoning_content ?? delta?.reasoning;
+    if (typeof thinking === "string" && thinking) facts.reasoning = thinking;
     if (first?.finish_reason) facts.end = true;
     const usage = asRecord(root.usage);
     if (usage) {
@@ -236,12 +251,34 @@ export function pivotFrameMapper(model?: string): {
       if (facts.id) state.id = facts.id;
       if (facts.model) state.model = facts.model;
 
-      if (!facts.text) return null;
-      const delta = {
-        type: "response.output_text.delta",
-        delta: facts.text,
-      };
-      return [`event: response.output_text.delta`, `data: ${JSON.stringify(delta)}`];
+      if (!facts.text && !facts.reasoning) return null;
+
+      const out: string[] = [];
+      if (facts.reasoning) {
+        /**
+         * The thinking, in Responses' own vocabulary.
+         *
+         * A client that has to echo the reasoning back cannot do it if the
+         * reasoning never reached it — so the stream carries it, in the event
+         * type the Responses API uses for it.
+         */
+        const reasoningDelta = {
+          type: "response.reasoning_text.delta",
+          delta: facts.reasoning,
+        };
+        out.push(
+          `event: response.reasoning_text.delta`,
+          `data: ${JSON.stringify(reasoningDelta)}`,
+        );
+      }
+      if (facts.text) {
+        const delta = {
+          type: "response.output_text.delta",
+          delta: facts.text,
+        };
+        out.push(`event: response.output_text.delta`, `data: ${JSON.stringify(delta)}`);
+      }
+      return out;
     },
 
     onEnd(): string[] {
@@ -329,6 +366,10 @@ export function chatFrameMapper(model?: string): {
       const type = typeof parsed.type === "string" ? parsed.type : "";
       if (type === "response.output_text.delta" && typeof parsed.delta === "string") {
         return chunk({ content: parsed.delta }, null);
+      }
+      // The thinking, carried across so a Chat client can echo it back.
+      if (type === "response.reasoning_text.delta" && typeof parsed.delta === "string") {
+        return chunk({ reasoning_content: parsed.delta }, null);
       }
       if (type === "response.completed") {
         const response = asRecord(parsed.response);
