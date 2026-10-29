@@ -44,8 +44,8 @@ export function ProviderSurfaceRoutes({
   routes: SurfaceRoutes;
   onChange: (next: SurfaceRoutes) => void;
   /** The vendor's own `/v1/messages` address, when the Anthropic surface is native. */
-  anthropicBaseUrl?: string;
-  onAnthropicBaseUrlChange?: (next: string) => void;
+  anthropicBaseUrl: string;
+  onAnthropicBaseUrlChange: (next: string) => void;
   className?: string;
 }) {
   const t = useT();
@@ -132,21 +132,19 @@ export function ProviderSurfaceRoutes({
                 rewritten, so that is the only case where the address differs
                 from the API address above it.
               */}
-              {surface.id === "anthropic-messages" &&
-                route.kind === "passthrough" &&
-                onAnthropicBaseUrlChange && (
-                  <div className="mt-2 pl-1">
-                    <Input
-                      label={t("admin.providers.routes.anthropicBaseUrl")}
-                      value={anthropicBaseUrl ?? ""}
-                      onChange={(e) => onAnthropicBaseUrlChange(e.target.value)}
-                      placeholder="https://api.agnes-ai.cn"
-                    />
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {t("admin.providers.routes.anthropicBaseUrlHint")}
-                    </p>
-                  </div>
-                )}
+              {surface.id === "anthropic-messages" && route.kind === "passthrough" && (
+                <div className="mt-2 pl-1">
+                  <Input
+                    label={t("admin.providers.routes.anthropicBaseUrl")}
+                    value={anthropicBaseUrl ?? ""}
+                    onChange={(e) => onAnthropicBaseUrlChange(e.target.value)}
+                    placeholder="https://api.agnes-ai.cn"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {t("admin.providers.routes.anthropicBaseUrlHint")}
+                  </p>
+                </div>
+              )}
             </div>
           );
         })}
