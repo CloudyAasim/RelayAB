@@ -26,6 +26,8 @@
  * writes frames.
  */
 
+import { geminiOutputTokens } from "./gemini";
+
 /**
  * What one frame carries, whichever dialect it came from.
  *
@@ -173,7 +175,7 @@ export function readStreamFacts(payload: unknown): StreamFacts {
     const meta = asRecord(root.usageMetadata);
     if (meta) {
       facts.inputTokens = num(meta.promptTokenCount);
-      facts.outputTokens = num(meta.candidatesTokenCount);
+      facts.outputTokens = geminiOutputTokens(meta);
     }
     if (typeof root.responseId === "string") facts.id = root.responseId;
     if (typeof root.modelVersion === "string") facts.model = root.modelVersion;
@@ -182,7 +184,7 @@ export function readStreamFacts(payload: unknown): StreamFacts {
   const meta = asRecord(root.usageMetadata);
   if (meta) {
     facts.inputTokens = num(meta.promptTokenCount);
-    facts.outputTokens = num(meta.candidatesTokenCount);
+    facts.outputTokens = geminiOutputTokens(meta);
   }
 
   return facts;

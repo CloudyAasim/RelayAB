@@ -719,9 +719,17 @@ export function geminiToResponsesResponse(
 
   const meta = isPlainObject(root.usageMetadata) ? root.usageMetadata : {};
   const promptTokens = asNumber(meta.promptTokenCount) ?? 0;
-  const completionTokens = asNumber(meta.candidatesTokenCount) ?? 0;
+  const completionTokens = geminiOutputTokens(meta);
   const cachedTokens = asNumber(meta.cachedContentTokenCount) ?? 0;
 
+  /**
+   * The pivot's usage.
+   *
+   * `output_tokens` carries the thinking along with the answer, which is what
+   * OpenAI's own `output_tokens` means — and it makes `total_tokens` add up:
+   * Google's `totalTokenCount` is `prompt + candidates + thoughts`, and the
+   * three are now the same three numbers.
+   */
   const usage: Record<string, unknown> = {
     input_tokens: promptTokens,
     output_tokens: completionTokens,
@@ -809,6 +817,26 @@ export function geminiFinalChunk(args: {
 // ---------------------------------------------------------------------------
 
 /**
+ * The output tokens of a Gemini answer.
+ *
+ * The thinking tokens are counted **with** the candidate tokens, because that
+ * is what they are billed as — Google's own `totalTokenCount` is
+ * `promptTokenCount + candidatesTokenCount + thoughtsTokenCount`, so a gateway
+ * that counts only the candidates hands the thinking out for free.
+ *
+ * It is also what the pivot means by "output tokens": OpenAI's `output_tokens`
+ * includes the reasoning tokens, and the two vocabularies have to agree on
+ * that or the same request costs a different amount depending on which side
+ * of the gateway it is counted on.
+ */
+export function geminiOutputTokens(meta: unknown): number {
+  const m = isPlainObject(meta) ? meta : {};
+  const candidates = asNumber(m.candidatesTokenCount) ?? 0;
+  const thoughts = asNumber(m.thoughtsTokenCount) ?? 0;
+  return candidates + thoughts;
+}
+
+/**
  * The usage of a Gemini answer, in the gateway's own words.
  *
  * Gemini counts in a vocabulary of its own: `promptTokenCount`,
@@ -821,9 +849,7 @@ export function geminiFinalChunk(args: {
  * endpoint sends without `alt=sse`; the usage rides on the last chunk that
  * carries it, so an array is searched from the back.
  *
- * The thinking tokens are left out of the output count, which is what the
- * translated path does as well: a request must cost the same whichever way
- * the answer came back.
+ * The output tokens include the thinking — see {@link geminiOutputTokens}.
  */
 export function geminiUsage(answer: unknown): {
   promptTokens: number;
@@ -840,7 +866,7 @@ export function geminiUsage(answer: unknown): {
 
   const source = meta ?? {};
   const promptTokens = asNumber(source.promptTokenCount) ?? 0;
-  const completionTokens = asNumber(source.candidatesTokenCount) ?? 0;
+  const completionTokens = geminiOutputTokens(source);
   return {
     promptTokens,
     completionTokens,
