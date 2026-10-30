@@ -841,7 +841,7 @@ const zhCN: Dict = {
   "admin.providers.routes.passthrough": "原样透传",
   "admin.providers.routes.route": "路由到",
   "admin.providers.routes.mode.passthrough": "透传模式",
-  "admin.providers.routes.mode.passthroughBody": "所有接口原样转发，网关不做任何改写。",
+  "admin.providers.routes.mode.passthroughBody": "所有接口都按自己的协议原样发给上游，网关不翻译协议。",
   "admin.providers.routes.passthroughNote":
     "透传模式：每个接口都按它自己的协议原样发给上游。前提是这家厂家四种协议都会说 —— 少一种，那个接口就调不通。",
   "admin.providers.routes.upstream.title": "上游接口",
@@ -2448,7 +2448,7 @@ const en: Dict = {
   "admin.providers.routes.passthrough": "Passed through",
   "admin.providers.routes.route": "Routed to",
   "admin.providers.routes.mode.passthrough": "Passthrough",
-  "admin.providers.routes.mode.passthroughBody": "Every interface is forwarded as it arrives, with nothing rewritten.",
+  "admin.providers.routes.mode.passthroughBody": "Every interface goes out in its own protocol, with no translation by the gateway.",
   "admin.providers.routes.passthroughNote":
     "Passthrough: every interface goes out in its own protocol, untouched. That needs a vendor who speaks all four — with one missing, that interface cannot be reached.",
   "admin.providers.routes.upstream.title": "Upstream interfaces",

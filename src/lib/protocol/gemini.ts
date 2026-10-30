@@ -803,3 +803,65 @@ export function geminiFinalChunk(args: {
     ...(args.responseId ? { responseId: args.responseId } : {}),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Usage
+// ---------------------------------------------------------------------------
+
+/**
+ * The usage of a Gemini answer, in the gateway's own words.
+ *
+ * Gemini counts in a vocabulary of its own: `promptTokenCount`,
+ * `candidatesTokenCount`, `totalTokenCount`, and the cached slice of the
+ * prompt under `cachedContentTokenCount`. The billing code reads the OpenAI
+ * and Anthropic spellings, so the numbers are read here — once — rather than
+ * in every place that looks at a Gemini answer.
+ *
+ * The answer may be one body or the JSON **array** of chunks the streaming
+ * endpoint sends without `alt=sse`; the usage rides on the last chunk that
+ * carries it, so an array is searched from the back.
+ *
+ * The thinking tokens are left out of the output count, which is what the
+ * translated path does as well: a request must cost the same whichever way
+ * the answer came back.
+ */
+export function geminiUsage(answer: unknown): {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  cachedTokens: number;
+} {
+  const chunks = Array.isArray(answer) ? answer : [answer];
+  let meta: Record<string, unknown> | undefined;
+  for (const chunk of chunks) {
+    if (!isPlainObject(chunk)) continue;
+    if (isPlainObject(chunk.usageMetadata)) meta = chunk.usageMetadata;
+  }
+
+  const source = meta ?? {};
+  const promptTokens = asNumber(source.promptTokenCount) ?? 0;
+  const completionTokens = asNumber(source.candidatesTokenCount) ?? 0;
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens: asNumber(source.totalTokenCount) ?? promptTokens + completionTokens,
+    cachedTokens: asNumber(source.cachedContentTokenCount) ?? 0,
+  };
+}
+
+/**
+ * The prompt's text, for the estimate a stream without usage falls back on.
+ *
+ * The same text the translated path measures, measured here without the
+ * detour through the pivot: the system instruction and the contents.
+ */
+export function geminiInputText(body: GeminiGenerateRequest): string {
+  const parts: string[] = [];
+  const instruction = partsText(body.systemInstruction?.parts);
+  if (instruction) parts.push(instruction);
+  for (const content of body.contents ?? []) {
+    const text = partsText(content?.parts);
+    if (text) parts.push(text);
+  }
+  return parts.join("\n");
+}

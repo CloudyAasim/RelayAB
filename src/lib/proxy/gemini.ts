@@ -13,11 +13,19 @@
  *
  * ## How it works
  *
- * The Gemini request is translated into the shape the gateway already speaks
- * internally, handed to the same proxy every other surface uses, and the
- * answer is translated back. The upstream is whatever the model is configured
- * on: an OpenAI-compatible vendor, an Anthropic one, or one speaking the
- * Responses API.
+ * There are two ways this surface is answered, and the row's route says which.
+ *
+ * A vendor that speaks Gemini itself answers it **directly**: the request
+ * goes out in Google's own shape and the answer comes back in it, with the
+ * body untouched on the way. That is what "原样透传" means here, and it is
+ * the only way the fields the hub has no place for — a thinking budget, a
+ * safety setting — survive the trip.
+ *
+ * Any other vendor is answered **through the hub**: the Gemini request is
+ * translated into the shape the gateway speaks internally, handed to the same
+ * proxy every other surface uses, and the answer is translated back. The
+ * upstream is whatever the model is configured on: an OpenAI-compatible
+ * vendor, an Anthropic one, or one speaking the Responses API.
  *
  * ## The two key carriers
  *
@@ -28,6 +36,9 @@
 import { proxyOpenAIResponse } from "./responses";
 import type { ProxyDeps, ProxyResult } from "./types";
 import { sseRewrite } from "./stream-tap";
+import { findOpenAIProvidersForModel } from "../db/providers";
+import { routesOf, servesSurface } from "../protocol/surface-routes";
+import { proxyGeminiDirect } from "./dialects/gemini";
 import {
   geminiToResponsesRequest,
   responsesToGeminiResponse,
@@ -36,7 +47,7 @@ import {
   type GeminiGenerateRequest,
   type GeminiUsageMetadata,
 } from "../protocol/gemini";
-import type { ApiKey, User } from "../db/types";
+import type { ApiKey, Provider, User } from "../db/types";
 
 /** The two methods on this surface. */
 export type GeminiMethod = "generateContent" | "streamGenerateContent";
@@ -212,8 +223,56 @@ export async function proxyGeminiGenerate(args: {
   user: User;
   signal?: AbortSignal;
   deps?: ProxyDeps;
+  /**
+   * The row to serve this request from.
+   *
+   * Absent means "pick one" — the usual case. It is passed when the caller
+   * has already chosen one.
+   */
+  provider?: Provider;
 }): Promise<ProxyResult> {
   const { body, model, stream, apiKey, user, signal, deps } = args;
+
+  /**
+   * The row this surface answers from.
+   *
+   * The route table decides both which rows may answer this surface and how
+   * the answer comes back, so the row is picked here — where the route can be
+   * read — rather than inside the pivot.
+   */
+  const providers = args.provider
+    ? [args.provider]
+    : (await findOpenAIProvidersForModel(model)).filter((p) =>
+        servesSurface(p, "gemini-generate"),
+      );
+  if (providers.length === 0) {
+    return {
+      ok: false,
+      status: 400,
+      error: { code: "model_not_mapped", message: `No provider configured for model '${model}'` },
+    };
+  }
+  const provider = providers[0];
+
+  /**
+   * How this surface is answered, as the row's route says.
+   *
+   * `passthrough` is the vendor's own Gemini endpoint: the request goes out as
+   * it arrived, because the client's body is already in the vendor's shape and
+   * there is nothing to translate. Anything else is answered through the hub,
+   * which rewrites the request into the pivot's shape and back.
+   */
+  const route = routesOf(provider)["gemini-generate"];
+  if (route.kind === "unsupported") {
+    return {
+      ok: false,
+      status: 400,
+      error: { code: "model_not_mapped", message: `No provider configured for model '${model}'` },
+    };
+  }
+  if (route.kind === "passthrough") {
+    return proxyGeminiDirect({ body, model, stream, apiKey, user, signal, deps, provider });
+  }
 
   const pivot = geminiToResponsesRequest(body, model);
   if (stream) pivot.stream = true;
