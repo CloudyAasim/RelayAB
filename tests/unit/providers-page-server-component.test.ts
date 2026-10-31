@@ -41,9 +41,21 @@ describe("the providers page stays a server component", () => {
     // dialect to name — so the label set grew with the fact it reports. It
     // grew again when Gemini became an upstream dialect: there are now two
     // translated dialects, and they are not the same one.
-    expect(PAGE).toMatch(
-      /labels: \{\s*none: string;\s*hasRule: string;\s*openaiSide: string;\s*anthropicSide: string;[\s\S]{0,320}parkedRules: \(n: number\) => string;\s*chat: string;\s*responses: string;[\s\S]{0,200}translatedAnthropic: string;\s*translatedGemini: string;\s*\};/,
-    );
+    // The label set grew with the fact it reports: the four client
+    // interfaces, and the two ways an interface can be answered.
+    for (const field of [
+      "none: string;",
+      "hasRule: string;",
+      "parkedRules: (n: number) => string;",
+      "chat: string;",
+      "responses: string;",
+      "anthropic: string;",
+      "gemini: string;",
+      "passthrough: string;",
+      "routedTo: (dialect: string) => string;",
+    ]) {
+      expect(PAGE, field).toContain(field);
+    }
     expect(PAGE).toMatch(/<InterfaceCell[\s\S]{0,400}labels=\{\{/);
   });
 });
@@ -55,61 +67,50 @@ describe("the interface column says what is served, not what was typed", () => {
     expect(PAGE).not.toMatch(/\{p\.kind\}/);
   });
 
-  it("simple mode names the sides, with the format on the OpenAI one", () => {
-    // It used to enumerate the client endpoints and hang the format label off
-    // `/v1/chat/completions`, which made one face read as two live endpoints.
-    // The form calls it one side covering both — "OpenAI 侧 — /v1/chat/completions,
-    // /v1/responses" — and the column now says the same thing it does.
-    expect(PAGE).toMatch(/\{labels\.openaiSide\}/);
-    expect(PAGE).toMatch(/\{labels\.anthropicSide\}/);
-    expect(PAGE).toMatch(
-      /labels\.openaiSide<\/Badge>|openaiSide[\s\S]{0,400}openaiFormatLabel/,
-    );
-    // Four dialects, four answers. The third and fourth are the translated
-    // ones, and they used to be a lie: a row served by the gateway's
-    // translation has no upstream dialect of its own, so the badge says which
-    // one it is translated into rather than naming "Responses" — a request the
-    // gateway never makes.
-    expect(PAGE).toMatch(
-      /openai\?\.format === "anthropic"\s*\?\s*labels\.translatedAnthropic\s*:\s*openai\?\.format === "gemini"\s*\?\s*labels\.translatedGemini\s*:\s*openai\?\.format === "chat"\s*\?\s*labels\.chat\s*:\s*labels\.responses/,
-    );
+  it("the column reads the route table, one badge per answered interface", () => {
+    // It used to read the face flags — one dialect for three interfaces — and
+    // that summary cannot say the thing that matters now: a Gemini vendor
+    // whose own endpoint takes the request as it arrived is not "translated to
+    // Gemini", and a badge that says so is wrong rather than merely old.
+    expect(PAGE).toMatch(/routes=\{routesOf\(p\)\}/);
+    expect(PAGE).toMatch(/route\.kind !== "unsupported"/);
+    // Each badge says how that interface is answered.
+    expect(PAGE).toMatch(/labels\.passthrough/);
+    expect(PAGE).toMatch(/labels\.routedTo\(route\.dialect\)/);
+    // And the four client interfaces are named.
+    for (const key of ["openai-chat", "openai-responses", "anthropic-messages", "gemini-generate"]) {
+      expect(PAGE, key).toContain(key);
+    }
   });
 
   it("and each branch stays out of the other's vocabulary", () => {
-    // The whole defect in one assertion: a single list serving both modes. Simple
-    // has no per-surface rule marker and no client endpoint path; advanced has
-    // no face name. Cutting on `if (!advanced)` is the only separator offered.
+    // Simple has no per-interface rule marker — a rule is not in effect there,
+    // and marking one would claim a rule that does not run. Advanced has no
+    // parked-count line, because in advanced the rules are the point.
     //
     // Scoped to the cell on purpose. Splitting the whole file would put the call
     // site in one half, and the call site names every label there is — which
     // would fail this for a reason that has nothing to do with what the cell
     // renders.
-    //
-    // Cut on advanced's own helper rather than on `if (!advanced) {`: the simple
-    // branch is *inside* that block, so splitting there puts simple in the
-    // second half and inverts every assertion below.
     const cell = PAGE.slice(
       PAGE.indexOf("function InterfaceCell("),
       PAGE.indexOf("import { SectionPageLayout"),
     );
     const [simple, advanced] = cell.split("const ruleMark = (protocol: string) =>");
     expect(advanced.length, "there is no advanced branch to check").toBeGreaterThan(100);
-    expect(simple, "simple mode mentions an endpoint path").not.toMatch(/\/v1\/responses/);
-    expect(simple, "simple mode marks a surface with a rule").not.toMatch(/labels\.hasRule/);
-    expect(advanced, "advanced mode names a face").not.toMatch(/labels\.openaiSide/);
+    expect(simple, "simple mode marks an interface with a rule").not.toMatch(/labels\.hasRule/);
     expect(advanced, "advanced mode announces parked rules").not.toMatch(/labels\.parkedRules/);
-    expect(advanced, "advanced mode lost its own list").toMatch(/ruleMark\("openai-chat"\)/);
+    expect(advanced, "advanced mode lost its own list").toMatch(/ruleMark\(surface\.id\)/);
     // And the simple branch really is behind the mode, not merely written first.
     expect(simple).toMatch(/if \(!advanced\) \{/);
   });
 
-  it("advanced mode still lists the endpoints, and the format only on the OpenAI side", () => {
-    expect(PAGE).toContain("/v1/chat/completions");
-    expect(PAGE).toContain("/v1/responses");
-    expect(PAGE).toContain("/anthropic/v1/messages");
-    expect(PAGE).toMatch(/ruleMark\("openai-chat"\)/);
-    expect(PAGE).toMatch(/ruleMark\("openai-responses"\)/);
-    expect(PAGE).toMatch(/ruleMark\("anthropic-messages"\)/);
+  it("advanced mode lists the same interfaces and marks the ones with a rule", () => {
+    // Both branches read the route table now — the routing is one thing and it
+    // does not change with the mode. What changes is the rules: in advanced they
+    // are in effect, so a rule is worth marking.
+    expect(PAGE).toMatch(/ruleMark\(surface\.id\)/);
+    expect(PAGE).toMatch(/served\.map\(\(\{ surface, route \}\) =>/);
   });
 
   it("a parked rule is one line, and only in simple mode", () => {

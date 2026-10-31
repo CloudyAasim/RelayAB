@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { listProviders } from "@/lib/db/providers";
-import { providerFaces } from "@/lib/db/types";
 import { activeModeOf, SURFACES } from "@/lib/protocol/text-specs";
+import { routesOf, type SurfaceRoute, type SurfaceRoutes } from "@/lib/protocol/surface-routes";
 import { Card } from "@/components/ui/Card";
 import {
   Table,
@@ -31,17 +31,22 @@ import type { Provider } from "@/lib/db/types";
  * **The column answers the live configuration's question, in that mode's own
  * words.** They are two different questions and they are not the same list:
  *
- *  - Simple asks *which sides answer, in what upstream format* — the fields
- *    simple mode actually has. It shows one badge per face, with the chosen
- *    format on the OpenAI one. The form itself calls that one side covering
- *    both client endpoints, and splitting it into two badges made a single
- *    switch look like two live things.
- *  - Advanced keeps the surfaces a rule can be written for, each marked when it
- *    has one — unchanged, because a rule is addressed to a surface by name.
+ *  - Simple asks *which client interfaces answer, and how* — the route table
+ *    row by row. It shows one badge per served interface: not served is left
+ *    out, passed through says so, and routed says which dialect it is
+ *    rewritten into.
+ *  - Advanced keeps the same list and marks the interfaces a rule is written
+ *    for — unchanged, because a rule is addressed to an interface by name.
  *
  * Marking those endpoints with rules while simple was in effect was advanced's
  * vocabulary in simple's column, so the two branches are separate: neither one
  * reaches for the other's words.
+ *
+ * **The list comes from the route table, not from the face flags.** The flags
+ * are the table's summary — one dialect for three interfaces — and the summary
+ * cannot say the thing that matters now: a Gemini vendor whose own endpoint
+ * takes the request as it arrived is not "translated to Gemini", and a badge
+ * that says so would be wrong rather than merely old.
  *
  * The branch follows `activeModeOf`, not `textSpecs`, because a provider
  * switched to simple still holds every rule it was given, and the column would
@@ -57,19 +62,25 @@ import type { Provider } from "@/lib/db/types";
  * the client/server boundary rather than on anything to do with translation.
  */
 function InterfaceCell({
-  faces,
+  routes,
   textSpecs,
   mode,
   labels,
 }: {
-  faces: ReturnType<typeof providerFaces>;
+  routes: SurfaceRoutes;
   textSpecs: string[];
   mode: "simple" | "advanced";
   labels: {
     none: string;
     hasRule: string;
-    openaiSide: string;
-    anthropicSide: string;
+    /** The four client interfaces, by their short names. */
+    chat: string;
+    responses: string;
+    anthropic: string;
+    gemini: string;
+    /** How an interface is answered. */
+    passthrough: string;
+    routedTo: (dialect: string) => string;
     /**
      * Pre-bound rather than a template: the count is only knowable inside this
      * cell, and doing the `{n}` substitution here would mean re-implementing the
@@ -77,15 +88,21 @@ function InterfaceCell({
      * translation still happens in one place.
      */
     parkedRules: (n: number) => string;
-    chat: string;
-    responses: string;
-    /** The OpenAI face is served by the gateway's own translation. */
-    translatedAnthropic: string;
-    translatedGemini: string;
   };
 }) {
-  const { openai, anthropic } = faces;
-  if (!openai && !anthropic) {
+  /** The short name of each client interface, in the order the editor lists them. */
+  const surfaceLabel: Record<string, string> = {
+    "openai-chat": labels.chat,
+    "openai-responses": labels.responses,
+    "anthropic-messages": labels.anthropic,
+    "gemini-generate": labels.gemini,
+  };
+
+  /** The interfaces this provider answers, and how it answers each one. */
+  const served = SURFACES.map((surface) => ({ surface, route: routes[surface.id] })).filter(
+    (entry) => entry.route.kind !== "unsupported",
+  );
+  if (served.length === 0) {
     return <Badge tone="warning">{labels.none}</Badge>;
   }
 
@@ -111,42 +128,36 @@ function InterfaceCell({
     : SURFACES.filter((s) => hasRule(s.id)).length;
 
   /**
-   * The OpenAI face's dialect, in the words the table uses.
+   * How one interface is answered, in the words the route table uses.
    *
-   * Four answers, not two: a row served by the gateway's translation has no
-   * upstream dialect of its own to name — it is Anthropic's or Gemini's — and
-   * printing "Responses" for it would describe a request the gateway never
+   * Three answers, and the third one names the dialect: a row routed to
+   * another dialect has no upstream protocol of its own to name, and printing
+   * the vendor's protocol for it would describe a request the gateway never
    * makes.
    */
-  const openaiFormatLabel =
-    openai?.format === "anthropic"
-      ? labels.translatedAnthropic
-      : openai?.format === "gemini"
-        ? labels.translatedGemini
-        : openai?.format === "chat"
-          ? labels.chat
-          : labels.responses;
+  const answerOf = (route: SurfaceRoute): string =>
+    route.kind === "passthrough"
+      ? labels.passthrough
+      : route.kind === "route"
+        ? labels.routedTo(route.dialect)
+        : "";
 
   /**
-   * Simple's answer, in simple's own words: the faces it configures.
+   * Simple's answer, in simple's own words: the client interfaces it answers.
    *
-   * The format rides on the OpenAI badge because that is where the form puts it
-   * — a sub-select under the OpenAI switch, not a property of either endpoint.
-   * Splitting the side into its two client endpoints and labelling one of them
-   * made a single switch look like two live things, which is the reading this
-   * column used to give.
+   * The badges are the route table's own rows, so the column says the same
+   * thing the form does — which is the whole reason it exists.
    */
   if (!advanced) {
     return (
       <div>
         <div className="flex flex-wrap items-center gap-1">
-          {openai && (
-            <Badge tone="info">
-              {labels.openaiSide}
-              <span className="ml-1 opacity-70">· {openaiFormatLabel}</span>
+          {served.map(({ surface, route }) => (
+            <Badge key={surface.id} tone="info">
+              {surfaceLabel[surface.id]}
+              <span className="ml-1 opacity-70">· {answerOf(route)}</span>
             </Badge>
-          )}
-          {anthropic && <Badge tone="orange">{labels.anthropicSide}</Badge>}
+          ))}
         </div>
         {/*
           One line, and only when something is actually parked. Without it a
@@ -164,13 +175,11 @@ function InterfaceCell({
   }
 
   /**
-   * Advanced's answer: the surfaces a rule can be written for, each marked when
-   * it has one, exactly as this column has always shown them.
+   * Advanced's answer: the same interfaces, each marked when a rule is written
+   * for it.
    *
-   * A surface with no rule gets nothing — "no policy" is the default state, and
-   * marking it would make every provider look configured. The face switches
-   * still gate which surfaces appear, because that predates the modes and is
-   * what "what this provider actually answers" means here.
+   * An interface with no rule gets nothing — "no policy" is the default state,
+   * and marking it would make every provider look configured.
    */
   const ruleMark = (protocol: string) =>
     hasRule(protocol) ? (
@@ -179,27 +188,13 @@ function InterfaceCell({
 
   return (
     <div className="flex flex-wrap items-center gap-1">
-      {openai && (
-        <Badge tone="info">
-          /v1/chat/completions
-          <span className="ml-1 opacity-70">
-            {openai.format === "chat" ? labels.chat : labels.responses}
-          </span>
-          {ruleMark("openai-chat")}
+      {served.map(({ surface, route }) => (
+        <Badge key={surface.id} tone="info">
+          {surfaceLabel[surface.id]}
+          <span className="ml-1 opacity-70">· {answerOf(route)}</span>
+          {ruleMark(surface.id)}
         </Badge>
-      )}
-      {openai && (
-        <Badge tone="info">
-          /v1/responses
-          {ruleMark("openai-responses")}
-        </Badge>
-      )}
-      {anthropic && (
-        <Badge tone="orange">
-          /anthropic/v1/messages
-          {ruleMark("anthropic-messages")}
-        </Badge>
-      )}
+      ))}
     </div>
   );
 }
@@ -261,19 +256,20 @@ export default async function ProvidersPage() {
                       What this provider answers, not what it was typed as.
                       */}
                     <InterfaceCell
-                      faces={providerFaces(p)}
+                      routes={routesOf(p)}
                       textSpecs={p.textSpecs ?? []}
                       mode={activeModeOf(p)}
                       labels={{
                         none: t("admin.providers.table.noInterface"),
                         hasRule: t("admin.providers.table.hasRule"),
-                        openaiSide: t("admin.providers.table.openaiSide"),
-                        anthropicSide: t("admin.providers.table.anthropicSide"),
                         parkedRules: (n: number) => t("admin.providers.table.parkedRules", { n }),
                         chat: t("admin.providers.format.short.chat"),
                         responses: t("admin.providers.format.short.responses"),
-                        translatedAnthropic: t("admin.providers.format.short.translatedAnthropic"),
-                        translatedGemini: t("admin.providers.format.short.translatedGemini"),
+                        anthropic: t("admin.providers.format.short.anthropic"),
+                        gemini: t("admin.providers.format.short.gemini"),
+                        passthrough: t("admin.providers.table.passthrough"),
+                        routedTo: (dialect: string) =>
+                          t("admin.providers.table.routedTo", { dialect }),
                       }}
                     />
                   </TD>

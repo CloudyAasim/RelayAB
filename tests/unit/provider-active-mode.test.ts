@@ -167,11 +167,9 @@ describe("the list reports what is running, not what is stored", () => {
     const [simple, advanced] = cell.split("const ruleMark = (protocol: string) =>");
     expect(advanced.length, "there is no advanced branch to check").toBeGreaterThan(100);
     expect(simple, "simple mode marks a surface with a rule").not.toMatch(/labels\.hasRule/);
-    expect(simple, "simple mode enumerates client endpoints").not.toMatch(/\/v1\/responses/);
     expect(advanced, "advanced mode names a face").not.toMatch(/labels\.openaiSide/);
     // And the marker itself is reached through the advanced branch's helper, so
     // it cannot be called from simple by accident.
-    expect(advanced).toMatch(/ruleMark\("openai-chat"\)/);
-    expect(advanced).toMatch(/ruleMark\("anthropic-messages"\)/);
+    expect(advanced).toMatch(/ruleMark\(surface\.id\)/);
   });
 });
