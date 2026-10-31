@@ -355,3 +355,48 @@ export function dialectForSurface(
 ): Dialect | null {
   return targetDialect(routesOf(provider)[surface], surface);
 }
+
+/**
+ * How a vendor wants its key.
+ *
+ * Almost every vendor takes `Authorization: Bearer <key>`. **Google's own API
+ * takes the key in `x-goog-api-key`, raw** — no `Bearer` in front of it — and
+ * a request that carries only the Bearer form is refused.
+ */
+export type UpstreamKeyCarrier = "bearer" | "x-goog-api-key";
+
+/**
+ * Whether this row's vendor speaks Google's own API.
+ *
+ * True when any surface is answered in **Gemini**'s dialect — which is the
+ * only thing about a vendor that decides how its key travels and where its
+ * model list lives.
+ */
+export function speaksGemini(routes: SurfaceRoutes): boolean {
+  for (const surface of ROUTE_SURFACES) {
+    if (targetDialect(routes[surface], surface) === "gemini") return true;
+  }
+  return false;
+}
+
+/**
+ * How a row's key travels upstream, read off the row's own routing.
+ *
+ * A row that answers any surface in **Gemini**'s dialect is a row whose vendor
+ * speaks Google's API, and that vendor takes its key in `x-goog-api-key`.
+ * Everything else takes `Bearer`.
+ */
+export function keyCarrierOfRoutes(routes: SurfaceRoutes): UpstreamKeyCarrier {
+  return speaksGemini(routes) ? "x-goog-api-key" : "bearer";
+}
+
+/**
+ * Where a row's model list lives.
+ *
+ * Google's base URL already carries the version (`.../v1beta`), so its list is
+ * at `/models` — asking for `/v1/models` there is a 404 that reads as "this
+ * vendor has no model list".
+ */
+export function modelListPathOf(routes: SurfaceRoutes): string {
+  return speaksGemini(routes) ? "/models" : "/v1/models";
+}

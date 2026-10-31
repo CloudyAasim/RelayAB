@@ -17,7 +17,8 @@ import { useRouter } from "next/navigation";
 import { LegacyModal as Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { useT } from "@/components/i18n/I18nProvider";
-import { PROVIDER_TEMPLATES } from "@/lib/providers/templates";
+import { PROVIDER_TEMPLATES, templateValues } from "@/lib/providers/templates";
+import { keyCarrierOfRoutes } from "@/lib/protocol/surface-routes";
 import {
   DEFAULT_CONTEXT_LENGTH,
   DEFAULT_MAX_OUTPUT_TOKENS,
@@ -40,7 +41,7 @@ export function CreateProviderButton({ onCreated }: Props) {
 
   const [templateId, setTemplateId] = useState("openai");
   const form = useProviderForm();
-  const { values, patch, setModelRows, specVerdict, setMode, buildPayload, reset } = form;
+  const { values, patch, setModelRows, setRoutes, specVerdict, setMode, buildPayload, reset } = form;
 
   // Fetch-models state
   const [fetchingModels, setFetchingModels] = useState(false);
@@ -71,10 +72,20 @@ export function CreateProviderButton({ onCreated }: Props) {
     const tpl = PROVIDER_TEMPLATES.find((x) => x.id === id);
     if (!tpl) return;
     setTemplateId(id);
+    const picked = templateValues(tpl);
     patch({
-      kind: tpl.kind === "azure" ? "custom-openai" : tpl.kind,
-      ...(tpl.defaultBaseUrl ? { baseUrl: tpl.defaultBaseUrl } : {}),
+      kind: picked.kind,
+      ...(picked.baseUrl ? { baseUrl: picked.baseUrl } : {}),
     });
+    /**
+     * The template also says **how each surface reaches this vendor**, and
+     * that is the part that used to be missing: the route table became the
+     * answer, so a template that only filled in the base URL left the routing
+     * to whatever the form defaulted to — right for OpenAI, wrong for everyone
+     * else. A row created from the Anthropic template used to send a Chat
+     * Completions body to `api.anthropic.com/chat/completions`.
+     */
+    setRoutes(picked.routes);
     setModelRows(
       Object.entries(tpl.defaultModelMapping).map(([clientId, upstreamId]) =>
         newModelRow({
@@ -98,6 +109,13 @@ export function CreateProviderButton({ onCreated }: Props) {
           baseUrl: values.baseUrl,
           apiKey: values.apiKey,
           kind: values.kind,
+          /**
+           * How this vendor wants its key — read off the routes on screen, so
+           * it follows the operator's choices rather than the template's: a
+           * row pointed at Google's API has to ask for its model list with
+           * `x-goog-api-key`, and a Bearer-only request is refused.
+           */
+          keyCarrier: keyCarrierOfRoutes(values.routes),
         }),
       });
       const text = await res.text();

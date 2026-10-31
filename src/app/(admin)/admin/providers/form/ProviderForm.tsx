@@ -132,6 +132,7 @@ export function ProviderForm({
             <option value="anthropic">anthropic</option>
             <option value="custom-openai">custom-openai</option>
             <option value="azure">azure</option>
+            <option value="gemini">gemini</option>
           </select>
         </div>
       </div>

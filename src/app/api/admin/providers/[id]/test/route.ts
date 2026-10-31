@@ -11,6 +11,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getProviderById } from "@/lib/db/providers";
+import { routesOf, keyCarrierOfRoutes, modelListPathOf } from "@/lib/protocol/surface-routes";
 import { callUpstream } from "@/lib/providers/upstream";
 
 export const dynamic = "force-dynamic";
@@ -36,17 +37,24 @@ export async function POST(
     );
   }
 
+  // Where the list lives and how the key travels both come from the row's own
+  // routing: a Gemini vendor's list is at `/models` and its key goes in
+  // `x-goog-api-key`, and asking for the OpenAI shape of either is a 401.
+  const routes = routesOf(provider);
+  const listPath = modelListPathOf(routes);
+
   const probe = await callUpstream({
     baseUrl: provider.baseUrl ?? "",
     encryptedApiKey: provider.encryptedApiKey,
-    path: "/v1/models",
+    path: listPath,
+    keyCarrier: keyCarrierOfRoutes(routes),
     timeoutMs: 6000,
   });
 
   if (probe.ok) {
     return NextResponse.json({
       ok: true,
-      method: "GET /v1/models",
+      method: `GET ${listPath}`,
       status: probe.status,
       latencyMs: probe.latencyMs,
     });
@@ -54,7 +62,7 @@ export async function POST(
 
   return NextResponse.json({
     ok: false,
-    method: "GET /v1/models",
+    method: `GET ${listPath}`,
     status: probe.status,
     latencyMs: probe.latencyMs,
     error: probe.error ?? `HTTP ${probe.status}`,

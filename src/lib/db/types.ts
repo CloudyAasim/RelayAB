@@ -38,7 +38,24 @@ export const TimezoneSchema = z.enum(["utc", "shanghai"]);
 export type Timezone = z.infer<typeof TimezoneSchema>;
 export const DEFAULT_TIMEZONE: Timezone = "shanghai";
 
-export const ProviderKindSchema = z.enum(["openai", "anthropic", "custom-openai", "azure"]);
+/**
+ * The vendor's own category.
+ *
+ * `openai` and `anthropic` are the two named upstreams, `custom-openai` is an
+ * OpenAI-compatible one under another name, and `azure` is Microsoft's. **`gemini`
+ * is Google's own API** — `generateContent`, not a Chat Completions clone, so
+ * calling it `custom-openai` would have been the one thing in the row that
+ * was plainly untrue.
+ *
+ * What the vendor speaks is decided by the route table; this says who it is.
+ */
+export const ProviderKindSchema = z.enum([
+  "openai",
+  "anthropic",
+  "custom-openai",
+  "azure",
+  "gemini",
+]);
 export type ProviderKind = z.infer<typeof ProviderKindSchema>;
 
 /**

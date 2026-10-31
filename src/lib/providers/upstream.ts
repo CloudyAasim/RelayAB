@@ -12,6 +12,9 @@
 import { decryptSecret } from "@/lib/crypto/secrets";
 import { getMasterKey } from "@/lib/config";
 import { loadConfig } from "@/lib/config";
+import type { UpstreamKeyCarrier } from "@/lib/protocol/surface-routes";
+
+export type { UpstreamKeyCarrier };
 
 export interface UpstreamFetchOptions {
   baseUrl: string;
@@ -20,6 +23,8 @@ export interface UpstreamFetchOptions {
   method?: "GET" | "POST";
   body?: unknown;
   extraHeaders?: Record<string, string>;
+  /** Which header carries the key. Absent means `Authorization: Bearer`. */
+  keyCarrier?: UpstreamKeyCarrier;
   timeoutMs?: number;
 }
 
@@ -38,7 +43,11 @@ export function decryptProviderKey(encryptedApiKey: string): string {
 
 /**
  * Decrypt + call upstream in one step.
- * Always sets `Authorization: Bearer <key>` unless the caller overrides it.
+ *
+ * Sends the key the way the vendor wants it: `Authorization: Bearer` by
+ * default, and `x-goog-api-key` for the vendors that take that instead — see
+ * {@link UpstreamKeyCarrier}.
+ *
  * Follows up to 3 redirects to handle API gateways that redirect.
  */
 export async function callUpstream(opts: UpstreamFetchOptions): Promise<UpstreamFetchResult> {
@@ -49,7 +58,9 @@ export async function callUpstream(opts: UpstreamFetchOptions): Promise<Upstream
   let url = joinUrl(opts.baseUrl, opts.path);
 
   const headers: Record<string, string> = {
-    "Authorization": `Bearer ${key}`,
+    ...(opts.keyCarrier === "x-goog-api-key"
+      ? { "x-goog-api-key": key }
+      : { Authorization: `Bearer ${key}` }),
     "Content-Type": "application/json",
     ...opts.extraHeaders,
   };
@@ -182,6 +193,8 @@ const CONTEXT_KEYS = [
   "max_input_tokens",
   "context_window",
   "context",
+  /** Google's spelling. */
+  "inputTokenLimit",
 ] as const;
 
 /** …and for a declared output cap. */
@@ -191,6 +204,8 @@ const OUTPUT_KEYS = [
   "max_tokens",
   "output_limit",
   "max_output",
+  /** Google's spelling. */
+  "outputTokenLimit",
 ] as const;
 
 /**
@@ -271,6 +286,21 @@ function firstNumber(source: Record<string, unknown>, keys: readonly string[]): 
   return undefined;
 }
 
+/**
+ * The model's own name, as it goes into a request.
+ *
+ * **Google publishes no `id`**: its model list names each model
+ * `models/<name>`, and the bare name is the one that goes in the URL — so the
+ * prefix is dropped. Every other vendor's list has an `id` and nothing else,
+ * and that one is used as it stands.
+ */
+function modelIdOf(record: Record<string, unknown>): string {
+  const id = typeof record.id === "string" ? record.id.trim() : "";
+  if (id) return id;
+  const name = typeof record.name === "string" ? record.name.trim() : "";
+  return name.startsWith("models/") ? name.slice("models/".length) : name;
+}
+
 export function extractModelEntries(raw: unknown): ModelEntryFacts[] {
   const rows = toRows(raw);
   const out: ModelEntryFacts[] = [];
@@ -282,7 +312,7 @@ export function extractModelEntries(raw: unknown): ModelEntryFacts[] {
     }
     if (!row || typeof row !== "object") continue;
     const record = row as Record<string, unknown>;
-    const id = typeof record.id === "string" ? record.id.trim() : "";
+    const id = modelIdOf(record);
     if (!id) continue;
     const contextLength = firstNumber(record, CONTEXT_KEYS);
     const maxOutputTokens = firstNumber(record, OUTPUT_KEYS);

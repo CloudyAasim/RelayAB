@@ -23,6 +23,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { listProviders, updateProvider } from "@/lib/db/providers";
 import { callUpstream, extractModelEntries } from "@/lib/providers/upstream";
 import type { ModelEntryFacts } from "@/lib/providers/upstream";
+import { routesOf, keyCarrierOfRoutes, modelListPathOf } from "@/lib/protocol/surface-routes";
 
 export const dynamic = "force-dynamic";
 
@@ -74,10 +75,15 @@ export async function POST(): Promise<Response> {
   for (const provider of providers) {
     if (!provider.enabled || !provider.baseUrl) continue;
     try {
+      // Where the list lives and how the key travels both come from the row's
+      // own routing — a Gemini vendor's list is at `/models` and its key goes
+      // in `x-goog-api-key`.
+      const routes = routesOf(provider);
       const entries = await callUpstream({
         baseUrl: provider.baseUrl,
         encryptedApiKey: provider.encryptedApiKey,
-        path: "/v1/models",
+        path: modelListPathOf(routes),
+        keyCarrier: keyCarrierOfRoutes(routes),
       });
       if (!entries.ok) {
         outcomes.push({

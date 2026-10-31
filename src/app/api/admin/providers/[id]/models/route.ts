@@ -9,6 +9,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getProviderById } from "@/lib/db/providers";
+import { routesOf, keyCarrierOfRoutes, modelListPathOf } from "@/lib/protocol/surface-routes";
 import { callUpstream, extractModelIds, decryptProviderKey } from "@/lib/providers/upstream";
 
 export const dynamic = "force-dynamic";
@@ -42,7 +43,11 @@ export async function POST(
   }
 
   const baseUrl = body.baseUrl ?? provider.baseUrl ?? "";
-  const path = body.path ?? "/v1/models";
+  // Where the list lives and how the key travels both come from the row's own
+  // routing: a Gemini vendor's list is at `/models` and its key goes in
+  // `x-goog-api-key`, and asking for the OpenAI shape of either is a 401.
+  const routes = routesOf(provider);
+  const path = body.path ?? modelListPathOf(routes);
   const encryptedApiKey = body.encryptedApiKey ?? provider.encryptedApiKey;
 
   // Quick sanity: keys decrypt OK.
@@ -61,7 +66,12 @@ export async function POST(
     );
   }
 
-  const result = await callUpstream({ baseUrl, encryptedApiKey, path });
+  const result = await callUpstream({
+    baseUrl,
+    encryptedApiKey,
+    path,
+    keyCarrier: keyCarrierOfRoutes(routes),
+  });
   if (!result.ok) {
     return NextResponse.json(
       {

@@ -10,7 +10,7 @@
  * it used to decide whether this route would even ask. It decides nothing now.
  */
 import { NextResponse } from "next/server";
-import { callUpstream, extractModelEntries } from "@/lib/providers/upstream";
+import { callUpstream, extractModelEntries, type UpstreamKeyCarrier } from "@/lib/providers/upstream";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +23,20 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  let body: { baseUrl?: string; apiKey?: string; kind?: string; path?: string } = {};
+  let body: {
+    baseUrl?: string;
+    apiKey?: string;
+    kind?: string;
+    path?: string;
+    /**
+     * How the vendor wants its key.
+     *
+     * Sent by the editor because the editor knows the row's routing, and
+     * Google's API refuses a `Bearer`-only request. Absent means `Bearer`,
+     * which is what every vendor but Google's wants.
+     */
+    keyCarrier?: UpstreamKeyCarrier;
+  } = {};
   try {
     body = await req.json();
   } catch {
@@ -77,6 +90,7 @@ export async function POST(req: Request): Promise<Response> {
         baseUrl: body.baseUrl,
         encryptedApiKey: encryptedKey,
         path: candidate,
+        ...(body.keyCarrier ? { keyCarrier: body.keyCarrier } : {}),
       });
       if (!r.ok) {
         attempted.push({ path: candidate, status: r.status, ...(r.error ? { error: r.error } : {}) });
@@ -122,6 +136,7 @@ export async function POST(req: Request): Promise<Response> {
     baseUrl: body.baseUrl,
     encryptedApiKey: encryptedKey,
     path,
+    ...(body.keyCarrier ? { keyCarrier: body.keyCarrier } : {}),
   });
 
   if (!result.ok) {

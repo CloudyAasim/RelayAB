@@ -14,7 +14,7 @@ import { parseRoutes } from "@/lib/protocol/surface-routes";
 
 export const PostSchema = z.object({
   name: z.string().min(1).max(64),
-  kind: z.enum(["openai", "anthropic", "custom-openai", "azure"]),
+  kind: z.enum(["openai", "anthropic", "custom-openai", "azure", "gemini"]),
   baseUrl: z.string().nullable().optional(),
   apiKey: z.string().min(1),
   modelMapping: z.record(z.string(), z.string()).optional(),

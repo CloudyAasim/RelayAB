@@ -11,7 +11,7 @@ import { parseRoutes } from "@/lib/protocol/surface-routes";
 
 export const PatchSchema = z.object({
   name: z.string().optional(),
-  kind: z.enum(["openai", "anthropic", "custom-openai", "azure"]).optional(),
+  kind: z.enum(["openai", "anthropic", "custom-openai", "azure", "gemini"]).optional(),
   baseUrl: z.string().nullable().optional(),
   apiKey: z.string().optional(),
   modelMapping: z.record(z.string(), z.string()).optional(),
