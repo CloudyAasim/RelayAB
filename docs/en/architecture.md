@@ -168,7 +168,7 @@ See [`api-routes.md`](./api-routes.md) for the full definition. Summary:
 
 ### 4.3 Media Adapter Protocol
 
-Media capabilities do not go through the chat protocol surface. Instead they use a
+Media capabilities do not go through the text route table. Instead they use a
 **declarative spec + a generic engine**:
 
 ```
@@ -347,37 +347,64 @@ admin sees when granting access must be exactly the ceiling the user can consume
   },
   modelConfigs: { /* optional context length / output cap / billing parameters */ },
   headers: { /* optional extra request headers */ },
-  upstreamFormat: "responses" | "chat" | "anthropic" | "gemini",
+  protocolMode: "simple" | "advanced" | "passthrough",
+  surfaceRoutes: {                 // the route table: one row per client surface
+    "openai-chat": { kind: "passthrough" },
+    "openai-responses": { kind: "route", dialect: "chat" },
+    "anthropic-messages": { kind: "unsupported" },
+    "gemini-generate": { kind: "unsupported" },
+  },
+  upstreamDialects: ["chat"],      // read by advanced mode: the dialects the vendor speaks
+  // upstreamFormat / openaiEnabled / anthropicEnabled / anthropicMode are derived
+  // from the route table
   enabled: true,
   priority: 1,                    // lower numbers are picked first
 }
 ```
 
-### 7.2 What the Three Fields Each Do
+### 7.2 What the Fields That Decide the Routing Each Do
 
-When configuring a provider, three fields decide the outcome. Their responsibilities
-differ and must not substitute for one another:
+When configuring a provider, the routing is decided by the fields below. Their
+responsibilities differ and must not substitute for one another:
 
 | Field | Role |
 |---|---|
-| `kind` | **Protocol family**. `anthropic` means this provider speaks the Anthropic Messages protocol |
-| `baseUrl` | **Upstream root address**. The proxy appends the endpoint path to it (`/chat/completions`, `/responses`, `/v1/messages`) |
-| `upstreamFormat` | **Upstream native protocol**. Decides which path the request hits and whether a protocol conversion must happen first |
+| `kind` | **Protocol family** (determined by the template). `anthropic` means this provider speaks the Anthropic Messages protocol |
+| `baseUrl` | **Upstream root address**. The proxy appends the endpoint path to it (`/chat/completions`, `/responses`, `/v1/messages`, `/models/<model>:generateContent`) |
+| `protocolMode` | **Configuration mode**. `simple` = the route table decides; `advanced` = the upstream's declared dialects decide; `passthrough` = every surface is answered in its own vocabulary |
+| `surfaceRoutes` | **The route table**. One row per client surface, each saying one of three things: not served / passed through / routed to a dialect (`chat` / `responses` / `anthropic` / `gemini`) |
+| `upstreamDialects` | **Upstream dialects** (read by advanced mode only). Which dialects the vendor's own API speaks |
+
+The old `upstream_format` / `openai_enabled` / `anthropic_enabled` /
+`anthropic_mode` columns are now a **summary derived from the route table**, and no
+longer decide the routing — the one exception is a row written before the route
+table existed: that row has no table, so its routing is still derived from the old
+columns, and what is derived is exactly the old behaviour. The four columns are
+still written because the endpoints that are not text generation (embeddings /
+rerank / moderation / the model catalogue) read them, and they have no per-surface
+table of their own. `upstream_format` now means "the vendor's own protocol";
+`anthropic_mode` is `native` (the vendor's own `/v1/messages`) or `translated` (the
+gateway converts).
 
 ### 7.3 Endpoint → Upstream Path
 
 | Client request | Upstream path | Provider selection rule |
 |---|---|---|
-| `POST /v1/chat/completions` | `<baseUrl>/chat/completions` | Exclude Anthropic-protocol providers; otherwise take the first by ascending `priority`. A provider speaking Anthropic or Gemini is reached through the Responses pivot instead (Chat → Responses → the vendor's dialect) |
-| `POST /v1/responses` | `<baseUrl>/responses` | Same as above. If the matched provider uses the `chat` / `anthropic` / `gemini` protocol, convert the request first, then call its corresponding endpoint, and finally convert the response back into the Responses shape |
-| `POST /anthropic/v1/messages` | `<baseUrl>/v1/messages` | Prefer `upstreamFormat === "anthropic"`, then `kind === "anthropic"`, then `kind === "custom-openai"` |
-| `POST /v1beta/models/<model>:generateContent` | `<baseUrl>/models/<model>:generateContent` | The same providers as `/v1/responses` — a Gemini upstream goes through the same conversion chain |
+| `POST /v1/chat/completions` | the `openai-chat` row says passed through → `<baseUrl>/chat/completions`; says routed to X → X's endpoint, the request rewritten into X's shape | the providers whose route table answers `openai-chat`, first by ascending `priority` |
+| `POST /v1/responses` | the `openai-responses` row says passed through → `<baseUrl>/responses`; says routed to X → X's endpoint, the request rewritten into X's shape | the same |
+| `POST /anthropic/v1/messages` | the `anthropic-messages` row says passed through → `<baseUrl>/v1/messages` (or the row's own Anthropic base URL); says routed to X → X's endpoint, the request rewritten into X's shape | the same |
+| `POST /v1beta/models/<model>:generateContent` | the `gemini-generate` row says passed through → `<baseUrl>/models/<model>:generateContent`; says routed to X → X's endpoint, the request rewritten into X's shape | the same |
 
-Two implementation details:
+Three implementation details:
 
-- The request body format determines the target path. The chat proxy always emits a chat request body, so it must hit `/chat/completions`; the path must not be changed just because a provider is tagged with a different format, or a chat request body would be sent to the Responses endpoint (this caused a 400 regression historically).
-- For a provider with `kind === "anthropic"` whose `upstreamFormat` is still the default `responses`, `effectiveUpstreamFormat()` handles it at runtime as the Anthropic protocol, so it is not misused by `/v1/chat/completions`.
-- **The stream travels too**: when the client asks for a stream, the gateway asks the upstream for one and translates its frames into the client's shape (`src/lib/protocol/stream-frames.ts`), so all three client surfaces arrive piece by piece against all three upstream dialects.
+- **The route table is the only answer.** The old four columns are a summary derived
+  from it, written for the endpoints that are not text generation.
+- **Old rows are unaffected.** A row written before the route table existed has no
+  table, so its routing is derived from the old columns: its Chat surface still goes
+  to the vendor's `/chat/completions` (a Chat body must not be posted to the
+  Responses endpoint), and its Gemini surface still goes through the Responses
+  pivot. Adding a column therefore changes no row's traffic.
+- **The stream travels too**: when the client asks for a stream, the gateway asks the upstream for one and translates its frames into the client's shape (`src/lib/protocol/stream-frames.ts`), so all four client surfaces arrive piece by piece against all four upstream dialects.
 
 ### 7.4 Model Mapping Conventions
 
@@ -395,26 +422,36 @@ table.
 
 ### 7.5 Adding an Anthropic Provider
 
-To make `/anthropic/v1/messages` work you need a provider that speaks the Anthropic
-protocol:
+To make `/anthropic/v1/messages` work you need a provider whose route table answers
+the `anthropic-messages` surface:
 
-1. Pick the **Anthropic** template — this sets `kind` to `anthropic`, sets `upstreamFormat` to `anthropic` automatically, and prefills the Claude models and the `anthropic-version` header.
-2. Change **API request URL** to the upstream's Anthropic base URL. For MiniMax that is `https://api.minimaxi.com/anthropic` (note that it is not the same as its OpenAI base URL `https://api.minimaxi.com/v1`).
+1. Pick the **Anthropic** template — this sets `kind` to `anthropic` and writes the
+   route table for an Anthropic vendor: `anthropic-messages` passed through,
+   `openai-chat` / `openai-responses` / `gemini-generate` routed to the `anthropic`
+   dialect. It also prefills the Claude models and the `anthropic-version` header.
+2. **API request URL**: the upstream's own address (e.g. `https://api.anthropic.com/v1`).
+   The Anthropic base URL is only used when the `anthropic-messages` surface is
+   **passed through**: when the vendor's Anthropic endpoint differs from its OpenAI
+   one (MiniMax is `https://api.minimaxi.com/anthropic`, which is not the same as
+   its OpenAI base URL `https://api.minimaxi.com/v1`), put it in the row's Anthropic
+   base URL; leave it empty and it is derived from `baseUrl`.
 3. Fill in **Model Mapping** with the real model names.
-4. This provider will not be selected by `/v1/chat/completions`; it does not interfere with the OpenAI one.
+4. This provider also answers Chat and Responses clients — those two surfaces are
+   rewritten by the gateway into the Anthropic dialect. Mark the surfaces you do not
+   want as "not served" in the route table.
 
 You can also skip the Anthropic template and configure it manually: any OpenAI-family
-template with **Upstream Format** changed to `Anthropic Messages`. The result is
+template with the `anthropic-messages` surface set to passed through. The result is
 equivalent, except that `kind` becomes `openai`, which is semantically less clear
 than picking the Anthropic template directly.
 
-The base URLs of the three endpoints must be paired correctly — this is the most
-common configuration mistake:
+The two base URLs must be paired correctly — this is the most common configuration
+mistake:
 
-| Endpoint | `baseUrl` must be |
+| Endpoint | The address must be |
 |---|---|
-| `/v1/chat/completions`, `/v1/responses` | The upstream's OpenAI-compatible base URL (e.g. `https://api.minimaxi.com/v1`) |
-| `/anthropic/v1/messages` | The upstream's Anthropic-compatible base URL (e.g. `https://api.minimaxi.com/anthropic`) |
+| `/v1/chat/completions`, `/v1/responses` | the upstream's OpenAI-compatible base URL, e.g. `https://api.minimaxi.com/v1` |
+| `/anthropic/v1/messages` | the upstream's Anthropic-compatible base URL, e.g. `https://api.minimaxi.com/anthropic` (put it in the row's Anthropic base URL; leave it empty and it is derived from `baseUrl`) |
 
 ---
 

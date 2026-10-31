@@ -83,7 +83,7 @@ Handlers in-process:
 | `tests/integration/media-audio-video.test.ts` | video polling, speech bytes, multipart transcription |
 | `tests/integration/media-catalog-capability.test.ts` | the catalog labels each model with the spec serving it |
 | `tests/integration/user-self-service.test.ts` | the user panel managing their own keys |
-| `tests/integration/provider-faces.test.ts` | a provider's two protocol faces |
+| `tests/integration/provider-faces.test.ts` | which surfaces a provider row exposes and how each one is routed: one row serving both `/v1/responses` and `/v1/messages`, and an upstream failure reported as 502 instead of switching protocol |
 | `tests/integration/admin-provider-patch.test.ts`, `admin-rename-patch.test.ts` | admin provider updates |
 | `tests/integration/admin-user-form-routes.test.ts` | admin user form routes |
 | `tests/integration/bootstrap-race.test.ts`, `create-user-race.test.ts`, `bootstrap-no-throw.test.ts` | concurrent bootstrap and user creation |

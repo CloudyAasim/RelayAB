@@ -224,33 +224,39 @@ routing and rotation, ordered by `priority`.
 | `modelMapping` | `model_mapping` | TEXT NOT NULL DEFAULT `'{}'` | Client model → actual upstream model, as a JSON object. An identity mapping is recommended |
 | `modelConfigs` | `model_configs` | TEXT NOT NULL DEFAULT `'{}'` | Optional per-model configuration, as a JSON object — see §3.1 |
 | `headers` | `headers` | TEXT NOT NULL DEFAULT `'{}'` | Optional extra request headers (e.g. Azure's `api-version`), as a JSON object |
-| `upstreamFormat` | `upstream_format` | TEXT NOT NULL DEFAULT `'responses'` | `"responses" \| "chat" \| "anthropic" \| "gemini"`, the upstream's native protocol. `responses` / `chat` are served natively by the OpenAI side; `anthropic` / `gemini` mean the upstream speaks only that protocol and the OpenAI side is served by the gateway translating |
-| `openaiEnabled` | `openai_enabled` | INTEGER NOT NULL DEFAULT 1 | Whether this provider serves the OpenAI-facing endpoints (`/v1/chat/completions`, `/v1/responses`) |
-| `anthropicEnabled` | `anthropic_enabled` | INTEGER NOT NULL DEFAULT 0 | Whether this provider **also** serves the Anthropic Messages surface (`/anthropic/v1/messages`, `/v1/messages`) |
-| `anthropicBaseUrl` | `anthropic_base_url` | TEXT NULL | Base URL for the Anthropic face. `NULL` = derive it from `base_url` (one trailing `/v1` is stripped). Set it explicitly when the vendor's Anthropic endpoint is a sub-path, e.g. `https://api.deepseek.com/anthropic` |
-| `anthropicMode` | `anthropic_mode` | TEXT NOT NULL DEFAULT `'native'` | How the Anthropic face is **served**: `native` = the vendor's own `/v1/messages`, the request goes as it is; `translated` = the vendor speaks no Anthropic and the gateway rewrites the request into the protocol it does speak. The default is `native`, so every row written before this column existed is still served the way it was |
+| `upstreamFormat` | `upstream_format` | TEXT NOT NULL DEFAULT `'responses'` | **Derived from the route table**: `"responses" \| "chat" \| "anthropic" \| "gemini"`, the vendor's own protocol. It is a summary written for the endpoints that are not text generation (embeddings / rerank / moderation / the model catalogue) and is no longer the answer about routing |
+| `openaiEnabled` | `openai_enabled` | INTEGER NOT NULL DEFAULT 1 | **Derived from the route table**: whether the OpenAI-side surfaces (`/v1/chat/completions`, `/v1/responses`) are served |
+| `anthropicEnabled` | `anthropic_enabled` | INTEGER NOT NULL DEFAULT 0 | **Derived from the route table**: whether the Anthropic Messages surface (`/anthropic/v1/messages`, `/v1/messages`) is served |
+| `anthropicBaseUrl` | `anthropic_base_url` | TEXT NULL | Base URL for the Anthropic surface when it is **passed through**. `NULL` = derive it from `base_url` (one trailing `/v1` is stripped). Set it explicitly when the vendor's Anthropic endpoint is a sub-path, e.g. `https://api.deepseek.com/anthropic` |
+| `anthropicMode` | `anthropic_mode` | TEXT NOT NULL DEFAULT `'native'` | **Derived from the route table**: `native` = the Anthropic surface is passed through (the vendor's own `/v1/messages`); `translated` = the gateway rewrites the request into the dialect the vendor does speak |
+| `surfaceRoutes` | `surface_routes` | TEXT NULL | **The route table**: one row per client surface (`openai-chat` / `openai-responses` / `anthropic-messages` / `gemini-generate`), each saying one of three things: not served / passed through / routed to a dialect. JSON array text (one JSON document per surface, all four written). `NULL` = this row predates the table, and its routing is derived from the old columns |
+| `protocolMode` | `protocol_mode` | TEXT NULL | Which configuration is in effect: `simple` (the route table decides) / `advanced` (the upstream's declared dialects decide) / `passthrough` (every surface in its own vocabulary). `NULL` = this row predates the mode, and keeps doing what it did |
+| `upstreamDialects` | `upstream_dialects` | TEXT NULL | Which dialects the vendor's own API speaks (`chat` / `responses` / `anthropic` / `gemini`), as a JSON array. **Only advanced mode reads it** |
 | `enabled` | `enabled` | INTEGER NOT NULL | 0/1 |
 | `priority` | `priority` | INTEGER NOT NULL DEFAULT 0 | Routing priority (lower number wins) |
 | `createdAt` | `created_at` | TEXT NOT NULL | ISO string |
 | `updatedAt` | `updated_at` | TEXT NOT NULL | ISO string |
 
-> #### ⚠️ A provider row carries **two protocol faces**
+> #### A provider row answers **four client surfaces**
 >
-> The two faces **share** the API key, `modelMapping` and `modelConfigs` — those
-> are identical for a given vendor. So configuring the same vendor twice (once per
-> protocol) is **no longer necessary**; only the protocol and, usually, the base
-> URL differ. Earlier versions of this table described a single-face model where
-> `kind` and `upstreamFormat` decided everything; that is the legacy shape.
+> **The route table is the only answer.** `surface_routes` holds one row per surface,
+> and each row says one of three things — not served, passed through, or routed to a
+> dialect (`chat` / `responses` / `anthropic` / `gemini`).
 >
-> | Field | Decides |
+> | Surface | Client endpoint |
 > | --- | --- |
-> | `openaiEnabled` | whether the OpenAI-side endpoints use this provider |
-> | `anthropicEnabled` | whether the Anthropic Messages surface uses this provider |
-> | `anthropicBaseUrl` | the Anthropic-side base URL (derived from `base_url` when NULL) |
-> | `upstreamFormat` | the OpenAI side's native format — `responses` / `chat` natively, `anthropic` / `gemini` by the gateway's translation |
+> | `openai-chat` | `POST /v1/chat/completions` |
+> | `openai-responses` | `POST /v1/responses` |
+> | `anthropic-messages` | `POST /anthropic/v1/messages`, `POST /v1/messages` |
+> | `gemini-generate` | `POST /v1beta/models/{model}:generateContent` |
+>
+> The four surfaces **share** the same API key, `modelMapping` and `modelConfigs` —
+> those are identical for a given vendor. The `upstream_format` / `openai_enabled` /
+> `anthropic_enabled` / `anthropic_mode` columns are now a **summary** of that table,
+> derived from it, and are no longer the answer about routing.
 >
 > See [architecture.md §7](architecture.md#7-upstream-providers-and-model-mapping)
-> for how the faces interact during routing.
+> for how the surfaces interact during routing.
 
 ### 3.1 ModelConfig
 
@@ -286,12 +292,25 @@ routing and rotation, ordered by `priority`.
   "openai_enabled": 1,
   "anthropic_enabled": 0,
   "anthropic_base_url": null,
+  "surface_routes": "[\"{\\\"surface\\\":\\\"openai-chat\\\",\\\"kind\\\":\\\"passthrough\\\"}\",\"{\\\"surface\\\":\\\"openai-responses\\\",\\\"kind\\\":\\\"passthrough\\\"}\",\"{\\\"surface\\\":\\\"anthropic-messages\\\",\\\"kind\\\":\\\"unsupported\\\"}\",\"{\\\"surface\\\":\\\"gemini-generate\\\",\\\"kind\\\":\\\"route\\\",\\\"dialect\\\":\\\"responses\\\"}\"]",
+  "protocol_mode": "simple",
+  "upstream_dialects": "[]",
   "enabled": 1,
   "priority": 1,
   "created_at": "2026-09-21T08:00:00.000Z",
   "updated_at": "2026-09-21T08:00:00.000Z"
 }
 ```
+
+> **The route table column holds one JSON document per surface**, all four written
+> (including the ones that are not served). The string above expands to:
+> ```json
+> {"surface":"openai-chat","kind":"passthrough"}
+> {"surface":"openai-responses","kind":"passthrough"}
+> {"surface":"anthropic-messages","kind":"unsupported"}
+> {"surface":"gemini-generate","kind":"route","dialect":"responses"}
+> ```
+> `upstream_dialects` is the column that is read when `protocol_mode` is `advanced`.
 
 > **Use an identity mapping for model mapping.** The left-hand side of
 > `model_mapping` appears verbatim in `GET /v1/models` and is written into the

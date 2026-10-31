@@ -62,7 +62,7 @@ export const TOOL_DESCRIPTIONS: Record<string, ToolText> = {
       "向用户提一个问题，然后这一轮就结束，等他回答。\n\n" +
       "**什么时候必须用它**：有一件事你不知道答案，而猜错的代价比多问一句大。" +
       "典型的是需要人做决定或需要只有他知道的事——这个模型的价格是多少、" +
-      "要不要开启某个协议面、你更想要哪种做法。\n\n" +
+      "要不要开某个客户端接口、你更想要哪种做法。\n\n" +
       "**什么时候不要用**：文档里写着答案的（先去查文档）、用户刚才说过的、" +
       "你自己能定一个合理默认并把它讲清楚的。\n\n" +
       "**用了它之后必须停止**。不要再调用任何其他工具，不要接着往下做，" +
@@ -74,8 +74,8 @@ export const TOOL_DESCRIPTIONS: Record<string, ToolText> = {
       "Ask the user one question, then end this turn and wait for the answer.\n\n" +
       "**When you must use it**: there is something you do not know the answer to, and guessing wrong " +
       "costs more than asking one more question. The typical cases are a decision only a person can " +
-      "make, or a fact only they know — what this model costs, whether a protocol surface should be " +
-      "turned on, which approach they would rather have.\n\n" +
+      "make, or a fact only they know — what this model costs, whether a client interface should be " +
+      "served, which approach they would rather have.\n\n" +
       "**When you must not use it**: the answer is in the documentation (go and read the docs), the " +
       "user just told you, or you can pick a sensible default yourself and explain it clearly.\n\n" +
       "**After using it you must stop.** Do not call any other tool, do not carry on with the work, " +
@@ -639,16 +639,18 @@ export const TOOL_DESCRIPTIONS: Record<string, ToolText> = {
   "propose_provider_update": {
     "zh-CN":
       "提出一次聊天服务商配置变更。这不会立刻生效 —— 它生成一份 before/after 对比，" +
-      "等管理员在界面上确认后才执行。可改：API 地址、上游格式（responses/chat）、请求头、优先级、" +
-      "模型映射、两个协议面、启用开关、每个兼容接口的参数规则（textSpecs）。" +
-      "只能改已存在的服务商，不能新建。",
+      "等管理员在界面上确认后才执行。可改：API 地址、请求头、优先级、模型映射、启用开关、" +
+      "每个兼容接口的参数规则（textSpecs），以及**这家厂商怎么被调到**（upstreamFormat / " +
+      "openaiEnabled / anthropicEnabled / anthropicMode —— 它们现在是接口路由表的摘要，" +
+      "改它们等于改路由）。只能改已存在的服务商，不能新建。",
     en:
       "Propose a change to a chat provider's configuration. It does not take effect immediately — " +
       "it produces a before/after comparison that runs once an administrator confirms it in the " +
-      "interface. It can change: the API address, the upstream format (responses/chat), request " +
-      "headers, priority, the model mapping, the two protocol surfaces, the enabled switch, and the " +
-      "parameter rules for each compatible interface (textSpecs). It can only change a provider that " +
-      "already exists; it cannot create one.",
+      "interface. It can change: the API address, request headers, priority, the model mapping, the " +
+      "enabled switch, the parameter rules for each compatible interface (textSpecs), and " +
+      "**how this vendor is reached** (upstreamFormat / openaiEnabled / anthropicEnabled / " +
+      "anthropicMode — they are now a summary of the route table, so changing them changes the " +
+      "routing). It can only change a provider that already exists; it cannot create one.",
   },
   "propose_provider_update.providerId": {
     "zh-CN": "要修改的服务商 id",
@@ -696,7 +698,7 @@ export const TOOL_DESCRIPTIONS: Record<string, ToolText> = {
       "传 null 清空全部。所以给某一个接口加规则不用重发另外两个。\n" +
       "不确定该选哪个 protocol，先调 list_text_protocols，不要凭印象写。\n" +
       "只有厂商确实和 OpenAI 兼容接口不一样时才需要写；'大多数厂商什么都不用配'。\n" +
-      "protocol 只能取那三个接口之一，而且对应协议面必须是开的，否则规则不会生效。",
+      "protocol 只能取那四个接口之一，而且这个接口必须是被服务的，否则规则不会生效。",
     en:
       "The list of upstream protocol documents, **merged by protocol**: same name replaces, " +
       "anything you do not mention is kept, and passing null clears them all. So adding a rule for " +
@@ -705,8 +707,8 @@ export const TOOL_DESCRIPTIONS: Record<string, ToolText> = {
       "one from memory.\n" +
       "Only write them when the vendor really does differ from the OpenAI-compatible interface; " +
       "'most vendors need nothing configured'.\n" +
-      "protocol can only be one of those three interfaces, and the matching protocol surface must " +
-      "be on, otherwise the rules will not apply.",
+      "protocol can only be one of those four interfaces, and that interface must be served, " +
+      "otherwise the rules will not apply.",
   },
   "propose_provider_update.headers": {
     "zh-CN":
@@ -1124,21 +1126,23 @@ export const TOOL_DESCRIPTIONS: Record<string, ToolText> = {
   },
   "propose_provider_create.openaiEnabled": {
     "zh-CN":
-      "OpenAI 协议面。上游说 chat/responses 时是直连；上游说 anthropic/gemini 时表示由网关转换来服务。",
+      "OpenAI 那一侧（Chat / Responses / Gemini 三个接口）。厂商说 chat/responses 时是直连；" +
+      "厂商说 anthropic/gemini 时表示由网关转换来服务。",
     en:
-      "The OpenAI protocol surface. When the upstream speaks chat/responses this is a direct " +
-      "connection; when it speaks anthropic/gemini it means the gateway translates to serve it.",
+      "The OpenAI side (the Chat, Responses and Gemini interfaces). When the upstream speaks " +
+      "chat/responses this is a direct connection; when it speaks anthropic/gemini it means the " +
+      "gateway translates to serve it.",
   },
   "propose_provider_create.anthropicEnabled": {
-    "zh-CN": "Anthropic 协议面，上游说 /v1/messages 时开",
-    en: "The Anthropic protocol surface; turn it on when the upstream speaks /v1/messages",
+    "zh-CN": "Anthropic 那一侧，厂商说 /v1/messages 时开",
+    en: "The Anthropic side; turn it on when the upstream speaks /v1/messages",
   },
   "propose_provider_create.anthropicMode": {
     "zh-CN":
-      "Anthropic 协议面怎么服务：native = 厂商自己的 /v1/messages；translated = 厂商不说 Anthropic，" +
+      "Anthropic 那一侧怎么服务：native = 厂商自己的 /v1/messages；translated = 厂商不说 Anthropic，" +
       "由网关转换。只说 OpenAI 兼容协议的厂商要用 translated，Anthropic 客户端才调得动它。",
     en:
-      "How the Anthropic protocol surface is served: native = the vendor's own /v1/messages; " +
+      "How the Anthropic side is served: native = the vendor's own /v1/messages; " +
       "translated = the vendor does not speak Anthropic and the gateway translates. A vendor that " +
       "only speaks an OpenAI-compatible protocol needs translated, or Anthropic clients cannot " +
       "reach it.",

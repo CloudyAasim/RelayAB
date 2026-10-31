@@ -126,7 +126,9 @@ This means:
    - **Base URL** - the upstream API root address
    - **API key** - the upstream API key (stored encrypted)
    - **Priority** - the lower the number, the higher the priority
-   - **Upstream format** - `Responses` (default) / `Chat` / `Messages` / `Gemini`
+   - **Configuration mode** - `simple` (Simple; the route table decides) / `advanced` (Advanced; the upstream's declared dialects decide) / `passthrough` (Passthrough; every surface goes out in its own vocabulary)
+   - **Interface routing** - in Simple mode, one row per client surface: not supported / passed through / routed to a dialect (`chat` / `responses` / `anthropic` / `gemini`)
+   - **Upstream interfaces** - in Advanced mode, declare which dialects this vendor's own API speaks
    - **Model Mapping** - client model name → upstream model name; an identity mapping is recommended
 
 ### 4.2 Test a Provider

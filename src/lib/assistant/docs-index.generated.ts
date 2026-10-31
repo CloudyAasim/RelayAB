@@ -167,7 +167,7 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     surface: "admin",
     id: "providers",
     summary: "服务商配置：新增、编辑、启用、优先级、格式，以及文本适配协议全文（普通服务商每个兼容接口的参数规则怎么写）",
-    keys: ["admin.docs.provider.title","admin.docs.provider.desc","admin.docs.provider.kind","admin.docs.provider.baseUrl","admin.docs.provider.headers","admin.docs.provider.format","admin.docs.provider.formatTrap","admin.docs.provider.modes","admin.docs.provider.specs","admin.docs.provider.textProtocol","admin.docs.textProtocol.title","admin.docs.textProtocol.desc"],
+    keys: ["admin.docs.provider.title","admin.docs.provider.desc","admin.docs.provider.kind","admin.docs.provider.baseUrl","admin.docs.provider.headers","admin.docs.provider.routes","admin.docs.provider.routesTrap","admin.docs.provider.modes","admin.docs.provider.specs","admin.docs.provider.textProtocol","admin.docs.textProtocol.title","admin.docs.textProtocol.desc"],
     after: "这一页下半部分的「文本适配协议全文」也是一个仓库文件渲染出来的，read_docs 拿不到它 —— 协议正文用 get_text_spec_reference(what=\"protocol\") 读，分段读，读到 nextOffset 就接着读下一段；可套用的内置预设用 get_text_spec_reference(what=\"presets\") 取。",
   },
   {

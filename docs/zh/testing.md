@@ -82,7 +82,7 @@ pnpm test:unit
 | `tests/integration/media-audio-video.test.ts` | 视频轮询、语音字节、multipart 转录 |
 | `tests/integration/media-catalog-capability.test.ts` | 目录为每个模型标注服务它的 spec |
 | `tests/integration/user-self-service.test.ts` | 用户面板管理自己的 Key |
-| `tests/integration/provider-faces.test.ts` | 一个 Provider 的两个协议面 |
+| `tests/integration/provider-faces.test.ts` | 一个 Provider 行解析出哪些面、每个面怎么路由：同一行同时服务 `/v1/responses` 与 `/v1/messages`、上游失败时报 502 而不自动换协议 |
 | `tests/integration/admin-provider-patch.test.ts`、`admin-rename-patch.test.ts` | 管理端 Provider 更新 |
 | `tests/integration/admin-user-form-routes.test.ts` | 管理端用户表单路由 |
 | `tests/integration/bootstrap-race.test.ts`、`create-user-race.test.ts`、`bootstrap-no-throw.test.ts` | 并发 bootstrap 与用户创建 |

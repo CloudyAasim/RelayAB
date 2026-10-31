@@ -57,10 +57,12 @@ describe("the assistant can see and set the protocol", () => {
   });
 
   it("it refuses to quietly write a rule for an interface that is switched off", () => {
-    // A rule for a face that is off is saved, looks configured, and never
-    // runs. There is no UI to notice it here, so the tool has to say it.
+    // A rule for an interface that is not served is saved, looks configured,
+    // and never runs. There is no UI to notice it here, so the tool has to say
+    // it — and it says it in the route table's words, because that is the
+    // vocabulary the operator configured it with.
     expect(TOOLS).toMatch(/needs_attention/);
-    expect(TOOLS).toMatch(/所属的协议面是关着的/);
+    expect(TOOLS).toMatch(/这个接口没有被服务/);
   });
 
   it("there is a tool that says which protocols exist and when to use each", () => {

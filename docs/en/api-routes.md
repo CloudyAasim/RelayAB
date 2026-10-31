@@ -56,16 +56,23 @@ Content-Type: application/json
 ```
 
 **Upstream behaviour**:
-this endpoint always sends a request body in **Chat Completions format**, so it forwards
-to a fixed upstream path, `<provider.baseUrl>/chat/completions`. A provider's
-`upstreamFormat = "responses"` does not change this path (that would send a Chat body to
-the Responses endpoint).
+this endpoint is decided by the provider's **route table** (`surface_routes`), in the
+`openai-chat` row. That row says one of three things:
 
-Providers with `upstreamFormat = "anthropic"` or `"gemini"` are **not** excluded: their
-upstream does not speak Chat Completions at all, so the gateway converts the request into
-the Responses shape, hands it to the Responses path (which converts it again into the
-vendor's dialect) and converts the answer back into a Chat structure. A provider with
-`upstreamFormat = "responses"` still gets the Chat body posted as above.
+- **Not served** — this provider does not answer this endpoint, so it is not a
+  candidate.
+- **Passed through** — the request goes out to `<provider.baseUrl>/chat/completions`
+  in the shape it arrived in, and the answer comes back in that shape. That is only
+  correct when the vendor publishes Chat Completions itself.
+- **Routed to X** (`chat` / `responses` / `anthropic` / `gemini`) — the gateway
+  rewrites the request into X's shape, sends it to X's endpoint, and rewrites the
+  answer back into the Chat structure.
+
+So a Chat client can be served by a Responses vendor and the other way round — the
+two dialects are converted into one another. Rows written before the route table
+existed have no table: their routing is derived from the old columns, and their
+Chat surface still goes to the vendor's `/chat/completions` (a Chat body must not
+be posted to the Responses endpoint).
 
 **Error body** (applies to every `/v1/*` endpoint, including all the public proxy
 ones below):
@@ -261,14 +268,21 @@ Or use the array form:
 ```
 
 **Upstream behaviour and protocol conversion**:
-- Provider with `upstreamFormat = "responses"` → forwarded as-is to `<baseUrl>/responses`.
-- Provider with `upstreamFormat = "chat"` → converted to a Chat request body and sent to
+the `openai-responses` row of the route table says what happens:
+
+- **Not served** → this provider does not answer this endpoint.
+- **Passed through** → forwarded as-is to `<baseUrl>/responses` (the vendor
+  publishes Responses itself).
+- **Routed to `responses`** → the request is rewritten into the Responses shape and
+  sent to `<baseUrl>/responses`, and the answer is converted back into the Responses
+  structure above.
+- **Routed to `chat`** → converted to a Chat request body and sent to
   `<baseUrl>/chat/completions`, then the Chat response is converted back into the
   Responses structure above.
-- Provider with `upstreamFormat = "anthropic"` (or `kind = "anthropic"`) → converted to
-  an Anthropic Messages request and sent to `<baseUrl>/v1/messages`, then converted back
+- **Routed to `anthropic`** → converted to an Anthropic Messages request and sent to
+  `<baseUrl>/v1/messages` (or the row's own Anthropic base URL), then converted back
   into the Responses structure.
-- Provider with `upstreamFormat = "gemini"` → converted to a Gemini request and sent to
+- **Routed to `gemini`** → converted to a Gemini request and sent to
   `<baseUrl>/models/<model>:generateContent` (the key travels in `x-goog-api-key`),
   then the `candidates` are converted back into the Responses structure.
 
@@ -334,16 +348,22 @@ Content-Type: application/json
 
 **Response**: the standard Anthropic Messages response format.
 
-**Provider selection**: this endpoint only picks providers speaking the Anthropic
-protocol, trying them in the order
-`upstreamFormat === "anthropic"` → `kind === "anthropic"` → `kind === "custom-openai"`,
-and within each tier it takes the first one by ascending `priority`. The request is
-forwarded to `<baseUrl>/v1/messages`.
+**Provider selection**: the candidates are the providers whose route table answers
+the `anthropic-messages` surface, and the first one by ascending `priority` is
+taken. That surface says one of three things:
 
-> Note that `baseUrl` must be the upstream's **Anthropic** base URL. For example,
-> MiniMax's OpenAI base URL is `https://api.minimaxi.com/v1` while its Anthropic base URL is
-> `https://api.minimaxi.com/anthropic` — the two cannot be mixed. See
-> [architecture.md §7.5](architecture.md#75-adding-an-anthropic-provider) for the
+- **Not served** → this provider does not answer this endpoint.
+- **Passed through** → the request goes out as it arrived to the vendor's own
+  `/v1/messages` (at the row's Anthropic base URL; leave it empty and it is derived
+  from `baseUrl` with one trailing `/v1` stripped).
+- **Routed to X** → the gateway rewrites the request into X's shape, sends it to X's
+  endpoint, and rewrites the answer back into the Anthropic structure.
+
+> Note that the Anthropic base URL and `baseUrl` are two different things. For
+> example, MiniMax's OpenAI base URL is `https://api.minimaxi.com/v1` while its
+> Anthropic base URL is `https://api.minimaxi.com/anthropic` — the two cannot be
+> mixed, and only an Anthropic surface that is **passed through** uses the latter.
+> See [architecture.md §7.5](architecture.md#75-adding-an-anthropic-provider) for the
 > configuration steps.
 
 ---
@@ -388,6 +408,21 @@ Auth uses Google's carriers (`x-goog-api-key` or `?key=`); the OpenAI-shaped one
 work too. These paths are rewritten to `/api/v1beta/*` by `next.config.mjs` —
 **the rewrite layer has to be committed along with the route** when a public
 path changes.
+
+This surface reads the `gemini-generate` row of the route table too:
+
+- **Not served** → this provider does not answer this endpoint.
+- **Passed through** → the Google vendor's own `generateContent` endpoint receives
+  the client's body with not one field changed (this direct path was added later;
+  a Gemini upstream used to be reached through the Responses pivot).
+- **Routed to X** → the gateway rewrites the request into X's shape, sends it to X's
+  endpoint, and rewrites the answer back into the Gemini shape.
+
+> **A Google upstream differs in two ways**: the key travels in `x-goog-api-key`,
+> raw, with no `Bearer` in front of it; every other vendor takes
+> `Authorization: Bearer <key>`. Its model list is at `<baseUrl>/models` (Google's
+> base URL already carries `/v1beta`), not at `/v1/models` — asking for
+> `/v1/models` there is a 404 that reads as "this vendor has no model list".
 
 ### 1.8 The realtime surface (WebSocket)
 

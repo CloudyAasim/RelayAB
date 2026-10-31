@@ -176,7 +176,7 @@ Session 由 iron-session 放在 cookie 里，**不落库**。
 
 ### 4.3 媒体适配协议
 
-媒体能力不走聊天协议面，而是**声明式 spec + 通用引擎**：
+媒体能力不走文本接口路由，而是**声明式 spec + 通用引擎**：
 
 ```
 供应商行（`media_providers` 表）= baseUrl + 密钥 + models + specs[]
@@ -340,37 +340,57 @@ Session 由 iron-session 放在 cookie 里，**不落库**。
   },
   modelConfigs: { /* 可选的上下文长度 / 输出上限 / 计费参数 */ },
   headers: { /* 可选的附加请求头 */ },
-  upstreamFormat: "responses" | "chat" | "anthropic" | "gemini",
+  protocolMode: "simple" | "advanced" | "passthrough",
+  surfaceRoutes: {                 // 路由表：每个客户端面一行
+    "openai-chat": { kind: "passthrough" },
+    "openai-responses": { kind: "route", dialect: "chat" },
+    "anthropic-messages": { kind: "unsupported" },
+    "gemini-generate": { kind: "unsupported" },
+  },
+  upstreamDialects: ["chat"],      // 高级模式读：厂商自己的 API 会说哪几种方言
+  // upstreamFormat / openaiEnabled / anthropicEnabled / anthropicMode 由路由表推导
   enabled: true,
   priority: 1,                    // 数字小的优先被选中
 }
 ```
 
-### 7.2 三个字段的分工
+### 7.2 路由由哪几个字段决定
 
-配置一条 Provider 时，起决定作用的是下面三个字段。它们职责不同，不要互相替代：
+配置一条 Provider 时，路由由下面这几个字段决定。它们职责不同，不要互相替代：
 
 | 字段 | 作用 |
 |---|---|
-| `kind` | **协议家族**。`anthropic` 表示这条 Provider 说的是 Anthropic Messages 协议 |
-| `baseUrl` | **上游根地址**。代理在其后拼接端点路径（`/chat/completions`、`/responses`、`/v1/messages`） |
-| `upstreamFormat` | **上游原生协议**。决定请求打到哪个路径、以及是否需要先做协议转换 |
+| `kind` | **协议家族**（模板决定）。`anthropic` 表示这条 Provider 说的是 Anthropic Messages 协议 |
+| `baseUrl` | **上游根地址**。代理在其后拼接端点路径（`/chat/completions`、`/responses`、`/v1/messages`、`/models/<模型名>:generateContent`） |
+| `protocolMode` | **配置模式**。`simple` = 路由表说了算；`advanced` = 上游声明的方言说了算；`passthrough` = 每个面都用自己的词汇原样发出 |
+| `surfaceRoutes` | **路由表**。每个客户端面一行，每行说三件事之一：不支持 / 原样透传 / 路由到某个方言（`chat` / `responses` / `anthropic` / `gemini`） |
+| `upstreamDialects` | **上游方言**（只有高级模式读）。厂商自己的 API 会说哪几种方言 |
+
+旧的 `upstream_format` / `openai_enabled` / `anthropic_enabled` / `anthropic_mode`
+四列现在是**从路由表推导出来的摘要**，不再决定路由 —— 唯一的例外是路由表出现之前
+写入的行：那种行没有表，它的路由仍按旧列推导，而推导出来的正是老行为。这四列仍然
+写着，因为那些不是文本生成的端点（embeddings / rerank / moderation / 模型目录）要读
+它们，而它们没有自己的逐面表。`upstream_format` 现在说的是「厂商自己的协议」；
+`anthropic_mode` 是 `native`（厂商自己的 `/v1/messages`）还是 `translated`（网关转换）。
 
 ### 7.3 端点 → 上游路径
 
 | 客户端请求 | 上游路径 | Provider 选择规则 |
 |---|---|---|
-| `POST /v1/chat/completions` | `<baseUrl>/chat/completions` | 排除 Anthropic 协议的 Provider，其余按 `priority` 升序取第一个。命中的是 Anthropic / Gemini 协议的 Provider 时改走 Responses 枢轴（Chat → Responses → 上游方言） |
-| `POST /v1/responses` | `<baseUrl>/responses` | 同上。若命中的 Provider 是 `chat` / `anthropic` / `gemini` 协议，先做请求转换，再调用它的对应端点，最后把响应转回 Responses 结构 |
-| `POST /anthropic/v1/messages` | `<baseUrl>/v1/messages` | 优先 `upstreamFormat === "anthropic"`，其次 `kind === "anthropic"`，再其次 `kind === "custom-openai"` |
-| `POST /v1beta/models/<模型名>:generateContent` | `<baseUrl>/models/<模型名>:generateContent` | 与 `/v1/responses` 同一批 Provider（Gemini 上游走同一条转换链） |
+| `POST /v1/chat/completions` | 路由表 `openai-chat` 行说透传 → `<baseUrl>/chat/completions`；说路由到 X → X 的端点，请求改写成 X 的形状 | 在路由表里回答了 `openai-chat` 的 Provider，按 `priority` 升序取第一个 |
+| `POST /v1/responses` | 路由表 `openai-responses` 行说透传 → `<baseUrl>/responses`；说路由到 X → X 的端点，请求改写成 X 的形状 | 同上 |
+| `POST /anthropic/v1/messages` | 路由表 `anthropic-messages` 行说透传 → `<baseUrl>/v1/messages`（或该行自己的 Anthropic 基址）；说路由到 X → X 的端点，请求改写成 X 的形状 | 同上 |
+| `POST /v1beta/models/<模型名>:generateContent` | 路由表 `gemini-generate` 行说透传 → `<baseUrl>/models/<模型名>:generateContent`；说路由到 X → X 的端点，请求改写成 X 的形状 | 同上 |
 
-两个实现细节：
+三个实现细节：
 
-- 请求体格式决定目标路径。Chat 代理发出的永远是 Chat 请求体，所以它必须打 `/chat/completions`；不能因为 Provider 标了别的格式就改路径，否则会把 Chat 请求体发到 Responses 端点（历史上出过这个 400 回归）。
-- `kind === "anthropic"` 的 Provider 若 `upstreamFormat` 仍是默认的 `responses`，运行时由 `effectiveUpstreamFormat()` 按 Anthropic 协议处理，避免被 `/v1/chat/completions` 误用。
+- **路由表是唯一的答案。** 旧的四列是从它推导出来的摘要，写给那些不是文本生成的
+  端点用。
+- **旧行不受影响。** 路由表出现之前写入的行没有表，它的路由按旧列推导：Chat 面仍然走
+  厂商的 `/chat/completions`（Chat 请求体不能发给 Responses 端点），Gemini 面仍然经
+  Responses 枢轴。所以加一列不改变任何一行的流量。
 - **流式也跟着走**：客户端要流时，网关向上游要流，把上游的帧翻译成客户端要的那一套
-  （`src/lib/protocol/stream-frames.ts`），所以三个客户端面在三种上游方言下都是逐块到达。
+  （`src/lib/protocol/stream-frames.ts`），所以四个客户端面在四种上游方言下都是逐块到达。
 
 ### 7.4 模型映射规范
 
@@ -386,21 +406,32 @@ Session 由 iron-session 放在 cookie 里，**不落库**。
 
 ### 7.5 新增一条 Anthropic Provider
 
-要让 `/anthropic/v1/messages` 能工作，需要一条 Anthropic 协议的 Provider：
+要让 `/anthropic/v1/messages` 能工作，需要一条在路由表里回答了 `anthropic-messages`
+这一面的 Provider：
 
-1. 模板选 **Anthropic** —— 这会把 `kind` 设为 `anthropic`，`upstreamFormat` 自动设为 `anthropic`，并预填 Claude 模型与 `anthropic-version` 请求头。
-2. 把 **API 请求地址** 改成上游的 Anthropic 基址。例如 MiniMax 是 `https://api.minimaxi.com/anthropic`（注意与它的 OpenAI 基址 `https://api.minimaxi.com/v1` 不是同一个）。
+1. 模板选 **Anthropic** —— 这会把 `kind` 设为 `anthropic`，并把路由表写成 Anthropic
+   那一套：`anthropic-messages` 原样透传，`openai-chat` / `openai-responses` /
+   `gemini-generate` 路由到 `anthropic` 方言；同时预填 Claude 模型与
+   `anthropic-version` 请求头。
+2. **API 请求地址** 填上游的地址（如 `https://api.anthropic.com/v1`）。只有
+   `anthropic-messages` 这一面**原样透传**时才会用到 Anthropic 基址：厂商的 Anthropic
+   端点与 OpenAI 不同时（例如 MiniMax 是 `https://api.minimaxi.com/anthropic`，与它的
+   OpenAI 基址 `https://api.minimaxi.com/v1` 不是同一个），把它填进该行的 Anthropic
+   基址；留空则由 `baseUrl` 推导。
 3. **模型映射** 填真实模型名。
-4. 这条 Provider 不会被 `/v1/chat/completions` 选中；它与 OpenAI 那条互不干扰。
+4. 这条 Provider 同时也接 Chat / Responses 客户端 —— 那两个面被网关改写成 Anthropic
+   方言；不想接的面在路由表里标成「不支持」。
 
-也可以不用 Anthropic 模板，改用手动方式：任意 OpenAI 系模板 + 把 **上游格式** 改成 `Anthropic Messages`。效果等价，只是 `kind` 会是 `openai`，语义上不如直接选 Anthropic 模板清晰。
+也可以不用 Anthropic 模板，改用手动方式：任意 OpenAI 系模板 + 在路由表里把
+`anthropic-messages` 设为原样透传。效果等价，只是 `kind` 会是 `openai`，语义上不如
+直接选 Anthropic 模板清晰。
 
-三个端点的基址必须配对，这是最常见的配置错误：
+两个基址必须配对，这是最常见的配置错误：
 
-| 端点 | `baseUrl` 必须是 |
+| 端点 | 地址必须是 |
 |---|---|
-| `/v1/chat/completions`、`/v1/responses` | 上游的 OpenAI 兼容基址（如 `https://api.minimaxi.com/v1`） |
-| `/anthropic/v1/messages` | 上游的 Anthropic 兼容基址（如 `https://api.minimaxi.com/anthropic`） |
+| `/v1/chat/completions`、`/v1/responses` | 上游的 OpenAI 兼容基址，如 `https://api.minimaxi.com/v1` |
+| `/anthropic/v1/messages` | 上游的 Anthropic 兼容基址，如 `https://api.minimaxi.com/anthropic`（填在该行的 Anthropic 基址；留空则由 `baseUrl` 推导） |
 
 ---
 

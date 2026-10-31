@@ -205,31 +205,36 @@ function checkKeyStatus({ key, user, requestedModel }): KeyValidationResult {
 | `modelMapping` | `model_mapping` | TEXT NOT NULL DEFAULT `'{}'` | 客户端模型 → 上游真实模型，JSON 对象文本。推荐恒等映射 |
 | `modelConfigs` | `model_configs` | TEXT NOT NULL DEFAULT `'{}'` | 可选的每模型配置，JSON 对象文本 —— 见 §3.1 |
 | `headers` | `headers` | TEXT NOT NULL DEFAULT `'{}'` | 可选的附加请求头（如 Azure 的 `api-version`），JSON 对象文本 |
-| `upstreamFormat` | `upstream_format` | TEXT NOT NULL DEFAULT `'responses'` | `"responses" \| "chat" \| "anthropic" \| "gemini"`，上游原生协议。`responses` / `chat` 由 OpenAI 侧直连；`anthropic` / `gemini` 表示上游只说那种协议，OpenAI 侧由网关转换来服务 |
-| `openaiEnabled` | `openai_enabled` | INTEGER NOT NULL DEFAULT 1 | 该 Provider 是否服务 OpenAI 侧端点（`/v1/chat/completions`、`/v1/responses`） |
-| `anthropicEnabled` | `anthropic_enabled` | INTEGER NOT NULL DEFAULT 0 | 该 Provider 是否**同时**提供 Anthropic Messages 协议面（`/anthropic/v1/messages`、`/v1/messages`） |
-| `anthropicBaseUrl` | `anthropic_base_url` | TEXT NULL | Anthropic 协议面的 base URL。`NULL` = 由 `base_url` 推导（会去掉一个结尾的 `/v1`）。当厂商的 Anthropic 端点是子路径时需显式设置，如 `https://api.deepseek.com/anthropic` |
-| `anthropicMode` | `anthropic_mode` | TEXT NOT NULL DEFAULT `'native'` | Anthropic 协议面**怎么服务**：`native` = 厂商自己的 `/v1/messages`，请求原样发过去；`translated` = 厂商不说 Anthropic，网关把请求转成它说的那种协议。默认值是 `native`，所以这一列出现之前写的每一行都还按老样子服务 |
+| `upstreamFormat` | `upstream_format` | TEXT NOT NULL DEFAULT `'responses'` | **由路由表推导**：`"responses" \| "chat" \| "anthropic" \| "gemini"`，厂商自己的原生协议。它是为那些不是文本生成的端点（embeddings / rerank / moderation / 模型目录）写的摘要，不再是路由的依据 |
+| `openaiEnabled` | `openai_enabled` | INTEGER NOT NULL DEFAULT 1 | **由路由表推导**：OpenAI 侧的面（`/v1/chat/completions`、`/v1/responses`）是否被服务 |
+| `anthropicEnabled` | `anthropic_enabled` | INTEGER NOT NULL DEFAULT 0 | **由路由表推导**：Anthropic Messages 面（`/anthropic/v1/messages`、`/v1/messages`）是否被服务 |
+| `anthropicBaseUrl` | `anthropic_base_url` | TEXT NULL | Anthropic 面**原样透传**时的 base URL。`NULL` = 由 `base_url` 推导（会去掉一个结尾的 `/v1`）。当厂商的 Anthropic 端点是子路径时需显式设置，如 `https://api.deepseek.com/anthropic` |
+| `anthropicMode` | `anthropic_mode` | TEXT NOT NULL DEFAULT `'native'` | **由路由表推导**：`native` = Anthropic 面原样透传（厂商自己的 `/v1/messages`）；`translated` = 网关把请求改写成厂商说的那种方言 |
+| `surfaceRoutes` | `surface_routes` | TEXT NULL | **路由表**：每个客户端面一行（`openai-chat` / `openai-responses` / `anthropic-messages` / `gemini-generate`），每行说三件事之一：不支持 / 原样透传 / 路由到某个方言。JSON 数组文本（每个面一个 JSON 文档，四个面都写全）。`NULL` = 这一行写在路由表之前，路由由旧列推导 |
+| `protocolMode` | `protocol_mode` | TEXT NULL | 生效的配置模式：`simple`（路由表说了算）/ `advanced`（上游声明的方言说了算）/ `passthrough`（每个面都用自己的词汇）。`NULL` = 这一行写在模式之前，保持它原来的做法 |
+| `upstreamDialects` | `upstream_dialects` | TEXT NULL | 厂商自己的 API 会说哪几种方言（`chat` / `responses` / `anthropic` / `gemini`），JSON 数组文本。**只有高级模式读它** |
 | `enabled` | `enabled` | INTEGER NOT NULL | 0/1 |
 | `priority` | `priority` | INTEGER NOT NULL DEFAULT 0 | 路由优先级（数字小优先） |
 | `createdAt` | `created_at` | TEXT NOT NULL | ISO 字符串 |
 | `updatedAt` | `updated_at` | TEXT NOT NULL | ISO 字符串 |
 
-> #### ⚠️ 一个 Provider 行同时承载**两个协议面**
+> #### 一个 Provider 行回答**四个客户端面**
 >
-> 两个协议面**共用** API Key、`modelMapping` 与 `modelConfigs`——对同一个厂商这些
-> 都是一样的。因此为同一厂商配置两次（每个协议一次）**已无必要**；区别通常只在于
-> 协议本身，以及 base URL。本表早先的版本描述的是一套单协议面模型，由 `kind` 与
-> `upstreamFormat` 决定一切；那是遗留形态。
+> **路由表是唯一的答案。** `surface_routes` 一行一个面，每面说三件事之一 ——
+> 不支持、原样透传，或路由到某个方言（`chat` / `responses` / `anthropic` / `gemini`）。
 >
-> | 字段 | 决定 |
+> | 面 | 客户端端点 |
 > | --- | --- |
-> | `openaiEnabled` | OpenAI 侧端点是否使用该 Provider |
-> | `anthropicEnabled` | Anthropic Messages 协议面是否使用该 Provider |
-> | `anthropicBaseUrl` | Anthropic 侧的 base URL（为 `NULL` 时由 `baseUrl` 推导） |
-> | `upstreamFormat` | OpenAI 侧的原生格式 —— `responses` / `chat` 直连，`anthropic` / `gemini` 由网关转换 |
+> | `openai-chat` | `POST /v1/chat/completions` |
+> | `openai-responses` | `POST /v1/responses` |
+> | `anthropic-messages` | `POST /anthropic/v1/messages`、`POST /v1/messages` |
+> | `gemini-generate` | `POST /v1beta/models/{model}:generateContent` |
 >
-> 协议面在路由中如何协作见
+> 四个面**共用**同一把 API Key、`modelMapping` 与 `modelConfigs` —— 对同一个厂商这些
+> 都是一样的。`upstream_format` / `openai_enabled` / `anthropic_enabled` /
+> `anthropic_mode` 四列现在是这张表的**摘要**，由它推导而来，不再是路由的依据。
+>
+> 各个面在路由中如何协作见
 > [architecture.md §7](architecture.md#7-上游-provider-与模型映射)。
 
 ### 3.1 ModelConfig
@@ -266,12 +271,25 @@ function checkKeyStatus({ key, user, requestedModel }): KeyValidationResult {
   "openai_enabled": 1,
   "anthropic_enabled": 0,
   "anthropic_base_url": null,
+  "surface_routes": "[\"{\\\"surface\\\":\\\"openai-chat\\\",\\\"kind\\\":\\\"passthrough\\\"}\",\"{\\\"surface\\\":\\\"openai-responses\\\",\\\"kind\\\":\\\"passthrough\\\"}\",\"{\\\"surface\\\":\\\"anthropic-messages\\\",\\\"kind\\\":\\\"unsupported\\\"}\",\"{\\\"surface\\\":\\\"gemini-generate\\\",\\\"kind\\\":\\\"route\\\",\\\"dialect\\\":\\\"responses\\\"}\"]",
+  "protocol_mode": "simple",
+  "upstream_dialects": "[]",
   "enabled": 1,
   "priority": 1,
   "created_at": "2026-09-21T08:00:00.000Z",
   "updated_at": "2026-09-21T08:00:00.000Z"
 }
 ```
+
+> **路由表这一列存的是每个面一个 JSON 文档**，四个面都写全（包括不服务的那些）。
+> 上面那串展开后是：
+> ```json
+> {"surface":"openai-chat","kind":"passthrough"}
+> {"surface":"openai-responses","kind":"passthrough"}
+> {"surface":"anthropic-messages","kind":"unsupported"}
+> {"surface":"gemini-generate","kind":"route","dialect":"responses"}
+> ```
+> `protocol_mode` 为 `advanced` 时，`upstream_dialects` 才是被读的那一列。
 
 > **模型映射请用恒等映射。** `model_mapping` 的左列会原样出现在 `GET /v1/models`
 > 并被写进用量日志。把 `claude-sonnet-4-6` 这类名字指向非 Anthropic 的上游模型会造成
@@ -281,7 +299,7 @@ function checkKeyStatus({ key, user, requestedModel }): KeyValidationResult {
 ### 3.2 媒体供应商（MediaProvider）
 
 **表**：`media_providers` —— 图片 / 视频 / 语音 / 音乐供应商。与 `providers` 平行但独立：
-它没有 OpenAI/Anthropic 双协议面，取而代之的是一份声明式 spec 数组。
+它没有文本接口路由，取而代之的是一份声明式 spec 数组。
 
 | 实体字段 | 列 | 存储类型 | 说明 |
 |---|---|---|---|

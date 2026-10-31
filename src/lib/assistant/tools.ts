@@ -56,6 +56,7 @@ import {
   type Finding,
 } from "../providers/config-audit";
 import { checkProposal, type ProposalKind } from "./proposal-validation";
+import { describeRoutes, routesOfProvider } from "./provider-routing";
 import { providerDrift } from "../media/drift";
 import { MEDIA_TEMPLATES } from "../media/seeds";
 import type { MediaSpec } from "../media/spec";
@@ -2297,6 +2298,16 @@ async function listProvidersTool(): Promise<ToolResult> {
         baseUrl: p.baseUrl ?? null,
         enabled: p.enabled,
         priority: p.priority,
+        /**
+         * The route table — how each client interface reaches this provider.
+         *
+         * This is the answer, and it is reported as the table it is: one entry
+         * per interface, each saying whether the provider does not answer it,
+         * answers it as it arrived, or has it rewritten into another dialect.
+         * The columns that came before the table are its summary and are
+         * reported below under their own names.
+         */
+        routes: describeRoutes(routesOfProvider(p)),
         upstreamFormat: p.upstreamFormat,
         openaiEnabled: p.openaiEnabled,
         anthropicEnabled: p.anthropicEnabled,
@@ -2405,11 +2416,11 @@ function listTextProtocolsTool(): ToolResult {
       };
     }),
     faces: {
-      openai: "openaiEnabled：决定这条服务商是否响应 /v1/chat/completions 与 /v1/responses",
-      anthropic: "anthropicEnabled：决定这条服务商是否响应 /v1/messages 与 /anthropic/v1/messages",
+      openai: "openaiEnabled：这家的 Chat / Responses / Gemini 三个接口里，哪些是被服务的",
+      anthropic: "anthropicEnabled：这条服务商是否响应 /v1/messages 与 /anthropic/v1/messages",
       note:
-        "给某个接口写规则之前，它所属的协议面必须是开的，否则规则会保存但不会有请求走到它。" +
-        "（编辑器里关掉的面不会出现在添加按钮中。）",
+        "给某个接口写规则之前，这个接口必须是被服务的，否则规则会保存但不会有请求走到它。" +
+        "（编辑器里没被服务的接口不会出现在添加按钮中。）",
     },
     parameterModes: {
       passthrough: "默认。没列出的参数一律走这个 —— 转发客户端传的值。",
@@ -3664,9 +3675,9 @@ async function proposeProviderUpdate(
         return ok({
           status: "needs_attention",
           message:
-            `协议已经写好，但 ${offFace.join("、")} 所属的协议面是关着的：` +
-            `规则会被保存，可不会有请求走到它。要让它生效，请同时把对应的协议面打开` +
-            `（openaiEnabled / anthropicEnabled），再提交一次。` +
+            `协议已经写好，但 ${offFace.join("、")} 这个接口没有被服务：` +
+            `规则会被保存，可不会有请求走到它。要让它生效，请在接口路由里让这个接口被服务` +
+            `（原样透传，或路由到这家厂商会的协议），再提交一次。` +
             (modeIssue ? `\n${modeIssue}` : ""),
           patch,
         });

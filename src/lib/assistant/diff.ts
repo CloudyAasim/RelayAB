@@ -14,6 +14,7 @@ import type { MediaProvider } from "../media/spec";
 import type { DocPage } from "../docs/custom";
 import { activeModeOf, surfaceOf } from "../protocol/text-specs";
 import { ASSISTANT_PAGE_READ_LIMIT } from "./docs-reader";
+import { describeRoutes, routesAfterPatch, routesOfProvider } from "./provider-routing";
 
 /** Stored documents keyed by the interface they govern, for a before/after. */
 function byProtocol(raws: readonly string[]): Map<string, string> {
@@ -97,6 +98,32 @@ export function renderProviderDiff(
       patchedLine(patch, "upstreamFormat", provider.upstreamFormat),
     ]),
   );
+
+  /**
+   * The routing, before and after.
+   *
+   * The fields above are the **summary** of the routing; this is the routing
+   * itself. A change that moves one client interface from "not served" to
+   * "passed through" does not show up as a changed column in a way an operator
+   * can read, and it is the only thing the change actually does — so it is
+   * spelled out, one line per interface, the same way the panel shows it.
+   */
+  const before = describeRoutes(routesOfProvider(provider));
+  const afterRoutes = routesAfterPatch(provider, patch);
+  if (afterRoutes) {
+    const after = describeRoutes(afterRoutes);
+    out.push("接口路由（每个客户端接口怎么走这家服务商）：");
+    for (const [index, line] of before.entries()) {
+      const now = after[index];
+      const answer = (r: (typeof before)[number]): string =>
+        r.answer === "route" ? `路由到 ${r.dialect}` : r.answer === "passthrough" ? "原样透传" : "不支持";
+      out.push(
+        answer(now) === answer(line)
+          ? `  = ${line.endpoint}: ${answer(line)}`
+          : `  ~ ${line.endpoint}: ${answer(line)} → ${answer(now)}`,
+      );
+    }
+  }
 
   if (patch.headers !== undefined) {
     const before = provider.headers ?? {};

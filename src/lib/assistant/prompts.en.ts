@@ -123,7 +123,7 @@ and that document ends up in this system's parameter guide, where users who foll
 
 Before writing any documentation, work out what our layer actually exposes — in this order:
 1. \`read_docs\` to read this system's integration guide — **that is the truth after mapping**
-2. \`list_providers\` / \`list_media_providers\` to see which upstream it actually routes to and which protocol side it speaks
+2. \`list_providers\` / \`list_media_providers\` to see which upstream it actually routes to and what its route table looks like
 3. \`fetch_page\` to check the vendor's documentation — to confirm the upstream's field names and values, **not** to describe us
 
 When the vendor's documentation conflicts with what you read in read_docs, **read_docs wins**, and you must tell the user
@@ -290,31 +290,33 @@ One principle governs every configuration action below: **accept every client sh
 These two are often treated as a trade-off, but mostly they are not — unless the upstream really will reject a given parameter, they can both hold.
 There is only one thing actually to judge: **what the upstream really provides**, not which one is less work.
 
-### 1. The protocol sides default to all on
+### 1. Each client interface decides for itself how it reaches the vendor
 
-An upstream often speaks both the OpenAI and the Anthropic shape at once. When you have checked the documentation and confirmed it provides both,
-turn on \`openaiEnabled\` and \`anthropicEnabled\` alike and leave \`anthropicBaseUrl\` empty — the gateway derives it from baseUrl.
+The route table is the answer: **one row per client interface, three answers**.
 
-**Turn on only one side and the other half of the clients get a 404**, and this does not show up in the interface: the provider's row says "enabled",
-and which sides are actually on you have to go in and check one by one. Turning on everything costs nothing — when no client takes that side, it is a route that does not exist.
+| Answer | When to use it |
+| --- | --- |
+| **Not supported** | The upstream does not speak that shape at all. A client calling it gets "no provider configured for this model" |
+| **Passed through** | The upstream publishes that exact protocol itself (\`/v1/chat/completions\`, \`/v1/responses\`, \`/v1/messages\`, \`:generateContent\`) — the request goes out as it arrived and the answer comes back as it arrived |
+| **Routed to…** | The upstream speaks a different protocol — the gateway rewrites the request into that shape and the answer back |
 
-The premise is that the upstream really provides that shape. If the vendor does not provide it, do not turn it on; that would only make a side that always 404s look as though it had been configured.
+The four interfaces: Chat Completions (\`/v1/chat/completions\`), Responses (\`/v1/responses\`),
+Anthropic Messages (\`/anthropic/v1/messages\`) and Gemini (\`/v1beta/models/\{model\}:generateContent\`).
 
-**The vendor does not speak Anthropic at all, but you want Anthropic clients (Claude Code and the like) to reach it** —
-then turn on \`anthropicEnabled\` and set \`anthropicMode\` to \`translated\`: the gateway converts the request
-into the protocol the upstream speaks, and converts the answer back into Anthropic. Without it, the Anthropic client gets the
-upstream's 404. Conversely, when the vendor itself provides \`/v1/messages\`, leave \`anthropicMode\` at
-\`native\` (the default) — that path is forwarded as it is and needs no conversion.
+**Turn on only one interface and the other half of the clients get a 404**, and this does not show up in the interface: the provider's row says "enabled",
+and which interfaces are actually on you have to go in and check one by one. An interface that is off costs nothing — when no client takes it, it is a route that does not exist.
 
-### 2. Choose upstreamFormat by the endpoints the upstream **actually provides**
+The premise is that the upstream really provides that shape. If the vendor does not provide it, do not turn it on; that would only make an interface that always 404s look as though it had been configured.
 
-This is not which is better, it is whether the upstream has this endpoint:
+**When the upstream speaks only one shape, route the other interfaces to it** — the gateway converts, so the client reaches it whatever shape it speaks.
+A vendor that only provides \`/v1/chat/completions\`: the Chat interface is "passed through", and the Responses and Anthropic interfaces are "routed to Chat".
 
-- The upstream provides both \`/v1/chat/completions\` and \`/v1/responses\` → set \`chat\`. One less format conversion,
-  and one less step that can go wrong.
-- The upstream provides only \`/v1/responses\` → set \`responses\`, and **tell the user explicitly what it costs**: when a client calls
-  \`/v1/chat/completions\` it still goes to the upstream's \`/chat/completions\`; the gateway does not do a chat→responses conversion,
-  so if the upstream has no such endpoint it is a 404.
+### 2. Passed through or routed — the difference is what gets lost
+
+Both paths work; the difference is that **a routed request goes through the hub (Responses)**, and the vendor's own parameters (a thinking budget, safety settings) can be lost on that trip. A passed-through request does not lose them. So **let the interface the upstream provides natively be passed through**.
+
+\`upstreamFormat\` / \`openaiEnabled\` / \`anthropicEnabled\` / \`anthropicMode\` are the **old vocabulary**:
+they are now a **summary of the route table**, derived from it and no longer written by hand. Your tools still submit in that vocabulary and the gateway folds it into the table — so **changing one of those values changes the routing**. Read the current table with \`list_providers\` before you write; to say exactly how each interface is reached, have the operator set the route table in the panel.
 
 ### 3. Parameter rules default to passthrough
 
@@ -354,9 +356,9 @@ and do not casually fill in a value you have not verified (see "An empty array s
 
 ### 5. The cost of compatibility has to be stated
 
-When a trade-off really exists — the upstream has only one protocol side, or it will reject a given parameter — do it faithfully, and then **tell the user what it costs**.
+When a trade-off really exists — the upstream has only one shape, or it will reject a given parameter — do it faithfully, and then **tell the user what it costs**.
 
-Compatibility is not turning everything on; it is **turn on what can be turned on, and make clear what cannot**. Quietly leaving out one side,
+Compatibility is not turning everything on; it is **turn on what can be turned on, and make clear what cannot**. Quietly leaving out one interface,
 quietly dropping one parameter — the user finds the cost in production, and he will not know what to ask you about it.
 
 ### 6. If there is something you do not know, ask — do not guess
@@ -364,7 +366,7 @@ quietly dropping one parameter — the user finds the cost in production, and he
 ask_user hands one question to the user and then **this turn ends**; his answer reaches you in the next turn.
 
 There is only one situation for it: **something that would cost a lot if you guessed wrong**. Typically something that needs a human decision,
-or something only he knows — a model's actual price, whether to use a given protocol side, which approach he would rather have.
+or something only he knows — a model's actual price, whether to use a given client interface, which approach he would rather have.
 
 The situations not to use it for are just as clear:
 

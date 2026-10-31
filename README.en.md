@@ -230,9 +230,9 @@ three protocol documents directly.
 
 ### 8. Administration and observability
 
-- **Admin panel** (`/admin`): users, keys, providers (with both protocol faces
-  and the Anthropic face's third state), model configuration and prices, media
-  providers, search providers, usage statistics, system settings
+- **Admin panel** (`/admin`): users, keys, providers (each of the four client
+  surfaces routed on its own), model configuration and prices, media providers,
+  search providers, usage statistics, system settings
 - **Usage statistics** (`/dashboard/usage`, `/admin/usage`): balance on top,
   scope filters (by key / model / provider), metric switching, bar charts and
   detail tables; per-user timezone (UTC / Shanghai)
@@ -333,14 +333,17 @@ immediately, or reset it to a new strong one.
 
 ## Upstream provider configuration
 
-Add providers at `/admin/providers`. The three fields have distinct jobs — do
-not let them substitute for one another:
+Add providers at `/admin/providers`. The routing is decided by the **route table**:
+one row per client surface, and each row says one of three things — not served /
+passed through / routed to a dialect.
 
 | Field | What it does |
 |---|---|
 | **kind** | Protocol family (determined by the template). `anthropic` = this provider speaks the Anthropic Messages protocol |
 | **API base URL** (`baseUrl`) | The upstream root URL; endpoint paths are appended after it |
-| **Upstream format** (`upstreamFormat`) | The upstream's native protocol: `responses` / `chat` / `anthropic` |
+| **Configuration mode** (`protocolMode`) | `simple` = the route table decides; `advanced` = the upstream's declared dialects decide; `passthrough` = every surface goes out in its own vocabulary |
+| **Interface routing** (`surfaceRoutes`) | One row per client surface: `openai-chat` / `openai-responses` / `anthropic-messages` / `gemini-generate` |
+| **Upstream interfaces** (`upstreamDialects`) | Used by advanced mode: which dialects the vendor's own API speaks |
 
 `baseUrl` must be paired with the endpoint — this is the most common
 configuration mistake:
@@ -348,14 +351,18 @@ configuration mistake:
 | Endpoint | `baseUrl` must be |
 |---|---|
 | `/v1/chat/completions`, `/v1/responses` | the upstream's OpenAI-compatible base URL, e.g. `https://api.minimaxi.com/v1` |
-| `/anthropic/v1/messages` | the upstream's Anthropic-compatible base URL, e.g. `https://api.minimaxi.com/anthropic` |
+| `/anthropic/v1/messages` | the upstream's Anthropic-compatible base URL, e.g. `https://api.minimaxi.com/anthropic` (put it in the row's Anthropic base URL; leave it empty and it is derived from `baseUrl`) |
 
-**The two base URLs of the same upstream are not interchangeable.** To make all
-three endpoints work, create two providers:
+**The two base URLs of the same upstream are not interchangeable, but you do not need
+two providers.** One provider can answer all four client surfaces: put the Anthropic
+base URL in the Anthropic base URL field under that row, set `anthropic-messages` to
+passed through, and give every other surface its own answer:
 
 ```
-MiniMax            kind=openai     baseUrl=https://api.minimaxi.com/v1        upstream format=Responses (native)
-MiniMaxAnthropic   kind=anthropic  baseUrl=https://api.minimaxi.com/anthropic upstream format=Anthropic Messages
+MiniMax   kind=openai   baseUrl=https://api.minimaxi.com/v1
+          Anthropic base URL=https://api.minimaxi.com/anthropic
+          route table: openai-chat=passed through    openai-responses=routed to chat
+                       anthropic-messages=passed through    gemini-generate=not served
 ```
 
 ### How to write model mappings
@@ -369,7 +376,7 @@ particular client — that is misleading to the people using it. If the client
 lets you pick the model (for example `ANTHROPIC_MODEL` in Claude Code), change
 the client configuration instead.
 
-For the complete rules (including `upstreamFormat` and protocol conversion, and
+For the complete rules (including the route table and protocol conversion, and
 the step-by-step Anthropic provider setup) see
 [docs/en/architecture.md §7](docs/en/architecture.md#7-upstream-providers-and-model-mapping).
 

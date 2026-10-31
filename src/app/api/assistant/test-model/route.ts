@@ -188,7 +188,7 @@ export async function POST(req: Request): Promise<Response> {
           code: "no_openai_provider",
           message:
             reason === "anthropic_only"
-              ? `模型 ${parsed.data.model} 只被 Anthropic 侧的服务商映射（${providers.join("、")}），本测试走的是 /v1/chat/completions。要测它，请在该服务商的协议面里打开 OpenAI 侧。`
+              ? `模型 ${parsed.data.model} 只被 Anthropic 侧的服务商映射（${providers.join("、")}），本测试走的是 /v1/chat/completions。要测它，请在接口路由里让 Chat 那一行也被服务。`
               : `没有任何已启用的服务商映射这个模型（${parsed.data.model}）。`,
         },
         data: { reason, providers },

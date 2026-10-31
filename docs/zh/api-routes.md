@@ -56,14 +56,18 @@ Content-Type: application/json
 ```
 
 **上游行为**：
-本端点发出的**永远是 Chat Completions 格式**的请求体，因此固定转发到上游的
-`<provider.baseUrl>/chat/completions`。Provider 的 `upstreamFormat = "responses"`
-不会改变这个路径（否则会把 Chat 请求体发到 Responses 端点）。
+本端点由 Provider 的**路由表**（`surface_routes`）里 `openai-chat` 那一行决定怎么走。
+这一行只有三种可能：
 
-`upstreamFormat` 为 `"anthropic"` 或 `"gemini"` 的 Provider **不会**被本端点排除：
-它们的上游根本不说 Chat Completions，所以网关先把请求转成 Responses 形状、
-交给 Responses 那条链路（再转成上游的方言），最后把答案转回 Chat 结构。
-`upstreamFormat = "responses"` 的 Provider 则仍按上面那条路径直发。
+- **不支持**：这条 Provider 不接这个端点，不进候选。
+- **原样透传**：请求原样发给上游的 `<provider.baseUrl>/chat/completions`，答案原样
+  回来。只有厂商自己就发布 Chat Completions 时才成立。
+- **路由到 X**（`chat` / `responses` / `anthropic` / `gemini`）：网关把请求改写成 X 的
+  形状发到 X 的端点，再把答案改回 Chat 结构。
+
+所以 Chat 客户端可以由 Responses 厂商服务，反过来也一样 —— 这两种方言之间是有转换
+的。路由表出现之前写入的行没有这张表，它的路由按旧列推导：Chat 面仍然走厂商的
+`/chat/completions`（Chat 请求体不能发给 Responses 端点）。
 
 **错误响应体**（`/v1/*` 全部适用，含下面所有公开代理端点）：
 ```json
@@ -244,12 +248,17 @@ Content-Type: application/json
 ```
 
 **上游行为与协议转换**：
-- Provider 为 `upstreamFormat = "responses"` → 原样转发到 `<baseUrl>/responses`。
-- Provider 为 `upstreamFormat = "chat"` → 先转成 Chat 请求体调用 `<baseUrl>/chat/completions`，
+路由表里 `openai-responses` 那一行说什么，就怎么走：
+
+- **不支持** → 这条 Provider 不接这个端点。
+- **原样透传** → 原样转发到 `<baseUrl>/responses`（厂商自己就发布 Responses）。
+- **路由到 `responses`** → 请求改写成 Responses 形状发到 `<baseUrl>/responses`，
+  答案再转回上面的 Responses 结构。
+- **路由到 `chat`** → 先转成 Chat 请求体调用 `<baseUrl>/chat/completions`，
   再把 Chat 响应转回上面的 Responses 结构。
-- Provider 为 `upstreamFormat = "anthropic"`（或 `kind = "anthropic"`）→ 转成
-  Anthropic Messages 请求调用 `<baseUrl>/v1/messages`，再转回 Responses 结构。
-- Provider 为 `upstreamFormat = "gemini"` → 转成 Gemini 请求调用
+- **路由到 `anthropic`** → 转成 Anthropic Messages 请求调用 `<baseUrl>/v1/messages`
+  （或该行自己的 Anthropic 基址），再转回 Responses 结构。
+- **路由到 `gemini`** → 转成 Gemini 请求调用
   `<baseUrl>/models/<模型名>:generateContent`（密钥走 `x-goog-api-key`），
   再把 `candidates` 转回 Responses 结构。
 
@@ -310,13 +319,18 @@ Content-Type: application/json
 
 **响应**：标准 Anthropic Messages 响应格式。
 
-**Provider 选择**：本端点只挑 Anthropic 协议的 Provider，顺序为
-`upstreamFormat === "anthropic"` → `kind === "anthropic"` → `kind === "custom-openai"`，
-同一档内按 `priority` 升序取第一个，请求转发到 `<baseUrl>/v1/messages`。
+**Provider 选择**：候选是在路由表里回答了 `anthropic-messages` 这一面的 Provider，
+按 `priority` 升序取第一个。这一面只有三种可能：
 
-> 注意 `baseUrl` 要填上游的 **Anthropic** 基址。比如 MiniMax 的 OpenAI 基址是
+- **不支持** → 这条 Provider 不接这个端点。
+- **原样透传** → 请求原样发给厂商自己的 `/v1/messages`（用该行的 Anthropic 基址；
+  留空则由 `baseUrl` 推导，去掉结尾的 `/v1`）。
+- **路由到 X** → 网关把请求改写成 X 的形状发到 X 的端点，再把答案改回 Anthropic 结构。
+
+> 注意 Anthropic 基址与 `baseUrl` 是两回事。比如 MiniMax 的 OpenAI 基址是
 > `https://api.minimaxi.com/v1`，而 Anthropic 基址是 `https://api.minimaxi.com/anthropic`，
-> 两者不能混用。配置步骤见 [architecture.md §7.5](architecture.md#75-新增一条-anthropic-provider)。
+> 两者不能混用；只有 Anthropic 面**原样透传**时才会用到后者。配置步骤见
+> [architecture.md §7.5](architecture.md#75-新增一条-anthropic-provider)。
 
 ---
 
@@ -358,6 +372,18 @@ OpenAI 自己的形状，所以客户端不用为它们写第二套解析。
 鉴权用 Google 的载体（`x-goog-api-key` 或 `?key=`），OpenAI 形状的也可以。
 这些端点由 `next.config.mjs` 里的 rewrite 指向 `/api/v1beta/*` —— **改公开路径
 时 rewrite 那一层也要一起提交**。
+
+这一面同样看路由表的 `gemini-generate` 那一行：
+
+- **不支持** → 这条 Provider 不接这个端点。
+- **原样透传** → Google 厂商自己的 `generateContent` 端点收到客户端的请求体，
+  一个字段都不改（这条直连路径是后加的；以前 Gemini 上游一律经 Responses 枢轴）。
+- **路由到 X** → 网关把请求改写成 X 的形状发到 X 的端点，答案再改回 Gemini 的形状。
+
+> **Google 上游有两处不一样**：密钥走 `x-goog-api-key`，值就是密钥本身（没有
+> `Bearer` 前缀）；别的厂商一律 `Authorization: Bearer <key>`。模型列表在
+> `<baseUrl>/models`（Google 的基址自带 `/v1beta`），不是 `/v1/models` —— 去问
+> `/v1/models` 会得到一个读作「这家厂商没有模型列表」的 404。
 
 ### 1.8 实时面（WebSocket）
 

@@ -194,7 +194,7 @@ Anthropic 面还有第三种服务方式由管理员选：厂商自己说 Anthro
 
 ### 八、管理与观测
 
-- **管理后台**（`/admin`）：用户、Key、服务商（含两种协议面与 Anthropic 面的第三态）、
+- **管理后台**（`/admin`）：用户、Key、服务商（四个客户端面各走各的路由）、
   模型配置与费率、媒体供应商、搜索服务商、用量统计、系统设置
 - **用量统计**（`/dashboard/usage`、`/admin/usage`）：余额置顶、统计范围（按密钥/模型/
   供应商过滤）、指标切换、柱状图与明细表；每用户可选时区（UTC / 上海）
@@ -285,26 +285,33 @@ pnpm dev          # → http://localhost:3000
 
 ## 上游 Provider 配置
 
-在 `/admin/providers` 添加 Provider。三个字段职责不同，别互相替代：
+在 `/admin/providers` 添加 Provider。路由由**路由表**决定：每个客户端面一行，每行说
+三件事之一 —— 不支持 / 原样透传 / 路由到某个方言。
 
 | 字段 | 作用 |
 |---|---|
 | **kind** | 协议家族（模板决定）。`anthropic` = 这条 Provider 说 Anthropic Messages 协议 |
 | **API 请求地址**（baseUrl） | 上游根地址，代理在其后拼端点路径 |
-| **上游格式**（upstreamFormat） | 上游原生协议：`responses` / `chat` / `anthropic` |
+| **配置模式**（protocolMode） | `simple` = 路由表说了算；`advanced` = 上游声明的方言说了算；`passthrough` = 每个面都用自己的词汇原样发 |
+| **接口路由**（surfaceRoutes） | 四个客户端面各一行：`openai-chat` / `openai-responses` / `anthropic-messages` / `gemini-generate` |
+| **上游接口**（upstreamDialects） | 高级模式用：厂商自己的 API 会说哪几种方言 |
 
 `baseUrl` 必须和端点配对，这是最常见的配置错误：
 
 | 端点 | `baseUrl` 必须是 |
 |---|---|
 | `/v1/chat/completions`、`/v1/responses` | 上游的 OpenAI 兼容基址，如 `https://api.minimaxi.com/v1` |
-| `/anthropic/v1/messages` | 上游的 Anthropic 兼容基址，如 `https://api.minimaxi.com/anthropic` |
+| `/anthropic/v1/messages` | 上游的 Anthropic 兼容基址，如 `https://api.minimaxi.com/anthropic`（填在该行的 Anthropic 基址；留空则由 `baseUrl` 推导） |
 
-**同一家上游的两套基址不通用。** 想让三个端点都能用，就建两条 Provider：
+**同一家上游的两套基址不通用，但不必建两条 Provider。** 一条 Provider 就能同时接四个
+客户端面 —— Anthropic 基址填在该行下面的 Anthropic 基址栏，路由表里 `anthropic-messages`
+选「原样透传」，其余面各选各的：
 
 ```
-MiniMax            kind=openai     baseUrl=https://api.minimaxi.com/v1        上游格式=Responses（原生）
-MiniMaxAnthropic   kind=anthropic  baseUrl=https://api.minimaxi.com/anthropic 上游格式=Anthropic Messages
+MiniMax   kind=openai   baseUrl=https://api.minimaxi.com/v1
+          Anthropic 基址=https://api.minimaxi.com/anthropic
+          路由表：openai-chat=原样透传    openai-responses=路由到 chat
+                  anthropic-messages=原样透传    gemini-generate=不支持
 ```
 
 ### 模型映射怎么写
@@ -315,7 +322,7 @@ MiniMaxAnthropic   kind=anthropic  baseUrl=https://api.minimaxi.com/anthropic �
 而写成 `claude-sonnet-4-6` 指向 `MiniMax-M3` —— 这对使用者是误导。如果客户端
 支持指定模型（例如 Claude Code 的 `ANTHROPIC_MODEL`），改客户端配置即可。
 
-完整规则（含 `upstreamFormat` 与协议转换、Anthropic Provider 的分步配置）见
+完整规则（含路由表与协议转换、Anthropic Provider 的分步配置）见
 [docs/zh/architecture.md §7](docs/zh/architecture.md#7-上游-provider-与模型映射)。
 
 ## 测试

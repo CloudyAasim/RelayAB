@@ -61,8 +61,8 @@ export function AdminDocsContent({ section, t }: { section: AdminDocId; t: TFn }
             <li>{t("admin.docs.provider.kind")}</li>
             <li>{t("admin.docs.provider.baseUrl")}</li>
             <li>{t("admin.docs.provider.headers")}</li>
-            <li>{t("admin.docs.provider.format")}</li>
-            <li>{t("admin.docs.provider.formatTrap")}</li>
+            <li>{t("admin.docs.provider.routes")}</li>
+            <li>{t("admin.docs.provider.routesTrap")}</li>
             <li>{t("admin.docs.provider.modes")}</li>
             <li>{t("admin.docs.provider.specs")}</li>
             <li>{t("admin.docs.provider.textProtocol")}</li>

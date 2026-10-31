@@ -45,23 +45,44 @@ describe("the prompt states the compatibility principle", () => {
     expect(text).toMatch(/不是.{0,30}取舍|可以同时成立/);
   });
 
-  it("open both protocol faces when the upstream offers both", () => {
+  it("says how each client interface reaches the vendor", () => {
+    // The route table replaced the two protocol faces: one row per client
+    // interface, three answers each. The prompt has to teach that — the
+    // assistant's tools still submit in the old vocabulary and the gateway
+    // folds it into the table, so the model has to know that is what it is
+    // doing when it changes one of those values.
     const text = section();
-    expect(text).toContain("openaiEnabled");
-    expect(text).toContain("anthropicEnabled");
-    expect(text).toContain("anthropicBaseUrl");
-    // And the reason it is not optional, which is what stops it being read as
-    // "usually fine either way".
-    expect(text).toMatch(/只开一个面.{0,20}404/);
+    expect(text).toContain("原样透传");
+    expect(text).toContain("路由到");
+    expect(text).toContain("不支持");
+    // The four client interfaces it is about.
+    for (const path of [
+      "/v1/chat/completions",
+      "/v1/responses",
+      "/anthropic/v1/messages",
+      "generateContent",
+    ]) {
+      expect(text, path).toContain(path);
+    }
+    // And the reason one interface being off is not a small thing: the other
+    // half of the clients get a 404, and the interface list does not show it.
+    expect(text).toMatch(/只开一个接口.{0,20}404/);
   });
 
-  it("picks upstreamFormat by what the upstream has, not by preference", () => {
-    // The trap the field exists for: setting `responses` does not convert a chat
-    // request, it only changes where `/v1/responses` is forwarded to.
+  it("picks the answer by what the upstream has, not by preference", () => {
+    // "Passed through" when the upstream publishes that protocol itself, "routed
+    // to" it when it does not — and the reason, which is what a routed request
+    // loses on the way through the hub.
     const text = section();
-    expect(text).toMatch(/upstreamFormat/);
-    expect(text).toMatch(/实际提供/);
-    expect(text).toMatch(/不做 chat→responses 转换/);
+    expect(text).toMatch(/上游自己(就)?提供/);
+    expect(text).toMatch(/枢纽/);
+    // The old vocabulary is named as the old vocabulary, so the assistant does
+    // not read it as the answer — it is the table's summary now.
+    expect(text).toMatch(/旧的说法/);
+    expect(text).toMatch(/摘要/);
+    // And changing one of those values is changing the routing, which is the
+    // sentence that keeps the assistant honest about what it is doing.
+    expect(text).toMatch(/改这几个值等于改路由/);
   });
 
   it("passes vendor-specific parameters through by default", () => {
