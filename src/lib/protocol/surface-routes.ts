@@ -252,15 +252,144 @@ function isDialect(value: unknown): value is Dialect {
   return value === "chat" || value === "responses" || value === "anthropic" || value === "gemini";
 }
 
-/** The stored form of a route table: one JSON string per surface that is served. */
+/**
+ * The stored form of a route table: one JSON document per surface.
+ *
+ * **All four surfaces are written, including the ones that are not served.**
+ *
+ * The table used to skip "not served", and that made two different things
+ * indistinguishable: a table that says "this provider answers nothing" and the
+ * absence of a table at all (a row written before the table existed). Both read
+ * as the same empty array — so a provider whose every surface had been
+ * switched off came back the next morning switched **on**, because the
+ * columns that came before it said so and the fallback believed them.
+ *
+ * So the stored form is complete: four entries, always, and "not served" is
+ * one of the answers rather than the absence of an answer.
+ */
 export function serializeRoutes(routes: SurfaceRoutes): string[] {
   const out: string[] = [];
   for (const surface of ROUTE_SURFACES) {
-    const route = routes[surface];
-    if (!route || route.kind === "unsupported") continue;
-    out.push(JSON.stringify(route.kind === "route" ? { surface, ...route } : { surface, kind: route.kind }));
+    const route: SurfaceRoute = routes[surface] ?? { kind: "unsupported" };
+    out.push(
+      JSON.stringify(
+        route.kind === "route" ? { surface, ...route } : { surface, kind: route.kind },
+      ),
+    );
   }
   return out;
+}
+
+/**
+ * The columns that came before the table — the coarse shape they could say.
+ */
+export interface LegacyRouteShape {
+  upstreamFormat?: string | null;
+  openaiEnabled?: boolean | null;
+  anthropicEnabled?: boolean | null;
+  anthropicMode?: string | null;
+  kind?: string | null;
+}
+
+/**
+ * The routes a writer's words resolve to.
+ *
+ * **The table is the answer; everything else is a way of saying it.**
+ *
+ * A writer can say the routing three ways, and they are folded here, in one
+ * place, so that no two of them can answer differently:
+ *
+ *  1. **the mode** — `passthrough` (every surface in its own vocabulary) or
+ *     `advanced` (the shapes follow from the dialects the vendor speaks). The
+ *     mode is the operator's explicit choice, so it decides.
+ *  2. **the route table** — the most specific statement there is: one row per
+ *     surface, each saying exactly what happens to it.
+ *  3. **the columns that came before** — the coarse shape they could express,
+ *     and the vocabulary the assistant still speaks.
+ *
+ * **What matters is what the writer said, not what the row already had.** A
+ * writer that mentions the old columns is changing the routing, and a table
+ * left over from before the change must not outvote it — that is how the
+ * assistant's changes to a provider's protocol were saved and then ignored.
+ *
+ * Null means the writer said nothing about the routing at all, so the caller
+ * keeps the row's current answer.
+ */
+export function resolveRoutes(input: {
+  /** The table the writer gave. Undefined means the writer said nothing about it. */
+  routes?: readonly string[] | null;
+  /** The mode the writer gave. Undefined means the writer said nothing about it. */
+  protocolMode?: string | null;
+  /** The dialects the writer gave (advanced mode reads them). */
+  upstreamDialects?: readonly string[] | null;
+  /** The columns the writer gave. Null means the writer said nothing about them. */
+  legacy?: LegacyRouteShape | null;
+}): SurfaceRoutes | null {
+  if (input.protocolMode === "passthrough") return passthroughRoutes();
+  if (input.protocolMode === "advanced") {
+    return advancedRoutes((input.upstreamDialects ?? []).filter(isDialect));
+  }
+  if (input.routes !== undefined && input.routes !== null) {
+    const stored = parseRoutes(input.routes);
+    if (stored) return stored;
+  }
+  if (input.legacy) return routesFor(input.legacy, null);
+  return null;
+}
+
+/**
+ * The legacy columns, as the route table says them.
+ *
+ * They are still written, because the endpoints that are not text generation
+ * (embeddings, rerank, moderation, the model catalogue) read them, and they
+ * have no per-surface table of their own. The route table is the answer for
+ * the four text surfaces; these stay as its summary — and they are
+ * **derived**, never written by hand, so the two cannot disagree.
+ */
+export interface DerivedFaceFlags {
+  openaiEnabled: boolean;
+  upstreamFormat: Dialect;
+  anthropicEnabled: boolean;
+  anthropicMode: "native" | "translated";
+}
+
+export function derivedFaceFlags(routes: SurfaceRoutes): DerivedFaceFlags {
+  /**
+   * The OpenAI-side surfaces, **Responses first**.
+   *
+   * The Responses surface is the one that names the vendor's own protocol: it
+   * is served in that protocol whatever the other surfaces do — a Chat vendor
+   * is served `route(chat)` there, an Anthropic one `route(anthropic)`, a
+   * Gemini one `route(gemini)` — so reading it first reproduces exactly what
+   * the column used to say.
+   *
+   * Reading the Chat surface first instead would call every OpenAI-compatible
+   * vendor a "chat" vendor, including the ones that speak Responses natively:
+   * that surface is a passthrough there, and a passthrough names *its own*
+   * dialect rather than the vendor's.
+   */
+  const openaiSurfaces = ["openai-responses", "openai-chat", "gemini-generate"] as const;
+  const openaiTargets = openaiSurfaces
+    .map((surface) => targetDialect(routes[surface], surface))
+    .filter((dialect): dialect is Dialect => dialect !== null);
+  const anthropicRoute = routes["anthropic-messages"];
+  const anthropicTarget = targetDialect(anthropicRoute, "anthropic-messages");
+
+  return {
+    openaiEnabled: openaiTargets.length > 0,
+    /**
+     * The vendor's own protocol.
+     *
+     * The OpenAI face's dialect when it is on — and the Anthropic face's when
+     * it is not, because a Claude-only vendor has no OpenAI dialect to name
+     * and must keep saying `anthropic`: rewriting it to `responses` would
+     * point the next request at a `/v1/responses` endpoint the vendor does not
+     * have.
+     */
+    upstreamFormat: openaiTargets[0] ?? anthropicTarget ?? "responses",
+    anthropicEnabled: anthropicTarget !== null,
+    anthropicMode: anthropicRoute.kind === "passthrough" ? "native" : "translated",
+  };
 }
 
 /**

@@ -719,13 +719,14 @@ export const TOOL_DESCRIPTIONS: Record<string, ToolText> = {
   },
   "propose_provider_update.upstreamFormat": {
     "zh-CN":
-      "OpenAI 侧上游说的是哪种协议：responses（原生，/v1/responses 原样透传）或 chat。" +
-      "注意 chat→responses 没有请求转换：客户端调 /v1/chat/completions 时永远发往 " +
-      "<API 地址>/chat/completions。",
+      "这家厂商自己的接口是哪一种协议：responses / chat / anthropic / gemini。" +
+      "每个客户端接口现在各自决定怎么走它（后台的「接口路由」），这个字段说的是厂商本身会哪一种；" +
+      "anthropic 或 gemini 表示厂商只说那种协议，其余接口由网关转换。",
     en:
-      "Which protocol the upstream speaks on the OpenAI side: responses (native, /v1/responses " +
-      "passed through untouched) or chat. Note that there is no chat→responses request conversion: " +
-      "a client calling /v1/chat/completions always goes to <API address>/chat/completions.",
+      "Which protocol this vendor's own API speaks: responses / chat / anthropic / gemini. " +
+      "Each client interface now decides how it reaches the vendor (the route table in the panel); " +
+      "this field says what the vendor itself speaks. anthropic or gemini means it speaks only that, " +
+      "and the gateway translates for the others.",
   },
   "propose_provider_update.confirmFindings": {
     "zh-CN":

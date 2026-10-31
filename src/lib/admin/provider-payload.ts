@@ -27,10 +27,10 @@
 import { rowsToPayload, type ProviderModelRow } from "@/app/(admin)/admin/providers/model-rows";
 import { type UpstreamFormat } from "@/lib/db/types";
 import {
+  derivedFaceFlags,
   emptyRoutes,
   routesOf,
   serializeRoutes,
-  targetDialect,
   type Dialect,
   type SurfaceRoutes,
 } from "@/lib/protocol/surface-routes";
@@ -260,34 +260,19 @@ export function buildProviderPayload(
 /**
  * The face flags, as the route table says them.
  *
- * The OpenAI face speaks **one** dialect for three surfaces, so the flags take
- * the first one the routes name — and the Anthropic face is on when its surface
- * is answered, natively when the request goes out as it arrived.
+ * The derivation itself lives with the routes — see `derivedFaceFlags` — so
+ * there is one answer to "what does this row speak" and not two that can
+ * drift. What this adds is the one field the routes cannot say: the address
+ * of the Anthropic endpoint, which is an address and not a shape.
  */
 export function facesFromRoutes(routes: SurfaceRoutes): ProviderFacesValue {
-  const openaiSurfaces = ["openai-chat", "openai-responses", "gemini-generate"] as const;
-  const openaiTargets = openaiSurfaces
-    .map((surface) => targetDialect(routes[surface], surface))
-    .filter((dialect): dialect is Dialect => dialect !== null);
-  const anthropicRoute = routes["anthropic-messages"];
-  const anthropicTarget = targetDialect(anthropicRoute, "anthropic-messages");
-
+  const derived = derivedFaceFlags(routes);
   return {
-    openaiEnabled: openaiTargets.length > 0,
-    /**
-     * The vendor's own protocol.
-     *
-     * The OpenAI face's dialect when it is on — and the Anthropic face's when
-     * it is not, because a Claude-only vendor has no OpenAI dialect to name
-     * and must keep saying `anthropic`: rewriting it to `responses` would
-     * point the next request at a `/v1/responses` endpoint the vendor does not
-     * have.
-     */
-    upstreamFormat:
-      openaiTargets[0] ?? anthropicTarget ?? ("responses" as UpstreamFormat),
-    anthropicEnabled: anthropicTarget !== null,
+    openaiEnabled: derived.openaiEnabled,
+    upstreamFormat: derived.upstreamFormat as UpstreamFormat,
+    anthropicEnabled: derived.anthropicEnabled,
     anthropicBaseUrl: "",
-    anthropicMode: anthropicRoute.kind === "passthrough" ? "native" : "translated",
+    anthropicMode: derived.anthropicMode,
   };
 }
 

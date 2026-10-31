@@ -32,6 +32,16 @@ import { revalidateTag, unstable_cache } from "next/cache";
 import { getAll, getOne, rowToProvider, run, toDbBool, withTransaction } from "./sqlite";
 import { encryptSecret } from "../crypto/secrets";
 import { generateId } from "../crypto/hashing";
+import {
+  derivedFaceFlags,
+  parseRoutes,
+  resolveRoutes,
+  routesFor,
+  serializeRoutes,
+  type DerivedFaceFlags,
+  type LegacyRouteShape,
+  type SurfaceRoutes,
+} from "../protocol/surface-routes";
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -153,6 +163,47 @@ export interface UpdateProviderInput {
 // Create
 // ---------------------------------------------------------------------------
 
+/**
+ * The routing a row ends up with, and the columns that summarise it.
+ *
+ * **The route table is the answer.** The columns that came before it are
+ * derived from it and are never written by hand, so the two cannot disagree —
+ * whichever way the writer phrased the routing. A writer that only knows the
+ * old vocabulary (the assistant does) still lands on a table, because
+ * {@link resolveRoutes} folds the two together.
+ *
+ * **What the writer said now decides.** A writer that mentions the old
+ * columns is changing the routing, and the table the row happened to have must
+ * not outvote it — that is how the assistant's changes to a provider's
+ * protocol were saved and then ignored. A writer that says nothing about the
+ * routing keeps the row's current answer.
+ */
+function resolveRowRouting(input: {
+  /** The table the writer gave. Undefined: the writer said nothing about it. */
+  routes?: readonly string[] | null;
+  /** The mode the writer gave. Undefined: the writer said nothing about it. */
+  protocolMode?: string | null;
+  /** The dialects the writer gave. */
+  upstreamDialects?: readonly string[] | null;
+  /** The columns the writer gave. Null: the writer said nothing about them. */
+  legacy?: LegacyRouteShape | null;
+  /** The row's current answer, kept when the writer said nothing at all. */
+  current: SurfaceRoutes | null;
+  /** The row's columns, the last resort when it has no table. */
+  currentLegacy: LegacyRouteShape;
+}): { routes: SurfaceRoutes; flags: DerivedFaceFlags } {
+  const routes =
+    resolveRoutes({
+      routes: input.routes,
+      protocolMode: input.protocolMode,
+      upstreamDialects: input.upstreamDialects,
+      legacy: input.legacy,
+    }) ??
+    input.current ??
+    routesFor(input.currentLegacy, null);
+  return { routes, flags: derivedFaceFlags(routes) };
+}
+
 export async function createProvider(input: CreateProviderInput): Promise<Provider> {
   const id = generateId();
   const now = new Date().toISOString();
@@ -160,6 +211,28 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
   // Absent flags follow the legacy shape: an Anthropic-kind / Anthropic-format
   // provider is Anthropic-only, anything else is OpenAI-only.
   const faceDefaults = defaultFaceFlags(input.kind, input.upstreamFormat ?? "responses");
+
+  /**
+   * The routing, and the columns that summarise it.
+   *
+   * The route table is the answer and the columns are derived from it, so the
+   * two cannot disagree — whichever way the writer phrased the routing.
+   */
+  const legacy: LegacyRouteShape = {
+    upstreamFormat: input.upstreamFormat ?? "responses",
+    openaiEnabled: input.openaiEnabled ?? faceDefaults.openaiEnabled,
+    anthropicEnabled: input.anthropicEnabled ?? faceDefaults.anthropicEnabled,
+    anthropicMode: input.anthropicMode ?? "native",
+    kind: input.kind,
+  };
+  const routing = resolveRowRouting({
+    routes: input.surfaceRoutes,
+    protocolMode: input.protocolMode,
+    upstreamDialects: input.upstreamDialects,
+    legacy,
+    current: null,
+    currentLegacy: legacy,
+  });
 
   const provider: Provider = ProviderSchema.parse({
     id,
@@ -172,16 +245,16 @@ export async function createProvider(input: CreateProviderInput): Promise<Provid
     enabled: input.enabled ?? true,
     priority: input.priority ?? 1,
     headers: input.headers ?? {},
-    upstreamFormat: input.upstreamFormat ?? "responses",
-    openaiEnabled: input.openaiEnabled ?? faceDefaults.openaiEnabled,
-    anthropicEnabled: input.anthropicEnabled ?? faceDefaults.anthropicEnabled,
+    upstreamFormat: routing.flags.upstreamFormat,
+    openaiEnabled: routing.flags.openaiEnabled,
+    anthropicEnabled: routing.flags.anthropicEnabled,
     anthropicBaseUrl: input.anthropicBaseUrl ?? null,
     // How the Anthropic face is served. Absent means the vendor's own
     // endpoint, which is what the face has always meant.
-    anthropicMode: input.anthropicMode ?? "native",
+    anthropicMode: routing.flags.anthropicMode,
     textSpecs: input.textSpecs ?? [],
     activeMode: input.activeMode ?? null,
-    surfaceRoutes: input.surfaceRoutes ?? [],
+    surfaceRoutes: serializeRoutes(routing.routes),
     protocolMode: input.protocolMode ?? null,
     upstreamDialects: input.upstreamDialects ?? [],
     createdAt: now,
@@ -371,6 +444,46 @@ export async function updateProvider(
       ? encryptSecret(patch.apiKey)
       : existing.encryptedApiKey;
 
+    /**
+     * The routing, and the columns that summarise it.
+     *
+     * The route table is the answer and the columns are derived from it, so the
+     * two cannot disagree — whichever way the writer phrased the routing. That
+     * includes the writer who only knows the columns that came before the
+     * table: the assistant's tools speak that vocabulary, and before this their
+     * changes were saved and then **ignored**, because the table won.
+     *
+     * A patch that says nothing about the routing keeps the row's current
+     * answer.
+     */
+    const legacyPatched =
+      patch.upstreamFormat !== undefined ||
+      patch.openaiEnabled !== undefined ||
+      patch.anthropicEnabled !== undefined ||
+      patch.anthropicMode !== undefined;
+    const routing = resolveRowRouting({
+      routes: patch.surfaceRoutes,
+      protocolMode: patch.protocolMode,
+      upstreamDialects: patch.upstreamDialects,
+      legacy: legacyPatched
+        ? {
+            upstreamFormat: patch.upstreamFormat ?? existing.upstreamFormat,
+            openaiEnabled: patch.openaiEnabled ?? existing.openaiEnabled,
+            anthropicEnabled: patch.anthropicEnabled ?? existing.anthropicEnabled,
+            anthropicMode: patch.anthropicMode ?? existing.anthropicMode,
+            kind: patch.kind ?? existing.kind,
+          }
+        : null,
+      current: parseRoutes(existing.surfaceRoutes ?? []),
+      currentLegacy: {
+        upstreamFormat: existing.upstreamFormat,
+        openaiEnabled: existing.openaiEnabled,
+        anthropicEnabled: existing.anthropicEnabled,
+        anthropicMode: existing.anthropicMode,
+        kind: existing.kind,
+      },
+    });
+
     const merged: Provider = ProviderSchema.parse({
       ...existing,
       name: patch.name ?? existing.name,
@@ -382,9 +495,9 @@ export async function updateProvider(
       enabled: patch.enabled === undefined ? existing.enabled : patch.enabled,
       priority: patch.priority ?? existing.priority,
       headers: patch.headers ?? existing.headers,
-      upstreamFormat: patch.upstreamFormat ?? existing.upstreamFormat,
-      openaiEnabled: patch.openaiEnabled ?? existing.openaiEnabled,
-      anthropicEnabled: patch.anthropicEnabled ?? existing.anthropicEnabled,
+      upstreamFormat: routing.flags.upstreamFormat,
+      openaiEnabled: routing.flags.openaiEnabled,
+      anthropicEnabled: routing.flags.anthropicEnabled,
       anthropicBaseUrl:
         patch.anthropicBaseUrl === undefined
           ? existing.anthropicBaseUrl
@@ -395,11 +508,9 @@ export async function updateProvider(
       // `undefined` leaves the choice as it is, which is how a PATCH that only
       // touches the name does not silently reset it.
       activeMode: patch.activeMode === undefined ? existing.activeMode : patch.activeMode,
-      // The same rule for the three newer columns: `undefined` leaves them as
-      // they are, and an explicit empty list is the operator saying "no route
-      // table" — which is a different statement from "not configured yet".
-      surfaceRoutes:
-        patch.surfaceRoutes === undefined ? existing.surfaceRoutes ?? [] : patch.surfaceRoutes,
+      // The table is written whole, every time. It is the answer, and a row
+      // whose every surface is switched off has to be able to say so.
+      surfaceRoutes: serializeRoutes(routing.routes),
       protocolMode:
         patch.protocolMode === undefined ? existing.protocolMode : patch.protocolMode,
       upstreamDialects:

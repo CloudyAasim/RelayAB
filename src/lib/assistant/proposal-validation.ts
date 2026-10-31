@@ -86,7 +86,16 @@ export const ProviderArgsSchema = z
      * edits these same two fields by hand.
      */
     headers: z.record(z.string(), z.string()).optional(),
-    upstreamFormat: z.enum(["responses", "chat", "anthropic"]).optional(),
+    /**
+     * Which protocol the vendor's own API speaks.
+     *
+     * `gemini` belongs here because the tool offers it: the create tool's
+     * parameter list has always carried all four, and the update tool's own
+     * check accepts it — but this schema refused it, so a proposal to make a
+     * Gemini vendor was refused *after* the administrator approved it, which
+     * is the one moment an approval cannot be refunded.
+     */
+    upstreamFormat: z.enum(["responses", "chat", "anthropic", "gemini"]).optional(),
     /**
      * Which of the two rule sets the engine reads.
      *
@@ -209,7 +218,7 @@ export const ProviderCreateSchema = z
     name: z.string().min(1).max(120),
     kind: z.enum(["openai", "anthropic"]).default("openai"),
     baseUrl: z.string().max(500).nullable().optional(),
-    upstreamFormat: z.enum(["responses", "chat", "anthropic"]).optional(),
+    upstreamFormat: z.enum(["responses", "chat", "anthropic", "gemini"]).optional(),
     priority: z.number().int().optional(),
     enabled: z.boolean().optional(),
     openaiEnabled: z.boolean().optional(),

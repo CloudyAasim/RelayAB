@@ -42,6 +42,13 @@ import {
 } from "./types";
 import type { MediaProvider } from "../media/spec";
 import { slugifyServiceId, uniqueServiceId } from "../search/service-id";
+import {
+  derivedFaceFlags,
+  parseRoutes,
+  resolveRoutes,
+  routesFor,
+  serializeRoutes,
+} from "../protocol/surface-routes";
 
 /**
  * `node:sqlite` is a Node builtin (>= 22.5), but the bundlers in this project
@@ -574,6 +581,82 @@ const DATA_MIGRATIONS: ReadonlyArray<{ version: number; apply: (conn: Database) 
         const serviceId = uniqueServiceId(slugifyServiceId(row.name, row.kind), taken);
         taken.add(serviceId);
         conn.prepare("UPDATE search_providers SET service_id = ? WHERE id = ?").run(serviceId, row.id);
+      }
+    },
+  },
+  {
+    /**
+     * v4 — every provider row gets a route table.
+     *
+     * The table became the answer about routing, and until every row had one,
+     * a row without one was answered by the columns that came before it. That
+     * is how a provider whose every surface had been switched off came back
+     * switched **on**: the table saying "nothing is served" was stored as an
+     * empty array, and an empty array read as "this row predates the table".
+     *
+     * So the stored form is complete from now on — four entries, always — and
+     * this migration gives every row one. **What it writes is exactly what the
+     * row was being read as before**, so not one provider changes its traffic:
+     *
+     *  - a row that already has a table keeps it, completed with the surfaces
+     *    it does not mention (which read as "not served" already);
+     *  - a row that has none gets the table its mode or its columns imply.
+     *
+     * The columns are re-derived from the table at the same time, so from here
+     * on the two cannot disagree.
+     */
+    version: 4,
+    apply: (conn) => {
+      const rows = conn
+        .prepare(
+          `SELECT id, kind, surface_routes, protocol_mode, upstream_dialects,
+                  upstream_format, openai_enabled, anthropic_enabled, anthropic_mode
+             FROM providers`,
+        )
+        .all() as Array<{
+        id: string;
+        kind: string;
+        surface_routes: string | null;
+        protocol_mode: string | null;
+        upstream_dialects: string | null;
+        upstream_format: string;
+        openai_enabled: number;
+        anthropic_enabled: number;
+        anthropic_mode: string | null;
+      }>;
+
+      for (const row of rows) {
+        const legacy = {
+          upstreamFormat: row.upstream_format,
+          openaiEnabled: row.openai_enabled === 1,
+          anthropicEnabled: row.anthropic_enabled === 1,
+          anthropicMode: row.anthropic_mode,
+          kind: row.kind,
+        };
+        const stored = parseRoutes(parseJson<string[]>(String(row.surface_routes ?? "[]"), []));
+        const routes =
+          stored ??
+          resolveRoutes({
+            protocolMode: row.protocol_mode,
+            upstreamDialects: parseJson<string[]>(String(row.upstream_dialects ?? "[]"), []),
+          }) ??
+          routesFor(legacy, null);
+        const flags = derivedFaceFlags(routes);
+        conn
+          .prepare(
+            `UPDATE providers
+                SET surface_routes = ?, upstream_format = ?, openai_enabled = ?,
+                    anthropic_enabled = ?, anthropic_mode = ?
+              WHERE id = ?`,
+          )
+          .run(
+            JSON.stringify(serializeRoutes(routes)),
+            flags.upstreamFormat,
+            flags.openaiEnabled ? 1 : 0,
+            flags.anthropicEnabled ? 1 : 0,
+            flags.anthropicMode,
+            row.id,
+          );
       }
     },
   },
