@@ -178,9 +178,13 @@ UNKNOWN=$(curl -s -o /dev/null -w '%{http_code}' -X POST "${BASE}/v1/chat/comple
   -d '{"model":"gpt-4o-mini","messages":[]}')
 check "unknown key rejected (401)" "$UNKNOWN" '^401$'
 
+# A well-formed body on purpose: the shape check runs before model resolution
+# (a bad key or bad body must not depend on whether the model happens to exist),
+# so an empty `messages` would answer invalid_request and never reach the
+# model_not_mapped path this check is about.
 UNMAPPED=$(curl -s -X POST "${BASE}/v1/chat/completions" \
   -H "Authorization: Bearer ${PLAIN_KEY}" -H 'Content-Type: application/json' \
-  -d '{"model":"not-a-real-model","messages":[]}')
+  -d '{"model":"not-a-real-model","messages":[{"role":"user","content":"hi"}]}')
 check "unmapped model rejected" "$UNMAPPED" 'model_not_mapped'
 
 if [ "$fail" -ne 0 ]; then
