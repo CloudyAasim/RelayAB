@@ -11,7 +11,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { __resetDbForTest } from "@/lib/db/sqlite";
 import { __resetConfigForTest } from "@/lib/config";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import {
   runBootstrap,
@@ -225,5 +225,28 @@ describe("env-var key parsing", () => {
   it("getAnthropicKeys splits comma-separated values", () => {
     (process.env as Record<string, string>).ANTHROPIC_KEYS = "x,y";
     expect(getAnthropicKeys()).toEqual(["x", "y"]);
+  });
+});
+
+/**
+ * A source-level guard, because the bug it prevents is invisible to every
+ * other test here.
+ *
+ * `listProviders` is wrapped in `unstable_cache(tags: ["providers"])`. If the
+ * bootstrap — the request that *creates* the rows — reads through it, the
+ * cache is filled with the pre-write (empty) list, and `revalidateTag()`
+ * cannot undo that: Next re-stores what the request already saw. On a cold
+ * start the provider therefore answered "not found" for the whole 60s window
+ * while the row sat in SQLite. In tests `unstable_cache` is pass-through, so
+ * only a real dev/prod server shows it; the text of the module is where it can
+ * be caught deterministically.
+ */
+describe("bootstrap reads providers without the cache", () => {
+  it("uses listProvidersFresh and never the cached listProviders", () => {
+    const src = readFileSync(join(process.cwd(), "src", "lib", "db", "bootstrap.ts"), "utf8");
+    expect(src).toContain("listProvidersFresh");
+    // `listProvidersFresh` must not satisfy the call pattern below, and a
+    // mention in prose ("reading through `listProviders`") must not trip it.
+    expect(src).not.toMatch(/\blistProviders\s*\(/);
   });
 });

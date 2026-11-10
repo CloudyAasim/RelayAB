@@ -360,6 +360,23 @@ export async function listProviders(opts: {
 }
 
 /**
+ * The same rows, read straight from the database — no `unstable_cache`.
+ *
+ * **Writers must use this.** Reading through the cache inside the request that
+ * then creates a row fills the cache with the state *before* the write, and
+ * `revalidateTag("providers")` cannot undo that: Next re-stores what the
+ * request already saw. That is exactly the cold-start symptom where bootstrap
+ * had created the provider and the list still answered "empty" for the whole
+ * `revalidate: 60` window — `scripts/smoke-local.sh` caught it as
+ * "provider rate configured" failing about two runs in three.
+ */
+export async function listProvidersFresh(opts: {
+  enabledOnly?: boolean;
+} = {}): Promise<Provider[]> {
+  return readProviders(Boolean(opts.enabledOnly));
+}
+
+/**
  * Find providers that can serve the given client-visible model.
  *
  * The Redis version SCANned every provider and then tested `clientModel in

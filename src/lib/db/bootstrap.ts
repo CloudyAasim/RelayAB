@@ -23,7 +23,7 @@
  */
 import { listUsers, createUser, verifyUserCredentials, UsernameConflictError } from "./users";
 import { getOne, run, withTransaction } from "./sqlite";
-import { listProviders, createProvider, findProvidersForModel } from "./providers";
+import { listProvidersFresh, createProvider, findProvidersForModel } from "./providers";
 import {
   getOpenAIKeys,
   getAnthropicKeys,
@@ -198,7 +198,11 @@ async function bootstrapOpenAIProviders(): Promise<number> {
   if (keys.length === 0) return 0;
 
   const cfg = loadConfig();
-  const existing = await listProviders();
+  // Un-cached on purpose: this request is about to write, and reading through
+  // `listProviders` would cache the pre-write (empty) list under the
+  // `providers` tag — a cold start then answers "no provider" until the tag's
+  // 60s window expires, even though the row exists.
+  const existing = await listProvidersFresh();
   const existingOpenAI = existing.filter((p) => p.kind === "openai");
   if (existingOpenAI.length > 0) {
     // Already bootstrapped — don't add duplicates.
@@ -234,7 +238,8 @@ async function bootstrapAnthropicProviders(): Promise<number> {
   if (keys.length === 0) return 0;
 
   const cfg = loadConfig();
-  const existing = await listProviders();
+  // Same reason as the OpenAI half: a writer must not read through the cache.
+  const existing = await listProvidersFresh();
   const existingAnthropic = existing.filter((p) => p.kind === "anthropic");
   if (existingAnthropic.length > 0) {
     return 0;
