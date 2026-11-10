@@ -1258,6 +1258,7 @@ const zhCN: Dict = {
   "dashboard.models.media.failed": "失败",
   "dashboard.models.media.empty": "（没有产物）",
   "dashboard.models.media.unsupported": "暂不支持的能力",
+  "dashboard.models.media.download": "下载",
 
   "dashboard.models.custom.desc": "填入任意 OpenAI 兼容接口，验证它通不通。",
   "dashboard.models.custom.ephemeral": "这里的密钥只在这一次请求里使用，不会写入服务器；请求结束后输入框即清空。",
@@ -2879,6 +2880,7 @@ const en: Dict = {
   "dashboard.models.media.failed": "Failed",
   "dashboard.models.media.empty": "(no artefact)",
   "dashboard.models.media.unsupported": "unsupported capability",
+  "dashboard.models.media.download": "Download",
 
   "dashboard.models.custom.desc": "Point it at any OpenAI-compatible endpoint to see whether it answers.",
   "dashboard.models.custom.ephemeral":

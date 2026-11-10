@@ -126,6 +126,7 @@ export default async function ModelsPage() {
             failed: t("dashboard.models.media.failed"),
             empty: t("dashboard.models.media.empty"),
             unsupported: t("dashboard.models.media.unsupported"),
+            download: t("dashboard.models.media.download"),
           }}
           searchTest={
             searchConfig

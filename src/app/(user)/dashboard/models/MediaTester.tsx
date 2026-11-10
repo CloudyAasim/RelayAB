@@ -20,13 +20,15 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardHeader } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
+import { Button, buttonVariants } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { Progress } from "@/components/ui/Progress";
+import { Download } from "lucide-react";
 import { useT } from "@/components/i18n/I18nProvider";
 import { CredentialChoice, type Mode } from "@/lib/assistant/CredentialPanel";
 import { readMediaTestResult } from "@/lib/media/test-result";
+import { downloadFileName, saveArtifact } from "@/lib/media/download";
 
 export interface MediaModelOption {
   id: string;
@@ -83,6 +85,8 @@ interface Labels {
   audioResult: string;
   videoResult: string;
   textResult: string;
+  /** The label on the control that saves an artefact to disk. */
+  download: string;
   failed: string;
   empty: string;
   unsupported: string;
@@ -150,6 +154,31 @@ export function applicableVoices(voices: VoiceOption[], model: string): VoiceOpt
 const DEFAULT_VIDEO_DURATION = 6;
 const VIDEO_RATIOS = ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9"] as const;
 const DEFAULT_VIDEO_RATIO = "16:9";
+
+/**
+ * The control that keeps an artefact.
+ *
+ * A test page whose output cannot be taken away is a preview, not a tool — and
+ * for a video the frame on screen is not the thing that was generated. The save
+ * itself is `saveArtifact`'s job; this is only the button.
+ *
+ * It is a `<button>` rather than an `<a download>` on purpose: the vendors serve
+ * artefacts from their own CDNs, where `download` is ignored, so the anchor
+ * would silently open a tab. `saveArtifact` tries the bytes first and falls back
+ * to that tab only when the CDN forbids reading them.
+ */
+function ArtifactDownload({ src, filename, label }: { src: string; filename: string; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={() => saveArtifact(src, filename)}
+      className={`${buttonVariants({ variant: "outline", size: "sm" })} gap-1.5`}
+    >
+      <Download className="h-3.5 w-3.5" />
+      {label}
+    </button>
+  );
+}
 
 export function MediaTester({ models, labels }: Props) {
   const [relayKey, setRelayKey] = useState("");
@@ -698,22 +727,31 @@ export function MediaTester({ models, labels }: Props) {
               <>
                 {outcome.urls.length > 0 || outcome.images.length > 0 ? (
                   <div className="space-y-2">
-                    {outcome.urls.map((u) => (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img key={u} src={u} alt={labels.imageResult} className="max-h-80 rounded-md" />
+                    {outcome.urls.map((u, i) => (
+                      <div key={u} className="space-y-1">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={u} alt={labels.imageResult} className="max-h-80 rounded-md" />
+                        <ArtifactDownload
+                          src={u}
+                          filename={downloadFileName(u, i, "png")}
+                          label={labels.download}
+                        />
+                      </div>
                     ))}
                     {/* Base64 artifacts are drawn, not counted: a vendor that
                         answers `image_base64` (MiniMax with
                         `response_format: "base64"`, OpenAI's `b64_json`) used to
                         be reported as "1 张 base64 图片" with no picture. */}
                     {outcome.images.map((src, i) => (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        key={`b64-${i}`}
-                        src={src}
-                        alt={labels.imageResult}
-                        className="max-h-80 rounded-md"
-                      />
+                      <div key={`b64-${i}`} className="space-y-1">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={src} alt={labels.imageResult} className="max-h-80 rounded-md" />
+                        <ArtifactDownload
+                          src={src}
+                          filename={downloadFileName(src, outcome.urls.length + i, "png")}
+                          label={labels.download}
+                        />
+                      </div>
                     ))}
                   </div>
                 ) : (
@@ -735,9 +773,16 @@ export function MediaTester({ models, labels }: Props) {
               <>
                 {outcome.urls.length > 0 ? (
                   <div className="space-y-2">
-                    {outcome.urls.map((u) => (
-                      // eslint-disable-next-line jsx-a11y/media-has-caption
-                      <video key={u} controls src={u} className="max-h-80 w-full rounded-md" />
+                    {outcome.urls.map((u, i) => (
+                      <div key={u} className="space-y-1">
+                        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                        <video controls src={u} className="max-h-80 w-full rounded-md" />
+                        <ArtifactDownload
+                          src={u}
+                          filename={downloadFileName(u, i, "mp4")}
+                          label={labels.download}
+                        />
+                      </div>
                     ))}
                   </div>
                 ) : (
