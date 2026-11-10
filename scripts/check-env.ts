@@ -56,9 +56,10 @@ function databaseState(): State {
   if (path === ":memory:") {
     return { level: "ok", detail: ":memory:（内存库，重启即失，仅用于测试）" };
   }
-  if (!isAbsolute(path) && !configured) {
-    // The default lives under cwd(); fine for a systemd unit that owns it.
-    return { level: "ok", detail: `${path}（默认路径，进程工作目录下的 data/）` };
+  if (configured && !isAbsolute(configured)) {
+    // A relative path is resolved against cwd() — fine for a unit that owns
+    // that directory, worth saying out loud because it is not obvious.
+    return { level: "ok", detail: `${path}（相对路径，相对进程工作目录）` };
   }
 
   const dir = dirname(resolve(path));
@@ -102,11 +103,16 @@ function databaseState(): State {
     }
   }
 
-  if (configured.startsWith("/home/") || configured.startsWith("/opt/")) {
+  if (path.startsWith("/home/") || path.startsWith("/opt/")) {
     return {
       level: "warn",
       detail: `${path}（看起来是宿主机路径。若应用跑在容器里，这里必须写容器内挂载点，例如 /data）`,
     };
+  }
+  if (!configured) {
+    // No RELAY_DB_PATH: the app falls back to cwd()/data/relayab.db, so say so
+    // instead of reporting a path the operator never chose as if they had.
+    return { level: "ok", detail: `${path}（默认路径，未设置 RELAY_DB_PATH）` };
   }
   return { level: "ok", detail: path };
 }
