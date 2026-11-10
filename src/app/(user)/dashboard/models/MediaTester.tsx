@@ -26,6 +26,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Progress } from "@/components/ui/Progress";
 import { useT } from "@/components/i18n/I18nProvider";
 import { CredentialChoice, type Mode } from "@/lib/assistant/CredentialPanel";
+import { readMediaTestResult } from "@/lib/media/test-result";
 
 export interface MediaModelOption {
   id: string;
@@ -93,9 +94,9 @@ interface Props {
 }
 
 type Outcome =
-  | { kind: "image"; urls: string[]; b64: number; ms: number }
+  | { kind: "image"; urls: string[]; images: string[]; ms: number }
   | { kind: "audio"; url: string; contentType: string; ms: number }
-  | { kind: "video"; payload: unknown; ms: number }
+  | { kind: "video"; payload: unknown; urls: string[]; ms: number }
   | { kind: "text"; text: string; ms: number }
   | { kind: "error"; status: number; body: string; ms: number };
 
@@ -149,18 +150,6 @@ export function applicableVoices(voices: VoiceOption[], model: string): VoiceOpt
 const DEFAULT_VIDEO_DURATION = 6;
 const VIDEO_RATIOS = ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9"] as const;
 const DEFAULT_VIDEO_RATIO = "16:9";
-
-function extractItems(body: unknown): { urls: string[]; b64: number } {
-  const data = (body as { data?: unknown })?.data;
-  if (!Array.isArray(data)) return { urls: [], b64: 0 };
-  const urls: string[] = [];
-  let b64 = 0;
-  for (const row of data as Array<Record<string, unknown>>) {
-    if (typeof row?.url === "string") urls.push(row.url);
-    else if (typeof row?.b64_json === "string") b64 += 1;
-  }
-  return { urls, b64 };
-}
 
 export function MediaTester({ models, labels }: Props) {
   const [relayKey, setRelayKey] = useState("");
@@ -423,17 +412,23 @@ export function MediaTester({ models, labels }: Props) {
       }
 
       const json: unknown = await res.json().catch(() => null);
+      /**
+       * One reader for both credential paths.
+       *
+       * The account route answers `{ ok, data: { urls, images, text } }`; the
+       * public endpoints answer the OpenAI shape `{ data: [{ url | b64_json }] }`.
+       * Reading both with the public-shape reader — which is what this page used
+       * to do — turned a successful 26-second account-path image into
+       * "（没有产物）", and printed a transcription envelope as the transcript.
+       */
+      const result = readMediaTestResult(json);
 
       if (capability === "image.generate") {
-        setOutcome({ kind: "image", ...extractItems(json), ms });
+        setOutcome({ kind: "image", urls: result.urls, images: result.images, ms });
       } else if (capability === "audio.stt") {
-        setOutcome({
-          kind: "text",
-          text: String((json as { text?: unknown })?.text ?? JSON.stringify(json)),
-          ms,
-        });
+        setOutcome({ kind: "text", text: result.text || JSON.stringify(json), ms });
       } else {
-        setOutcome({ kind: "video", payload: json, ms });
+        setOutcome({ kind: "video", payload: json, urls: result.urls, ms });
       }
     } catch (err) {
       setOutcome({
@@ -701,17 +696,28 @@ export function MediaTester({ models, labels }: Props) {
 
             {outcome.kind === "image" && (
               <>
-                {outcome.urls.length > 0 ? (
+                {outcome.urls.length > 0 || outcome.images.length > 0 ? (
                   <div className="space-y-2">
                     {outcome.urls.map((u) => (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img key={u} src={u} alt={labels.imageResult} className="max-h-80 rounded-md" />
                     ))}
+                    {/* Base64 artifacts are drawn, not counted: a vendor that
+                        answers `image_base64` (MiniMax with
+                        `response_format: "base64"`, OpenAI's `b64_json`) used to
+                        be reported as "1 张 base64 图片" with no picture. */}
+                    {outcome.images.map((src, i) => (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        key={`b64-${i}`}
+                        src={src}
+                        alt={labels.imageResult}
+                        className="max-h-80 rounded-md"
+                      />
+                    ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-muted-foreground">
-                    {outcome.b64 > 0 ? `${outcome.b64} 张 base64 图片` : labels.empty}
-                  </p>
+                  <p className="text-xs text-muted-foreground">{labels.empty}</p>
                 )}
               </>
             )}
@@ -726,9 +732,20 @@ export function MediaTester({ models, labels }: Props) {
             )}
 
             {outcome.kind === "video" && (
-              <pre className="overflow-x-auto whitespace-pre-wrap break-words text-xs">
-                {JSON.stringify(outcome.payload, null, 2)?.slice(0, 2000) ?? labels.empty}
-              </pre>
+              <>
+                {outcome.urls.length > 0 ? (
+                  <div className="space-y-2">
+                    {outcome.urls.map((u) => (
+                      // eslint-disable-next-line jsx-a11y/media-has-caption
+                      <video key={u} controls src={u} className="max-h-80 w-full rounded-md" />
+                    ))}
+                  </div>
+                ) : (
+                  <pre className="overflow-x-auto whitespace-pre-wrap break-words text-xs">
+                    {JSON.stringify(outcome.payload, null, 2)?.slice(0, 2000) ?? labels.empty}
+                  </pre>
+                )}
+              </>
             )}
           </div>
         )}

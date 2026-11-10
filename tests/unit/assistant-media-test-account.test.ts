@@ -178,9 +178,50 @@ describe("the media test page, spending the caller's own identity", () => {
       json({ capability: "image.generate", model: "image-01", prompt: "一只猫", size: "1024x1024" }),
     );
     expect(res.status).toBe(200);
-    // The image came back inline, so the route reports it as a count rather
-    // than a list of links.
-    expect((await res.json()).data.b64).toBe(1);
+    const body = await res.json();
+    // The image came back inline. It used to be reported as a **count**
+    // (`b64: 1`) — a number the page cannot draw — and the page, which read the
+    // public shape, could not even find that. It now travels as a data URL the
+    // page can put straight into an <img>.
+    expect(body.data.images).toHaveLength(1);
+    expect(body.data.images[0]).toMatch(/^data:image\/png;base64,/);
+    expect(body.data.urls).toEqual([]);
+  });
+
+  it("reports a link artifact as a url, not as something to count", async () => {
+    await switchOn();
+    await createMediaProvider({
+      name: "MiniMax Media",
+      baseUrl: "https://upstream.test",
+      apiKey: "vendor-key",
+      models: { "image-01": { upstreamId: "image-01", pricePerItem: 1, enabled: true } },
+      specs: [MINIMAX_IMAGE_SPEC as unknown as Record<string, unknown>],
+    });
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: { image_urls: ["https://cdn.example/cat.png"] },
+          metadata: { success_count: 1 },
+          base_resp: { status_code: 0, status_msg: "success" },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    const res = await POST(
+      json({ capability: "image.generate", model: "image-01", prompt: "一只猫", size: "1024x1024" }),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data.urls).toEqual(["https://cdn.example/cat.png"]);
+    expect(body.data.images).toEqual([]);
+
+    // Same question as the key path: the public route gets `n: 1` from the
+    // tester, and a vendor spec that maps `n` must see it here too.
+    const sent = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body)) as {
+      n?: number;
+    };
+    expect(sent.n).toBe(1);
   });
 
   it("still refuses an empty prompt on a JSON capability", async () => {

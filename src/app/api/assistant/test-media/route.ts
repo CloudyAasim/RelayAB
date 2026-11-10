@@ -35,6 +35,7 @@ import {
   type MediaRequestInput,
 } from "@/lib/media/handler";
 import type { MediaCapability } from "@/lib/media/spec";
+import { buildMediaTestPayload } from "@/lib/media/test-result";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -217,7 +218,11 @@ export async function POST(req: Request): Promise<Response> {
   if (stt) {
     return NextResponse.json({
       ok: true,
-      data: { via: "account", ms, text: outcome.value.result.text ?? "", ...(outcome.value.result.taskId ? { id: outcome.value.result.taskId } : {}) },
+      data: buildMediaTestPayload(outcome.value.result.items, {
+        ms,
+        text: outcome.value.result.text ?? "",
+        ...(outcome.value.result.taskId ? { id: outcome.value.result.taskId } : {}),
+      }),
     });
   }
   return respondToMedia(jsonCapability, outcome, ms);
@@ -239,6 +244,15 @@ async function runJsonMedia(
   const input: MediaRequestInput = {
     model: data.model,
     prompt,
+    /**
+     * One artifact, exactly like the key path.
+     *
+     * The tester's key path sends `n: 1` to the public routes, and those forward
+     * it; this path did not, so a spec whose request maps `n` read nothing. The
+     * two credentials must ask the vendor the same question or the comparison
+     * they exist for is between two different requests.
+     */
+    n: 1,
     // **And** the capability's own text field, where it has one. Text-to-speech
     // is that capability: `MINIMAX_TTS_SPEC` reads `$.input`, the public
     // `/v1/audio/speech` route sends `input`, and this route sent only `prompt`
@@ -307,11 +321,10 @@ async function respondToMedia(
   const items = await resultItems(outcome.value.result);
   return NextResponse.json({
     ok: true,
-    data: {
-      via: "account",
-      ms,
-      urls: items.filter((i) => i.kind === "url").map((i) => i.value),
-      b64: items.filter((i) => i.kind === "base64").length,
-    },
+    // The same payload builder the speech path uses, so the page reads one shape
+    // whichever capability asked. It used to answer `{ urls, b64 }` — a count of
+    // the base64 artifacts instead of the artifacts — and the page, which reads
+    // the public OpenAI shape, found neither.
+    data: buildMediaTestPayload(items, { ms }),
   });
 }
