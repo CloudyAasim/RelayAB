@@ -709,7 +709,7 @@ OpenAI-shaped media endpoints, driven by a **declarative adapter protocol** (see
 | Endpoint | Body | Notes |
 | --- | --- | --- |
 | `POST /v1/images/generations` | JSON `{model,prompt,n,size,response_format,seed?}` | Text-to-image, returns `{created,data:[{url}|{b64_json}]}` |
-| `POST /v1/images/edits` | multipart `image[,mask],prompt,model[,n,size]` | Image-to-image; uploaded images are converted to data URLs and handed to the spec |
+| `POST /v1/images/edits` | multipart `image[,image…],prompt,model[,n,size]` (repeat `image` for 1–16 references; `image[]` also accepted) | Image-to-image; every upload becomes a data URL, with `$.image` the first and `$.images` all of them |
 | `POST /v1/videos/generations` | JSON `{model,prompt[,n,size]}` | Async upstreams are submitted to and polled inside the engine; the client only receives one response |
 | `POST /v1/audio/music` | JSON `{model,prompt[,n]}` | Music generation |
 | `POST /v1/audio/speech` | JSON `{model,input,voice?,speed?}` | TTS, **returns the audio bytes verbatim** (the ≤25MB input limit applies to transcriptions) |

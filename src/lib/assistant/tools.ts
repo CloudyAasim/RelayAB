@@ -37,7 +37,7 @@ import { readTextProtocolDoc } from "../docs/text-protocol-doc";
 import { getProviderById, listProviders } from "../db/providers";
 import { MODEL_PURPOSES } from "../db/types";
 import { collectVoiceCatalogue } from "../media/voices";
-import { DEFAULT_SPEC_TIMEOUT_MS } from "@/lib/protocol/limits";
+import { DEFAULT_SPEC_TIMEOUT_MS, MAX_REFERENCE_IMAGES } from "@/lib/protocol/limits";
 import { listUsers, getUserById } from "../db/users";
 import { getAssistantCredential } from "../db/assistant-keys";
 import { listApiKeysByUser, listApiKeyIdsForUsage } from "../db/keys";
@@ -495,6 +495,11 @@ function userTools(t: (key: string) => string): AssistantToolDef[] {
           image: {
             type: "string",
             description: t("generate_image.image"),
+          },
+          images: {
+            type: "array",
+            items: { type: "string" },
+            description: t("generate_image.images"),
           },
         },
         required: ["model", "prompt"],
@@ -1730,6 +1735,25 @@ const MAX_REFERENCE_BYTES = 8 * 1024 * 1024;
 const ATTACHMENT_ALIASES = new Set(["attachment", "@attachment", "上传的图片", "附件"]);
 
 /**
+ * Which attached picture `raw` names, counting back from the newest.
+ *
+ * `attachment` is the newest (unchanged); `attachment:2` is the one before it.
+ * Without an index, a message carrying three references could only ever name
+ * one of them, which made multi-image requests from chat impossible even after
+ * the gateway accepted 1–16 uploads (2026-11-13).
+ *
+ * Returns `null` when the value is not an attachment form at all, and `1` when
+ * it is the bare alias.
+ */
+function attachmentPosition(raw: string): number | null {
+  if (ATTACHMENT_ALIASES.has(raw)) return 1;
+  const match = /^attachment:(\d+)$/i.exec(raw);
+  if (!match) return null;
+  const position = Number(match[1]);
+  return Number.isInteger(position) && position >= 1 ? position : null;
+}
+
+/**
  * A refusal, as the key of the row that carries it.
  *
  * The image and the audio resolvers both answer with prose the person reads,
@@ -1762,7 +1786,8 @@ async function resolveReferenceImageRefusal(
     return { ok: true, dataUrl: raw };
   }
 
-  if (!ATTACHMENT_ALIASES.has(raw)) {
+  const position = attachmentPosition(raw);
+  if (position === null) {
     return { ok: false, refusal: { key: "referenceImageForms" } };
   }
 
@@ -1770,8 +1795,15 @@ async function resolveReferenceImageRefusal(
   if (pictures.length === 0) {
     return { ok: false, refusal: { key: "noAttachedImage" } };
   }
-  // Newest wins: the user may have sent a correction.
-  const attachment = pictures[pictures.length - 1];
+  // Newest wins: the user may have sent a correction. `attachment:2` walks back
+  // from there, so a message with several pictures can name each one.
+  const attachment = pictures[pictures.length - position];
+  if (!attachment) {
+    return {
+      ok: false,
+      refusal: { key: "referenceImageOutOfRange", vars: { position, count: pictures.length } },
+    };
+  }
 
   const stored = await getAssistantArtifact(attachment.id, ctx.user.id);
   if (!stored?.bytes) {
@@ -1998,11 +2030,29 @@ async function mediaGenerate(
   // Image-to-image, when the caller asked for it. A spec decides what a
   // reference turns into — MiniMax wraps it in `subject_reference`, others
   // take it raw — so the only thing this has to get right is handing it over.
-  let reference: string | undefined;
-  if (kind === "image" && typeof args.image === "string" && args.image.trim()) {
-    const resolved = await resolveReferenceImageRefusal(args.image, ctx);
-    if (!resolved.ok) return fail(ctx, resolved.refusal.key, resolved.refusal.vars);
-    reference = resolved.dataUrl;
+  //
+  // `images` takes precedence over `image` when both are present: it is the
+  // more specific request, and it is the only way to send more than one
+  // reference (the public route accepts 1–16; `$.images` is the scope field a
+  // spec maps into the vendor's object array).
+  let references: string[] = [];
+  if (kind === "image") {
+    const requested = Array.isArray(args.images)
+      ? args.images.filter((value): value is string => typeof value === "string" && value.trim() !== "")
+      : [];
+    if (requested.length > MAX_REFERENCE_IMAGES) {
+      return fail(ctx, "tooManyReferenceImages", { count: requested.length, limit: MAX_REFERENCE_IMAGES });
+    }
+    const wanted = requested.length > 0
+      ? requested
+      : typeof args.image === "string" && args.image.trim()
+        ? [args.image]
+        : [];
+    for (const value of wanted) {
+      const resolved = await resolveReferenceImageRefusal(value, ctx);
+      if (!resolved.ok) return fail(ctx, resolved.refusal.key, resolved.refusal.vars);
+      references.push(resolved.dataUrl);
+    }
   }
 
   const payload: Record<string, unknown> =
@@ -2018,7 +2068,8 @@ async function mediaGenerate(
             // caller asked for is something the spec can resolve. Sent beside
             // `size` because a spec honours one or the other, not both.
             ...(typeof args.ratio === "string" && args.ratio.trim() ? { ratio: args.ratio.trim() } : {}),
-            ...(reference ? { image: reference } : {}),
+            ...(references.length > 0 ? { image: references[0] } : {}),
+            ...(references.length > 1 ? { images: references } : {}),
           }
         : { model: model.data, prompt, n: 1, duration, ratio };
 

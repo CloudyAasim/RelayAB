@@ -295,6 +295,83 @@ describe("and the reference actually leaves in the request", () => {
     // picture, which vendors answer with an error about the reference.
     expect("image" in seen).toBe(false);
   });
+
+  it("sends every reference, in the order asked, when the caller gives images", async () => {
+    // The tool could only name one picture before 2026-11-13, so "use these two"
+    // was unexpressible from chat even though the route accepts 1–16.
+    const thread = await createAssistantThread(user.id, "用这两张图");
+    const first = await saveAssistantArtifact({
+      userId: user.id,
+      threadId: thread.id,
+      kind: "image",
+      bytes: PNG,
+      contentType: "image/png",
+    });
+    const second = await saveAssistantArtifact({
+      userId: user.id,
+      threadId: thread.id,
+      kind: "image",
+      bytes: PNG,
+      contentType: "image/png",
+    });
+
+    const result = await executeTool(
+      "generate_image",
+      JSON.stringify({
+        model: "image-01",
+        prompt: "把这两张合成一张",
+        // `attachment:2` is the one before the newest, so this asks for
+        // [first, second] — the order the request body must preserve.
+        images: ["attachment:2", "attachment:1"],
+      }),
+      {
+        user: { ...user, timezone: "shanghai" as const },
+        relayKey: "sk-relay-test",
+        gatewayBase: "https://relay.example.com",
+        attachments: [
+          { ...artifactRef(first), name: "第一张.png" },
+          { ...artifactRef(second), name: "第二张.png" },
+        ],
+      } as never,
+    );
+    expect(result.ok, result.content.slice(0, 300)).toBe(true);
+
+    const expected = `data:image/png;base64,${Buffer.from(PNG).toString("base64")}`;
+    expect(Array.isArray(seen.images)).toBe(true);
+    expect(seen.images).toEqual([expected, expected]);
+    // Single-reference specs still read `image`, and it must be the first.
+    expect(seen.image).toBe(expected);
+  });
+
+  it("refuses more reference images than the ceiling, without calling upstream", async () => {
+    const thread = await createAssistantThread(user.id, "太多张");
+    const saved = await saveAssistantArtifact({
+      userId: user.id,
+      threadId: thread.id,
+      kind: "image",
+      bytes: PNG,
+      contentType: "image/png",
+    });
+
+    const result = await executeTool(
+      "generate_image",
+      JSON.stringify({
+        model: "image-01",
+        prompt: "x",
+        images: Array.from({ length: 17 }, () => "attachment"),
+      }),
+      {
+        user: { ...user, timezone: "shanghai" as const },
+        relayKey: "sk-relay-test",
+        gatewayBase: "https://relay.example.com",
+        attachments: [{ ...artifactRef(saved), name: "参考图.png" }],
+      } as never,
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.content).toContain("17");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("a turn with a picture the model can actually use", () => {

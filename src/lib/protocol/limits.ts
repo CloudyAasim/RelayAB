@@ -80,3 +80,13 @@ export const CONNECT_TIMEOUT_MS = 30_000;
  */
 export const MAX_AUDIO_UPLOAD_BYTES = 25 * 1024 * 1024;
 export const MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+/**
+ * How many reference images one edit may carry.
+ *
+ * H3's `/v1/images/edits` documents 1–16 and so does OpenAI's image-edit API, so
+ * 16 is the number a client written against either expects. One constant because
+ * the public route, the assistant's `generate_image` tool and the docs all have
+ * to agree — a client told "up to 16" must not meet a tool that caps at one.
+ */
+export const MAX_REFERENCE_IMAGES = 16;

@@ -263,11 +263,21 @@ export const TOOL_DESCRIPTIONS: Record<string, ToolText> = {
   "generate_image.image": {
     "zh-CN":
       "参考图。填 attachment 表示用用户这条消息里附的图片；也可以给一个 http(s) 图片网址。" +
-      "不填就是文生图。这个工具不接收 base64。",
+      "不填就是文生图。这个工具不接收 base64。多张参考图用 images（1–16 张）。",
     en:
       "The reference picture. Put attachment to use the image attached to this message; you can also " +
       "give an http(s) image URL. Leave it out for plain text-to-image. This tool does not accept " +
       "base64.",
+  },
+  "generate_image.images": {
+    "zh-CN":
+      "多张参考图，1–16 张。每一项和 image 同一个写法：attachment（可写 attachment:2 取倒数第二张）、" +
+      "或 http(s) 图片网址。顺序有意义——网关按你给的顺序原样交给 spec。" +
+      "只接单图的服务商请用 image，不要用这个。",
+    en:
+      "Several reference pictures, 1–16. Each entry takes the same forms as image: attachment " +
+      "(attachment:2 for the second-newest), or an http(s) image URL. The order is meaningful — the " +
+      "gateway hands it to the spec as given. For a single-reference provider use image instead.",
   },
   "list_voices": {
     "zh-CN":
@@ -1683,6 +1693,17 @@ export const TOOL_REFUSALS: Record<string, ToolText> = {
   noAttachedImage: {
     "zh-CN": "这一条消息里没有附上图片，所以没有可用的参考图。",
     en: "No picture was attached to this message, so there is no reference image to use.",
+  },
+  tooManyReferenceImages: {
+    "zh-CN": "你给了 {count} 张参考图，上限是 {limit} 张。",
+    en: "You sent {count} reference pictures; the limit is {limit}.",
+  },
+  referenceImageOutOfRange: {
+    "zh-CN":
+      "这条消息里只附了 {count} 张图片，没有第 {position} 张（从最新的一张往前数）。",
+    en:
+      "This message has only {count} attached picture(s), so there is no number {position} " +
+      "(counting back from the newest).",
   },
   noAttachedAudio: {
     "zh-CN":

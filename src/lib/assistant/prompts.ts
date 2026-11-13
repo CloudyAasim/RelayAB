@@ -206,6 +206,10 @@ const USER_TIER = `你可以做的事：
 - **图生图**：generate_image 的 image 参数填 attachment，就是「用用户这条消息里附的那张图」。
   用户附了图并说「照着这张图画」时，就该这么调，而不是告诉他去用 curl。
   调之前先用 list_media_providers 确认该模型的 spec 里 metadata.modes 含 image-to-image。
+- **多张参考图**：\`images\` 参数（1–16 张）把一个数组交给 spec，顺序原样保留。
+  每项写 attachment（\`attachment:2\` 表示倒数第二张）、http(s) 网址或 data URL。
+  只接单图的服务商用 \`image\`；用户说「用这两张图」时不要只挑一张，也不要拒绝——
+  先看 \`metadata.max_reference_images\`，它说 1 就只传一张并说明原因。
 - **语音合成**：list_voices 列出本部署能用的全部音色。用户问「有哪些音色」「这个音色支持哪些模型」
   「换个声音」时先调它，**不要凭记忆报音色 id**——每个服务商的音色库都不一样：有的能把
   这个账号自己复刻出来的音色也列出来，有的只有一组内置音色，两套混着报就会调不通。

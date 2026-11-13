@@ -16,12 +16,12 @@ import { getUserById as lookupUserById } from "@/lib/db/users";
 import { proxyError, quotaHeaders } from "@/lib/proxy/errors";
 import { executeMediaRequest, fileToDataUrl, imageItemsResponse, requirePrompt, resultItems, type MediaRequestInput } from "@/lib/media/handler";
 import type { ApiKey } from "@/lib/db/types";
-import { MAX_IMAGE_UPLOAD_BYTES } from "@/lib/protocol/limits";
+import { MAX_IMAGE_UPLOAD_BYTES, MAX_REFERENCE_IMAGES } from "@/lib/protocol/limits";
 import { respondWithHeartbeat } from "@/lib/http/heartbeat";
 
 export const runtime = "nodejs";
 
-/** 10 MB upstream limit (MiniMax documents <10MB for reference images). */
+/** 10 MB per reference image (MiniMax documents <10MB for reference images). */
 const MAX_IMAGE_BYTES = MAX_IMAGE_UPLOAD_BYTES;
 
 export async function POST(req: Request): Promise<Response> {
@@ -52,13 +52,37 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  const image = form.get("image");
-  if (!(image instanceof File) || image.size === 0) {
+  /**
+   * Every reference image the client sent.
+   *
+   * The OpenAI shape is a repeatable `image` field (`image[]` on the wire from
+   * some SDKs); a single upload is just the one-element case. Before 2026-11-13
+   * this route read only the first file, so a client that sent four references
+   * silently got an edit based on one — H3's `/v1/images/edits` accepts 1–16 and
+   * had no way to receive them.
+   */
+  const uploads = [...form.getAll("image"), ...form.getAll("image[]")].filter(
+    (value): value is File => value instanceof File && value.size > 0,
+  );
+  if (uploads.length === 0) {
     return proxyError(400, "invalid_request", "an 'image' file is required");
   }
-  if (image.size > MAX_IMAGE_BYTES) {
-    return proxyError(400, "invalid_request", "'image' exceeds the 10MB limit");
+  if (uploads.length > MAX_REFERENCE_IMAGES) {
+    return proxyError(
+      400,
+      "invalid_request",
+      `at most ${MAX_REFERENCE_IMAGES} reference images are accepted (got ${uploads.length})`,
+    );
   }
+  const oversized = uploads.find((file) => file.size > MAX_IMAGE_BYTES);
+  if (oversized) {
+    return proxyError(
+      400,
+      "invalid_request",
+      `'image' exceeds the ${MAX_IMAGE_BYTES / (1024 * 1024)}MB limit`,
+    );
+  }
+  const images = await Promise.all(uploads.map((file) => fileToDataUrl(file)));
 
   const prompt = form.get("prompt");
   const size = form.get("size");
@@ -69,7 +93,10 @@ export async function POST(req: Request): Promise<Response> {
   const input: MediaRequestInput = {
     model: requestedModel,
     prompt: typeof prompt === "string" ? prompt : "",
-    image: await fileToDataUrl(image),
+    // The first one is what every pre-existing spec maps; the array is the new
+    // surface (see the protocol's scope table).
+    image: images[0],
+    images,
     ...(Number.isFinite(n) && n > 0 ? { n } : {}),
     ...(typeof size === "string" && size ? { size } : {}),
     ...(typeof responseFormat === "string" && responseFormat
@@ -80,7 +107,8 @@ export async function POST(req: Request): Promise<Response> {
     // its original and its camelCase spelling (see buildMediaScope).
     extra: Object.fromEntries(
       [...form.entries()].filter(
-        ([key, value]) => key !== "image" && typeof value === "string",
+        ([key, value]) =>
+          key !== "image" && key !== "image[]" && typeof value === "string",
       ),
     ),
   };

@@ -126,7 +126,7 @@
 | 9 | `{"$mapSize": …}` | 同 `$enum`，但没命中时返回 `default` ?? 原始值 |
 | 10 | `{"$dataUrl": p}` | 已是 `data:` 或 `http(s)://` → 原样；否则包成 `data:image/png;base64,<值>` |
 | 11 | `{"$file": …}` | data URL → `{__file, filename, contentType, base64}`；取不到 → `undefined` |
-| 12 | `{"$from": p, "$to": m}` | `p` 必须是**数组**，否则 `undefined`；每项以该项为新 scope 求值 `m`（缺省 `"$"`） |
+| 12 | `{"$from": p, "$to": m}` | `p` 必须是**数组**，否则 `undefined`；每项以该项为新 scope 求值 `m`（缺省 `"$"`）。**请求和响应都能用**：请求方向用来把客户端给的数组拼成厂商要的对象数组（如 H3 的 `images: [{image_url}]`），响应方向用来摊平厂商返回的数组 |
 | 13 | `{"$merge": [...]}` | 逐个求值后浅合并 |
 | 14 | `{"$fetch": …}` | 返回 marker（不发网络请求），由第 12 步之后展开 |
 | 15 | `{"$eq": [a, b]}` | 深度相等 |
@@ -142,13 +142,15 @@
 > | `$.data[0]` / `$.data[0].url` | ✅ 固定下标 |
 > | `$.data[*]` / `$.data[*].url` | ❌ **`undefined`** |
 > | `$.utter[0].words[0].word` | ✅ 逐层固定下标 |
-> | `$.utter[*].words[*].word` | ❌ **`undefined`**（无法「投影数组里每个元素的某个字段」） |
+> | `$.utter[*].words[*].word` | ❌ **`undefined`**（路径没有通配；要逐项投影请用 `$from` 嵌套） |
 >
 > 通配符写错**不报错**，只是取不到值，于是那一路产物整体消失、最后报
 > `upstream_contract_mismatch`——排查时很容易以为是厂商返回结构变了。
 >
 > - 想要「数组里每个元素的某个字段」→ 用第 12 条 `{"$from": "$.utter", "$to": {"$toString": "$.transcript"}}`
 >   之类，**让数组本身成为 scope**，逐项求值；元素内部要用 `$ifPresent` 挑分支。
+>   数组套数组就**再套一层 `$from`**（外层让元素成为 scope，内层让它的子数组成为 scope），
+>   不需要也不支持 `[*]`。
 > - **判官输出里的 `data.[*].url` 是它的显示记法，意思是「数组 data 的每个元素的 url」，
 >   不是可以照抄的路径语法。** 照抄成 `$.data[*].url` 一定取不到值。
 > - 上游返回的数组**通常不用逐个下标**：`$from` 直接吃整个数组即可。
@@ -358,7 +360,7 @@
 | `$dataUrl` | `{"$dataUrl": "$.image"}` | **只往请求里用**：裸 base64 → `data:image/png;base64,…` |
 | `$file` | `{"$file": {"path":…, "filename":…, "contentType":…}}` | **只往请求里用**：data URL → 真的 multipart 文件。**必须 multipart，否则保存报错**——见 §6.2 |
 | `$firstPresent` | `{"$firstPresent": [<映射>, …]}` | 取第一个有值的；**厂商必填但客户端可能不传时用它兜默认**；`errorCode`/`errorMessage` 也会用到它（见 §7.2） |
-| `$from` | `{"$from": "$.data.urls", "$to": {…}}` | **只往响应里用**：数组逐项映射 |
+| `$from` | `{"$from": "$.data.urls", "$to": {…}}` | **请求/响应都能用**：数组逐项映射。请求方向的典型用途：`{"$from": "$.images", "$to": {"image_url": {"$dataUrl": "$"}}}` |
 | `$merge` | `{"$merge": [<映射>, <映射>]}` | 合并多个对象 |
 | `$eq` | `{"$eq": [<映射>, <映射>]}` | 深度相等（`errors.when` 主力） |
 | `$fetch` | `{"$fetch": {"path":…, "url":…, "pick":…}}` | **只往响应里用**：拿到 id 再发一次 GET 换最终值 |
@@ -369,7 +371,8 @@
 - 取不到的路径得到 `undefined`，**该键会从产物里整体消失**（不是 `null`）。
   所以 `"x": "$.client_may_omit"` 在客户端没传时等于没发这个字段。
 - 字符串值里 `{{ $.a.b }}` 会被替换成作用域里的值（自动 URL 编码）。
-- **方向别搞反**：`$dataUrl`/`$file` 属于请求，`$from`/`$fetch` 属于响应。
+- **方向**：`$dataUrl`/`$file` 只往请求里用；`$fetch` 只往响应里用；
+  `$from`/`$to` 两个方向都能用（它只是静态求值，不发请求）。
 
 #### 0.4.4 response 契约
 
@@ -487,7 +490,7 @@
 | 端点 | 归一化字段 |
 | --- | --- |
 | `/v1/images/generations` | `model` `prompt` `n` `size` `responseFormat` `seed` `style` `watermark` `promptOptimizer` |
-| `/v1/images/edits` | `model` `prompt` `image`（上传图的 data URL）`n` `size` `responseFormat` `seed` |
+| `/v1/images/edits` | `model` `prompt` `image`（第一张上传图的 data URL）`images`（**全部**上传图，data URL 数组，按客户端顺序，1–16 张）`n` `size` `responseFormat` `seed` |
 | `/v1/videos/generations` | `model` `prompt` `n` `size` `seed` `duration` |
 | `/v1/audio/music` | `model` `prompt` `n` |
 | `/v1/audio/speech` | `model` `input`（待合成文本）`voice` `speed` `responseFormat` |
@@ -526,7 +529,7 @@ binary/stream/sse 回传、空结果检测、按 `successCount` 计费。
    状态的不同大小写/拼写变体要**全部列出**。
 7. 厂商 `responses:` 里的**每个状态码**都要有 `errors` 规则。
 8. 产物只给 id、需要再调接口时，用 `$fetch`；不要把 id 当 URL 返回。
-9. `$dataUrl` / `$file` 只往请求用；`$from` / `$fetch` 只往响应用。
+9. `$dataUrl` / `$file` 只往请求用；`$fetch` 只往响应用；`$from` / `$to` 两边都能用。
 10. 要 base64 就确认上游编码，并用 `encoding` 声明；**不要假设是 base64**。
 11. `metadata.modes` 只写真的映射了的。
 12. `limits.timeoutMs ≤ 3500000`（sanity 上限，不是平台限制）。
@@ -675,7 +678,7 @@ pnpm spec-check my-specs.json
 - [ ] `{{taskId}}` 的轮询路径**逐字符对照过**厂商文档的 URL？（路径拼接错一个段就全 404）
 - [ ] 产物若是 id，用了 `$fetch` 换成真地址？
 - [ ] 要 base64 的地方声明了正确的 `encoding`（或确认过上游本来就是 base64）？
-- [ ] `$dataUrl` / `$file` 只出现在 `request`，`$from` / `$fetch` 只出现在 `response`？
+- [ ] `$dataUrl` / `$file` 只出现在 `request`，`$fetch` 只出现在 `response`？（`$from`/`$to` 两边都可以）
 - [ ] multipart 里的**字符串 vs 布尔**都对得上厂商文档？（`"false"` ≠ `false`）
 - [ ] `metadata.modes` 里每一项都有对应的请求映射，且用词与其它能力一致？
 - [ ] `limits.timeoutMs ≤ 3500000`？
@@ -927,7 +930,7 @@ MediaProvider {
 | 端点 | 归一化字段 |
 | --- | --- |
 | `/v1/images/generations` | `model` `prompt` `n` `size` `responseFormat` `seed` `style` `watermark` `promptOptimizer` |
-| `/v1/images/edits` | `model` `prompt` `image`（上传图的 data URL）`n` `size` `responseFormat` `seed` |
+| `/v1/images/edits` | `model` `prompt` `image`（第一张上传图的 data URL）`images`（**全部**上传图，data URL 数组，按客户端顺序，1–16 张）`n` `size` `responseFormat` `seed` |
 | `/v1/videos/generations` | `model` `prompt` `n` `size` `seed` `duration` |
 | `/v1/audio/music` | `model` `prompt` `n` |
 | `/v1/audio/speech` | `model` `input`（待合成文本）`voice` `speed` `responseFormat` |
@@ -951,6 +954,39 @@ MediaProvider {
 - 归一化字段优先于同名的透传字段。
 - `$` 永远指上游模型名（已按 `upstreamId` 替换），spec 不用再映射一次。
 
+#### 多张参考图：`$.images` → 厂商的对象数组
+
+`/v1/images/edits` 的 `image` 字段**可重复**（有些 SDK 写作 `image[]`），一次最多 16 张。
+作用域里：
+
+- `$.image` = **第一张**的 data URL（老 spec 不用改）；
+- `$.images` = **全部**上传图的 data URL 数组，按客户端发送顺序。
+
+厂商要的形状往往不是字符串数组，而是「每张图一个对象」。用 `$from` + `$to`（第 12 条原语，
+**请求方向也能用**）：
+
+```jsonc
+{
+  "request": {
+    "model": "$.model",
+    "prompt": "$.prompt",
+    // H3: { "images": [{ "image_url": "data:image/png;base64,…" }, …] }
+    "images": {
+      "$from": "$.images",
+      "$to": { "image_url": { "$dataUrl": "$" } }
+    }
+  }
+}
+```
+
+`$to` 里的 `"$"` 是**当前这一张图**（`$from` 让每个元素成为 scope），`$dataUrl` 再把裸 base64
+包成 data URL。数组不存在时整个键被丢弃（`$from` 对非数组返回 `undefined`），
+所以不会给厂商发一个空数组。
+
+> 只接单图的上游用 `$.image` 配 `$ifPresent` 即可，不需要 `$from`。
+> 上游只吃前 N 张时，`$.images` 仍是完整数组——截断是 spec 的事（例如配一个 `$from` 到
+> 固定的 `$.images` 前缀），不是网关悄悄丢图。
+
 ### 6.2 映射原语
 
 | 原语 | 完整写法 | 作用 | 例 |
@@ -964,7 +1000,7 @@ MediaProvider {
 | `$dataUrl` | `{"$dataUrl": "$.image"}` | **请求方向**：裸 base64 → data URL | 上传图直接给厂商 |
 | `$file` | `{"$file": {"path":…, "filename":…, "contentType":…}}` | **请求方向**：data URL → 真的 multipart 文件 | 需要 `contentType: multipart/form-data` |
 | `$firstPresent` | `{"$firstPresent": ["$.a", "$.b"]}` | 取第一个**标量**有值的 | 厂商必填但客户端可能不传时兜默认，见 §6.3 |
-| `$from` + `$to` | `{"$from": "$.data.urls", "$to": {…}}` | **响应方向**：数组逐项映射 | 见 §7 |
+| `$from` + `$to` | `{"$from": "$.data.urls", "$to": {…}}` | **两个方向**都能用：数组逐项映射（请求方向见 §6.1 的多图示例）| 见 §7 |
 | `$merge` | `{"$merge": [<映射>, <映射>]}` | 合并多个对象 | |
 | `$eq` | `{"$eq": [<映射>, <映射>]}` | 深度相等（主要用于 `errors.when`） | `{"$eq":["$.base_resp.status_code",1002]}` |
 | `$fetch` | `{"$fetch": {"path":…, "url":…, "pick":…}}` | **响应方向**：拿到 id 再发一次 GET 换最终值 | 见 §7.3 |
@@ -1462,9 +1498,8 @@ JSON），所以代理的空闲超时不会掐断慢调用；真正的期限由 
 
 | 缺口 | 厂商实例（文档原文形状） | 性质 |
 | --- | --- | --- |
-| **把 N 个标量组装成一个数组** | Vidu `start-end2video`：`images: [首帧, 尾帧]`，**顺序有语义**（客户端给的是 `first_frame` / `last_frame` 两个独立字段）；Runway `seedance2_5` 的 `promptImage: [{uri,position:"first"},{uri,position:"last"}]`；Replicate `webhook_events_filter: ["start","completed"]` | 映射树的叶子只能产出一个标量。`$firstPresent` 是反方向（多输入选一个），造不出数组 |
-| **请求字段本身是数组/对象，且每个元素要单独变换** | Gemini：`contents[].parts[]` 是**异构**数组（`{text}` 或 `{inline_data:{mime_type,data}}`），文本与参考图可混在一次请求里，每张图各自 base64、**各自的 mime_type 还可能不同** | `$dataUrl` 是整字段级；映射树是「厂商字段名 → 客户端路径」的标量表 |
-| **按元素投影嵌套数组** | Deepgram：`utterances[].words[].word`（还有 `channels[].alternatives[].paragraphs[].sentences[]` 四层） | 路径只认数字下标（见 §6.1），无法「投影每个元素的某个字段」 |
+| **把 N 个独立标量拼成一个数组** | Vidu `start-end2video`：`images: [首帧, 尾帧]`，**顺序有语义**（客户端给的是 `first_frame` / `last_frame` 两个独立字段）；Runway `seedance2_5` 的 `promptImage: [{uri,position:"first"},{uri,position:"last"}]`；Replicate `webhook_events_filter: ["start","completed"]` | 叶子只能产出一个标量，数组节点逐项求值**不剔除 `undefined`**，所以「有 A 才放 A 那一格」的定长数组拼不出来。注意这**不**影响客户端给的就是数组的情况（那种用 `$from`/`$to`，见下） |
+| **异构数组：每个元素要按内容分别变换** | Gemini：`contents[].parts[]` 是**异构**数组（`{text}` 或 `{inline_data:{mime_type,data}}`），文本与参考图可混在一次请求里，每张图各自 base64、**各自的 mime_type 还可能不同** | `$from`/`$to` 对**同构**数组够用（每个元素同一个投影），但没有「按元素内容分支」的原语，投影不了 `{text}` 与 `{inline_data}` 混排 |
 | **入站回调 / webhook** | Vidu `callback_url` + **HMAC-SHA256** 签名（签名串要拼 method/URI/原始 query/access_key/Date/headers，且要求**未解码的原始 query**）；Replicate `webhook`（不跟跳转、需幂等）；Deepgram `callback`（较易：`dg-token` 头或 URL 内嵌 Basic Auth） | 只有出站 `async.poll`，没有公网入站端点。Vidu 那档还需要 HMAC 计算原语 |
 | **多步有状态流程** | Vidu 图片上传三步：创建链接 → PUT 上传并**从响应头取 `etag`** → 用 etag 收尾；Gemini Files API：先传拿 `uri` 再在主请求里引用 | `$fetch` 只做「拿到 id 再换一次 URL」，且中间步骤的响应头没法传给下一步 |
 | **值条件** | Vidu `audio_type` 文档明写 *"required when audio is true"*；Runway `promptImage` 文档明写 *"首尾帧与参考图两种模式不能混用"*；Gemini `media_resolution` 可 per-part 覆盖全局 | 只有「字段是否存在」（`$ifPresent`）和「查表」（`$enum`/`$mapSize`），没有按值分支 |
@@ -1474,6 +1509,12 @@ JSON），所以代理的空闲超时不会掐断慢调用；真正的期限由 
 
 > **反过来，这些是「协议够用、spec 写对就行」的**（别误判成缺口）：
 >
+> - **多张参考图 → 厂商的对象数组**——`/v1/images/edits` 的 `$.images` 是 data URL 数组，
+>   `{"$from": "$.images", "$to": {"image_url": {"$dataUrl": "$"}}}` 就是 H3 要的
+>   `images: [{image_url}, …]`。`$from`/`$to` 请求方向可用，判官不再报错（§6.1）。
+> - **按元素投影嵌套数组**——`$from` 可以套 `$from`：外层让每个元素成为 scope，内层再让
+>   它的子数组成为 scope（Deepgram 的 `utterances[].words[].word` 就是这么投影的），
+>   不需要 `[*]` 通配。
 > - **Replicate 的自由 `input` 对象**——`$.some.object` 取值**原样保留**对象/数组结构（已实测），
 >   所以客户端的整棵子树可以直接透传。
 > - **Deepgram 全部请求参数**——都在 query 上，`transport.query` + `$const` + `$enum`
@@ -1838,7 +1879,7 @@ JSON），所以代理的空闲超时不会掐断慢调用；真正的期限由 
 
 10. **变换原语方向搞反**
     → `$dataUrl` / `$file` 只能往**请求**里用（响应里应该写 `value: "$.data.audio"`）；
-    `$from` / `$fetch` 只能往**响应**里用。判官的 `PART 1` 会直接报出来。
+    `$dataUrl` / `$file` 只能往**请求**里用，`$fetch` 只能往**响应**里用（`$from` / `$to` 两边都可以）。判官的 `PART 1` 会直接报出来。
 
 11. **`errors.when` 与 `response.errorCode` 不同源**
     → 规则查 `$.error.type`，而 `errorCode` 写 `$.task.error.code`：判官按后者喂值，

@@ -25,7 +25,26 @@ export interface MediaRequestInput {
   n?: number;
   size?: string;
   responseFormat?: string;
+  /**
+   * The first uploaded reference image, as a data URL.
+   *
+   * Kept because every existing `image.edit` spec maps it, and because "one
+   * picture" is still the common case. New specs that want every reference
+   * should read `images` instead.
+   */
   image?: string;
+  /**
+   * Every uploaded reference image, in the order the client sent them.
+   *
+   * `/v1/images/edits` takes a repeatable `image` field (OpenAI's `image[]`), so
+   * a client can send 1–16 references. The scope exposes them as a plain array
+   * of data URLs; a spec turns them into the vendor's shape with
+   * `{"$from": "$.images", "$to": …}` (see the protocol's §0.4.7).
+   *
+   * `images[0]` is always the same string as `image`, so a spec can move between
+   * the two without changing meaning.
+   */
+  images?: string[];
   seed?: number;
   style?: string;
   watermark?: boolean;

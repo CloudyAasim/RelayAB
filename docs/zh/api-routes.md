@@ -654,7 +654,7 @@ Realtime 客户端调到**。**只服务文本**：音频事件（`input_audio_b
 | 端点 | Body | 说明 |
 | --- | --- | --- |
 | `POST /v1/images/generations` | JSON `{model,prompt,n,size,response_format,seed?}` | 文生图，返回 `{created,data:[{url}|{b64_json}]}` |
-| `POST /v1/images/edits` | multipart `image[,mask],prompt,model[,n,size]` | 图生图；上传的图统一转成 data URL 交给 spec |
+| `POST /v1/images/edits` | multipart `image[,image…],prompt,model[,n,size]`（`image` 可重复，1–16 张；`image[]` 同义） | 图生图；每张上传图转成 data URL，作用域里 `$.image` 是第一张、`$.images` 是全部 |
 | `POST /v1/videos/generations` | JSON `{model,prompt[,n,size]}` | 异步供应商在引擎内提交+轮询，客户端只收一次响应 |
 | `POST /v1/audio/music` | JSON `{model,prompt[,n]}` | 音乐生成 |
 | `POST /v1/audio/speech` | JSON `{model,input,voice?,speed?}` | TTS，**原样返回音频字节**（≤25MB 输入限制在 transcriptions） |

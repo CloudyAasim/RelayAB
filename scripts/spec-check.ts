@@ -953,11 +953,20 @@ function walkNodes(node: unknown, visit: (node: unknown, key?: string) => void, 
 
 /**
  * Transforms that only make sense in one direction. Each of these has shipped:
- * `$dataUrl` in a response handed the client a `data:` URL it could not decode,
- * and a `$from` in a request silently built an array nobody sent upstream.
+ * `$dataUrl` in a response handed the client a `data:` URL it could not decode.
+ *
+ * `$from`/`$to` used to be on the response-only list too, because "a `$from` in a
+ * request silently built an array nobody sent upstream". That was true only
+ * while the validator refused the spec — and refusing it also refused a shape
+ * vendors actually ask for: H3's `/v1/images/edits` wants
+ * `images: [{ image_url }]`, one object per reference image the client sent.
+ * The engine has always evaluated `$from` statically (it maps the array through
+ * `$to` with each element as the scope), so the rule was the only thing in the
+ * way. `$fetch` alone stays response-only: it performs a network request, and a
+ * request that depends on a second call is not a mapping.
  */
 const REQUEST_ONLY_TRANSFORMS = ["$dataUrl", "$file"];
-const RESPONSE_ONLY_TRANSFORMS = ["$from", "$to", "$fetch"];
+const RESPONSE_ONLY_TRANSFORMS = ["$fetch"];
 
 function transformKeysIn(node: unknown): Set<string> {
   const found = new Set<string>();

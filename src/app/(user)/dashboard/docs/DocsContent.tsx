@@ -801,7 +801,8 @@ console.log(resp.choices[0].message.content);`}
   -H "Authorization: Bearer $RELAYAB_KEY" \\
   -F model=image-01 \\
   -F prompt="same character, new scene" \\
-  -F image=@reference.png`}
+  -F image=@reference.png \\
+  -F image=@second.png   # 1–16 references: repeat the field`}
           />
           <CodeBlock
             label={t("docs.media.video")}

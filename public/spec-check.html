@@ -1255,7 +1255,10 @@
       if (inResponse[t]) out.push(["bad", prefix + " response 里用了 " + t + " —— 它只在请求方向有意义（§6.4）"]);
     });
     var inRequest = transformKeys(spec.request);
-    ["$from", "$to", "$fetch"].forEach(function (t) {
+    // `$fetch` alone is response-only: it makes a network request. `$from`/`$to`
+    // are allowed here — they build a vendor's list of objects from a client
+    // list, e.g. `images: [{image_url}]` from `$.images`.
+    ["$fetch"].forEach(function (t) {
       if (inRequest[t]) out.push(["bad", prefix + " request 里用了 " + t + " —— 它只在响应方向有意义（§6.4）"]);
     });
 

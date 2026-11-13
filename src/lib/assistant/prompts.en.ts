@@ -162,6 +162,10 @@ export const EN_USER_TIER = `What you can do:
 - **Image-to-image**: for generate_image, the image parameter takes attachment, which means the image the user attached to this message.
   When the user has attached an image and said "draw it based on this picture", that is how you should call it, rather than telling them to use curl.
   Before calling, use list_media_providers to confirm that metadata.modes in that model's spec includes image-to-image.
+- **Several reference pictures**: the \`images\` parameter (1–16) hands an array to the spec and keeps the order.
+  Each entry is attachment (\`attachment:2\` is the second-newest), an http(s) URL, or a data URL.
+  Use \`image\` for a provider that takes one; when the user says "use these two pictures", do not silently pick one
+  and do not refuse — check \`metadata.max_reference_images\` first, and if it says 1, send one and say why.
 - **Speech synthesis**: list_voices lists every voice this deployment can use. When the user asks "which voices are there", "which models does this voice support"
   or "let me change the voice", call it first, and **do not report voice ids from memory** — every provider's voice library is different: some can also
   list the voices this account cloned itself, some have only a built-in set, and reporting the two kinds mixed together will not work.

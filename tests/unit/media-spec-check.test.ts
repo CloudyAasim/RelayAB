@@ -413,17 +413,40 @@ describe("direction and consistency rules", () => {
     expect(result.lines.join("\n")).toContain("response 里用了 $dataUrl");
   });
 
-  it("rejects $from in a request", async () => {
+  it("accepts $from in a request — that is how a client list becomes a vendor list", async () => {
+    // H3's `/v1/images/edits` wants `images: [{ image_url }]`, one object per
+    // reference image. `$from`/`$to` builds exactly that; refusing it in a
+    // request made the shape unexpressible and was the only reason the multi-image
+    // mapping was "a protocol gap" (2026-11-13).
+    const spec = {
+      specVersion: 1,
+      capability: "image.edit",
+      transport: { method: "POST", path: "/v1/images/edits" },
+      auth: { type: "bearer" },
+      request: {
+        model: "$.model",
+        prompt: "$.prompt",
+        images: { $from: "$.images", $to: { image_url: { $dataUrl: "$" } } },
+      },
+      response: { items: [{ kind: "url", value: "$.data.image_urls[0]" }] },
+    };
+    const result = await checkSpecDocument([spec]);
+    expect(result.lines.join("\n")).not.toContain("request 里用了 $from");
+    expect(result.ok).toBe(true);
+  });
+
+  it("still rejects $fetch in a request", async () => {
+    // The one transform that must stay response-only: it performs a request.
     const broken = {
       specVersion: 1,
       capability: "image.generate",
       transport: { method: "POST", path: "/v1/image_generation" },
       auth: { type: "bearer" },
-      request: { model: "$.model", images: { $from: "$.refs", $to: { value: "$" } } },
+      request: { model: "$.model", image: { $fetch: { url: "https://x/{{id}}" } } },
       response: { items: [{ kind: "url", value: "$.url" }] },
     };
     const result = await checkSpecDocument([broken]);
-    expect(result.lines.join("\n")).toContain("request 里用了 $from");
+    expect(result.lines.join("\n")).toContain("request 里用了 $fetch");
   });
 
   it("flags items and itemsB64 pointing at the same upstream array", async () => {
