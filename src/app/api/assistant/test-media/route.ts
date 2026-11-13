@@ -38,7 +38,25 @@ import type { MediaCapability } from "@/lib/media/spec";
 import { buildMediaTestPayload } from "@/lib/media/test-result";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+/**
+ * A Vercel declaration; this deployment is a Dokku container, so it is inert.
+ *
+ * Kept in step with the real ceiling anyway, because a route that declares 300
+ * while honouring 590 reads as a limit that does not exist.
+ */
+export const maxDuration = 600;
+
+/**
+ * How long this route lets a media call run.
+ *
+ * The abort is real, and it used to be 240s while a spec may declare
+ * `limits.timeoutMs` up to 300s — so a vendor allowed five minutes was cut at
+ * four, and the panel reported a timeout the spec had never asked for.
+ *
+ * 590s sits just under the host's `proxy_read_timeout 600s` (deploy/nginx.conf):
+ * nginx must not kill a call the app is still waiting for.
+ */
+const MEDIA_CALL_TIMEOUT_MS = 590_000;
 
 /** Matches the public transcriptions route, so one file works on both paths. */
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
@@ -209,7 +227,7 @@ export async function POST(req: Request): Promise<Response> {
         },
         apiKey: credential.account.apiKey,
         user: credential.account.user,
-        signal: AbortSignal.timeout(240_000),
+        signal: AbortSignal.timeout(MEDIA_CALL_TIMEOUT_MS),
       })
     : await runJsonMedia(jsonCapability, parsed.data, credential);
   const ms = Date.now() - started;
@@ -272,7 +290,7 @@ async function runJsonMedia(
     input,
     apiKey: credential.account.apiKey,
     user: credential.account.user,
-    signal: AbortSignal.timeout(240_000),
+    signal: AbortSignal.timeout(MEDIA_CALL_TIMEOUT_MS),
   });
 }
 
