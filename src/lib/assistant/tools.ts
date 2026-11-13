@@ -942,6 +942,10 @@ function adminTools(t: (key: string) => string): AssistantToolDef[] {
         type: "object",
         properties: {
           summary: { type: "string", description: t("propose_doc_pages.summary") },
+          confirmRemovals: {
+            type: "boolean",
+            description: t("propose_doc_pages.confirmRemovals"),
+          },
           pages: {
             type: "array",
             description: t("propose_doc_pages.pages"),
@@ -3219,6 +3223,23 @@ async function proposeDocPages(
   const summary =
     typeof args.summary === "string" && args.summary.trim() ? args.summary.trim() : "未说明的变更";
   const before = docPages ?? [];
+
+  /**
+   * A full replacement that drops pages has to say so.
+   *
+   * The failure this guards is the one that actually happened (2026-11-13): a
+   * caller that meant to add one page sent only that page, and "the complete
+   * list" is the whole contract — every page it did not mention would have been
+   * deleted. Refusing here also points at the tool that cannot make this
+   * mistake, which is the more useful half of the message.
+   */
+  const dropped = before.filter((existing) => !pages.some((page) => page.id === existing.id));
+  if (dropped.length > 0 && args.confirmRemovals !== true) {
+    return fail(ctx, "pagesWouldRemove", {
+      count: dropped.length,
+      ids: dropped.map((page) => page.id).join(", "),
+    });
+  }
 
   /**
    * The gate between writing a proposal and asking for approval.

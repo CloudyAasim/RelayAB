@@ -1043,6 +1043,13 @@ export const TOOL_DESCRIPTIONS: Record<string, ToolText> = {
     "zh-CN": "一句话说明这次变更的目的",
     en: "One sentence saying what this change is for",
   },
+  "propose_doc_pages.confirmRemovals": {
+    "zh-CN":
+      "整份替换会删掉没列出来的页面。确认要删就填 true；只想改一页请改用 propose_doc_page",
+    en:
+      "A full replacement deletes the pages it does not list. Set true only if that is intended; " +
+      "use propose_doc_page to change a single page",
+  },
   "propose_doc_pages.pages": {
     "zh-CN": "完整的页面列表。顺序就是读者看到的顺序。",
     en: "The complete list of pages. The order is the order the reader sees.",
@@ -1659,6 +1666,15 @@ export const TOOL_REFUSALS: Record<string, ToolText> = {
   pagesInvalid: {
     "zh-CN": "这些页面不能用：\n- {problems}",
     en: "These pages cannot be used:\n- {problems}",
+  },
+  pagesWouldRemove: {
+    "zh-CN":
+      "这次整份替换会删掉 {count} 个页面（{ids}）。只改一页请用 propose_doc_page —— " +
+      "它按 id 合并，不会碰到其他页面。确实要整份重排，请重发并带上 confirmRemovals: true。",
+    en:
+      "This full replacement would delete {count} page(s) ({ids}). To change one page use " +
+      "propose_doc_page — it merges by id and leaves the others alone. If you really mean to " +
+      "replace the whole set, resend with confirmRemovals: true.",
   },
   actionIdRequired: {
     "zh-CN": "要撤回哪一条？给我 actionId。",

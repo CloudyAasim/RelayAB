@@ -21,7 +21,7 @@ import { __resetDbForTest } from "@/lib/db/sqlite";
 import { createUser } from "@/lib/db/users";
 import { updateSettings, getSettings } from "@/lib/db/settings";
 import { listAssistantActions } from "@/lib/db/assistant";
-import { executeTool } from "@/lib/assistant/tools";
+import { executeTool, toolDefinitions } from "@/lib/assistant/tools";
 import type { DocPage } from "@/lib/docs/custom";
 
 const EXISTING: DocPage[] = [
@@ -132,5 +132,58 @@ describe("propose_doc_page", () => {
     );
     expect(result.ok).toBe(false);
     expect(await listAssistantActions(ctx.user.id)).toHaveLength(0);
+  });
+});
+
+describe("the full replacement cannot quietly delete pages", () => {
+  beforeEach(async () => {
+    __resetDbForTest();
+    await updateSettings({ docPages: EXISTING });
+  });
+
+  it("is offered to admins (the tool the assistant said it did not have)", () => {
+    const names = toolDefinitions(true).map((tool) => tool.function.name);
+    expect(names).toContain("propose_doc_page");
+    expect(names).toContain("propose_doc_pages");
+    // And a regular user is offered neither.
+    const userNames = toolDefinitions(false).map((tool) => tool.function.name);
+    expect(userNames).not.toContain("propose_doc_page");
+    expect(userNames).not.toContain("propose_doc_pages");
+  });
+
+  it("refuses a one-page list that would drop the other pages, and names the right tool", async () => {
+    const ctx = await adminContext();
+    const result = await executeTool(
+      "propose_doc_pages",
+      JSON.stringify({
+        summary: "只发新页",
+        pages: [{ id: "minimax-h3-image", title: "MiniMax H3 Image", body: "H3 正文" }],
+      }),
+      ctx as never,
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.content).toContain("propose_doc_page");
+    // A refusal is not a proposal: nothing reached the approval queue.
+    expect(await listAssistantActions(ctx.user.id)).toHaveLength(0);
+    expect((await getSettings()).docPages).toHaveLength(3);
+  });
+
+  it("still allows a deliberate full replacement when it says so", async () => {
+    const ctx = await adminContext();
+    const result = await executeTool(
+      "propose_doc_pages",
+      JSON.stringify({
+        summary: "整份重排",
+        confirmRemovals: true,
+        pages: [{ id: "minimax-h3-image", title: "MiniMax H3 Image", body: "H3 正文" }],
+      }),
+      ctx as never,
+    );
+
+    expect(result.ok, result.content.slice(0, 300)).toBe(true);
+    const [action] = await listAssistantActions(ctx.user.id);
+    const pages = (JSON.parse(String(action.args)) as { docPages: DocPage[] }).docPages;
+    expect(pages.map((page) => page.id)).toEqual(["minimax-h3-image"]);
   });
 });
