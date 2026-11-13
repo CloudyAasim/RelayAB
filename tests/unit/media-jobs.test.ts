@@ -29,7 +29,9 @@ import { listUsageByKey } from "@/lib/db/usage";
 import { MINIMAX_IMAGE_SPEC } from "@/lib/media/seeds";
 import { POST as submitPOST } from "@/app/api/v1/media/jobs/route";
 import { GET as jobGET, DELETE as jobDELETE } from "@/app/api/v1/media/jobs/[id]/route";
-import { createMediaJob, failInterruptedMediaJobs, getMediaJob } from "@/lib/db/media-jobs";
+import { claimMediaJob, createMediaJob, failMediaJobsWithoutUpstream, getMediaJob, setMediaJobUpstream } from "@/lib/db/media-jobs";
+import { resumeMediaJob } from "@/lib/media/jobs";
+import { ASYNC_SPEC_FOR_TEST } from "./async-spec-fixture";
 
 const UPSTREAM_OK = {
   id: "task-1",
@@ -55,6 +57,26 @@ async function seed(): Promise<{ plain: string; keyId: string }> {
     specs: [MINIMAX_IMAGE_SPEC as unknown as Record<string, unknown>],
   });
   return { plain: key.plainKey, keyId: key.key.id };
+}
+
+/** A provider whose spec submits a task and polls it. */
+async function seedAsync(): Promise<{ plain: string; keyId: string; providerId: string }> {
+  const user = await createUser({
+    username: "j-async-" + Math.random().toString(36).slice(2, 8),
+    password: "x",
+    quotaType: "credits",
+    quotaLimit: 10_000,
+    allowedModels: [],
+  });
+  const key = await createApiKey({ userId: user.id, label: "jobs" });
+  const provider = await createMediaProvider({
+    name: "Async Video",
+    baseUrl: "https://async.test",
+    apiKey: "vendor-key",
+    models: { vid: { upstreamId: "vid-up", pricePerItem: 2, enabled: true } },
+    specs: [ASYNC_SPEC_FOR_TEST as unknown as Record<string, unknown>],
+  });
+  return { plain: key.plainKey, keyId: key.key.id, providerId: provider.id };
 }
 
 function submit(plain: string, body: Record<string, unknown>): Request {
@@ -199,7 +221,7 @@ describe("async media jobs", () => {
     expect((done.body.error as { code: string }).code).toBe("job_cancelled");
   });
 
-  it("marks jobs interrupted by a restart instead of leaving them running", async () => {
+  it("marks a job that never reached the vendor as interrupted", async () => {
     const user = await createUser({
       username: "j-int-" + Math.random().toString(36).slice(2, 8),
       password: "x",
@@ -215,10 +237,85 @@ describe("async media jobs", () => {
       request: { model: "image-01", prompt: "x" },
     });
 
-    expect(await failInterruptedMediaJobs()).toBeGreaterThanOrEqual(1);
+    // No upstream id: nothing to resume, so saying so is the honest outcome.
+    expect(await failMediaJobsWithoutUpstream()).toBeGreaterThanOrEqual(1);
     const after = await getMediaJob(job.id);
     expect(after?.status).toBe("failed");
     expect(after?.error?.code).toBe("job_interrupted");
+  });
+
+  it("finishes an async vendor's job by polling the upstream task id", async () => {
+    const { plain, keyId } = await seedAsync();
+    const seen: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        seen.push(url);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        // Submit answers with a task id; the poll answers with the result.
+        return String(url).endsWith("/v1/videos")
+          ? new Response(JSON.stringify({ task_id: "up_1", status: "WAITING" }), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            })
+          : new Response(JSON.stringify({ status: "SUCCEEDED", output: { urls: ["https://cdn.example/v.mp4"] } }), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            });
+      }),
+    );
+
+    const res = await submitPOST(submit(plain, { capability: "video.generate", model: "vid", prompt: "a wave" }));
+    expect(res.status).toBe(202);
+    const { id } = (await res.json()) as { id: string };
+
+    const done = await waitFor(plain, id, ["succeeded"], 8_000);
+    const result = done.body.result as { data: Array<{ url?: string }> };
+    expect(result.data[0].url).toBe("https://cdn.example/v.mp4");
+    // Both phases happened, and the poll used the stored id.
+    expect(seen.some((u) => u.endsWith("/v1/videos/up_1"))).toBe(true);
+    expect(await listUsageByKey(keyId)).toHaveLength(1);
+  });
+
+  it("resumes a job from its stored upstream task id (a restart)", async () => {
+    const { plain, providerId } = await seedAsync();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify({ status: "SUCCEEDED", output: { urls: ["https://cdn.example/resumed.mp4"] } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
+
+    const user = await createUser({
+      username: "j-resume-" + Math.random().toString(36).slice(2, 8),
+      password: "x",
+      quotaType: "credits",
+      quotaLimit: 1000,
+      allowedModels: [],
+    });
+    // A real key on that user: the job bills through it when it settles.
+    const jobKey = await createApiKey({ userId: user!.id, label: "resume" });
+    const job = await createMediaJob({
+      userId: user!.id,
+      apiKeyId: jobKey.key.id,
+      capability: "video.generate",
+      model: "vid",
+      request: { model: "vid", prompt: "a wave" },
+    });
+    // What a process would have left behind: running, with the vendor's id.
+    await claimMediaJob(job.id);
+    await setMediaJobUpstream(job.id, { taskId: "up_9", providerId });
+
+    await resumeMediaJob(job.id);
+
+    const after = await getMediaJob(job.id);
+    expect(after?.status).toBe("succeeded");
+    const result = after?.result as { data: Array<{ url?: string }> };
+    expect(result.data[0].url).toBe("https://cdn.example/resumed.mp4");
+    expect(plain).toBeTruthy();
   });
 
   it("refuses more in-flight jobs than the account limit", async () => {

@@ -682,6 +682,35 @@ const DATA_MIGRATIONS: ReadonlyArray<{ version: number; apply: (conn: Database) 
       }
     },
   },
+  {
+    /**
+     * v5 — an async job keeps the upstream task id.
+     *
+     * The vendor's task keeps running whether or not this process does, so the
+     * id is what makes a job resumable after a restart: without it the only
+     * honest thing to do with a running row is fail it (job_interrupted).
+     * provider_id pins the vendor the id belongs to — a model re-pointed at
+     * another provider must not be polled with the new credentials.
+     */
+    version: 5,
+    apply: (conn) => {
+      const columns = new Set(
+        (conn.prepare("PRAGMA table_info(media_jobs)").all() as Array<{ name?: string }>).map((c) =>
+          String(c.name ?? ""),
+        ),
+      );
+      if (!columns.has("upstream_task_id")) {
+        conn.exec("ALTER TABLE media_jobs ADD COLUMN upstream_task_id TEXT");
+      }
+      if (!columns.has("provider_id")) {
+        conn.exec("ALTER TABLE media_jobs ADD COLUMN provider_id TEXT");
+      }
+      if (!columns.has("poll_owner")) {
+        conn.exec("ALTER TABLE media_jobs ADD COLUMN poll_owner TEXT");
+      }
+      conn.exec("CREATE INDEX IF NOT EXISTS idx_media_jobs_upstream ON media_jobs(upstream_task_id)");
+    },
+  },
 ];
 
 function applyDataMigrations(conn: Database): void {

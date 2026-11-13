@@ -111,10 +111,15 @@ export async function runBootstrap(): Promise<BootstrapResult> {
    * Wrapped because a failure here must not stop the deployment from booting.
    */
   try {
-    const { failInterruptedMediaJobs } = await import("./media-jobs");
-    const interrupted = await failInterruptedMediaJobs();
-    if (interrupted > 0) {
-      console.warn(`[relayab] marked ${interrupted} interrupted media job(s) as failed`);
+    /**
+     * Jobs that reached the vendor are resumed; the rest are failed. The
+     * upstream task is the durable half — failing a resumable one would throw
+     * away work the vendor already did (and may already be billing for).
+     */
+    const { recoverMediaJobs } = await import("../media/jobs");
+    const { resumed, failed } = await recoverMediaJobs();
+    if (resumed > 0 || failed > 0) {
+      console.warn(`[relayab] media jobs: ${resumed} resumed, ${failed} interrupted`);
     }
   } catch (err) {
     console.warn(`[relayab] could not reconcile media jobs: ${String(err)}`);

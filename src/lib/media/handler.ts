@@ -9,7 +9,7 @@
 import { pickSpecForRequest, resolveMediaProviderForModel } from "@/lib/db/media-providers";
 import { shouldRejectBeforeRequest } from "@/lib/quota/calculator";
 import { computeMediaCredits, settleMediaUsage } from "./billing";
-import { buildMediaScope, executeMedia, type MediaItem, type MediaResult } from "./engine";
+import { buildMediaScope, executeMedia, resumeMedia, submitMedia, type MediaItem, type MediaResult } from "./engine";
 import type { MediaCapability, MediaProvider, MediaSpec } from "./spec";
 import type { ApiKey, User } from "@/lib/db/types";
 import { proxyError } from "@/lib/proxy/errors";
@@ -93,17 +93,32 @@ export function buildScope(input: MediaRequestInput): Record<string, unknown> {
  * Billing happens for every successful call, including binary/text results
  * (one "item" per generated audio file or per transcription).
  */
-export async function executeMediaRequest(args: {
+/** The provider row plus the upstream model id a spec resolved to. */
+type MediaResolvedProvider = NonNullable<Awaited<ReturnType<typeof resolveMediaProviderForModel>>>;
+
+/** A media call after resolution: the provider row, the spec, the price. */
+type PreparedMediaCall = { ok: true; spec: MediaSpec; resolved: MediaResolvedProvider } | { ok: false; error: MediaRequestFailure };
+
+/**
+ * Resolve the model to a provider and the spec that serves this capability.
+ *
+ * Shared by the three entry points below (execute / submit / resume) so a rule
+ * about which provider serves what cannot drift between them.
+ */
+async function prepareMediaCall(args: {
   capability: MediaCapability;
   input: MediaRequestInput;
-  apiKey: ApiKey;
   user: User;
-  signal?: AbortSignal;
-  fetchImpl?: typeof fetch;
-  /** Set false for endpoints that must not be charged (none today, kept explicit). */
-  charge?: boolean;
-}): Promise<MediaExecutionOutcome> {
-  const { capability, input, apiKey, user } = args;
+  /**
+   * Skip the credit-pool check.
+   *
+   * A resumed job was already admitted and the vendor already ran it; refusing
+   * to collect its result because the pool emptied in the meantime would charge
+   * the upstream work and hand the caller nothing.
+   */
+  skipPreflight?: boolean;
+}): Promise<PreparedMediaCall> {
+  const { capability, input, user } = args;
 
   // An absent model is a malformed request, not a missing resource: reporting
   // it as 404 with an interpolated empty string ("model '' is not an
@@ -141,7 +156,7 @@ export async function executeMediaRequest(args: {
 
   // Same pool rule as chat: once the account is spent, stop before spending
   // anything upstream.
-  const rejection = shouldRejectBeforeRequest(user);
+  const rejection = args.skipPreflight ? null : shouldRejectBeforeRequest(user);
   if (rejection) {
     return {
       ok: false,
@@ -153,36 +168,47 @@ export async function executeMediaRequest(args: {
     };
   }
 
-  /**
-   * The spec's own deadline, made real.
-   *
-   * `limits.timeoutMs` was documentation: it was validated on save and then
-   * never consulted, so a spec that declared 120s could run for the route's
-   * whole allowance and a spec that declared 570s was silently cut at 240s by
-   * that same route. A limit nothing enforces is a number an operator sizes
-   * their work against and then cannot rely on.
-   *
-   * The route's abort stays as the backstop (a spec that declares nothing, or an
-   * upstream that ignores its own deadline); both numbers come from
-   * `protocol/limits.ts`.
-   */
+  return { ok: true, spec, resolved };
+}
+
+/**
+ * The spec's own deadline, made real.
+ *
+ * `limits.timeoutMs` was documentation: it was validated on save and then
+ * never consulted, so a spec that declared 120s could run for the route's
+ * whole allowance and a spec that declared 570s was silently cut at 240s by
+ * that same route. A limit nothing enforces is a number an operator sizes
+ * their work against and then cannot rely on.
+ */
+function mediaCallSignal(signal: AbortSignal | undefined, spec: MediaSpec): AbortSignal {
   const specBudget = spec.limits?.timeoutMs ?? DEFAULT_SPEC_TIMEOUT_MS;
   const budgetSignal = AbortSignal.timeout(specBudget);
-  const signal = args.signal ? AbortSignal.any([args.signal, budgetSignal]) : budgetSignal;
+  return signal ? AbortSignal.any([signal, budgetSignal]) : budgetSignal;
+}
 
-  const execution = await executeMedia({
-    spec,
-    provider: resolved.provider,
-    input: buildScope(input),
-    signal,
-    ...(args.fetchImpl ? { fetchImpl: args.fetchImpl } : {}),
-  });
-  if (!execution.ok) return { ok: false, error: execution.error };
+/**
+ * Charge for a finished result and hand it back.
+ *
+ * One function because a resumed job and a synchronous call must settle
+ * identically — a second copy here is a second place for the price to disagree
+ * with the charge.
+ */
+async function settleMediaSuccess(args: {
+  capability: MediaCapability;
+  input: MediaRequestInput;
+  apiKey: ApiKey;
+  user: User;
+  spec: MediaSpec;
+  resolved: MediaResolvedProvider;
+  result: MediaResult;
+  charge: boolean;
+}): Promise<MediaExecutionOutcome> {
+  const { capability, input, apiKey, user, spec, resolved, result } = args;
 
   // Refuse (and do not charge) a result this capability's endpoint cannot deliver.
   // Only `audio.tts` has such a contract today: it answers with bytes, so a spec
   // that maps the audio to a URL is unusable no matter how well it mapped.
-  if (spec.capability === "audio.tts" && !audioDelivery(execution.result, input.responseFormat)) {
+  if (spec.capability === "audio.tts" && !audioDelivery(result, input.responseFormat)) {
     return {
       ok: false,
       error: {
@@ -195,36 +221,168 @@ export async function executeMediaRequest(args: {
     };
   }
 
-  const credits = computeMediaCredits(
-    resolved.pricePerItem,
-    execution.result.successCount,
-  );
-  if (args.charge !== false) {
+  const credits = computeMediaCredits(resolved.pricePerItem, result.successCount);
+  if (args.charge) {
     await settleMediaUsage({
       apiKey,
       user,
       providerId: resolved.provider.id,
       model: input.model,
       upstreamModel: resolved.upstreamId,
-      capability: spec.capability,
-      images: execution.result.successCount,
+      capability,
+      images: result.successCount,
       creditsUsed: credits,
     });
   }
 
   return {
     ok: true,
-    value: {
-      result: execution.result,
-      provider: resolved.provider,
-      spec,
-      model: input.model,
-      upstreamModel: resolved.upstreamId,
-      credits,
-    },
+    value: { result, provider: resolved.provider, spec, model: input.model, upstreamModel: resolved.upstreamId, credits },
   };
 }
 
+export async function executeMediaRequest(args: {
+  capability: MediaCapability;
+  input: MediaRequestInput;
+  apiKey: ApiKey;
+  user: User;
+  signal?: AbortSignal;
+  fetchImpl?: typeof fetch;
+  /** Set false for endpoints that must not be charged (none today, kept explicit). */
+  charge?: boolean;
+}): Promise<MediaExecutionOutcome> {
+  const prepared = await prepareMediaCall(args);
+  if (!prepared.ok) return prepared;
+
+  const execution = await executeMedia({
+    spec: prepared.spec,
+    provider: prepared.resolved.provider,
+    input: buildScope(args.input),
+    signal: mediaCallSignal(args.signal, prepared.spec),
+    ...(args.fetchImpl ? { fetchImpl: args.fetchImpl } : {}),
+  });
+  if (!execution.ok) return { ok: false, error: execution.error };
+
+  return settleMediaSuccess({
+    capability: args.capability,
+    input: args.input,
+    apiKey: args.apiKey,
+    user: args.user,
+    spec: prepared.spec,
+    resolved: prepared.resolved,
+    result: execution.result,
+    charge: args.charge !== false,
+  });
+}
+
+/**
+ * Submit a generation and stop at the upstream task id.
+ *
+ * This is the restart-safe half: for a spec with `async.poll` the vendor keeps
+ * working after this process forgets, so the id is what a job persists. A
+ * synchronous vendor has nothing to hand back, and answers with the finished
+ * result exactly like `executeMediaRequest`.
+ */
+export async function submitMediaRequest(args: {
+  capability: MediaCapability;
+  input: MediaRequestInput;
+  apiKey: ApiKey;
+  user: User;
+  signal?: AbortSignal;
+  fetchImpl?: typeof fetch;
+}): Promise<
+  | { ok: true; pending: { taskId: string; providerId: string; upstreamId: string } }
+  | MediaExecutionOutcome
+> {
+  const prepared = await prepareMediaCall(args);
+  if (!prepared.ok) return prepared;
+
+  const submission = await submitMedia({
+    spec: prepared.spec,
+    provider: prepared.resolved.provider,
+    input: buildScope(args.input),
+    signal: mediaCallSignal(args.signal, prepared.spec),
+    ...(args.fetchImpl ? { fetchImpl: args.fetchImpl } : {}),
+  });
+  if (!submission.ok) return { ok: false, error: submission.error };
+
+  if ("pending" in submission) {
+    return {
+      ok: true,
+      pending: {
+        taskId: submission.pending.taskId,
+        providerId: prepared.resolved.provider.id,
+        upstreamId: prepared.resolved.upstreamId,
+      },
+    };
+  }
+
+  return settleMediaSuccess({
+    capability: args.capability,
+    input: args.input,
+    apiKey: args.apiKey,
+    user: args.user,
+    spec: prepared.spec,
+    resolved: prepared.resolved,
+    result: submission.result,
+    charge: true,
+  });
+}
+
+/**
+ * Resume polling a task id stored by an earlier process.
+ *
+ * `providerId` is checked on purpose: a model may have been re-pointed at
+ * another provider since the job was submitted, and polling it with a different
+ * vendor's credentials would be a request to the wrong account — failing here is
+ * the honest outcome.
+ */
+export async function resumeMediaRequest(args: {
+  capability: MediaCapability;
+  input: MediaRequestInput;
+  apiKey: ApiKey;
+  user: User;
+  taskId: string;
+  providerId?: string;
+  signal?: AbortSignal;
+  fetchImpl?: typeof fetch;
+  charge?: boolean;
+}): Promise<MediaExecutionOutcome> {
+  const prepared = await prepareMediaCall({ ...args, skipPreflight: true });
+  if (!prepared.ok) return prepared;
+
+  if (args.providerId && args.providerId !== prepared.resolved.provider.id) {
+    return {
+      ok: false,
+      error: {
+        status: 409,
+        code: "provider_changed",
+        message: "this job was submitted to a different provider; submit it again",
+      },
+    };
+  }
+
+  const execution = await resumeMedia({
+    spec: prepared.spec,
+    provider: prepared.resolved.provider,
+    input: buildScope(args.input),
+    taskId: args.taskId,
+    signal: mediaCallSignal(args.signal, prepared.spec),
+    ...(args.fetchImpl ? { fetchImpl: args.fetchImpl } : {}),
+  });
+  if (!execution.ok) return { ok: false, error: execution.error };
+
+  return settleMediaSuccess({
+    capability: args.capability,
+    input: args.input,
+    apiKey: args.apiKey,
+    user: args.user,
+    spec: prepared.spec,
+    resolved: prepared.resolved,
+    result: execution.result,
+    charge: args.charge !== false,
+  });
+}
 /**
  * Items to report to an OpenAI-shaped client, given a possibly binary result.
  *

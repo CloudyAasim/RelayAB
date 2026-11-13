@@ -34,6 +34,12 @@ export interface MediaJob {
   startedAt: string | null;
   finishedAt: string | null;
   expiresAt: string;
+  /** The vendor's own task id. Set once submission succeeded; makes the job resumable. */
+  upstreamTaskId: string | null;
+  /** The provider the upstream id belongs to, so a resumed poll cannot drift. */
+  providerId: string | null;
+  /** Who is polling right now; empty when nobody is. */
+  pollOwner: string | null;
 }
 
 /** How long a finished job stays readable. */
@@ -54,7 +60,86 @@ function rowToMediaJob(row: Record<string, unknown>): MediaJob {
     startedAt: row.started_at === null || row.started_at === undefined ? null : String(row.started_at),
     finishedAt: row.finished_at === null || row.finished_at === undefined ? null : String(row.finished_at),
     expiresAt: String(row.expires_at),
+    upstreamTaskId: row.upstream_task_id == null ? null : String(row.upstream_task_id),
+    providerId: row.provider_id == null ? null : String(row.provider_id),
+    pollOwner: row.poll_owner == null ? null : String(row.poll_owner),
   };
+}
+
+/**
+ * Record the upstream task id.
+ *
+ * Called between submit and poll. From here on a restart can resume the job
+ * instead of failing it, which is the whole reason the two phases are separate.
+ */
+export async function setMediaJobUpstream(
+  id: string,
+  upstream: { taskId: string; providerId: string },
+): Promise<void> {
+  run("UPDATE media_jobs SET upstream_task_id = ?, provider_id = ? WHERE id = ?", [
+    upstream.taskId,
+    upstream.providerId,
+    id,
+  ]);
+}
+
+/**
+ * Take the polling lease for a job, atomically.
+ *
+ * Two processes must never poll (and settle) the same job: the status check
+ * keeps a finished job from being picked up again, and `poll_owner IS NULL`
+ * keeps two resumes apart. The lease is released when polling ends, so a crash
+ * does not leave it held forever — boot clears every owner.
+ */
+export async function claimMediaJobPoll(id: string, owner: string): Promise<boolean> {
+  return (
+    run(
+      "UPDATE media_jobs SET poll_owner = ? WHERE id = ? AND status = 'running' AND poll_owner IS NULL",
+      [owner, id],
+    ) > 0
+  );
+}
+
+export async function releaseMediaJobPoll(id: string, owner: string): Promise<void> {
+  run("UPDATE media_jobs SET poll_owner = NULL WHERE id = ? AND poll_owner = ?", [id, owner]);
+}
+
+/** Running jobs whose upstream task id is known: these can be resumed. */
+export async function listResumableMediaJobs(): Promise<MediaJob[]> {
+  return getAll(
+    "SELECT * FROM media_jobs WHERE status = 'running' AND upstream_task_id IS NOT NULL",
+    [],
+    rowToMediaJob,
+  );
+}
+
+/**
+ * Fail the jobs that cannot be resumed.
+ *
+ * A `running` row with no upstream id either never reached the vendor or is a
+ * synchronous generation whose result died with the process. Nothing is
+ * resumable there, so saying `job_interrupted` once is the honest answer.
+ */
+export async function failMediaJobsWithoutUpstream(): Promise<number> {
+  return run(
+    `UPDATE media_jobs
+        SET status = 'failed', finished_at = ?, poll_owner = NULL,
+            error = ?
+      WHERE status IN ('queued','running') AND upstream_task_id IS NULL`,
+    [
+      new Date().toISOString(),
+      JSON.stringify({
+        status: 503,
+        code: "job_interrupted",
+        message: "the server restarted before this job reached the vendor — submit it again",
+      }),
+    ],
+  );
+}
+
+/** Clear every polling lease. Called at boot: any owner recorded there is dead. */
+export async function clearMediaJobPollOwners(): Promise<number> {
+  return run("UPDATE media_jobs SET poll_owner = NULL WHERE poll_owner IS NOT NULL");
 }
 
 export async function createMediaJob(input: {

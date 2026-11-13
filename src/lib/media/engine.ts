@@ -75,6 +75,16 @@ export interface ExecuteMediaArgs {
   /** Injected in tests; defaults to the global fetch. */
   fetchImpl?: typeof fetch;
   now?: () => number;
+  /**
+   * Stop once the upstream task id is known, instead of polling it to the end.
+   *
+   * Used by `submitMedia`, which exists so a job can be resumed by another
+   * process (or after a restart): the id is the durable fact, the polling is
+   * repeatable. Not part of the public surface — call `submitMedia` instead.
+   */
+  __stopAfterSubmit?: boolean;
+  /** Skip the submission and resume polling this upstream task id. */
+  __resumeTaskId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -876,6 +886,47 @@ function parseSseEvents(text: string): unknown[] {
 // Public entry point
 // ---------------------------------------------------------------------------
 
+/** Thrown by `executeMedia` when the caller only wanted the upstream task id. */
+class PendingTaskError extends Error {
+  constructor(readonly taskId: string) {
+    super("upstream task submitted; polling deferred to the caller");
+    this.name = "PendingTaskError";
+  }
+}
+
+export type MediaSubmitResult =
+  | { ok: true; pending: { taskId: string } }
+  | { ok: true; result: MediaResult }
+  | { ok: false; error: MediaEngineError };
+
+/**
+ * Submit, and stop at the upstream task id when there is one.
+ *
+ * The split exists for restart safety: an async generation lives upstream, so
+ * the id is the part worth persisting. Whoever holds it can poll with
+ * `resumeMedia` from any process — which is what makes a job survive a deploy
+ * instead of being reported as `job_interrupted`.
+ *
+ * A synchronous vendor has no id to hand back, so this returns the finished
+ * result exactly like `executeMedia` would.
+ */
+export async function submitMedia(args: ExecuteMediaArgs): Promise<MediaSubmitResult> {
+  try {
+    const result = await executeMedia({ ...args, __stopAfterSubmit: true });
+    return result.ok ? { ok: true, result: result.result } : result;
+  } catch (err) {
+    if (err instanceof PendingTaskError) return { ok: true, pending: { taskId: err.taskId } };
+    throw err;
+  }
+}
+
+/** Poll a task id that was stored earlier. */
+export async function resumeMedia(
+  args: ExecuteMediaArgs & { taskId: string },
+): Promise<MediaExecuteResult> {
+  return executeMedia({ ...args, __resumeTaskId: args.taskId });
+}
+
 export async function executeMedia(args: ExecuteMediaArgs): Promise<MediaExecuteResult> {
   const { spec, provider, input } = args;
   const fetchImpl = args.fetchImpl ?? fetch;
@@ -932,6 +983,49 @@ export async function executeMedia(args: ExecuteMediaArgs): Promise<MediaExecute
     }
   }
 
+  const fetcher = makeFetcher(spec, provider, fetchImpl, args.signal);
+  /**
+   * One follow-up-GET budget per media call.
+   *
+   * Threading it down (instead of letting every `resolveFetches` default to a
+   * fresh allowance) is what actually bounds `$fetch`: a poll loop or an SSE
+   * stream would otherwise get a new allowance per round and multiply the cap by
+   * the number of rounds.
+   */
+  const fetchBudget = { left: MAX_FETCH_MARKERS };
+
+  /**
+   * Resume: skip the submission and keep polling a task id that already exists.
+   *
+   * The upstream task is the durable half of an async generation — it keeps
+   * running whether or not this process does — so a restart that lost the
+   * submit response can still finish the job, provided the id was stored.
+   */
+  if (args.__resumeTaskId) {
+    if (!spec.async) {
+      return {
+        ok: false,
+        error: {
+          status: 500,
+          code: "not_resumable",
+          message: "spec has no async block, so there is no task to resume",
+        },
+      };
+    }
+    const resumed = await pollUntilDone({
+      spec,
+      provider,
+      taskId: args.__resumeTaskId,
+      fetchImpl,
+      signal: args.signal,
+      now,
+      fetchBudget,
+      scope: input,
+    });
+    if (!resumed.ok) return { ok: false, error: resumed.error };
+    return finish(spec, resumed.payload, { now, startedAt, taskId: args.__resumeTaskId });
+  }
+
   let target: { url: URL; headers: Headers };
   try {
     target = resolveRequestTarget(spec, provider, input);
@@ -975,16 +1069,6 @@ export async function executeMedia(args: ExecuteMediaArgs): Promise<MediaExecute
   }
 
   const responseMode = spec.responseMode ?? "json";
-  const fetcher = makeFetcher(spec, provider, fetchImpl, args.signal);
-  /**
-   * One follow-up-GET budget per media call.
-   *
-   * Threading it down (instead of letting every `resolveFetches` default to a
-   * fresh allowance) is what actually bounds `$fetch`: a poll loop or an SSE
-   * stream would otherwise get a new allowance per round and multiply the cap by
-   * the number of rounds.
-   */
-  const fetchBudget = { left: MAX_FETCH_MARKERS };
 
   // Audio-style capabilities return bytes; hand them back untouched instead of
   // buffering + JSON-parsing what is not JSON.
@@ -1104,6 +1188,10 @@ export async function executeMedia(args: ExecuteMediaArgs): Promise<MediaExecute
         },
       };
     }
+    // The caller asked for the id only (`submitMedia`): stop here, so a job can
+    // persist the id and let whoever picks it up next continue the polling.
+    if (args.__stopAfterSubmit) throw new PendingTaskError(taskId);
+
     const poll = await pollUntilDone({
       spec,
       provider,
@@ -1192,6 +1280,7 @@ export async function discoverMedia(args: MediaDiscoverArgs): Promise<MediaDisco
     // A listing has no items to be empty about, and `finish` would reject it.
     allowEmpty: true,
   };
+
 
   let target: { url: URL; headers: Headers };
   try {

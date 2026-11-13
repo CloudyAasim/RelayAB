@@ -1,35 +1,53 @@
 /**
  * src/lib/media/jobs.ts
  *
- * Async media jobs: the answer to "no client should hold a connection open".
+ * Async media jobs, modelled on how a vendor's own task system works: submit,
+ * keep the **upstream task id**, and poll it.
  *
- * The synchronous media routes are OpenAI-compatible, which is why they have to
- * answer with a status code in one shot — and why a slow vendor forced the
- * heartbeat trade-off documented in §89 of the change log. A job has no such
- * constraint: the client gets `202` immediately, the generation runs in this
- * process, and the client polls a state it can read at its own pace.
+ * The synchronous media routes are OpenAI-compatible, which is why they must
+ * answer with one status code — and why a slow vendor forced the heartbeat
+ * trade-off documented in §89 of the change log. A job has no such constraint,
+ * and (unlike a plain "run it in the background" job) it survives a restart:
+ * the vendor's task keeps running whether or not this process does, so the id is
+ * the part worth persisting. On boot, jobs that reached the vendor are resumed;
+ * the ones that did not are reported as interrupted.
  *
- * What it is not: a queue. There is no worker pool and no retry — a job runs as
- * soon as it is accepted, with the vendor's own `limits.timeoutMs` as its
- * deadline. If the process restarts mid-flight the job is marked
- * `job_interrupted`, because nothing upstream is resumable and claiming
- * otherwise would leave a job polling as `running` forever.
+ * Two-phase by design:
+ *   submit  → `submitMediaRequest` either finishes (synchronous vendor) or hands
+ *             back the upstream id, which is stored before anything else happens.
+ *   poll    → `resumeMediaRequest` polls to the end and settles once.
  */
 import {
   claimMediaJob,
+  claimMediaJobPoll,
+  clearMediaJobPollOwners,
   countActiveMediaJobs,
   createMediaJob as insertMediaJob,
   failMediaJob,
+  failMediaJobsWithoutUpstream,
   finishMediaJob,
   getMediaJob,
   getMediaJobForUser,
+  listResumableMediaJobs,
   pruneExpiredMediaJobs,
+  releaseMediaJobPoll,
+  setMediaJobUpstream,
   type MediaJob,
   type MediaJobError,
 } from "../db/media-jobs";
-import { executeMediaRequest, imageItemsResponse, mediaItemsResponse, resultItems } from "./handler";
+import {
+  imageItemsResponse,
+  mediaItemsResponse,
+  resumeMediaRequest,
+  resultItems,
+  submitMediaRequest,
+} from "./handler";
 import type { MediaCapability } from "./spec";
+import type { MediaResult } from "./engine";
 import type { ApiKey, User } from "../db/types";
+import { getApiKeyById } from "../db/keys";
+import { getUserById } from "../db/users";
+import { generateId } from "../crypto/hashing";
 
 /**
  * Which capabilities may be submitted as a job.
@@ -53,24 +71,21 @@ export function isMediaJobCapability(value: string): value is MediaJobCapability
 
 /** How many jobs one account may have in flight. */
 export const MAX_ACTIVE_JOBS_PER_USER = 3;
-/** How many may be in flight across the deployment (one SQLite, one process). */
+/** How many may be in flight across the deployment (one process, one SQLite). */
 export const MAX_ACTIVE_JOBS = 12;
 /** A result larger than this is a bug, not a job — refuse to store it. */
 const MAX_JOB_RESULT_BYTES = 8 * 1024 * 1024;
 
-/** Abort handles for jobs running in this process, so `DELETE` can stop one. */
+/** Abort handles for jobs this process is driving, so `DELETE` can stop one. */
 const running = new Map<string, AbortController>();
-
-function nowSeconds(): number {
-  return Math.floor(Date.now() / 1000);
-}
 
 /**
  * What a client sees.
  *
  * Same key names as the synchronous responses where they exist (`created`,
  * `data`), plus the job fields — a client that already parses `data[].url` can
- * keep doing that once the job succeeds.
+ * keep doing that once the job succeeds. The upstream id is deliberately not
+ * exposed: it belongs to our vendor account, not the caller's.
  */
 export function mediaJobView(job: MediaJob): Record<string, unknown> {
   return {
@@ -96,7 +111,8 @@ export type CreateJobOutcome =
  *
  * The row is written before anything runs, so `202` always refers to something
  * the client can poll — even if the process dies a millisecond later, the poll
- * finds `job_interrupted` instead of a 404.
+ * finds `job_interrupted` (or, if the task reached the vendor, keeps going to
+ * `succeeded`).
  */
 export async function submitMediaJob(args: {
   capability: MediaJobCapability;
@@ -148,71 +164,158 @@ export async function submitMediaJob(args: {
   return { ok: true, job };
 }
 
-/**
- * Run one job.
- *
- * Claimed atomically, so a double call cannot generate (or bill) twice. The
- * vendor's `limits.timeoutMs` is the deadline, applied inside
- * `executeMediaRequest`; the local controller only exists so `DELETE` can stop
- * a job that is already running.
- */
+/** Claim a queued job and drive it. */
 export async function runMediaJob(id: string): Promise<void> {
   const job = await claimMediaJob(id);
   if (!job) return;
+  await driveJob(job);
+}
 
+/** Drive a job that the submit phase already handed to the vendor. */
+export async function resumeMediaJob(id: string): Promise<void> {
+  const job = await getMediaJob(id);
+  if (!job || job.status !== "running" || !job.upstreamTaskId) return;
+  await driveJob(job);
+}
+
+/**
+ * Resolve what a job needs, then either submit or poll.
+ *
+ * The recovery entry point: called once at boot per resumable job. Clears the
+ * dead polling leases first, because the process that held them is gone.
+ */
+export async function recoverMediaJobs(): Promise<{ resumed: number; failed: number }> {
+  const cleared = await clearMediaJobPollOwners();
+  if (cleared > 0) {
+    console.warn(`[relayab] cleared ${cleared} stale media-job poll lease(s)`);
+  }
+  const resumable = await listResumableMediaJobs();
+  for (const job of resumable) {
+    void resumeMediaJob(job.id).catch(() => {
+      // Recorded in the row; a throw here is only the write failing.
+    });
+  }
+  const failed = await failMediaJobsWithoutUpstream();
+  return { resumed: resumable.length, failed };
+}
+
+async function driveJob(job: MediaJob): Promise<void> {
   const controller = new AbortController();
-  running.set(id, controller);
-
+  running.set(job.id, controller);
   try {
-    const outcome = await executeMediaRequest({
+    const apiKey = await apiKeyFor(job);
+    const user = await userFor(job);
+
+    // Already at the vendor: only the polling half is left.
+    if (job.upstreamTaskId) {
+      await pollAndFinish(job, apiKey, user, controller);
+      return;
+    }
+
+    const submitted = await submitMediaRequest({
       capability: job.capability as MediaCapability,
       input: job.request as never,
-      apiKey: await apiKeyFor(job),
-      user: await userFor(job),
+      apiKey,
+      user,
       signal: controller.signal,
     });
 
-    if (!outcome.ok) {
-      /**
-       * A cancellation looks like an upstream failure from the handler's point
-       * of view — the fetch it was awaiting was aborted. The abort is ours, so
-       * say what actually happened rather than blaming the vendor.
-       */
+    if (!submitted.ok) {
       await failMediaJob(
-        id,
+        job.id,
         controller.signal.aborted
           ? { status: 499, code: "job_cancelled", message: "cancelled by the client" }
-          : outcome.error,
+          : submitted.error,
       );
       return;
     }
 
-    const items = await resultItems(outcome.value.result);
-    const payload =
-      job.capability === "image.generate" || job.capability === "image.edit"
-        ? imageItemsResponse(items)
-        : mediaItemsResponse(items, outcome.value.result.taskId);
-
-    const size = Buffer.byteLength(JSON.stringify(payload));
-    if (size > MAX_JOB_RESULT_BYTES) {
-      await failMediaJob(id, {
-        status: 502,
-        code: "result_too_large",
-        message: `the result is ${size} bytes, over the ${MAX_JOB_RESULT_BYTES} byte job limit`,
-      });
+    if ("pending" in submitted) {
+      // Persist the id **before** polling: this single write is what lets a
+      // restart finish the job instead of reporting it lost.
+      await setMediaJobUpstream(job.id, submitted.pending);
+      await pollAndFinish(
+        { ...job, upstreamTaskId: submitted.pending.taskId, providerId: submitted.pending.providerId },
+        apiKey,
+        user,
+        controller,
+      );
       return;
     }
-    await finishMediaJob(id, payload);
+
+    await finishWithResult(job, submitted.value.result);
   } catch (err) {
     const aborted = controller.signal.aborted;
-    await failMediaJob(id, {
+    await failMediaJob(job.id, {
       status: aborted ? 499 : 500,
       code: aborted ? "job_cancelled" : "job_failed",
       message: err instanceof Error ? err.message : String(err),
     });
   } finally {
-    running.delete(id);
+    running.delete(job.id);
   }
+}
+
+/**
+ * Poll the upstream task to the end, under a lease.
+ *
+ * The lease exists because a resumed job can be driven by more than one process
+ * (the original one finishing, a new one after a restart). Only the holder
+ * polls, so the settlement inside `resumeMediaRequest` runs exactly once.
+ */
+async function pollAndFinish(
+  job: MediaJob,
+  apiKey: ApiKey,
+  user: User,
+  controller: AbortController,
+): Promise<void> {
+  const owner = `${process.pid}-${generateId(12)}`;
+  if (!(await claimMediaJobPoll(job.id, owner))) return;
+
+  try {
+    const resumed = await resumeMediaRequest({
+      capability: job.capability as MediaCapability,
+      input: job.request as never,
+      apiKey,
+      user,
+      taskId: job.upstreamTaskId!,
+      ...(job.providerId ? { providerId: job.providerId } : {}),
+      signal: controller.signal,
+    });
+
+    if (!resumed.ok) {
+      await failMediaJob(
+        job.id,
+        controller.signal.aborted
+          ? { status: 499, code: "job_cancelled", message: "cancelled by the client" }
+          : resumed.error,
+      );
+      return;
+    }
+    await finishWithResult(job, resumed.value.result);
+  } finally {
+    await releaseMediaJobPoll(job.id, owner);
+  }
+}
+
+/** Turn a finished media result into the stored payload. */
+async function finishWithResult(job: MediaJob, result: MediaResult): Promise<void> {
+  const items = await resultItems(result);
+  const payload =
+    job.capability === "image.generate" || job.capability === "image.edit"
+      ? imageItemsResponse(items)
+      : mediaItemsResponse(items, result.taskId);
+
+  const size = Buffer.byteLength(JSON.stringify(payload));
+  if (size > MAX_JOB_RESULT_BYTES) {
+    await failMediaJob(job.id, {
+      status: 502,
+      code: "result_too_large",
+      message: `the result is ${size} bytes, over the ${MAX_JOB_RESULT_BYTES} byte job limit`,
+    });
+    return;
+  }
+  await finishMediaJob(job.id, payload);
 }
 
 /** Stop a job. Queued jobs fail immediately; running ones are aborted. */
@@ -224,8 +327,6 @@ export async function cancelMediaJob(id: string, userId: string): Promise<boolea
   const controller = running.get(id);
   if (controller) controller.abort();
   else {
-    // Never started (or already finished between the read and here): claim it
-    // with a status transition so it cannot be claimed afterwards.
     await failMediaJob(id, {
       status: 499,
       code: "job_cancelled",
@@ -252,14 +353,12 @@ export async function pruneJobs(): Promise<number> {
  * cannot run, which the failure below says plainly.
  */
 async function apiKeyFor(job: MediaJob): Promise<ApiKey> {
-  const { getApiKeyById } = await import("../db/keys");
   const key = job.apiKeyId ? await getApiKeyById(job.apiKeyId) : null;
   if (!key) throw new Error("the API key this job was submitted with no longer exists");
   return key;
 }
 
 async function userFor(job: MediaJob): Promise<User> {
-  const { getUserById } = await import("../db/users");
   const user = await getUserById(job.userId);
   if (!user) throw new Error("the account that submitted this job no longer exists");
   return user;
