@@ -431,6 +431,28 @@ CREATE TABLE IF NOT EXISTS assistant_actions (
 );
 CREATE INDEX IF NOT EXISTS idx_assistant_actions_user ON assistant_actions(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_assistant_actions_status ON assistant_actions(status, created_at DESC);
+
+-- Async media jobs: a submitted generation that does not need a client to hold
+-- the connection open. "request" is the normalized MediaRequestInput (uploads are
+-- already data URLs), "result" is the payload the synchronous routes return, and
+-- "expires_at" bounds how long a finished job is kept.
+CREATE TABLE IF NOT EXISTS media_jobs (
+  id          TEXT PRIMARY KEY,
+  user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  api_key_id  TEXT REFERENCES api_keys(id) ON DELETE SET NULL,
+  capability  TEXT NOT NULL,
+  model       TEXT NOT NULL,
+  status      TEXT NOT NULL,
+  request     TEXT NOT NULL,
+  result      TEXT,
+  error       TEXT,
+  created_at  TEXT NOT NULL,
+  started_at  TEXT,
+  finished_at TEXT,
+  expires_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_media_jobs_user ON media_jobs(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_media_jobs_status ON media_jobs(status);
 `;
 
 // ---------------------------------------------------------------------------

@@ -805,6 +805,17 @@ console.log(resp.choices[0].message.content);`}
   -F image=@second.png   # 1–16 references: repeat the field`}
           />
           <CodeBlock
+            label={t("docs.media.jobs")}
+            value={`# Submit, get 202 immediately, then poll — nothing holds the connection.
+curl ${openaiBase}/media/jobs \\
+  -H "Authorization: Bearer $RELAYAB_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"capability":"image.generate","model":"image-01","prompt":"a 4K poster","size":"2048x2048"}'
+
+curl ${openaiBase}/media/jobs/JOB_ID \\
+  -H "Authorization: Bearer $RELAYAB_KEY"`}
+          />
+          <CodeBlock
             label={t("docs.media.video")}
             value={`curl ${openaiBase}/videos/generations \\
   -H "Authorization: Bearer $RELAYAB_KEY" \\

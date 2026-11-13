@@ -714,6 +714,9 @@ OpenAI-shaped media endpoints, driven by a **declarative adapter protocol** (see
 | `POST /v1/audio/music` | JSON `{model,prompt[,n]}` | Music generation |
 | `POST /v1/audio/speech` | JSON `{model,input,voice?,speed?}` | TTS, **returns the audio bytes verbatim** (the ≤25MB input limit applies to transcriptions) |
 | `POST /v1/audio/transcriptions` | multipart `file,model[,language,prompt]` | STT, returns `{text,id?}` |
+| `POST /v1/media/jobs` | JSON `{capability,model,prompt,…}`, `capability` ∈ `image.generate`/`image.edit`/`video.generate`/`music.generate` | **Async job**: answers `202` + the job immediately and holds no connection; for `image.edit` put references in `images` (data URL or public URL, 1–16) |
+| `GET /v1/media/jobs/{id}` | — | Poll: `status` ∈ `queued`/`running`/`succeeded`/`failed`; on success `result` has the same shape as the synchronous route (`{created,data:[…]}`) |
+| `DELETE /v1/media/jobs/{id}` | — | Cancel: a queued job fails at once, a running one aborts upstream, `error.code = job_cancelled` |
 | `GET /v1/audio/voices` | none | Lists the voices this deployment can speak with (see §2.6.1) |
 
 #### `GET /v1/audio/voices`

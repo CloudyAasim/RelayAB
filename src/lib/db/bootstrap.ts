@@ -102,6 +102,24 @@ export async function runBootstrap(): Promise<BootstrapResult> {
   result.openaiProvidersCreated = await bootstrapOpenAIProviders();
   result.anthropicProvidersCreated = await bootstrapAnthropicProviders();
 
+  /**
+   * 4. Media jobs that were in flight when this process (re)started.
+   *
+   * They run inside the process that accepted them, and nothing upstream is
+   * resumable, so a `running` row that survived a restart is already dead. Say
+   * so once here; otherwise the client polls `running` until the job's TTL.
+   * Wrapped because a failure here must not stop the deployment from booting.
+   */
+  try {
+    const { failInterruptedMediaJobs } = await import("./media-jobs");
+    const interrupted = await failInterruptedMediaJobs();
+    if (interrupted > 0) {
+      console.warn(`[relayab] marked ${interrupted} interrupted media job(s) as failed`);
+    }
+  } catch (err) {
+    console.warn(`[relayab] could not reconcile media jobs: ${String(err)}`);
+  }
+
   return result;
 }
 
