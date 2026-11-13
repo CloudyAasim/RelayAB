@@ -17,6 +17,7 @@ import { proxyError, quotaHeaders } from "@/lib/proxy/errors";
 import { executeMediaRequest, fileToDataUrl, imageItemsResponse, requirePrompt, resultItems, type MediaRequestInput } from "@/lib/media/handler";
 import type { ApiKey } from "@/lib/db/types";
 import { MAX_IMAGE_UPLOAD_BYTES } from "@/lib/protocol/limits";
+import { respondWithHeartbeat } from "@/lib/http/heartbeat";
 
 export const runtime = "nodejs";
 
@@ -89,17 +90,21 @@ export async function POST(req: Request): Promise<Response> {
     return proxyError(invalid.status, invalid.code, invalid.message);
   }
 
-  const outcome = await executeMediaRequest({
-    capability: "image.edit",
-    input,
-    apiKey: auth.key as ApiKey,
-    user: owner,
-    signal: req.signal,
-  });
+  return respondWithHeartbeat(
+    (async () => {
+      const outcome = await executeMediaRequest({
+        capability: "image.edit",
+        input,
+        apiKey: auth.key as ApiKey,
+        user: owner,
+        signal: req.signal,
+      });
 
-  if (!outcome.ok) {
-    return proxyError(outcome.error.status, outcome.error.code, outcome.error.message);
-  }
-  const items = await resultItems(outcome.value.result);
-  return NextResponse.json(imageItemsResponse(items), { headers: quotaHeaders(owner) });
+      if (!outcome.ok) {
+        return proxyError(outcome.error.status, outcome.error.code, outcome.error.message);
+      }
+      const items = await resultItems(outcome.value.result);
+      return NextResponse.json(imageItemsResponse(items), { headers: quotaHeaders(owner) });
+    })(),
+  );
 }

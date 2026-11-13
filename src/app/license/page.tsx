@@ -65,6 +65,10 @@ const RUNTIME_DEPS: Dep[] = [
   { name: "react", version: "19.3.0", license: "MIT", repo: "https://github.com/facebook/react", copyright: "Meta Platforms Inc." },
   { name: "react-dom", version: "19.3.0", license: "MIT", repo: "https://github.com/facebook/react", copyright: "Meta Platforms Inc." },
   { name: "tailwind-merge", version: "2.6.1", license: "MIT", repo: "https://github.com/dcastil/tailwind-merge", copyright: "Dany Castillo" },
+  // The transport. Node's `fetch` is undici, and the relay needs to reach it
+  // directly to take its 300-second header/body timers out of the way
+  // (lib/http/transport.ts).
+  { name: "undici", version: "8.12.4", license: "MIT", repo: "https://github.com/nodejs/undici", copyright: "Node.js contributors" },
   // UI primitives - Radix UI (added in v0.2+)
   { name: "@radix-ui/react-accordion", version: "1.2.20", license: "MIT", copyright: "Radix UI Contributors" },
   { name: "@radix-ui/react-checkbox", version: "1.3.11", license: "MIT", copyright: "Radix UI Contributors" },

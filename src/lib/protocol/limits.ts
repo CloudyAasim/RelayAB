@@ -1,55 +1,75 @@
 /**
  * src/lib/protocol/limits.ts
  *
- * The numbers that bound a request, in one place and in the order they apply.
+ * The time a request may take, and who gets to decide it.
  *
- * RelayAB is a relay, not a client for one vendor: the upstreams change, their
- * limits change, and the host changes. What must not change is the *ordering*
- * between the layers, and that ordering used to be re-typed as a literal in
- * every layer — 300000 in the spec validator, 240000 in the media route, 600s in
- * nginx, 30s in the `$fetch` wrapper — with the numbers drifting apart. On
- * 2026-11-13 that produced two symptoms in one week: a spec allowed 300s was
- * aborted by its own route at 240s, and the document quoted a "serverless
- * ceiling" that had not existed since the move to Dokku.
+ * RelayAB is a relay for vendors it does not control. A vendor's own window is
+ * the only fact in this file that is not ours: if H3 needs 600s for a 4K frame
+ * and 1000s for the worst case, the relay must be able to wait 1000s. What it
+ * must not do is invent a smaller number of its own and dress the resulting
+ * failure up as "upstream timeout".
  *
- * So the values live here and the *relationships* are what the guard pins
- * (`tests/unit/request-limits.test.ts`):
+ * There used to be four such numbers, each typed separately — 300000 in the spec
+ * validator, 240000 in the media route, `maxDuration = 300` in five routes, and
+ * 600s in nginx — and on 2026-11-13 they produced exactly that failure: a spec
+ * allowed 300s was aborted at 240s, and the document quoted a serverless ceiling
+ * the deployment had not had since 2026-10-01.
  *
- *     spec timeout  ≤  route abort  ≤  host allowance
+ * The model now is one deadline with three guards around it:
  *
- * Raise the host and only `HOST_REQUEST_CEILING_MS` moves; the others derive
- * from it. Nothing in this file knows about a vendor.
+ *     the vendor's window  =  limits.timeoutMs  (the only real deadline)
+ *     MAX_SPEC_TIMEOUT_MS  =  a sanity bound for typos (second vs millisecond)
+ *     HOST_IDLE_TIMEOUT_MS =  what the proxy resets on activity, not a total
+ *     CONNECT_TIMEOUT_MS   =  a dead host, not a slow one
+ *
+ * Nothing in this file knows about a vendor, a model, or a capability.
  */
 
 /**
- * What the reverse proxy will wait for.
+ * The most a spec may declare — a sanity check, not a platform limit.
  *
- * `deploy/nginx.conf` sets `proxy_read_timeout 600s`. A request that outlives it
- * is killed by nginx, not by us — and the client gets a connection error instead
- * of the error envelope this app builds.
+ * An earlier version of this constant documented "300000 is the serverless
+ * ceiling". The deployment left serverless on 2026-10-01; the constant stayed,
+ * the document repeated it, and two specs were saved against a limit that no
+ * longer existed. A bound whose only job is to catch `600` meaning six hundred
+ * *milliseconds* should be far away from any real vendor window, so that it can
+ * never be mistaken for one.
  */
-export const HOST_REQUEST_CEILING_MS = 600_000;
-
-/**
- * What the application allows itself, measured from the first byte of work.
- *
- * Under the host's allowance, so a slow request fails *here* — with a readable
- * error — instead of being cut off by the proxy. The route passes this as its
- * `AbortSignal` timeout.
- */
-export const REQUEST_BUDGET_MS = 580_000;
-
-/**
- * The most a spec may declare in `limits.timeoutMs`.
- *
- * Below the request budget on purpose: the spec's own deadline should fire
- * first (it can say something specific about the vendor), leaving the route's
- * abort as the backstop rather than the thing that reports the failure.
- */
-export const MAX_SPEC_TIMEOUT_MS = 570_000;
+export const MAX_SPEC_TIMEOUT_MS = 3_500_000;
 
 /** What a spec means when it declares no `limits.timeoutMs`. */
 export const DEFAULT_SPEC_TIMEOUT_MS = 240_000;
+
+/**
+ * How long the reverse proxy waits for *activity*, not for the whole response.
+ *
+ * nginx's `proxy_read_timeout` is an idle timer: every byte the application
+ * writes resets it. That is why a long generation can survive behind it as long
+ * as something keeps arriving — see `lib/http/heartbeat.ts`. The number below is
+ * the template's value (`deploy/nginx.conf`); the guard keeps the two in step.
+ */
+export const HOST_IDLE_TIMEOUT_MS = 3_600_000;
+
+/**
+ * How often a long media call writes a keep-alive byte.
+ *
+ * Well under any sane idle timeout, and cheap enough to be invisible: the bytes
+ * are JSON-significant whitespace, so the body still parses as the same document
+ * when the real answer finally arrives.
+ */
+export const HEARTBEAT_INTERVAL_MS = 15_000;
+
+/**
+ * How long a media call may run before the response starts heartbeating.
+ *
+ * Below the shortest idle timeout worth supporting, so a proxy with a 30s window
+ * is still kept alive; a fast call never pays for the streaming response and
+ * keeps its real status code.
+ */
+export const HEARTBEAT_AFTER_MS = 20_000;
+
+/** A socket that never connects is a dead host, not a slow generation. */
+export const CONNECT_TIMEOUT_MS = 30_000;
 
 /**
  * Upload ceilings, per file.

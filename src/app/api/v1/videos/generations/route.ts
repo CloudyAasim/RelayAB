@@ -16,9 +16,12 @@ import {
   type MediaRequestInput,
 } from "@/lib/media/handler";
 import { proxyError, quotaHeaders } from "@/lib/proxy/errors";
+import { respondWithHeartbeat } from "@/lib/http/heartbeat";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+// No `maxDuration`: a Vercel platform declaration this Dokku deployment never
+// reads, and one of the four places that used to state the request budget
+// (see lib/protocol/limits.ts). The spec's own deadline is the deadline.
 
 export async function POST(req: Request): Promise<Response> {
   let body: Record<string, unknown>;
@@ -45,24 +48,30 @@ export async function POST(req: Request): Promise<Response> {
   const invalid = requirePrompt(input.prompt, 4000);
   if (invalid) return mediaErrorResponse(invalid);
 
-  const outcome = await executeMediaRequest({
-    capability: "video.generate",
-    input,
-    apiKey: auth.key,
-    user: auth.user,
-    signal: req.signal,
-  });
-  if (!outcome.ok) return mediaErrorResponse(outcome.error);
+  // Video is the slowest capability there is; the heartbeat is what lets the
+  // vendor's own spec deadline be the only deadline (see lib/http/heartbeat.ts).
+  return respondWithHeartbeat(
+    (async () => {
+      const outcome = await executeMediaRequest({
+        capability: "video.generate",
+        input,
+        apiKey: auth.key,
+        user: auth.user,
+        signal: req.signal,
+      });
+      if (!outcome.ok) return mediaErrorResponse(outcome.error);
 
-  const { result } = outcome.value;
-  if (result.items.length === 0) {
-    return mediaErrorResponse({
-      status: 502,
-      code: "no_media",
-      message: "upstream returned no video",
-    });
-  }
-  return Response.json(mediaItemsResponse(result.items, result.taskId), {
-    headers: quotaHeaders(auth.user),
-  });
+      const { result } = outcome.value;
+      if (result.items.length === 0) {
+        return mediaErrorResponse({
+          status: 502,
+          code: "no_media",
+          message: "upstream returned no video",
+        });
+      }
+      return Response.json(mediaItemsResponse(result.items, result.taskId), {
+        headers: quotaHeaders(auth.user),
+      });
+    })(),
+  );
 }

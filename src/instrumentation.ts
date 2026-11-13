@@ -28,6 +28,19 @@ export async function register(): Promise<void> {
   // bridge, which reaches for `node:crypto` and has no business in a runtime
   // that does not have Node.
   if (process.env.NEXT_RUNTIME === "nodejs") {
+    /**
+     * Before anything can make an upstream call.
+     *
+     * Node's `fetch` is undici, and undici ships 300-second `headersTimeout` /
+     * `bodyTimeout` defaults. They are neither the vendor's limit nor this
+     * deployment's; they silently killed any generation slower than five
+     * minutes, and the failure read exactly like an upstream timeout. The relay
+     * owns that deadline (`limits.timeoutMs` per spec); the transport must not
+     * invent one (`lib/http/transport.ts`).
+     */
+    const { installTransportTimeouts } = await import("@/lib/http/transport");
+    installTransportTimeouts();
+
     const { installRealtimeBridge } = await import("@/lib/realtime/bridge");
     installRealtimeBridge();
   }

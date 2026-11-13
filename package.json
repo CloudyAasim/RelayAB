@@ -26,12 +26,14 @@
     "react-dom": "^19.0.0",
     "tailwind-merge": "^2.5.0",
     "tailwindcss-animate": "^1.0.7",
+    "undici": "^8.12.4",
     "zod": "^3.23.0"
   },
   "description": "RelayAB - A self-hosted AI API relay/gateway for sharing upstream provider keys with quota and permission control.",
   "engines": {
     "node": ">=24 <25"
-  },  "devDependencies": {
+  },
+  "devDependencies": {
     "@playwright/test": "^1.48.0",
     "@tailwindcss/forms": "^0.5.9",
     "@tailwindcss/typography": "^0.5.15",

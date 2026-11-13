@@ -14,6 +14,7 @@ import { getUserById as lookupUserById } from "@/lib/db/users";
 import { proxyError, quotaHeaders } from "@/lib/proxy/errors";
 import { executeMediaRequest, imageItemsResponse, requirePrompt, resultItems, type MediaRequestInput } from "@/lib/media/handler";
 import type { ApiKey } from "@/lib/db/types";
+import { respondWithHeartbeat } from "@/lib/http/heartbeat";
 
 export const runtime = "nodejs";
 /*
@@ -75,17 +76,28 @@ export async function POST(req: Request): Promise<Response> {
     return proxyError(invalid.status, invalid.code, invalid.message);
   }
 
-  const outcome = await executeMediaRequest({
-    capability: "image.generate",
-    input,
-    apiKey: auth.key as ApiKey,
-    user: owner,
-    signal: req.signal,
-  });
+  /**
+   * A 4K frame can take longer than any proxy's idle window, and the thing that
+   * kills it is *silence*, not duration. Once this call passes the heartbeat
+   * threshold the response starts emitting whitespace so the connection stays
+   * alive for as long as the vendor's own spec allows (see
+   * `lib/http/heartbeat.ts` for the trade-off that comes with it).
+   */
+  return respondWithHeartbeat(
+    (async () => {
+      const outcome = await executeMediaRequest({
+        capability: "image.generate",
+        input,
+        apiKey: auth.key as ApiKey,
+        user: owner,
+        signal: req.signal,
+      });
 
-  if (!outcome.ok) {
-    return proxyError(outcome.error.status, outcome.error.code, outcome.error.message);
-  }
-  const items = await resultItems(outcome.value.result);
-  return NextResponse.json(imageItemsResponse(items), { headers: quotaHeaders(owner) });
+      if (!outcome.ok) {
+        return proxyError(outcome.error.status, outcome.error.code, outcome.error.message);
+      }
+      const items = await resultItems(outcome.value.result);
+      return NextResponse.json(imageItemsResponse(items), { headers: quotaHeaders(owner) });
+    })(),
+  );
 }

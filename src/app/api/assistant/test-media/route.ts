@@ -36,24 +36,10 @@ import {
 } from "@/lib/media/handler";
 import type { MediaCapability } from "@/lib/media/spec";
 import { buildMediaTestPayload } from "@/lib/media/test-result";
-import {
-  MAX_AUDIO_UPLOAD_BYTES,
-  REQUEST_BUDGET_MS,
-} from "@/lib/protocol/limits";
+import { MAX_AUDIO_UPLOAD_BYTES } from "@/lib/protocol/limits";
+import { respondWithHeartbeat } from "@/lib/http/heartbeat";
 
 export const dynamic = "force-dynamic";
-
-/**
- * This route's abort is the backstop, not the policy.
- *
- * The per-spec deadline (`limits.timeoutMs`, capped at `MAX_SPEC_TIMEOUT_MS`)
- * fires first and says something about the vendor; this only catches a spec that
- * declared nothing, or an upstream that ignored its own deadline. Both numbers
- * come from `protocol/limits.ts`, so raising the host's allowance moves them —
- * on 2026-11-13 this route aborted at 240s while specs were allowed 300s, and
- * the panel reported a timeout no spec had asked for.
- */
-const MEDIA_CALL_TIMEOUT_MS = REQUEST_BUDGET_MS;
 
 /** Matches the public transcriptions route, so one file works on both paths. */
 const MAX_AUDIO_BYTES = MAX_AUDIO_UPLOAD_BYTES;
@@ -211,36 +197,50 @@ export async function POST(req: Request): Promise<Response> {
   const jsonCapability = capability as "image.generate" | "video.generate" | "audio.tts";
 
   const started = Date.now();
-  const outcome = stt
-    ? await executeMediaRequest({
-        capability: "audio.stt",
-        input: {
-          model,
-          // The same slot and the same data URL the public route uses, so a
-          // spec resolves this identically whether it was reached with a
-          // bearer token or with the account credential.
-          image: stt.audio,
-          extra: { audio: stt.audio, filename: stt.filename, ...(stt.language ? { language: stt.language } : {}) },
-        },
-        apiKey: credential.account.apiKey,
-        user: credential.account.user,
-        signal: AbortSignal.timeout(MEDIA_CALL_TIMEOUT_MS),
-      })
-    : await runJsonMedia(jsonCapability, parsed.data, credential);
-  const ms = Date.now() - started;
+  /**
+   * No route-level deadline.
+   *
+   * The spec's own `limits.timeoutMs` is the deadline (enforced in
+   * `executeMediaRequest`), and the client hanging up is the other end of it.
+   * A fixed number here would be the same mistake this file had on 2026-11-13:
+   * a route that aborts at 240s while the spec it is running was allowed 300s.
+   */
+  const work = (async () => {
+    const outcome = stt
+      ? await executeMediaRequest({
+          capability: "audio.stt",
+          input: {
+            model,
+            // The same slot and the same data URL the public route uses, so a
+            // spec resolves this identically whether it was reached with a
+            // bearer token or with the account credential.
+            image: stt.audio,
+            extra: { audio: stt.audio, filename: stt.filename, ...(stt.language ? { language: stt.language } : {}) },
+          },
+          apiKey: credential.account.apiKey,
+          user: credential.account.user,
+          signal: req.signal,
+        })
+      : await runJsonMedia(jsonCapability, parsed.data, credential, req.signal);
+    const ms = Date.now() - started;
 
-  if (!outcome.ok) return mediaErrorResponse(outcome);
-  if (stt) {
-    return NextResponse.json({
-      ok: true,
-      data: buildMediaTestPayload(outcome.value.result.items, {
-        ms,
-        text: outcome.value.result.text ?? "",
-        ...(outcome.value.result.taskId ? { id: outcome.value.result.taskId } : {}),
-      }),
-    });
-  }
-  return respondToMedia(jsonCapability, outcome, ms);
+    if (!outcome.ok) return mediaErrorResponse(outcome);
+    if (stt) {
+      return NextResponse.json({
+        ok: true,
+        data: buildMediaTestPayload(outcome.value.result.items, {
+          ms,
+          text: outcome.value.result.text ?? "",
+          ...(outcome.value.result.taskId ? { id: outcome.value.result.taskId } : {}),
+        }),
+      });
+    }
+    return respondToMedia(jsonCapability, outcome, ms);
+  })();
+
+  // Text-to-speech answers with bytes; whitespace in front of an MP3 would be
+  // corruption, not a keep-alive. It is also the fastest capability here.
+  return jsonCapability === "audio.tts" ? work : respondWithHeartbeat(work);
 }
 
 /** The three JSON capabilities, which differ only in what they are asked for. */
@@ -248,6 +248,7 @@ async function runJsonMedia(
   capability: "image.generate" | "video.generate" | "audio.tts",
   data: z.infer<typeof BodySchema>,
   credential: Extract<ResolvedCredential, { kind: "account" }>,
+  signal: AbortSignal,
 ): Promise<MediaExecutionOutcome> {  const prompt = data.prompt?.trim() ?? "";
   if (!prompt) {
     return {
@@ -287,7 +288,7 @@ async function runJsonMedia(
     input,
     apiKey: credential.account.apiKey,
     user: credential.account.user,
-    signal: AbortSignal.timeout(MEDIA_CALL_TIMEOUT_MS),
+    signal,
   });
 }
 

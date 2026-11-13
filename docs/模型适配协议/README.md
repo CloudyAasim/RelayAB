@@ -74,9 +74,10 @@
 
 - **`metadata.modes` 只写你真的映射了的**。写了 `image-to-video` 却没映射首帧参数，
   运营者会在目录里看到「支持图生视频」，实际传图进来被当文生视频跑。
-- **`limits.timeoutMs` 不要超过 570000**（本部署实际兑现的上限，超过会在保存时直接报错）。
-  这个数字来自 `src/lib/protocol/limits.ts`：宿主 nginx 允许 600s、应用给自己 580s、
-  spec 最多 570s（留 10s 组装应答）。**它不是一个写死的厂商数字** —— 换宿主机只改那一处。
+- **`limits.timeoutMs` 写厂商真正需要的那个数**，不要写小、也不许超过 **3500000**
+  （约 1 小时，只是拦住「把秒写成毫秒」这类笔误，**不是**平台能力上限）。
+  等待期间网关会向客户端发**心跳**（JSON 前导空白），所以代理的空闲超时不会把慢调用掐断；
+  真正的期限就是 spec 自己声明的这个数。换宿主机不需要改 spec。
 
 ### 0.3 引擎怎么跑的（精确语义）
 
@@ -316,7 +317,7 @@
 | `limits` 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `maxN` | number | 上游接受的最大张数，客户端 `n` 超过就报 `400 n_too_large` |
-| `timeoutMs` | number | 上游超时，**必须 ≤ 570000**（本部署的上限，超过保存时报错）。**它会真的生效**：整次调用（含轮询）到这个时间就中止 |
+| `timeoutMs` | number | 上游超时，**必须 ≤ 3500000**（约 1 小时的 sanity 上限，不是平台限制）。**它会真的生效**：整次调用（含轮询）到这个时间就中止；等待期间由心跳保活 |
 
 #### 0.4.2 transport 与 auth
 
@@ -528,7 +529,7 @@ binary/stream/sse 回传、空结果检测、按 `successCount` 计费。
 9. `$dataUrl` / `$file` 只往请求用；`$from` / `$fetch` 只往响应用。
 10. 要 base64 就确认上游编码，并用 `encoding` 声明；**不要假设是 base64**。
 11. `metadata.modes` 只写真的映射了的。
-12. `limits.timeoutMs ≤ 570000`。
+12. `limits.timeoutMs ≤ 3500000`（sanity 上限，不是平台限制）。
 
 ### 0.6 不确定时的决策规则
 
@@ -677,7 +678,7 @@ pnpm spec-check my-specs.json
 - [ ] `$dataUrl` / `$file` 只出现在 `request`，`$from` / `$fetch` 只出现在 `response`？
 - [ ] multipart 里的**字符串 vs 布尔**都对得上厂商文档？（`"false"` ≠ `false`）
 - [ ] `metadata.modes` 里每一项都有对应的请求映射，且用词与其它能力一致？
-- [ ] `limits.timeoutMs ≤ 570000`？
+- [ ] `limits.timeoutMs ≤ 3500000`？
 
 > 完整版（带每条的真实翻车案例）在 §17。
 
@@ -1351,8 +1352,9 @@ upstream returned 2xx but the spec's response mapping produced no items — chec
 upstream task did not finish in time (last status "Rendering" — check async.poll.statusMap / successValues)
 ```
 
-轮询在请求内完成，受**本部署的请求预算**约束（宿主 nginx 600 秒，应用给自己 580 秒，
-`limits.timeoutMs` 最多 570000 毫秒，超过保存时报错）。更长的任务需要外部队列，协议暂不支持（§15）。
+轮询在请求内完成。**等待期间网关会向客户端发心跳**（JSON 前导空白，body 仍然是一个合法
+JSON），所以代理的空闲超时不会掐断慢调用；真正的期限由 spec 自己声明
+（`limits.timeoutMs`，sanity 上限 3500000 毫秒）。
 
 ---
 
@@ -1396,7 +1398,7 @@ upstream task did not finish in time (last status "Rendering" — check async.po
 保存前会跑两轮检查，**目的是让错误在后台暴露，而不是在 3 点钟的线上请求里**。
 
 **逐份 spec（`parseMediaSpec`）**：必填字段、类型、未知顶层字段、
-`transport.path` 的占位符、`limits.timeoutMs ≤ 570000`、`statusMap` 有没有兜底项、
+`transport.path` 的占位符、`limits.timeoutMs ≤ 3500000`、`statusMap` 有没有兜底项、
 错误规则会不会永远不触发……
 
 **整组 spec（`validateMediaSpecs`）**：同 capability 多份是否都用 `models` 区分、
@@ -1443,7 +1445,7 @@ upstream task did not finish in time (last status "Rendering" — check async.po
 
 | 限制 | 说明 |
 | --- | --- |
-| 异步上限约 570 秒 | 轮询在请求内完成，受本部署的请求预算限制（nginx 600s / 应用 580s / spec 570s）。**`limits.timeoutMs` 是会被兑现的**，不是建议值 |
+| 异步上限由 spec 决定 | 轮询在请求内完成；等待期间向客户端发心跳，代理的空闲超时不会掐断它，**`limits.timeoutMs` 是会被兑现的期限**。唯一的硬边界是它不是无限大（sanity 3500000），也不再有任何 serverless/宿主的 300 秒说法 |
 | 不跨 spec 组合 | 一个供应商内可以按模型选 spec，但不能把两份 spec 的请求**拼**在一起 |
 | `$fetch` 只支持一步 | id → url 可以；「A 换 B 再换 C」不行 |
 | 不拼接流式音频 | `responseMode: "sse"` 只汇总 **url 类** items；跨事件拼接音频字节流不支持 |
