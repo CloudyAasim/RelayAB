@@ -967,6 +967,27 @@ function adminTools(t: (key: string) => string): AssistantToolDef[] {
   {
     type: "function",
     function: {
+      name: "propose_doc_page",
+      description: t("propose_doc_page"),
+      parameters: {
+        type: "object",
+        properties: {
+          summary: { type: "string", description: t("propose_doc_page.summary") },
+          id: { type: "string", description: t("propose_doc_page.id") },
+          title: { type: "string", description: t("propose_doc_page.title") },
+          body: { type: "string", description: t("propose_doc_page.body") },
+          order: { type: "integer", description: t("propose_doc_page.order") },
+          hidden: { type: "boolean", description: t("propose_doc_page.hidden") },
+          remove: { type: "boolean", description: t("propose_doc_page.remove") },
+        },
+        required: ["summary", "id"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "list_doc_pages",
       description: t("list_doc_pages"),
       parameters: { type: "object", properties: {}, additionalProperties: false },
@@ -1422,6 +1443,9 @@ export async function executeTool(
     case "propose_doc_pages":
       if (!isAdmin) return fail(ctx, "adminOnly");
       return proposeDocPages(args, ctx);
+    case "propose_doc_page":
+      if (!isAdmin) return fail(ctx, "adminOnly");
+      return proposeDocPage(args, ctx);
     case "propose_media_provider_update":
       if (!isAdmin) return fail(ctx, "adminOnly");
       return proposeMediaProviderUpdate(args, ctx);
@@ -3228,6 +3252,87 @@ async function proposeDocPages(
     removed: before.filter((b) => !pages.some((p) => p.id === b.id)).map((b) => b.id),
     kept: before.filter((b) => pages.some((p) => p.id === b.id)).map((b) => b.id),
     added: pages.filter((p) => !before.some((b) => b.id === p.id)).map((p) => p.id),
+    ...(advice ? { advice } : {}),
+  });
+}
+
+/**
+ * Add, edit or remove ONE parameter-guide page.
+ *
+ * `propose_doc_pages` replaces the whole set. That is the right shape for a
+ * reorder and the wrong one for everything else: adding one page meant
+ * resending every page, and the payload grew past what a tool call can reliably
+ * carry. On 2026-11-13 an assistant tried to add one H3 page and never got a
+ * valid payload out; it withdrew three proposals that would have deleted or
+ * stubbed the other seven pages. The pages were fine — the tool's shape was the
+ * problem.
+ *
+ * This one merges by `id`: an existing page keeps every field the caller did not
+ * mention, and a new page is appended at the end.
+ */
+async function proposeDocPage(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<ToolResult> {
+  const id = typeof args.id === "string" ? args.id.trim() : "";
+  if (!id) return fail(ctx, "pagesInvalid", { problems: "id 不能为空" });
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id)) {
+    return fail(ctx, "pagesInvalid", { problems: `id「${id}」只能用小写字母、数字和中划线` });
+  }
+
+  const { docPages } = await getSettings();
+  const before = docPages ?? [];
+  const existing = before.find((page) => page.id === id);
+  const summary =
+    typeof args.summary === "string" && args.summary.trim() ? args.summary.trim() : "未说明的变更";
+
+  let after: DocPage[];
+  if (args.remove === true) {
+    if (!existing) return fail(ctx, "pagesInvalid", { problems: `没有 id 为「${id}」的页面` });
+    after = before.filter((page) => page.id !== id);
+  } else {
+    // Omitted fields mean "keep what is there" — that is what makes a one-word
+    // retitle cheap instead of a 40KB resend.
+    const title =
+      typeof args.title === "string" && args.title.trim()
+        ? args.title.trim()
+        : (existing?.title ?? "");
+    if (!title) return fail(ctx, "pagesInvalid", { problems: `新页面「${id}」需要 title` });
+    const body = typeof args.body === "string" ? args.body : (existing?.body ?? "");
+    if (body.length > 60_000) {
+      return fail(ctx, "pagesInvalid", { problems: `「${id}」正文超过 60000 字符` });
+    }
+    const hidden = args.hidden === undefined ? existing?.hidden === true : args.hidden === true;
+    const order =
+      typeof args.order === "number"
+        ? args.order
+        : (existing?.order ?? before.reduce((max, page) => Math.max(max, page.order ?? 0), -1) + 1);
+    const page: DocPage = { id, title, body, order, ...(hidden ? { hidden: true } : {}) };
+    after = existing ? before.map((p) => (p.id === id ? page : p)) : [...before, page];
+  }
+
+  const gate = checkProposal("doc_pages.update" as ProposalKind, { docPages: after });
+  if (!gate.ok) return fail(ctx, "proposalRejected", { reason: gate.message! });
+
+  const advice = docPageAdvice(after);
+  const action = await createAssistantAction({
+    userId: ctx.user.id,
+    kind: "doc_pages.update",
+    targetId: "docPages",
+    summary,
+    args: { docPages: after },
+    diff: renderDocPagesDiff(before, after, summary),
+  });
+
+  return ok({
+    ...(gate.warnings.length > 0 ? { warnings: gate.warnings } : {}),
+    actionId: action.id,
+    summary,
+    page: id,
+    mode: args.remove === true ? "removed" : existing ? "updated" : "added",
+    // Everything this call did NOT touch, so the caller can see the full-replace
+    // contract is not about to fire.
+    kept: after.filter((page) => page.id !== id).map((page) => page.id),
     ...(advice ? { advice } : {}),
   });
 }

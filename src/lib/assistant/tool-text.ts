@@ -966,8 +966,8 @@ export const TOOL_DESCRIPTIONS: Record<string, ToolText> = {
       "接口路径、我们转发和不转发什么、哪些转换是我们做的——这些必须来自 read_docs 和 list_providers。\n" +
       "把厂商原生接口照抄进来，用户照着调就会踩坑。\n" +
       "每页正文很长（一张音色表就三百多行），所以一页只写一类，别把整本塞进一页。\n" +
-      "pages 是【完整】替换，不是增量：只发新加的那一页会把其余所有页面删掉。" +
-      "想加一页必须先用 list_doc_pages 拿回现状、合并、再整份传回。\n" +
+      "pages 是【完整】替换，不是增量。**只改一页请用 propose_doc_page**（新增/修改/删掉单页，其余页面原样保留）；" +
+      "这里只用于整份重排或成批改写。\n" +
       "id 会变成读者能收藏的锚点，一旦发布就不要改；id 只能是小写字母、数字和中划线。",
     en:
       "Propose a change to a **parameter guide page**, which runs only after an administrator " +
@@ -984,11 +984,60 @@ export const TOOL_DESCRIPTIONS: Record<string, ToolText> = {
       "Copying the vendor's native API in verbatim leaves users tripping over it.\n" +
       "Each page's body is long (a single voice table runs to three hundred lines), so write one " +
       "kind of thing per page rather than the whole book into one.\n" +
-      "pages is a **complete** replacement, not an increment: sending only the new page deletes " +
-      "every other one. To add a page you must first read the current list with list_doc_pages, " +
-      "merge, and send the whole thing back.\n" +
+      "pages is a **complete** replacement, not an increment. **To change one page use " +
+      "propose_doc_page** (add / edit / remove a single page, leaving the rest untouched); this " +
+      "tool is for a full reorder or a bulk rewrite.\n" +
       "The id becomes an anchor readers can bookmark, so do not change it once published; it may " +
       "only contain lowercase letters, digits and hyphens.",
+  },
+  "propose_doc_page": {
+    "zh-CN":
+      "提出【单页】参数指南的变更（新增 / 修改 / 删除一页），需要管理员确认才执行。\n" +
+      "**改一页就用这个**：只传这一页，其余页面会原样保留；不要为了改一页去用 propose_doc_pages" +
+      "（那是整份替换，你要把所有页面重新发一遍，很容易漏页或截断）。\n" +
+      "省略 title / body 表示沿用这一页现有的内容（新增页面不能省略）；remove=true 删掉这一页。\n" +
+      "内容规则与 propose_doc_pages 相同：写本部署映射之后的接口，不照抄厂商原生接口。\n" +
+      "id 是读者收藏的锚点：改已有页面时不要改 id；新增时只能用小写字母、数字和中划线。",
+    en:
+      "Propose a change to **one** parameter guide page — add, edit or remove it — which runs only " +
+      "after an administrator confirms it.\n" +
+      "**Use this to change a page**: only this page is sent, every other page is kept as it is. Do " +
+      "not reach for propose_doc_pages to edit one page — that is a complete replacement, so you " +
+      "would have to resend every page and can easily drop or truncate one.\n" +
+      "Omitting title / body keeps what the page already has (a new page cannot omit them); " +
+      "remove=true deletes the page.\n" +
+      "The content rules are the same as propose_doc_pages: write about this deployment's mapped " +
+      "interface, not the vendor's native API.\n" +
+      "The id is an anchor readers bookmark: do not change it on an existing page, and a new one " +
+      "may only contain lowercase letters, digits and hyphens.",
+  },
+  "propose_doc_page.summary": {
+    "zh-CN": "一句话说明这次变更的目的",
+    en: "One sentence saying what this change is for",
+  },
+  "propose_doc_page.id": {
+    "zh-CN": "页面锚点，小写字母/数字/中划线；改已有页面时用它定位",
+    en: "The page anchor (lowercase letters, digits, hyphens); it identifies an existing page",
+  },
+  "propose_doc_page.title": {
+    "zh-CN": "页面标题；改已有页面时可省略",
+    en: "The page title; omit it when editing an existing page",
+  },
+  "propose_doc_page.body": {
+    "zh-CN": "Markdown 正文；改已有页面时只传要改的部分不现实，传完整新正文，省略则沿用旧的",
+    en: "The Markdown body. Send the complete new body (there is no partial edit); omit to keep the old one",
+  },
+  "propose_doc_page.order": {
+    "zh-CN": "读者看到的顺序，数字小的在前；省略时新页面排在最后",
+    en: "The order readers see, lower first; a new page goes last when omitted",
+  },
+  "propose_doc_page.hidden": {
+    "zh-CN": "true = 草稿，读者看不到；省略时沿用原值",
+    en: "true = a draft readers cannot see; omitted keeps the current value",
+  },
+  "propose_doc_page.remove": {
+    "zh-CN": "true = 删掉这一页（其余页面不受影响）",
+    en: "true = remove this page (the others are unaffected)",
   },
   "propose_doc_pages.summary": {
     "zh-CN": "一句话说明这次变更的目的",
@@ -1012,12 +1061,14 @@ export const TOOL_DESCRIPTIONS: Record<string, ToolText> = {
   },
   "list_doc_pages": {
     "zh-CN":
-      "读回当前【参数指南】的页面。改之前必须先调这个 —— propose_doc_pages 是整份替换，" +
+      "读回当前【参数指南】的页面。改一页用 propose_doc_page，不需要先读全部；" +
+      "只有在整份重排（propose_doc_pages）之前才必须先调这个 —— 那是整份替换，" +
       "不知道现状就改会把页面全删掉。",
     en:
-      "Read back the current **parameter guide** pages. You must call this before changing " +
-      "anything — propose_doc_pages is a complete replacement, and changing it without knowing the " +
-      "current state deletes every page.",
+      "Read back the current **parameter guide** pages. To change one page use propose_doc_page — " +
+      "you do not need to read them all first. Only a full reorder (propose_doc_pages) needs this " +
+      "call, because that tool replaces the whole set and changing it without knowing the current " +
+      "state deletes every page.",
   },
   "propose_media_provider_update": {
     "zh-CN":
