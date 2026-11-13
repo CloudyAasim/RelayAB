@@ -15,12 +15,12 @@ import {
   type MediaRequestInput,
 } from "@/lib/media/handler";
 import { proxyError, quotaHeaders } from "@/lib/proxy/errors";
+import { MAX_AUDIO_UPLOAD_BYTES } from "@/lib/protocol/limits";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
 
 /** 25 MB matches OpenAI's documented limit. */
-const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
+const MAX_AUDIO_BYTES = MAX_AUDIO_UPLOAD_BYTES;
 
 export async function POST(req: Request): Promise<Response> {
   let form: FormData;

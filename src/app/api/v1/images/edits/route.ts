@@ -16,12 +16,12 @@ import { getUserById as lookupUserById } from "@/lib/db/users";
 import { proxyError, quotaHeaders } from "@/lib/proxy/errors";
 import { executeMediaRequest, fileToDataUrl, imageItemsResponse, requirePrompt, resultItems, type MediaRequestInput } from "@/lib/media/handler";
 import type { ApiKey } from "@/lib/db/types";
+import { MAX_IMAGE_UPLOAD_BYTES } from "@/lib/protocol/limits";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
 
 /** 10 MB upstream limit (MiniMax documents <10MB for reference images). */
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_IMAGE_BYTES = MAX_IMAGE_UPLOAD_BYTES;
 
 export async function POST(req: Request): Promise<Response> {
   let form: FormData;

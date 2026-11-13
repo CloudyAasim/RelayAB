@@ -14,6 +14,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseMediaSpec, validateMediaSpecs, type MediaSpec } from "@/lib/media/spec";
+import { MAX_SPEC_TIMEOUT_MS } from "@/lib/protocol/limits";
 
 const DOC = join(process.cwd(), "docs", "模型适配协议", "README.md");
 
@@ -359,12 +360,13 @@ describe("§0.3 engine semantics section stays in sync", () => {
     expect(section).toContain(phrase);
   });
 
-  it("agrees with the validator on the serverless ceiling", () => {
+  it("quotes the ceiling the code enforces — the number, not a copy of it", () => {
     const specSource = readFileSync(join(process.cwd(), "src", "lib", "media", "spec.ts"), "utf8");
-    // The ceiling is enforced in the validator; the document must not claim a
-    // different number or an operator will size their timeouts off the doc.
-    expect(specSource).toContain("300_000");
-    expect(markdown).toContain("300000");
+    // Both sides derive from `protocol/limits.ts`. This test used to pin the
+    // literal 300_000/300000, which is exactly how a document keeps quoting a
+    // ceiling that stopped existing: the assertion and the doc drifted together.
+    expect(specSource).toContain("MAX_SPEC_TIMEOUT_MS");
+    expect(markdown).toContain(String(MAX_SPEC_TIMEOUT_MS));
   });
 
   it("documents the fallback status vocabulary the engine ships", () => {

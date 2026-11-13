@@ -8,6 +8,7 @@
 import { describe, it, expect } from "vitest";
 import { applyMapping, buildMediaScope, executeMedia } from "@/lib/media/engine";
 import { parseMediaSpec, validateMediaSpecs, type MediaProvider, type MediaSpec } from "@/lib/media/spec";
+import { MAX_SPEC_TIMEOUT_MS } from "@/lib/protocol/limits";
 import { pickSpecForModel, pickSpecForRequest } from "@/lib/db/media-providers";
 import { encryptSecret } from "@/lib/crypto/secrets";
 
@@ -979,18 +980,33 @@ describe("validation surface", () => {
     expect(parsed.errors.join(" ")).toContain("reponse: unknown spec field");
   });
 
-  it("rejects a timeout beyond the serverless ceiling", () => {
+  it("rejects a timeout beyond the deployment's ceiling", () => {
+    // The number is imported, not typed: this test used to pin "300_000" and
+    // stayed green for a year after the ceiling it described had stopped
+    // existing (the deployment moved off serverless in 2026-10-01).
     const parsed = parseMediaSpec({
       specVersion: 1,
       capability: "music.generate",
       transport: { method: "POST", path: "/x" },
       auth: { type: "bearer" },
       response: { items: [] },
-      limits: { timeoutMs: 600_000 },
+      limits: { timeoutMs: MAX_SPEC_TIMEOUT_MS + 1_000 },
     });
     expect(parsed.ok).toBe(false);
     if (parsed.ok) return;
-    expect(parsed.errors.join(" ")).toContain("serverless ceiling");
+    expect(parsed.errors.join(" ")).toContain(String(MAX_SPEC_TIMEOUT_MS));
+  });
+
+  it("accepts a timeout exactly at the ceiling", () => {
+    const parsed = parseMediaSpec({
+      specVersion: 1,
+      capability: "music.generate",
+      transport: { method: "POST", path: "/x" },
+      auth: { type: "bearer" },
+      response: { items: [] },
+      limits: { timeoutMs: MAX_SPEC_TIMEOUT_MS },
+    });
+    expect(parsed.ok).toBe(true);
   });
 
   it("warns when an item-producing capability maps no items", () => {

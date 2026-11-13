@@ -36,30 +36,27 @@ import {
 } from "@/lib/media/handler";
 import type { MediaCapability } from "@/lib/media/spec";
 import { buildMediaTestPayload } from "@/lib/media/test-result";
+import {
+  MAX_AUDIO_UPLOAD_BYTES,
+  REQUEST_BUDGET_MS,
+} from "@/lib/protocol/limits";
 
 export const dynamic = "force-dynamic";
-/**
- * A Vercel declaration; this deployment is a Dokku container, so it is inert.
- *
- * Kept in step with the real ceiling anyway, because a route that declares 300
- * while honouring 590 reads as a limit that does not exist.
- */
-export const maxDuration = 600;
 
 /**
- * How long this route lets a media call run.
+ * This route's abort is the backstop, not the policy.
  *
- * The abort is real, and it used to be 240s while a spec may declare
- * `limits.timeoutMs` up to 300s — so a vendor allowed five minutes was cut at
- * four, and the panel reported a timeout the spec had never asked for.
- *
- * 590s sits just under the host's `proxy_read_timeout 600s` (deploy/nginx.conf):
- * nginx must not kill a call the app is still waiting for.
+ * The per-spec deadline (`limits.timeoutMs`, capped at `MAX_SPEC_TIMEOUT_MS`)
+ * fires first and says something about the vendor; this only catches a spec that
+ * declared nothing, or an upstream that ignored its own deadline. Both numbers
+ * come from `protocol/limits.ts`, so raising the host's allowance moves them —
+ * on 2026-11-13 this route aborted at 240s while specs were allowed 300s, and
+ * the panel reported a timeout no spec had asked for.
  */
-const MEDIA_CALL_TIMEOUT_MS = 590_000;
+const MEDIA_CALL_TIMEOUT_MS = REQUEST_BUDGET_MS;
 
 /** Matches the public transcriptions route, so one file works on both paths. */
-const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
+const MAX_AUDIO_BYTES = MAX_AUDIO_UPLOAD_BYTES;
 
 const BodySchema = z.object({
   // `audio.stt` is in the enum because the multipart branch has to describe

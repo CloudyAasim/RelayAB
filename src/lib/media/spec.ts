@@ -43,6 +43,12 @@
  * in the admin panel instead of at 3am on a live request.
  */
 
+import {
+  HOST_REQUEST_CEILING_MS,
+  MAX_SPEC_TIMEOUT_MS,
+  REQUEST_BUDGET_MS,
+} from "@/lib/protocol/limits";
+
 /** Normalized media capabilities this protocol can describe. */
 export const MEDIA_CAPABILITIES = [
   "image.generate",
@@ -1000,9 +1006,16 @@ export function parseMediaSpec(raw: unknown): SpecParse {
         }
       }
       const timeout = limits.timeoutMs;
-      if (typeof timeout === "number" && timeout > 300_000) {
+      if (typeof timeout === "number" && timeout > MAX_SPEC_TIMEOUT_MS) {
+        // The number comes from the deployment's own allowance
+        // (`protocol/limits.ts`, which derives it from the host's nginx
+        // timeout), never from a literal typed here: this message said
+        // "300000 is the serverless ceiling" for a year after the move to Dokku,
+        // and every operator who read it sized their spec for a limit that no
+        // longer existed.
         errors.push(
-          "limits.timeoutMs: 300000 is the serverless ceiling — a longer timeout can never be honoured",
+          `limits.timeoutMs: ${MAX_SPEC_TIMEOUT_MS} is the ceiling this deployment honours ` +
+            `(host allowance ${HOST_REQUEST_CEILING_MS}ms, request budget ${REQUEST_BUDGET_MS}ms)`,
         );
       }
     }

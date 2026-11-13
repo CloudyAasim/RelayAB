@@ -13,6 +13,7 @@ import { buildMediaScope, executeMedia, type MediaItem, type MediaResult } from 
 import type { MediaCapability, MediaProvider, MediaSpec } from "./spec";
 import type { ApiKey, User } from "@/lib/db/types";
 import { proxyError } from "@/lib/proxy/errors";
+import { DEFAULT_SPEC_TIMEOUT_MS } from "@/lib/protocol/limits";
 
 /** Normalized request, independent of which endpoint it arrived on. */
 export interface MediaRequestInput {
@@ -133,11 +134,28 @@ export async function executeMediaRequest(args: {
     };
   }
 
+  /**
+   * The spec's own deadline, made real.
+   *
+   * `limits.timeoutMs` was documentation: it was validated on save and then
+   * never consulted, so a spec that declared 120s could run for the route's
+   * whole allowance and a spec that declared 570s was silently cut at 240s by
+   * that same route. A limit nothing enforces is a number an operator sizes
+   * their work against and then cannot rely on.
+   *
+   * The route's abort stays as the backstop (a spec that declares nothing, or an
+   * upstream that ignores its own deadline); both numbers come from
+   * `protocol/limits.ts`.
+   */
+  const specBudget = spec.limits?.timeoutMs ?? DEFAULT_SPEC_TIMEOUT_MS;
+  const budgetSignal = AbortSignal.timeout(specBudget);
+  const signal = args.signal ? AbortSignal.any([args.signal, budgetSignal]) : budgetSignal;
+
   const execution = await executeMedia({
     spec,
     provider: resolved.provider,
     input: buildScope(input),
-    ...(args.signal ? { signal: args.signal } : {}),
+    signal,
     ...(args.fetchImpl ? { fetchImpl: args.fetchImpl } : {}),
   });
   if (!execution.ok) return { ok: false, error: execution.error };

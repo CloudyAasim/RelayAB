@@ -16,8 +16,12 @@ import { executeMediaRequest, imageItemsResponse, requirePrompt, resultItems, ty
 import type { ApiKey } from "@/lib/db/types";
 
 export const runtime = "nodejs";
-// Image generation is slower than a chat turn; do not inherit the 60s default.
-export const maxDuration = 300;
+/*
+ * No `maxDuration`: that is a Vercel platform declaration, and this deployment
+ * is a Dokku container where nothing reads it. It used to say 300 here while the
+ * route actually honoured a different number — one of the four places the
+ * request budget was written down (see `lib/protocol/limits.ts`).
+ */
 
 export async function POST(req: Request): Promise<Response> {
   let body: Record<string, unknown>;
