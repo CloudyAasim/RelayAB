@@ -22,7 +22,7 @@ import { listProviders, getModelCreditCost } from "@/lib/db/providers";
 import { listMediaProviders } from "@/lib/db/media-providers";
 import { providerFaces } from "@/lib/db/types";
 import { getSettings, type ModelNote } from "@/lib/db/settings";
-import type { MediaProvider } from "@/lib/media/spec";
+import { isSpecMode, type MediaProvider } from "@/lib/media/spec";
 
 export interface CatalogModel {
   /** The client-visible id, exactly as it goes on the wire. */
@@ -240,6 +240,9 @@ export async function buildModelCatalog(): Promise<ModelCatalog> {
 
   for (const provider of mediaProviders) {
     if (!provider.enabled) continue;
+    // A passthrough provider is reachable through /v1/raw, not through the
+    // OpenAI-shaped media routes, so it does not belong in this catalogue.
+    if (!isSpecMode(provider.mode)) continue;
     for (const [clientId, model] of Object.entries(provider.models)) {
       if (model.enabled === false) continue;
       if (isHidden(clientId)) continue;

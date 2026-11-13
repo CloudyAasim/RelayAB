@@ -20,7 +20,7 @@ import { listProviders } from "@/lib/db/providers";
 import { listMediaProviders } from "@/lib/db/media-providers";
 import { modelAllowedFor } from "@/lib/auth/model-access";
 import type { MediaProvider, MediaSpec } from "@/lib/media/spec";
-import { specServingModel } from "@/lib/media/spec";
+import { isSpecMode, specServingModel } from "@/lib/media/spec";
 
 export interface OpenAIModelEntry {
   id: string;
@@ -104,7 +104,11 @@ export async function listClientMediaModelEntries(
   createdAt: number,
   owner?: User | null,
 ): Promise<OpenAIModelEntry[]> {
-  const mediaProviders = await listMediaProviders({ enabledOnly: true });
+  // A passthrough provider has no spec to serve this surface: its models are
+  // reachable through /v1/raw, not through an OpenAI-shaped call.
+  const mediaProviders = (await listMediaProviders({ enabledOnly: true })).filter((provider) =>
+    isSpecMode(provider.mode),
+  );
   const out: OpenAIModelEntry[] = [];
   for (const provider of mediaProviders) {
     for (const [clientModel, model] of Object.entries(provider.models)) {

@@ -31,7 +31,7 @@
  */
 import { listMediaProviders } from "@/lib/db/media-providers";
 import { discoverMedia } from "./engine";
-import type { MediaProvider, MediaSpec, MediaVoiceEntry } from "./spec";
+import { isSpecMode, type MediaProvider, type MediaSpec, type MediaVoiceEntry } from "./spec";
 
 export interface CatalogueVoice {
   id: string;
@@ -270,7 +270,9 @@ export async function collectVoiceCatalogue(opts?: {
   // Every enabled provider, not just the one that would serve a particular
   // model: the caller is asking what exists, and a provider with no voice
   // catalogue simply contributes nothing.
-  for (const provider of await listMediaProviders({ enabledOnly: true })) {
+  for (const provider of (await listMediaProviders({ enabledOnly: true })).filter((p) =>
+    isSpecMode(p.mode),
+  )) {
     const cached = cache.get(provider.id);
     if (cached && now - cached.at < CACHE_TTL_MS) {
       voices.push(...cached.voices);

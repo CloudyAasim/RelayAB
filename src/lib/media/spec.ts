@@ -432,6 +432,18 @@ export function isPassthroughMode(mode: MediaProviderMode): boolean {
   return mode === "passthrough" || mode === "restricted";
 }
 
+/**
+ * Does this provider serve the spec routes at all?
+ *
+ * The complement of {@link isPassthroughMode}, and the question every catalogue
+ * asks: a passthrough provider's models are callable through `/v1/raw`, not
+ * through `/v1/images/*`, so listing them on the OpenAI surface would advertise a
+ * route that answers 400.
+ */
+export function isSpecMode(mode: MediaProviderMode): boolean {
+  return mode === "simple" || mode === "advanced";
+}
+
 export interface MediaProvider {
   id: string;
   name: string;

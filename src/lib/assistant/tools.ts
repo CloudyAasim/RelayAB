@@ -60,7 +60,7 @@ import { checkProposal, type ProposalKind } from "./proposal-validation";
 import { describeRoutes, routesOfProvider } from "./provider-routing";
 import { providerDrift } from "../media/drift";
 import { MEDIA_TEMPLATES } from "../media/seeds";
-import type { MediaSpec } from "../media/spec";
+import { isSpecMode, type MediaSpec } from "../media/spec";
 import { readProtocolDoc } from "../docs/protocol-doc";
 import { getPublicUrl } from "../config";
 import { knownModelOrDefault } from "../providers/known-models";
@@ -1513,7 +1513,9 @@ async function listGatewayModels(ctx: ToolContext): Promise<ToolResult> {
     byProvider.push({ name: p.name, baseUrl: p.baseUrl ?? null, models: ids });
   }
 
-  const media = (await listMediaProviders()).filter((m) => m.enabled);
+  // Only spec-mode providers: a passthrough provider is not callable through
+  // the tools, and listing it would make the assistant suggest a 400.
+  const media = (await listMediaProviders()).filter((m) => m.enabled && isSpecMode(m.mode));
   const mediaModels = media.flatMap((m) => Object.keys(m.models ?? {}));
 
   // Same rule as `dashboard/models/page.tsx`: an empty list means no
