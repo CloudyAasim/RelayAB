@@ -403,6 +403,35 @@ export interface MediaModelConfig {
   enabled: boolean;
 }
 
+/**
+ * How a media provider is spoken to.
+ *
+ * The text side has had this split since the route table landed; media only had
+ * the spec path, which forced every vendor through a mapping even when the
+ * client already spoke the vendor's own API.
+ *
+ *   - `advanced`    — a hand-written spec (the protocol).
+ *   - `simple`      — a spec loaded from a template, adjusted only in its data.
+ *   - `passthrough` — any vendor path, verbatim (`/v1/raw/<provider>/…`).
+ *   - `restricted`  — verbatim, but only under `passthroughPaths`.
+ *
+ * The two groups are exclusive on purpose: a passthrough provider has no spec to
+ * translate through, and a spec provider has not promised that an arbitrary
+ * vendor path is safe to forward.
+ */
+export type MediaProviderMode = "passthrough" | "restricted" | "simple" | "advanced";
+
+export const MEDIA_PROVIDER_MODES: readonly MediaProviderMode[] = [
+  "passthrough",
+  "restricted",
+  "simple",
+  "advanced",
+];
+
+export function isPassthroughMode(mode: MediaProviderMode): boolean {
+  return mode === "passthrough" || mode === "restricted";
+}
+
 export interface MediaProvider {
   id: string;
   name: string;
@@ -411,6 +440,10 @@ export interface MediaProvider {
   encryptedApiKey: string;
   enabled: boolean;
   priority: number;
+  /** See {@link MediaProviderMode}. */
+  mode: MediaProviderMode;
+  /** Path prefixes allowed when `mode` is `restricted`; ignored otherwise. */
+  passthroughPaths: string[];
   models: Record<string, MediaModelConfig>;
   specs: MediaSpec[];
   createdAt: string;

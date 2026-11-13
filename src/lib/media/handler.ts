@@ -10,7 +10,7 @@ import { pickSpecForRequest, resolveMediaProviderForModel } from "@/lib/db/media
 import { shouldRejectBeforeRequest } from "@/lib/quota/calculator";
 import { computeMediaCredits, settleMediaUsage } from "./billing";
 import { buildMediaScope, executeMedia, resumeMedia, submitMedia, type MediaItem, type MediaResult } from "./engine";
-import type { MediaCapability, MediaProvider, MediaSpec } from "./spec";
+import { isPassthroughMode, type MediaCapability, type MediaProvider, type MediaSpec } from "./spec";
 import type { ApiKey, User } from "@/lib/db/types";
 import { proxyError } from "@/lib/proxy/errors";
 import { DEFAULT_SPEC_TIMEOUT_MS } from "@/lib/protocol/limits";
@@ -138,6 +138,22 @@ async function prepareMediaCall(args: {
         status: 404,
         code: "model_not_found",
         message: `model '${input.model}' is not an available media model`,
+      },
+    };
+  }
+
+  // A passthrough provider has no mapping to translate through. Saying so here is
+  // the difference between "capability not supported" and "you are calling the
+  // wrong surface".
+  if (isPassthroughMode(resolved.provider.mode)) {
+    return {
+      ok: false,
+      error: {
+        status: 400,
+        code: "provider_is_passthrough",
+        message:
+          `provider '${resolved.provider.name}' is in ${resolved.provider.mode} mode; ` +
+          `call it through /v1/raw/${resolved.provider.id}/<vendor path>?model=${input.model}`,
       },
     };
   }

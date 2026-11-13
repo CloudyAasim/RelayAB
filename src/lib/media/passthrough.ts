@@ -61,7 +61,7 @@ function isUnsafeSegment(segment: string): boolean {
  */
 export function resolveRawTarget(args: {
   provider: MediaProvider;
-  spec: MediaSpec;
+  spec: MediaSpec | null;
   /** The request path after the provider segment, e.g. `/v1/videos/up_1`. */
   suffix: string;
   search: URLSearchParams;
@@ -81,7 +81,7 @@ export function resolveRawTarget(args: {
     }
   }
 
-  const base = new URL(spec.baseUrl ?? provider.baseUrl);
+  const base = new URL(spec?.baseUrl ?? provider.baseUrl);
   const url = new URL(`${base.pathname.replace(/\/$/, "")}${suffix}`, base.origin);
   if (url.origin !== base.origin) throw new Error("raw path escapes the provider origin");
 
@@ -89,10 +89,10 @@ export function resolveRawTarget(args: {
   for (const [key, value] of search.entries()) url.searchParams.append(key, value);
 
   const headers = new Headers();
-  for (const [key, value] of Object.entries(spec.transport.headers ?? {})) {
+  for (const [key, value] of Object.entries(spec?.transport.headers ?? {})) {
     if (typeof value === "string") headers.set(key, value);
   }
-  if (spec.auth.type === "query" && typeof spec.auth.name === "string") {
+  if (spec?.auth.type === "query" && typeof spec.auth.name === "string") {
     url.searchParams.set(spec.auth.name, decryptSecret(provider.encryptedApiKey));
   }
   return { url, headers };
@@ -101,7 +101,7 @@ export function resolveRawTarget(args: {
 /** Headers for the upstream call: the vendor's auth plus whatever the spec declares. */
 export function rawRequestHeaders(args: {
   provider: MediaProvider;
-  spec: MediaSpec;
+  spec: MediaSpec | null;
   incoming: Headers;
   target: RawPassthroughTarget;
 }): Headers {
@@ -113,6 +113,14 @@ export function rawRequestHeaders(args: {
     headers.set(key, value);
   }
 
+  if (!spec) {
+    // A provider in passthrough mode may have no spec at all: there is nothing to
+    // translate, so nothing declares its auth either. Bearer is the vendor default
+    // (and what a spec-less H3/OpenAI-shaped account uses); a vendor that wants a
+    // custom header needs a spec for the credentials anyway.
+    headers.set("Authorization", `Bearer ${decryptSecret(provider.encryptedApiKey)}`);
+    return headers;
+  }
   if (spec.auth.type === "bearer") {
     headers.set("Authorization", `Bearer ${decryptSecret(provider.encryptedApiKey)}`);
   } else if (spec.auth.type === "header" && typeof spec.auth.name === "string") {
@@ -151,5 +159,26 @@ export function specForRawCall(provider: MediaProvider, model: string): MediaSpe
   const scoped = provider.specs.find((spec) => spec.models?.includes(model));
   if (scoped) return scoped;
   if (!provider.models[model]) return provider.specs.length === 1 ? provider.specs[0] : null;
+  // A passthrough provider needs no spec: `null` means "bearer with the
+  // provider's key", which is what a vendor-native client expects.
   return provider.specs[0] ?? null;
+}
+
+/**
+ * Is this path inside what the provider allows?
+ *
+ * Matching is segment-aware (`/v1/videos` allows `/v1/videos/up_1` but not
+ * `/v1/videos-admin`), which is why prefixes are compared as path segments rather
+ * than with a string `startsWith`.
+ */
+export function isRawPathAllowed(provider: MediaProvider, suffix: string): boolean {
+  if (provider.mode === "passthrough") return true;
+  if (provider.mode !== "restricted") return false;
+
+  const requested = suffix.split("?")[0]?.split("/").filter(Boolean) ?? [];
+  return provider.passthroughPaths.some((prefix) => {
+    const allowed = prefix.split("/").filter(Boolean);
+    if (allowed.length === 0) return false;
+    return allowed.every((segment, index) => requested[index] === segment);
+  });
 }

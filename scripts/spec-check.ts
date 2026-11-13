@@ -635,6 +635,8 @@ function fakeProvider(): Parameters<typeof executeMedia>[0]["provider"] {
     encryptedApiKey: encryptSecret("probe-key"),
     enabled: true,
     priority: 1,
+    mode: "advanced",
+    passthroughPaths: [],
     models: {},
     specs: [],
     createdAt: "",

@@ -718,6 +718,7 @@ OpenAI-shaped media endpoints, driven by a **declarative adapter protocol** (see
 | `GET /v1/media/jobs/{id}` | — | Poll: `status` ∈ `queued`/`running`/`succeeded`/`failed`; on success `result` has the same shape as the synchronous route (`{created,data:[…]}`) |
 | `DELETE /v1/media/jobs/{id}` | — | Cancel: a queued job fails at once, a running one aborts upstream, `error.code = job_cancelled` |
 | `ANY /v1/raw/[provider]/[...path]` | the vendor own body / query (plus `?model=`) | **Verbatim passthrough**: method, path, query, body and response are forwarded untouched, with only that provider key injected. `?model=` is required (whitelist + billing); a submit (non-GET) 2xx is billed once, polls are not |
+> Whether `/v1/raw` is open depends on the provider **mode**: `advanced`/`simple` keep it closed (use the spec routes), `passthrough` opens it fully, `restricted` opens only the listed path prefixes.
 
 > **After a restart**: a job that already reached the vendor (specs with `async.poll`) is **resumed** — the upstream task keeps running whether or not this process does. Jobs that never reached the vendor, and synchronous vendors (no upstream task to resume), are marked `failed` / `job_interrupted` and must be submitted again.
 | `GET /v1/audio/voices` | none | Lists the voices this deployment can speak with (see §2.6.1) |

@@ -22,6 +22,7 @@ import { proxyError } from "@/lib/proxy/errors";
 import { shouldRejectBeforeRequest } from "@/lib/quota/calculator";
 import { computeMediaCredits, settleMediaUsage } from "@/lib/media/billing";
 import {
+  isRawPathAllowed,
   rawRequestHeaders,
   rawResponseHeaders,
   resolveRawTarget,
@@ -52,10 +53,18 @@ async function handle(
     return proxyError(404, "model_not_found", `model '${requestedModel}' is not enabled on this provider`);
   }
 
-  const spec = specForRawCall(provider, requestedModel);
-  if (!spec) {
-    return proxyError(400, "no_spec", "this provider has no spec to take its credentials from");
+  // Which modes this route serves. A spec provider has not promised that an
+  // arbitrary vendor path is safe to forward, so it is refused here — that is the
+  // whole difference between `advanced`/`simple` and the passthrough modes.
+  if (provider.mode !== "passthrough" && provider.mode !== "restricted") {
+    return proxyError(
+      400,
+      "passthrough_disabled",
+      `provider '${provider.name}' is in ${provider.mode} mode; use the spec routes (/v1/images/*, /v1/videos/*, /v1/media/jobs)`,
+    );
   }
+
+  const spec = specForRawCall(provider, requestedModel);
 
   const auth = await authenticateBearer({
     authHeader: resolveAuthHeader(req),
@@ -96,6 +105,14 @@ async function handle(
     return proxyError(400, "invalid_path", err instanceof Error ? err.message : "invalid raw path");
   }
 
+  if (!isRawPathAllowed(provider, suffix)) {
+    return proxyError(
+      403,
+      "path_not_allowed",
+      `provider '${provider.name}' only allows: ${provider.passthroughPaths.join(", ")}`,
+    );
+  }
+
   const method = req.method.toUpperCase();
   const hasBody = method !== "GET" && method !== "HEAD";
   const headers = rawRequestHeaders({ provider, spec, incoming: req.headers, target });
@@ -124,7 +141,7 @@ async function handle(
       providerId: provider.id,
       model: requestedModel,
       upstreamModel: declared.upstreamId,
-      capability: spec.capability,
+      capability: spec?.capability ?? "image.generate",
       images: 1,
       creditsUsed: computeMediaCredits(declared.pricePerItem, 1),
     });

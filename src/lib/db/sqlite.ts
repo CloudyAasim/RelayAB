@@ -140,6 +140,9 @@ CREATE TABLE IF NOT EXISTS media_providers (
   encrypted_api_key TEXT NOT NULL,
   enabled           INTEGER NOT NULL,
   priority          INTEGER NOT NULL DEFAULT 0,
+  -- 'advanced' | 'simple' | 'passthrough' | 'restricted' (see MediaProviderMode)
+  mode              TEXT NOT NULL DEFAULT 'advanced',
+  passthrough_paths TEXT NOT NULL DEFAULT '[]',
   models            TEXT NOT NULL DEFAULT '{}',
   specs             TEXT NOT NULL DEFAULT '[]',
   created_at        TEXT NOT NULL,
@@ -711,7 +714,30 @@ const DATA_MIGRATIONS: ReadonlyArray<{ version: number; apply: (conn: Database) 
       conn.exec("CREATE INDEX IF NOT EXISTS idx_media_jobs_upstream ON media_jobs(upstream_task_id)");
     },
   },
-];
+  {
+    /**
+     * v6 — media providers declare how they are spoken to.
+     *
+     * `advanced` (a hand-written spec) is what every existing row is, including
+     * the ones loaded from a template: the distinction between "simple" and
+     * "advanced" is about how the operator maintains the spec, and nothing
+     * recorded that. `passthrough`/`restricted` are the new verbatim modes.
+     */
+    version: 6,
+    apply: (conn) => {
+      const columns = new Set(
+        (conn.prepare("PRAGMA table_info(media_providers)").all() as Array<{ name?: string }>).map((c) =>
+          String(c.name ?? ""),
+        ),
+      );
+      if (!columns.has("mode")) {
+        conn.exec("ALTER TABLE media_providers ADD COLUMN mode TEXT NOT NULL DEFAULT 'advanced'");
+      }
+      if (!columns.has("passthrough_paths")) {
+        conn.exec("ALTER TABLE media_providers ADD COLUMN passthrough_paths TEXT NOT NULL DEFAULT '[]'");
+      }
+    },
+  },];
 
 function applyDataMigrations(conn: Database): void {
   const current = conn.prepare("SELECT MAX(version) AS version FROM schema_version").get() as
@@ -1105,6 +1131,12 @@ export function rowToMediaProvider(row: Record<string, unknown>): MediaProvider 
     encryptedApiKey: String(row.encrypted_api_key),
     enabled: fromDbBool(row.enabled),
     priority: Number(row.priority ?? 0),
+    // Rows written before the mode column existed are specs: `advanced` is what
+    // they were.
+    mode: (typeof row.mode === "string" && row.mode ? row.mode : "advanced") as MediaProvider["mode"],
+    passthroughPaths: Array.isArray(parseJson(String(row.passthrough_paths ?? "[]"), []))
+      ? (parseJson(String(row.passthrough_paths ?? "[]"), []) as string[])
+      : [],
     models: parseJson(String(row.models ?? "{}"), {}),
     specs: parseJson(String(row.specs ?? "[]"), []),
     createdAt: String(row.created_at),

@@ -16,12 +16,17 @@ export interface MediaTemplate {
   specs: unknown;
 }
 
+export type MediaProviderMode = "passthrough" | "restricted" | "simple" | "advanced";
+
 export interface MediaProviderRow {
   id: string;
   name: string;
   baseUrl: string;
   enabled: boolean;
   priority: number;
+  /** How the provider is spoken to; see the mode select below. */
+  mode?: MediaProviderMode;
+  passthroughPaths?: string[];
   models: Record<string, unknown>;
   specs: unknown[];
 }
@@ -52,6 +57,10 @@ export function MediaProviderForm({ provider, templates, onSaved }: Props) {
   const [apiKey, setApiKey] = useState("");
   const [enabled, setEnabled] = useState(provider?.enabled ?? true);
   const [priority, setPriority] = useState(String(provider?.priority ?? 1));
+  const [mode, setMode] = useState<MediaProviderMode>(provider?.mode ?? "advanced");
+  const [passthroughPaths, setPassthroughPaths] = useState(
+    (provider?.passthroughPaths ?? []).join("\n"),
+  );
   const [models, setModels] = useState(JSON.stringify(provider?.models ?? {}, null, 2));
   const [specs, setSpecs] = useState(JSON.stringify(provider?.specs ?? [], null, 2));
   const [busy, setBusy] = useState(false);
@@ -75,6 +84,11 @@ export function MediaProviderForm({ provider, templates, onSaved }: Props) {
         baseUrl,
         enabled,
         priority: Number(priority) || 1,
+        mode,
+        passthroughPaths: passthroughPaths
+          .split("\n")
+          .map((value) => value.trim())
+          .filter(Boolean),
         models: JSON.parse(models),
         specs: JSON.parse(specs),
       };
@@ -151,6 +165,44 @@ export function MediaProviderForm({ provider, templates, onSaved }: Props) {
           {t("dashboard.status.enabled")}
         </label>
       </div>
+
+      <label className="block space-y-1">
+        <span className="text-sm font-medium text-foreground">
+          {t("admin.mediaProviders.mode")}
+        </span>
+        <select
+          value={mode}
+          onChange={(e) => setMode(e.target.value as MediaProviderMode)}
+          className="w-full rounded-md border border-input bg-background p-2 text-sm"
+        >
+          <option value="advanced">{t("admin.mediaProviders.mode.advanced")}</option>
+          <option value="simple">{t("admin.mediaProviders.mode.simple")}</option>
+          <option value="passthrough">{t("admin.mediaProviders.mode.passthrough")}</option>
+          <option value="restricted">{t("admin.mediaProviders.mode.restricted")}</option>
+        </select>
+        <span className="block text-xs text-muted-foreground">
+          {t("admin.mediaProviders.modeHint")}
+        </span>
+      </label>
+
+      {mode === "restricted" && (
+        <label className="block space-y-1">
+          <span className="text-sm font-medium text-foreground">
+            {t("admin.mediaProviders.passthroughPaths")}
+          </span>
+          <textarea
+            value={passthroughPaths}
+            onChange={(e) => setPassthroughPaths(e.target.value)}
+            rows={4}
+            spellCheck={false}
+            placeholder={"/v1/videos\n/v1/images/edits"}
+            className="w-full rounded-md border border-input bg-background p-2 font-mono text-xs"
+          />
+          <span className="block text-xs text-muted-foreground">
+            {t("admin.mediaProviders.passthroughPathsHint")}
+          </span>
+        </label>
+      )}
 
       <label className="block space-y-1">
         <span className="text-sm font-medium text-foreground">

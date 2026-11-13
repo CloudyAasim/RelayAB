@@ -34,7 +34,10 @@ interface Seen {
   body: string;
 }
 
-async function seed(): Promise<{ plain: string; keyId: string; providerId: string }> {
+async function seed(
+  mode: "passthrough" | "restricted" | "advanced" = "passthrough",
+  passthroughPaths: string[] = [],
+): Promise<{ plain: string; keyId: string; providerId: string }> {
   const user = await createUser({
     username: "raw-" + Math.random().toString(36).slice(2, 8),
     password: "x",
@@ -47,12 +50,28 @@ async function seed(): Promise<{ plain: string; keyId: string; providerId: strin
     name: "MiniMax Raw",
     baseUrl: "https://api.minimax.cn",
     apiKey: "vendor-key",
+    mode,
+    passthroughPaths,
     models: { "image-01": { upstreamId: "image-01", pricePerItem: 2, enabled: true } },
     specs: [MINIMAX_IMAGE_SPEC as unknown as Record<string, unknown>],
   });
   return { plain: key.plainKey, keyId: key.key.id, providerId: provider.id };
 }
 
+async function generateThroughSpec(
+  plain: string,
+): Promise<{ status: number; code?: string }> {
+  const { POST } = await import("@/app/api/v1/images/generations/route");
+  const res = await POST(
+    new Request("http://localhost/v1/images/generations", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${plain}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "image-01", prompt: "a cat" }),
+    }),
+  );
+  const body = (await res.json()) as { error?: { code?: string } };
+  return { status: res.status, code: body.error?.code };
+}
 describe("raw media passthrough", () => {
   let seen: Seen[] = [];
 
@@ -188,4 +207,39 @@ describe("raw media passthrough", () => {
       (await call(rawGET, { plain, providerId, sub: "/v1/x", query: "model=nope" })).status,
     ).toBe(404);
   });
-});
+  it("refuses a spec-mode provider, and a restricted path outside the list", async () => {
+    const specMode = await seed("advanced");
+    const refused = await call(rawGET, {
+      plain: specMode.plain,
+      providerId: specMode.providerId,
+      sub: "/v1/anything",
+      query: "model=image-01",
+    });
+    expect(refused.status).toBe(400);
+    expect(((await refused.json()) as { error: { code: string } }).error.code).toBe("passthrough_disabled");
+
+    const restricted = await seed("restricted", ["/v1/videos"]);
+    const allowed = await call(rawGET, {
+      plain: restricted.plain,
+      providerId: restricted.providerId,
+      sub: "/v1/videos/up_1",
+      query: "model=image-01",
+    });
+    expect(allowed.status).toBe(201);
+
+    const blocked = await call(rawGET, {
+      plain: restricted.plain,
+      providerId: restricted.providerId,
+      sub: "/v1/videos-admin",
+      query: "model=image-01",
+    });
+    expect(blocked.status).toBe(403);
+    expect(((await blocked.json()) as { error: { code: string } }).error.code).toBe("path_not_allowed");
+  });
+
+  it("keeps the spec routes closed for a passthrough provider", async () => {
+    const { plain } = await seed("passthrough");
+    const res = await generateThroughSpec(plain);
+    expect(res.status).toBe(400);
+    expect(res.code).toBe("provider_is_passthrough");
+  });});

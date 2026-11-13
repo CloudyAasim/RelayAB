@@ -61,6 +61,8 @@ const provider: MediaProvider = {
   encryptedApiKey: encryptSecret("probe-key"),
   enabled: true,
   priority: 1,
+    mode: "advanced",
+    passthroughPaths: [],
   models: {},
   specs: [],
   createdAt: "",

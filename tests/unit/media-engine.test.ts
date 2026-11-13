@@ -20,6 +20,8 @@ const PROVIDER: MediaProvider = {
   encryptedApiKey: encryptSecret("vendor-key"),
   enabled: true,
   priority: 1,
+    mode: "advanced",
+    passthroughPaths: [],
   models: {},
   specs: [],
   createdAt: "2026-01-01T00:00:00.000Z",

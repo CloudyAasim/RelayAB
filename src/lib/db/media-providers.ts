@@ -35,7 +35,7 @@
 import { encryptSecret } from "../crypto/secrets";
 import { generateId } from "../crypto/hashing";
 import { getAll, getOne, rowToMediaProvider, run, toDbBool } from "./sqlite";
-import { parseMediaSpec, validateMediaSpecs, type MediaCapability, type MediaProvider, type MediaSpec, type PublicMediaProvider } from "../media/spec";
+import { MEDIA_PROVIDER_MODES, isPassthroughMode, parseMediaSpec, validateMediaSpecs, type MediaCapability, type MediaProvider, type MediaProviderMode, type MediaSpec, type PublicMediaProvider } from "../media/spec";
 import { compareText } from "../utils";
 
 export interface CreateMediaProviderInput {
@@ -44,6 +44,10 @@ export interface CreateMediaProviderInput {
   apiKey: string;
   enabled?: boolean;
   priority?: number;
+  /** Defaults to `advanced` (a hand-written spec), which is what every row was before modes. */
+  mode?: MediaProviderMode;
+  /** Prefixes for `restricted`; ignored by the other modes. */
+  passthroughPaths?: string[];
   models?: MediaProvider["models"];
   specs?: unknown[];
 }
@@ -54,8 +58,56 @@ export interface UpdateMediaProviderInput {
   apiKey?: string;
   enabled?: boolean;
   priority?: number;
+  mode?: MediaProviderMode;
+  passthroughPaths?: string[];
   models?: MediaProvider["models"];
   specs?: unknown[];
+}
+
+/**
+ * Validate and normalize the mode + path allowlist.
+ *
+ * `restricted` without paths is a provider that forwards nothing — an operator
+ * would set it and watch every call 403, so it is rejected at write time. A
+ * prefix must be a path (`/v1/videos`), not a glob or a full URL: matching is
+ * segment-aware and anything else would silently never match.
+ */
+export function normalizeProviderMode(
+  mode: MediaProviderMode | undefined,
+  paths: string[] | undefined,
+): { mode: MediaProviderMode; passthroughPaths: string[] } {
+  const resolved = mode ?? "advanced";
+  if (!MEDIA_PROVIDER_MODES.includes(resolved)) {
+    throw new MediaProviderValidationError([
+      `mode must be one of: ${MEDIA_PROVIDER_MODES.join(", ")}`,
+    ]);
+  }
+  const cleaned = (paths ?? [])
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+
+  if (resolved === "restricted" && cleaned.length === 0) {
+    throw new MediaProviderValidationError([
+      "restricted mode needs at least one path prefix (for example /v1/videos)",
+    ]);
+  }
+
+  for (const prefix of cleaned) {
+    if (!prefix.startsWith("/")) {
+      throw new MediaProviderValidationError([`path prefix "${prefix}" must start with /`]);
+    }
+    if (prefix.includes("..") || prefix.includes("\\") || prefix.includes("?") || prefix.includes("#")) {
+      throw new MediaProviderValidationError([`path prefix "${prefix}" is not a plain path`]);
+    }
+  }
+
+  return {
+    mode: resolved,
+    // The allowlist only means something for `restricted`; keeping stale paths
+    // on the other modes would make a later switch to `restricted` surprise the
+    // operator with rules they no longer remember writing.
+    passthroughPaths: resolved === "restricted" ? [...new Set(cleaned)] : [],
+  };
 }
 
 export class MediaProviderValidationError extends Error {
@@ -93,6 +145,7 @@ export async function createMediaProvider(
   input: CreateMediaProviderInput,
 ): Promise<MediaProvider> {
   const now = new Date().toISOString();
+  const { mode, passthroughPaths } = normalizeProviderMode(input.mode, input.passthroughPaths);
   const provider: MediaProvider = {
     id: generateId(),
     name: input.name,
@@ -100,6 +153,8 @@ export async function createMediaProvider(
     encryptedApiKey: encryptSecret(input.apiKey),
     enabled: input.enabled ?? true,
     priority: input.priority ?? 1,
+    mode,
+    passthroughPaths,
     models: input.models ?? {},
     specs: parseSpecs(input.specs ?? []),
     createdAt: now,
@@ -111,8 +166,8 @@ export async function createMediaProvider(
   // applied create is no longer representable.
   run(
     `INSERT INTO media_providers
-       (id, name, base_url, encrypted_api_key, enabled, priority, models, specs, created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?)`,
+       (id, name, base_url, encrypted_api_key, enabled, priority, mode, passthrough_paths, models, specs, created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       provider.id,
       provider.name,
@@ -124,6 +179,8 @@ export async function createMediaProvider(
       provider.encryptedApiKey,
       toDbBool(provider.enabled),
       provider.priority,
+      provider.mode,
+      JSON.stringify(provider.passthroughPaths),
       JSON.stringify(provider.models),
       JSON.stringify(provider.specs),
       provider.createdAt,
@@ -140,6 +197,10 @@ export async function updateMediaProvider(
   const existing = await getMediaProviderById(id);
   if (!existing) return null;
 
+  const normalized = normalizeProviderMode(
+    patch.mode ?? existing.mode,
+    patch.passthroughPaths ?? existing.passthroughPaths,
+  );
   const merged: MediaProvider = {
     ...existing,
     name: patch.name ?? existing.name,
@@ -147,6 +208,8 @@ export async function updateMediaProvider(
     encryptedApiKey: patch.apiKey ? encryptSecret(patch.apiKey) : existing.encryptedApiKey,
     enabled: patch.enabled === undefined ? existing.enabled : patch.enabled,
     priority: patch.priority ?? existing.priority,
+    mode: normalized.mode,
+    passthroughPaths: normalized.passthroughPaths,
     models: patch.models ?? existing.models,
     specs: patch.specs === undefined ? existing.specs : parseSpecs(patch.specs),
     updatedAt: new Date().toISOString(),
@@ -167,6 +230,8 @@ export async function updateMediaProvider(
       merged.encryptedApiKey,
       toDbBool(merged.enabled),
       merged.priority,
+      merged.mode,
+      JSON.stringify(merged.passthroughPaths),
       JSON.stringify(merged.models),
       JSON.stringify(merged.specs),
       merged.updatedAt,
@@ -221,15 +286,26 @@ export async function resolveMediaProviderForModel(
   clientModel: string,
 ): Promise<{ provider: MediaProvider; upstreamId: string; pricePerItem: number } | null> {
   const providers = await listMediaProviders({ enabledOnly: true });
-  for (const provider of providers.sort(
+  const ordered = providers.sort(
     (a, b) => a.priority - b.priority || compareText(a.name, b.name),
-  )) {
+  );
+  const candidates = ordered.filter((provider) => {
     const model = provider.models[clientModel];
-    if (model && model.enabled) {
-      return { provider, upstreamId: model.upstreamId, pricePerItem: model.pricePerItem };
-    }
-  }
-  return null;
+    return Boolean(model?.enabled);
+  });
+  /**
+   * A spec call can only be served by a provider that translates. When both kinds
+   * list the same model, the spec provider wins: `/v1/images/*` promises the
+   * OpenAI shape, and a passthrough provider would answer with the vendor's.
+   * If only a passthrough provider has the model, it is returned anyway so the
+   * caller can say "use /v1/raw" rather than "model not found".
+   */
+  const chosen = candidates.find((provider) => !isPassthroughMode(provider.mode)) ?? candidates[0];
+  if (!chosen) return null;
+  const model = chosen.models[clientModel];
+  return model
+    ? { provider: chosen, upstreamId: model.upstreamId, pricePerItem: model.pricePerItem }
+    : null;
 }
 
 export function pickSpec(

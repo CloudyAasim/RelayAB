@@ -14,7 +14,7 @@ import {
   updateMediaProvider,
   MediaProviderValidationError,
 } from "@/lib/db/media-providers";
-import { validateMediaSpecs } from "@/lib/media/spec";
+import { validateMediaSpecs, type MediaProvider } from "@/lib/media/spec";
 
 export const dynamic = "force-dynamic";
 
@@ -84,6 +84,14 @@ export async function PATCH(
       ...(typeof body.apiKey === "string" && body.apiKey ? { apiKey: body.apiKey } : {}),
       ...(typeof body.enabled === "boolean" ? { enabled: body.enabled } : {}),
       ...(typeof body.priority === "number" ? { priority: body.priority } : {}),
+      ...(typeof body.mode === "string" ? { mode: body.mode as MediaProvider["mode"] } : {}),
+      ...(Array.isArray(body.passthroughPaths)
+        ? {
+            passthroughPaths: body.passthroughPaths.filter(
+              (value): value is string => typeof value === "string",
+            ),
+          }
+        : {}),
       ...(body.models ? { models: body.models as never } : {}),
       ...(Array.isArray(body.specs) ? { specs: body.specs } : {}),
     });

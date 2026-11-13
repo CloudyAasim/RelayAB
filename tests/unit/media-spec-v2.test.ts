@@ -19,6 +19,8 @@ const provider: MediaProvider = {
   encryptedApiKey: encryptSecret("k"),
   enabled: true,
   priority: 1,
+    mode: "advanced",
+    passthroughPaths: [],
   models: {
     hailuo: { upstreamId: "MiniMax-Hailuo-02", pricePerItem: 500, enabled: true },
     h3: { upstreamId: "MiniMax-H3", pricePerItem: 800, enabled: true },
