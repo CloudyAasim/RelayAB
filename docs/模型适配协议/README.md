@@ -74,8 +74,9 @@
 
 - **`metadata.modes` 只写你真的映射了的**。写了 `image-to-video` 却没映射首帧参数，
   运营者会在目录里看到「支持图生视频」，实际传图进来被当文生视频跑。
-- **`limits.timeoutMs` 写厂商真正需要的那个数**，不要写小、也不许超过 **3500000**
-  （约 1 小时，只是拦住「把秒写成毫秒」这类笔误，**不是**平台能力上限）。
+- **`limits.timeoutMs` 写厂商真正需要的那个数**，不要写小。它是**唯一**的期限，网关不会因为
+  "觉得太久"而拒绝；超过 **3500000**（约 1 小时）只会多一条**提示**（提醒你别把秒写成毫秒），
+  spec 照样保存。
   等待期间网关会向客户端发**心跳**（JSON 前导空白），所以代理的空闲超时不会把慢调用掐断；
   真正的期限就是 spec 自己声明的这个数。换宿主机不需要改 spec。
 
@@ -319,7 +320,7 @@
 | `limits` 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `maxN` | number | 上游接受的最大张数，客户端 `n` 超过就报 `400 n_too_large` |
-| `timeoutMs` | number | 上游超时，**必须 ≤ 3500000**（约 1 小时的 sanity 上限，不是平台限制）。**它会真的生效**：整次调用（含轮询）到这个时间就中止；等待期间由心跳保活 |
+| `timeoutMs` | number | 上游超时，**唯一的期限**（任何正整数都接受；超过 3500000 只是笔误提示，不拒绝）。**它会真的生效**：整次调用（含轮询）到这个时间就中止；等待期间由心跳保活 |
 
 #### 0.4.2 transport 与 auth
 
@@ -532,7 +533,7 @@ binary/stream/sse 回传、空结果检测、按 `successCount` 计费。
 9. `$dataUrl` / `$file` 只往请求用；`$fetch` 只往响应用；`$from` / `$to` 两边都能用。
 10. 要 base64 就确认上游编码，并用 `encoding` 声明；**不要假设是 base64**。
 11. `metadata.modes` 只写真的映射了的。
-12. `limits.timeoutMs ≤ 3500000`（sanity 上限，不是平台限制）。
+12. `limits.timeoutMs` 是厂商的窗口：任意正整数都接受；超过 3500000 只是提示。
 
 ### 0.6 不确定时的决策规则
 
@@ -681,7 +682,7 @@ pnpm spec-check my-specs.json
 - [ ] `$dataUrl` / `$file` 只出现在 `request`，`$fetch` 只出现在 `response`？（`$from`/`$to` 两边都可以）
 - [ ] multipart 里的**字符串 vs 布尔**都对得上厂商文档？（`"false"` ≠ `false`）
 - [ ] `metadata.modes` 里每一项都有对应的请求映射，且用词与其它能力一致？
-- [ ] `limits.timeoutMs ≤ 3500000`？
+- [ ] `limits.timeoutMs` 是否真的等于厂商需要的那个数？（超过 3500000 会有一条笔误提示，但不是拒绝）
 
 > 完整版（带每条的真实翻车案例）在 §17。
 
@@ -1390,7 +1391,7 @@ upstream task did not finish in time (last status "Rendering" — check async.po
 
 轮询在请求内完成。**等待期间网关会向客户端发心跳**（JSON 前导空白，body 仍然是一个合法
 JSON），所以代理的空闲超时不会掐断慢调用；真正的期限由 spec 自己声明
-（`limits.timeoutMs`，sanity 上限 3500000 毫秒）。
+（`limits.timeoutMs`；超过 3500000 毫秒只是笔误提示，不拒绝）。
 
 ---
 
@@ -1434,7 +1435,7 @@ JSON），所以代理的空闲超时不会掐断慢调用；真正的期限由 
 保存前会跑两轮检查，**目的是让错误在后台暴露，而不是在 3 点钟的线上请求里**。
 
 **逐份 spec（`parseMediaSpec`）**：必填字段、类型、未知顶层字段、
-`transport.path` 的占位符、`limits.timeoutMs ≤ 3500000`、`statusMap` 有没有兜底项、
+`transport.path` 的占位符、`limits.timeoutMs` 是否等于厂商窗口、`statusMap` 有没有兜底项、
 错误规则会不会永远不触发……
 
 **整组 spec（`validateMediaSpecs`）**：同 capability 多份是否都用 `models` 区分、
@@ -1481,7 +1482,7 @@ JSON），所以代理的空闲超时不会掐断慢调用；真正的期限由 
 
 | 限制 | 说明 |
 | --- | --- |
-| 异步上限由 spec 决定 | 轮询在请求内完成；等待期间向客户端发心跳，代理的空闲超时不会掐断它，**`limits.timeoutMs` 是会被兑现的期限**。唯一的硬边界是它不是无限大（sanity 3500000），也不再有任何 serverless/宿主的 300 秒说法 |
+| 异步上限由 spec 决定 | 轮询在请求内完成；等待期间向客户端发心跳，代理的空闲超时不会掐断它，**`limits.timeoutMs` 是会被兑现的期限**。它**不是**由我们的某个上限决定的（3500000 只是笔误提示，不拒绝保存），也不再有任何 serverless/宿主的 300 秒说法 |
 | 不跨 spec 组合 | 一个供应商内可以按模型选 spec，但不能把两份 spec 的请求**拼**在一起 |
 | `$fetch` 只支持一步 | id → url 可以；「A 换 B 再换 C」不行 |
 | 不拼接流式音频 | `responseMode: "sse"` 只汇总 **url 类** items；跨事件拼接音频字节流不支持 |

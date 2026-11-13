@@ -1003,17 +1003,22 @@ export function parseMediaSpec(raw: unknown): SpecParse {
       }
       const timeout = limits.timeoutMs;
       if (typeof timeout === "number" && timeout > MAX_SPEC_TIMEOUT_MS) {
-        // A sanity bound, not a platform limit: it exists so `600` written where
-        // seconds were meant is caught here instead of becoming a five-second
-        // spec. The vendor's own window is the real deadline, and the relay
-        // keeps the connection alive while waiting for it
-        // (`lib/http/heartbeat.ts` + `lib/http/transport.ts`).
-        //
-        // This message used to say "300000 is the serverless ceiling" — a number
-        // and a reason that had both stopped being true a year earlier.
-        errors.push(
-          `limits.timeoutMs: ${MAX_SPEC_TIMEOUT_MS} is the sanity bound (about an hour); ` +
-            `a real vendor window belongs well under it`,
+        /**
+         * A sanity **warning**, not a ceiling.
+         *
+         * The deadline belongs to the vendor: a batch vendor that takes two
+         * hours is unusual, not illegal, and this relay has no business
+         * refusing a spec because its own idea of "long" is an hour. Refusing
+         * here would be one more number of ours deciding how long a vendor may
+         * take — the exact mistake this chain of fixes removed (2026-11-13).
+         *
+         * What is still worth saying out loud is the typo it catches: `600`
+         * written where seconds were meant.
+         */
+        warnings.push(
+          `limits.timeoutMs: ${timeout}ms is past the ${MAX_SPEC_TIMEOUT_MS}ms sanity mark — ` +
+            `accepted, and fine if the vendor really is that slow; check it is not seconds ` +
+            `written where milliseconds were meant`,
         );
       }
     }

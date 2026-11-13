@@ -980,10 +980,12 @@ describe("validation surface", () => {
     expect(parsed.errors.join(" ")).toContain("reponse: unknown spec field");
   });
 
-  it("rejects a timeout beyond the deployment's ceiling", () => {
-    // The number is imported, not typed: this test used to pin "300_000" and
-    // stayed green for a year after the ceiling it described had stopped
-    // existing (the deployment moved off serverless in 2026-10-01).
+  it("accepts a timeout past the sanity mark, with a warning rather than a refusal", () => {
+    // The deadline belongs to the vendor. A window longer than the sanity mark
+    // is unusual, not illegal, and refusing it would be one more number of ours
+    // deciding how long a vendor may take (2026-11-13). The number is imported,
+    // not typed: this test used to pin "300_000" and stayed green for a year
+    // after the ceiling it described had stopped existing.
     const parsed = parseMediaSpec({
       specVersion: 1,
       capability: "music.generate",
@@ -992,9 +994,10 @@ describe("validation surface", () => {
       response: { items: [] },
       limits: { timeoutMs: MAX_SPEC_TIMEOUT_MS + 1_000 },
     });
-    expect(parsed.ok).toBe(false);
-    if (parsed.ok) return;
-    expect(parsed.errors.join(" ")).toContain(String(MAX_SPEC_TIMEOUT_MS));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.warnings.join(" ")).toContain(String(MAX_SPEC_TIMEOUT_MS));
+    expect(parsed.spec.limits?.timeoutMs).toBe(MAX_SPEC_TIMEOUT_MS + 1_000);
   });
 
   it("accepts a timeout exactly at the ceiling", () => {

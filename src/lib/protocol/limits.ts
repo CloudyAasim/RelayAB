@@ -26,14 +26,17 @@
  */
 
 /**
- * The most a spec may declare — a sanity check, not a platform limit.
+ * The point past which a spec's window gets a **warning** — never a rejection.
  *
- * An earlier version of this constant documented "300000 is the serverless
- * ceiling". The deployment left serverless on 2026-10-01; the constant stayed,
- * the document repeated it, and two specs were saved against a limit that no
- * longer existed. A bound whose only job is to catch `600` meaning six hundred
- * *milliseconds* should be far away from any real vendor window, so that it can
- * never be mistaken for one.
+ * The deadline belongs to the vendor. A batch vendor that takes two hours is
+ * unusual, not illegal, and a relay is in no position to decide how long its
+ * upstreams may take. This number therefore does one job only: it is where a
+ * spec saying `600` (meaning six hundred *milliseconds*) gets a sentence telling
+ * the operator it looks like seconds written as milliseconds.
+ *
+ * It used to be a hard ceiling, and before that it documented "300000 is the
+ * serverless ceiling" — a number and a reason that had both stopped being true a
+ * year earlier (see §89 of the change log).
  */
 export const MAX_SPEC_TIMEOUT_MS = 3_500_000;
 
