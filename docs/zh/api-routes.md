@@ -662,6 +662,7 @@ Realtime 客户端调到**。**只服务文本**：音频事件（`input_audio_b
 | `POST /v1/media/jobs` | JSON `{capability,model,prompt,…}`，`capability` ∈ `image.generate`/`image.edit`/`video.generate`/`music.generate` | **异步任务**：立刻返回 `202` + 任务，不占着连接；`image.edit` 的参考图放 `images`（data URL 或公网 URL，1–16 张） |
 | `GET /v1/media/jobs/{id}` | — | 查任务：`status` ∈ `queued`/`running`/`succeeded`/`failed`；成功时 `result` 与同步接口同形（`{created,data:[…]}`） |
 | `DELETE /v1/media/jobs/{id}` | — | 取消：排队中的直接失败，运行中的中止上游，`error.code = job_cancelled` |
+| `ANY /v1/raw/[provider]/[...path]` | 厂商原生 body / query（附加 `?model=`） | **原样透传**：方法、路径、query、body、响应都原样转发，只注入该服务商的密钥。`?model=` 必填（白名单 + 计费）；提交（非 GET）2xx 计一次费，轮询不计 |
 
 > **重启后**：已经到达上游的任务（spec 里有 `async.poll`）会**继续轮询**到出结果 —— 上游任务不会因为我们重启而停下。没到达上游的任务、以及同步厂商（没有上游任务可续）会标成 `failed` / `job_interrupted`，需要重新提交。
 | `GET /v1/audio/voices` | 无 | 列出本部署可用的音色（见 §2.6.1） |

@@ -334,6 +334,8 @@ const zhCN: Dict = {
   "docs.media.image": "文生图 — POST /v1/images/generations（JSON）",
   "docs.media.edit": "图生图 — POST /v1/images/edits（multipart，image 可重复，1–16 张参考图）",
   "docs.media.jobs": "异步任务 — POST /v1/media/jobs（立刻 202，再轮询 GET /v1/media/jobs/[id]）",
+  "docs.media.raw": "原样透传 — ANY /v1/raw/[provider]/[...path]?model=…（厂商原生接口，不经 spec）",
+
   "docs.media.video": "视频生成 — POST /v1/videos/generations（JSON）",
   "docs.media.tts": "语音合成 — POST /v1/audio/speech（返回音频字节）",
   "docs.media.stt": "语音转写 — POST /v1/audio/transcriptions（multipart，上传 file）",
@@ -1945,6 +1947,8 @@ const en: Dict = {
   "docs.media.image": "Text to image — POST /v1/images/generations (JSON)",
   "docs.media.edit": "Image to image — POST /v1/images/edits (multipart, repeat image for 1–16 references)",
   "docs.media.jobs": "Async jobs — POST /v1/media/jobs (202 at once, then poll GET /v1/media/jobs/[id])",
+  "docs.media.raw": "Verbatim passthrough — ANY /v1/raw/[provider]/[...path]?model=… (the vendor own API, no spec)",
+
   "docs.media.video": "Video generation — POST /v1/videos/generations (JSON)",
   "docs.media.tts": "Speech synthesis — POST /v1/audio/speech (returns audio bytes)",
   "docs.media.stt": "Transcription — POST /v1/audio/transcriptions (multipart, upload a file)",
