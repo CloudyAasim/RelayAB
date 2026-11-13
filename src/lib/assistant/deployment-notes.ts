@@ -78,7 +78,7 @@ const NOTES: Note[] = [
   },
   {
     topic: "nginx",
-    keywords: ["nginx", "超时", "timeout", "body", "sse", "流式", "缓冲"],
+    keywords: ["nginx", "超时", "timeout", "body", "sse", "流式", "缓冲", "心跳", "长任务"],
     body: [
       "Dokku 的 nginx 默认值对长响应和图片编辑都不够，需要调：",
       "",
@@ -89,6 +89,12 @@ const NOTES: Note[] = [
       "60 秒读超时会切断长回答，1m body 限制会拒绝 /v1/images/edits 里的 base64 图片。",
       "流式本身是正常的：应用侧已经带 Cache-Control: no-transform，实测 25 秒的流式回答是",
       "每 300-350 毫秒到达一块，没有被缓冲。",
+      "",
+      "**慢的媒体生成（图片 / 视频）不再受 nginx 读超时影响。** `proxy_read_timeout` 是",
+      "**空闲**计时器：网关在等待上游时会先发一拍心跳，之后每 15 秒一次（JSON 前导空白，",
+      "body 依然能解析），所以代理始终看得到流量。总时长由该模型 spec 的 `limits.timeoutMs`",
+      "决定（sanity 上限 3500000 毫秒），不是 300 秒、也不是 nginx 的那个数。",
+      "**不要告诉用户「网关有 300 秒上限」** —— 那个说法 2026-10-01 迁出 Vercel 之后就不成立了。",
     ].join("\n"),
   },
   {

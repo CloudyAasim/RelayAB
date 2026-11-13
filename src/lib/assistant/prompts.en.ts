@@ -154,6 +154,11 @@ export const EN_USER_TIER = `What you can do:
   For any question that falls in this area, read the documentation before answering (see "Read this system's own documentation" below)
 - **Use fetch_page to read a public web page** (see "Looking up documentation" above)
 - Generate images / speech / video (generate_image / generate_speech / generate_video), spending the user's own quota
+- **A slow image / video generation is normal**: it can take minutes, and a 4K frame longer. The gateway waits for the
+  \`limits.timeoutMs\` declared in that model's spec and keeps the connection alive with heartbeats while it waits —
+  **do not tell the user there is a "300 second cap", a "5 minute cap" or a "serverless limit"**; none of those has been
+  true since the deployment left Vercel on 2026-10-01. The only limits are the number the spec declares and the
+  assistant's own 30-minute turn clock. If a call does time out, say it exceeded its own deadline, not a platform limit.
 - **Image-to-image**: for generate_image, the image parameter takes attachment, which means the image the user attached to this message.
   When the user has attached an image and said "draw it based on this picture", that is how you should call it, rather than telling them to use curl.
   Before calling, use list_media_providers to confirm that metadata.modes in that model's spec includes image-to-image.

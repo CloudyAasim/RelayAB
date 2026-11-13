@@ -37,6 +37,7 @@ import { readTextProtocolDoc } from "../docs/text-protocol-doc";
 import { getProviderById, listProviders } from "../db/providers";
 import { MODEL_PURPOSES } from "../db/types";
 import { collectVoiceCatalogue } from "../media/voices";
+import { DEFAULT_SPEC_TIMEOUT_MS } from "@/lib/protocol/limits";
 import { listUsers, getUserById } from "../db/users";
 import { getAssistantCredential } from "../db/assistant-keys";
 import { listApiKeysByUser, listApiKeyIdsForUsage } from "../db/keys";
@@ -150,8 +151,7 @@ export interface ToolContext {
    * the definitions is the first half; a model can still emit a call by name,
    * so `executeTool` refuses when this is false. `undefined` means on, which is
    * what every non-assistant caller wants.
-   */
-  webSearchEnabled?: boolean;
+   */  webSearchEnabled?: boolean;
   /**
    * Why this turn may not search.
    *
@@ -170,9 +170,33 @@ export interface ToolContext {
    * the operator's ceiling is `MAX_SEARCH_RESULTS`.
    */
   webSearchLimit?: number;
+  /**
+   * When this turn runs out of clock, as epoch milliseconds.
+   *
+   * Media tools wait for vendors that may legitimately need minutes (a 4K frame,
+   * a video job). They used to carry their own 240s abort — a second, smaller
+   * turn limit that nobody had declared, and the same number the routes had
+   * before 2026-11-13 — so a spec allowed 600s died at 240s inside a chat while
+   * working over the public API. The turn's own cap is the only bound they add.
+   */
+  turnDeadlineAt?: number;
 }
 
-/** A media file the tool produced, for the caller to store and hand a URL back. */
+/** A media file the tool produced, for the caller to store and hand a URL back. *//**
+ * How long a media tool may run.
+ *
+ * The turn's own clock, not a number of its own. Until 2026-11-13 these tools
+ * carried a fixed 240-second abort: a spec allowed 600s worked over the
+ * public API and died at 240s inside a chat, with no way for the user to know
+ * why. The vendor's window is declared in the spec (`limits.timeoutMs`) and
+ * enforced by `executeMediaRequest`; this signal only stops a call that would
+ * outlive the turn's own 30-minute cap.
+ */
+function mediaCallSignal(ctx: ToolContext): AbortSignal {
+  const deadline = ctx.turnDeadlineAt ?? Date.now() + DEFAULT_SPEC_TIMEOUT_MS;
+  return AbortSignal.timeout(Math.max(1_000, deadline - Date.now()));
+}
+
 export interface RawArtifact {
   kind: ArtifactKind;
   contentType: string;
@@ -1903,7 +1927,7 @@ async function transcribeAudio(
     },
     apiKey: ctx.account.apiKey,
     user: ctx.account.user,
-    signal: AbortSignal.timeout(240_000),
+    signal: mediaCallSignal(ctx),
   });
   const latencyMs = Date.now() - started;
 
@@ -2019,7 +2043,7 @@ async function mediaGenerate(
         },
         apiKey: ctx.account.apiKey,
         user: ctx.account.user,
-        signal: AbortSignal.timeout(240_000),
+        signal: mediaCallSignal(ctx),
       });
       const latencyMs = Date.now() - started;
       if (!outcome.ok) {
@@ -2060,7 +2084,7 @@ async function mediaGenerate(
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${ctx.relayKey}` },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(240_000),
+      signal: mediaCallSignal(ctx),
     });
     const latencyMs = Date.now() - started;
 

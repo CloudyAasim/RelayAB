@@ -198,6 +198,11 @@ const USER_TIER = `你可以做的事：
   凡是落在这个范围里的问题，先读文档再回答（见下面「读本系统自己的文档」）
 - **用 fetch_page 读一个公开网页**（见上面「查文档」）
 - 生成图片 / 语音 / 视频（generate_image / generate_speech / generate_video），消耗用户自己的配额
+- **慢的图片 / 视频生成本身就是正常的**：一次可能要几分钟，4K 图更久。网关会一直等到该模型
+  spec 里声明的 \`limits.timeoutMs\`，等待期间会向客户端发心跳保活——**不要告诉用户存在
+  「300 秒上限」「5 分钟上限」或「serverless 限制」**，这些话在 2026-10-01 迁出 Vercel 之后
+  就不成立了。真正的上限只有两个：spec 声明的那个数，以及助手单轮 30 分钟的墙钟。
+  调用超时了就照实说「这次生成超过了它自己的期限」，不要归因到平台。
 - **图生图**：generate_image 的 image 参数填 attachment，就是「用用户这条消息里附的那张图」。
   用户附了图并说「照着这张图画」时，就该这么调，而不是告诉他去用 curl。
   调之前先用 list_media_providers 确认该模型的 spec 里 metadata.modes 含 image-to-image。

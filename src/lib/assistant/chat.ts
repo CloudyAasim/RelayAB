@@ -672,6 +672,14 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
   // behavior, and only an explicit false removes the tool.
   const webSearch = opts.webSearchEnabled !== false;
   const tools = toolDefinitions(isAdmin, { webSearch }, locale);
+  /**
+   * The turn's own clock, taken once.
+   *
+   * The tool context needs it, and so does the loop's wall-clock check further
+   * down — two `Date.now()` calls would be two slightly different deadlines, and
+   * a media tool bounded by the other one would cut a call the turn still allows.
+   */
+  const turnStartedAt = Date.now();
   const ctx: ToolContext = {
     user,
     ...(credential.kind === "key" ? { relayKey: credential.relayKey } : {}),
@@ -685,6 +693,14 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
     webSearchEnabled: webSearch,
     ...(opts.webSearchDisabledReason ? { webSearchDisabledReason: opts.webSearchDisabledReason } : {}),
     ...(opts.webSearchLimit !== undefined ? { webSearchLimit: opts.webSearchLimit } : {}),
+    /**
+     * When this turn runs out of clock.
+     *
+     * A media tool waits for a vendor that may legitimately need ten minutes; a
+     * fixed per-call timeout would be a second, smaller turn limit that nobody
+     * declared (2026-11-13: the same 240s that the routes had).
+     */
+    turnDeadlineAt: turnStartedAt + MAX_TURN_MS,
   };
 
   // The user's turn goes in first so it is persisted even if the upstream is
@@ -751,7 +767,7 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
   let loopingTurn = false;
   /** Set the moment the model asks the user something. Ends the turn. */
   let askedQuestion: UserQuestion | undefined;
-  const startedAt = Date.now();
+  const startedAt = turnStartedAt;
   /**
    * The one ceiling on this turn, handed down to every call in it.
    *
