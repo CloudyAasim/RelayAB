@@ -122,20 +122,38 @@ export function MediaProviderForm({ provider, templates, onSaved }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2">
+      {/* Same two-column first row as the normal provider form: identity, then
+          how this vendor is addressed. */}
+      <div className="grid grid-cols-2 gap-4">
         <Input
           label={t("admin.mediaProviders.name")}
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
         />
-        <Input
-          label={t("admin.mediaProviders.baseUrl")}
-          value={baseUrl}
-          onChange={(e) => setBaseUrl(e.target.value)}
-          placeholder="https://api.example.com"
-        />
+        <div>
+          <label className="mb-1.5 block text-sm font-medium">
+            {t("admin.mediaProviders.mode")}
+          </label>
+          <select
+            value={mode}
+            onChange={(e) => setMode(e.target.value as MediaProviderMode)}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          >
+            <option value="advanced">{t("admin.mediaProviders.mode.advanced")}</option>
+            <option value="simple">{t("admin.mediaProviders.mode.simple")}</option>
+            <option value="passthrough">{t("admin.mediaProviders.mode.passthrough")}</option>
+            <option value="restricted">{t("admin.mediaProviders.mode.restricted")}</option>
+          </select>
+        </div>
       </div>
+
+      <Input
+        label={t("admin.mediaProviders.baseUrl")}
+        value={baseUrl}
+        onChange={(e) => setBaseUrl(e.target.value)}
+        placeholder="https://api.example.com"
+      />
 
       <Input
         label={`${t("admin.mediaProviders.apiKey")} (${t("admin.providers.edit.leaveBlank")})`}
@@ -145,7 +163,7 @@ export function MediaProviderForm({ provider, templates, onSaved }: Props) {
         placeholder={editing ? "••••••" : ""}
       />
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-2 gap-4">
         <Input
           label={t("admin.mediaProviders.priority")}
           type="number"
@@ -154,9 +172,8 @@ export function MediaProviderForm({ provider, templates, onSaved }: Props) {
         />
         <label
           htmlFor="media-provider-enabled"
-          className="flex items-center gap-2 self-end pb-2 text-sm text-foreground"
+          className="flex items-center gap-2 pt-6 text-sm"
         >
-          {/* "Is this provider live" is a switch, not a checkbox. */}
           <Switch
             id="media-provider-enabled"
             checked={enabled}
@@ -166,64 +183,41 @@ export function MediaProviderForm({ provider, templates, onSaved }: Props) {
         </label>
       </div>
 
-      <label className="block space-y-1">
-        <span className="text-sm font-medium text-foreground">
-          {t("admin.mediaProviders.mode")}
-        </span>
-        <select
-          value={mode}
-          onChange={(e) => setMode(e.target.value as MediaProviderMode)}
-          className="w-full rounded-md border border-input bg-background p-2 text-sm"
-        >
-          <option value="advanced">{t("admin.mediaProviders.mode.advanced")}</option>
-          <option value="simple">{t("admin.mediaProviders.mode.simple")}</option>
-          <option value="passthrough">{t("admin.mediaProviders.mode.passthrough")}</option>
-          <option value="restricted">{t("admin.mediaProviders.mode.restricted")}</option>
-        </select>
-        <span className="block text-xs text-muted-foreground">
-          {t("admin.mediaProviders.modeHint")}
-        </span>
-      </label>
-
       {mode === "restricted" && (
-        <label className="block space-y-1">
-          <span className="text-sm font-medium text-foreground">
+        <div>
+          <label className="mb-1.5 block text-sm font-medium">
             {t("admin.mediaProviders.passthroughPaths")}
-          </span>
+          </label>
           <textarea
             value={passthroughPaths}
             onChange={(e) => setPassthroughPaths(e.target.value)}
-            rows={4}
+            rows={3}
             spellCheck={false}
             placeholder={"/v1/videos\n/v1/images/edits"}
-            className="w-full rounded-md border border-input bg-background p-2 font-mono text-xs"
+            className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm"
           />
-          <span className="block text-xs text-muted-foreground">
-            {t("admin.mediaProviders.passthroughPathsHint")}
-          </span>
-        </label>
+        </div>
       )}
 
-      <label className="block space-y-1">
-        <span className="text-sm font-medium text-foreground">
+      <div>
+        <label className="mb-1.5 block text-sm font-medium">
           {t("admin.mediaProviders.models")}
-        </span>
+        </label>
         <textarea
           value={models}
           onChange={(e) => setModels(e.target.value)}
           rows={5}
           spellCheck={false}
-          className="w-full rounded-md border border-input bg-background p-2 font-mono text-xs"
+          placeholder={'{\n  "image-01": { "upstreamId": "image-01", "pricePerItem": 2, "enabled": true }\n}'}
+          className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm"
         />
-        <span className="block text-xs text-muted-foreground">
-          {t("admin.mediaProviders.modelsHint")}
-        </span>
-      </label>
+      </div>
 
-      <label className="block space-y-1">
-        <span className="flex flex-wrap items-center gap-3 text-sm font-medium text-foreground">
+      <div>
+        <label className="mb-1.5 flex flex-wrap items-center gap-3 text-sm font-medium">
           {t("admin.mediaProviders.specs")}
-          {templates && !editing &&
+          {templates &&
+            !editing &&
             templates.map((template) => (
               <button
                 key={template.id}
@@ -234,18 +228,15 @@ export function MediaProviderForm({ provider, templates, onSaved }: Props) {
                 {template.name}
               </button>
             ))}
-        </span>
+        </label>
         <textarea
           value={specs}
           onChange={(e) => setSpecs(e.target.value)}
-          rows={14}
+          rows={12}
           spellCheck={false}
-          className="w-full rounded-md border border-input bg-background p-2 font-mono text-xs"
+          className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm"
         />
-        <span className="block text-xs text-muted-foreground">
-          {t("admin.mediaProviders.specsHint")}
-        </span>
-      </label>
+      </div>
 
       {error && (
         <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">

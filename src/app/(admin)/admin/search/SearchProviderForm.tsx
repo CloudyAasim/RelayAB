@@ -233,23 +233,14 @@ export function SearchProviderForm({ provider, templates, onSaved }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2">
+      {/* Identity and vendor in one row, exactly like the normal provider form. */}
+      <div className="grid grid-cols-2 gap-4">
         <Input
           label={t("admin.searchProviders.name")}
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
         />
-        <Input
-          label={t("admin.searchProviders.serviceId")}
-          value={serviceId}
-          onChange={(e) => setServiceId(e.target.value)}
-          placeholder="searxng"
-          hint={t("admin.searchProviders.serviceIdHint")}
-        />
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label className="mb-1.5 block text-sm font-medium">
             {t("admin.searchProviders.kind")}
@@ -272,24 +263,22 @@ export function SearchProviderForm({ provider, templates, onSaved }: Props) {
               <option value={kind}>{kind}</option>
             )}
           </select>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {specVendor
-              ? t("admin.searchProviders.kindHintFromSpec")
-              : t("admin.searchProviders.kindHint")}
-          </p>
         </div>
       </div>
+
+      <Input
+        label={t("admin.searchProviders.serviceId")}
+        value={serviceId}
+        onChange={(e) => setServiceId(e.target.value)}
+        placeholder="searxng"
+      />
 
       <Input
         label={t("admin.searchProviders.baseUrl")}
         value={baseUrl}
         onChange={(e) => setBaseUrl(e.target.value)}
         placeholder={kind === "searxng" ? "http://relay-search.web:8080" : "https://api.example.com"}
-        hint={
-          endpoint
-            ? `${t("admin.searchProviders.baseUrlHint")} → ${endpoint}`
-            : t("admin.searchProviders.baseUrlHint")
-        }
+        {...(endpoint ? { hint: `→ ${endpoint}` } : {})}
       />
 
       <Input
@@ -298,17 +287,15 @@ export function SearchProviderForm({ provider, templates, onSaved }: Props) {
         value={apiKey}
         onChange={(e) => setApiKey(e.target.value)}
         placeholder={editing ? "••••••" : ""}
-        hint={t("admin.searchProviders.apiKeyHint")}
       />
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-3 gap-4">
         <Input
           label={t("admin.searchProviders.priority")}
           type="number"
           min={0}
           value={priority}
           onChange={(e) => setPriority(e.target.value)}
-          hint={t("admin.searchProviders.priorityHint")}
         />
         <Input
           label={t("admin.searchProviders.creditsPerCall")}
@@ -317,24 +304,18 @@ export function SearchProviderForm({ provider, templates, onSaved }: Props) {
           step={1}
           value={creditsPerCall}
           onChange={(e) => setCreditsPerCall(e.target.value)}
-          hint={t("admin.searchProviders.creditsHint")}
         />
         <label
           htmlFor="search-provider-enabled"
-          className="flex items-center gap-2 self-end pb-2 text-sm text-foreground"
+          className="flex items-center gap-2 pt-6 text-sm"
         >
-          {/*
-            A switch, not a checkbox: this says "this provider is live", and a
-            box in a form full of settings does not say that. Clicking the
-            label works too, because the label points at the control.
-          */}
           <Switch id="search-provider-enabled" checked={enabled} onCheckedChange={setEnabled} />
           {t("dashboard.status.enabled")}
         </label>
       </div>
 
-      <label className="block space-y-1">
-        <span className="flex flex-wrap items-center gap-3 text-sm font-medium text-foreground">
+      <div>
+        <label className="mb-1.5 flex flex-wrap items-center gap-3 text-sm font-medium">
           {t("admin.searchProviders.spec")}
           {templates &&
             templates.map((template) => (
@@ -348,17 +329,16 @@ export function SearchProviderForm({ provider, templates, onSaved }: Props) {
                 {template.name}
               </button>
             ))}
-        </span>
+        </label>
         <textarea
           value={specText}
           onChange={(e) => setSpecText(e.target.value)}
           rows={14}
           spellCheck={false}
           placeholder={'{\n  "specVersion": 1,\n  "transport": { … }\n}'}
-          className="w-full rounded-md border border-input bg-background p-2 font-mono text-xs"
+          className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm"
         />
-        <span className="block text-xs text-muted-foreground">{t("admin.searchProviders.specHint")}</span>
-      </label>
+      </div>
 
       {error && (
         <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
