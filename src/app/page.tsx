@@ -126,7 +126,7 @@ export default async function WelcomePage() {
           )}
         </div>
 
-        {/* ---- Endpoint ---- */}
+        {/* ---- Endpoint + the protocols that reach it ---- */}
         {openaiBase && (
           <div className="mx-auto mt-10 max-w-2xl sm:mt-12">
             <CopyEndpoint
@@ -134,6 +134,19 @@ export default async function WelcomePage() {
               value={openaiBase}
               hint={t("welcome.endpointHint")}
             />
+            {/*
+              The four protocol surfaces this deployment serves. They used to be
+              two badges at the bottom of the page, under a "also compatible
+              with" line — which was both incomplete (media, search, realtime
+              and the Gemini surface exist) and the kind of label the layout
+              already replaces.
+            */}
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+              <Badge tone="primary">OpenAI</Badge>
+              <Badge tone="info">Anthropic Messages</Badge>
+              <Badge tone="neutral">Gemini</Badge>
+              <Badge tone="neutral">Realtime</Badge>
+            </div>
           </div>
         )}
 
@@ -197,14 +210,7 @@ export default async function WelcomePage() {
           </div>
         </section>
 
-        {/* ---- Compatibility footer ---- */}
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-2 sm:mt-12">
-          <span className="text-xs text-muted-foreground">
-            {t("welcome.compat")}
-          </span>
-          <Badge tone="primary">OpenAI Chat Completions</Badge>
-          <Badge tone="info">Anthropic Messages</Badge>
-        </div>
+
       </div>
     </div>
   );
