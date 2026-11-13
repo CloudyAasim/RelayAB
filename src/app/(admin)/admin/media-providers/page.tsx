@@ -8,7 +8,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { listMediaProviders, toPublicMediaProvider } from "@/lib/db/media-providers";
 import { MEDIA_TEMPLATES } from "@/lib/media/seeds";
-import { servedCapabilities } from "@/lib/media/spec";
+import { isPassthroughMode, servedCapabilities } from "@/lib/media/spec";
 import { Card } from "@/components/ui/Card";
 import {
   Table,
@@ -82,11 +82,29 @@ export default async function MediaProvidersPage() {
                 {providers.map((p) => (
                   <TR key={p.id}>
                     <TD>
-                      <div className="font-medium text-foreground">{p.name}</div>
+                      <div className="flex items-center gap-2 font-medium text-foreground">
+                        {p.name}
+                        {/* Only the passthrough modes are worth a badge: they are
+                            the ones where the routes a client may use differ. */}
+                        {isPassthroughMode(p.mode) && (
+                          <Badge
+                            tone="neutral"
+                            title={
+                              p.mode === "restricted" ? p.passthroughPaths.join("、") : undefined
+                            }
+                          >
+                            {t(`admin.mediaProviders.mode.${p.mode}`)}
+                          </Badge>
+                        )}
+                      </div>
                       <div className="font-mono text-xs text-muted-foreground">{p.id}</div>
                     </TD>
                     <TD>
-                      {p.specs.length === 0 ? (
+                      {isPassthroughMode(p.mode) ? (
+                        // No spec routes are served, so listing capabilities
+                        // would describe something nobody can call.
+                        <span className="text-muted-foreground">—</span>
+                      ) : p.specs.length === 0 ? (
                         <Badge tone="neutral">—</Badge>
                       ) : (
                         <div className="flex flex-wrap gap-1">

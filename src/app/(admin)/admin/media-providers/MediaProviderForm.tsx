@@ -61,6 +61,12 @@ export function MediaProviderForm({ provider, templates, onSaved }: Props) {
   const [passthroughPaths, setPassthroughPaths] = useState(
     (provider?.passthroughPaths ?? []).join("\n"),
   );
+  /**
+   * Passthrough modes have no spec: there is no translation, so the JSON editor
+   * is not a field they can use. Showing it invited people to write a spec that
+   * would never be read.
+   */
+  const usesSpecs = mode === "advanced" || mode === "simple";
   const [models, setModels] = useState(JSON.stringify(provider?.models ?? {}, null, 2));
   const [specs, setSpecs] = useState(JSON.stringify(provider?.specs ?? [], null, 2));
   const [busy, setBusy] = useState(false);
@@ -90,7 +96,10 @@ export function MediaProviderForm({ provider, templates, onSaved }: Props) {
           .map((value) => value.trim())
           .filter(Boolean),
         models: JSON.parse(models),
-        specs: JSON.parse(specs),
+        // Sending `specs` from a passthrough form would overwrite the stored
+        // specs with whatever is left in a hidden box; omitting them keeps the
+        // row intact if the operator switches back.
+        ...(usesSpecs ? { specs: JSON.parse(specs) } : {}),
       };
       // Blank key in edit mode means "keep the stored one".
       if (apiKey || !editing) payload.apiKey = apiKey;
@@ -213,6 +222,7 @@ export function MediaProviderForm({ provider, templates, onSaved }: Props) {
         />
       </div>
 
+      {usesSpecs && (
       <div>
         <label className="mb-1.5 flex flex-wrap items-center gap-3 text-sm font-medium">
           {t("admin.mediaProviders.specs")}
@@ -237,6 +247,7 @@ export function MediaProviderForm({ provider, templates, onSaved }: Props) {
           className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm"
         />
       </div>
+      )}
 
       {error && (
         <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
