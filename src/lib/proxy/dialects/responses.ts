@@ -15,6 +15,7 @@ import { ssePassthrough } from "../stream-tap";
 import type { ApiKey, Provider, User } from "../../db/types";
 import { applyParameterPolicy } from "../../protocol/parameter-policy";
 import { activeSpecFor } from "../../protocol/text-specs";
+import { upstreamDeadline } from "../../http/upstream-deadline";
 import { upstreamRefusal } from "../errors";
 import type { ProxyDeps, ProxyResult, ResponseAPIRequest, StreamUsage } from "../types";
 import { isEventStream, recordFailure, usageFromSsePayload } from "./shared";
@@ -58,10 +59,8 @@ export async function proxyResponsesNative(args: {
 
   // The Responses surface's policy, chosen the same way the OpenAI one is: the
   // entry that governs the surface the client actually called.
-  const { body: policed } = applyParameterPolicy(
-    forwardable,
-    activeSpecFor(provider, "openai-responses") ?? undefined,
-  );
+  const spec = activeSpecFor(provider, "openai-responses") ?? undefined;
+  const { body: policed } = applyParameterPolicy(forwardable, spec);
 
   // 5. Forward request
   // Flatten the request's input into text once: it feeds the credit
@@ -78,6 +77,8 @@ export async function proxyResponsesNative(args: {
   }
 
   let response: Response;
+  // The spec's `limits.timeoutMs` bounds the wait for headers, not the stream.
+  const deadline = upstreamDeadline(signal, spec?.limits?.timeoutMs);
   try {
     response = await fetchImpl(upstreamUrl, {
       method: "POST",
@@ -86,6 +87,7 @@ export async function proxyResponsesNative(args: {
         Authorization: `Bearer ${upstreamKey}`,
       },
       body: JSON.stringify({ ...policed, model: upstreamModel }),
+      ...(deadline.signal ? { signal: deadline.signal } : {}),
     });
   } catch (err) {
     await recordFailure({ apiKey, provider, model: req.model, upstreamModel, error: err });
@@ -94,6 +96,8 @@ export async function proxyResponsesNative(args: {
       status: 502,
       error: { code: "upstream_error", message: String(err) },
     };
+  } finally {
+    deadline.done();
   }
 
   if (!response.ok) {

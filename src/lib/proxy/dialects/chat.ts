@@ -16,6 +16,7 @@ import { ssePassthrough, sseRewrite } from "../stream-tap";
 import { providerFaces, type ApiKey, type Provider, type User } from "../../db/types";
 import { applyParameterPolicy } from "../../protocol/parameter-policy";
 import { activeSpecFor } from "../../protocol/text-specs";
+import { upstreamDeadline } from "../../http/upstream-deadline";
 import { pivotFrameMapper } from "../../protocol/stream-frames";
 import { upstreamRefusal } from "../errors";
 import type {
@@ -102,10 +103,8 @@ export async function proxyChatDirect(args: {
   // client called — not whichever entry happens to be first in the list.
   // No entry for this surface means no policy, which is the correct default and
   // why an unconfigured deployment loses nothing.
-  const { body: policed } = applyParameterPolicy(
-    forwardable,
-    activeSpecFor(provider, "openai-chat") ?? undefined,
-  );
+  const spec = activeSpecFor(provider, "openai-chat") ?? undefined;
+  const { body: policed } = applyParameterPolicy(forwardable, spec);
 
   // 5. Forward the request. Streaming clients get stream=true with the
   // `include_usage` flag so the upstream emits a final usage frame; buffered
@@ -121,6 +120,14 @@ export async function proxyChatDirect(args: {
     : { ...policed, model: upstreamModel, stream: false };
 
   let response: Response;
+  /**
+   * The spec's `limits.timeoutMs` is a deadline for **the upstream's headers**,
+   * not for the answer: an SSE body may legitimately stream for minutes after it
+   * starts. `done()` is called as soon as the fetch resolves, so the timer can
+   * only ever fire while the upstream is silent. See
+   * `lib/http/upstream-deadline.ts`.
+   */
+  const deadline = upstreamDeadline(signal, spec?.limits?.timeoutMs);
   try {
     response = await fetchImpl(upstreamUrl, {
       method: "POST",
@@ -129,10 +136,16 @@ export async function proxyChatDirect(args: {
         Authorization: `Bearer ${upstreamKey}`,
       },
       body: JSON.stringify(forwardBody),
+      // Passed at all only since 2026-11-13: this call had no signal, so a client
+      // that hung up left the upstream request running.
+      ...(deadline.signal ? { signal: deadline.signal } : {}),
     });
   } catch (err) {
     await recordFailure({ apiKey, provider, model: req.model, upstreamModel, error: err });
     return { ok: false, status: 502, error: { code: "upstream_error", message: String(err) } };
+  } finally {
+    // Headers arrived (or the call failed): the stream is the client's clock now.
+    deadline.done();
   }
 
   // Streaming: pipe the upstream SSE through to the client and bill on flush.

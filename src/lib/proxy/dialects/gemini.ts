@@ -18,6 +18,7 @@ import { checkKeyStatus, reasonToHttp } from "../../auth/apikey";
 import { shouldRejectBeforeRequest } from "../../quota/calculator";
 import { applyParameterPolicy } from "../../protocol/parameter-policy";
 import { activeSpecFor } from "../../protocol/text-specs";
+import { upstreamDeadline } from "../../http/upstream-deadline";
 import { pivotFrameMapper, readStreamFacts } from "../../protocol/stream-frames";
 import {
   responsesToGeminiRequest,
@@ -78,14 +79,13 @@ export async function proxyResponsesViaGemini(args: {
 
   // The Responses surface's policy, applied before the conversion: the spec
   // says what this vendor calls things, and the conversion is downstream of it.
-  const { body: policed } = applyParameterPolicy(
-    { ...req },
-    activeSpecFor(provider, "openai-responses") ?? undefined,
-  );
+  const spec = activeSpecFor(provider, "openai-responses") ?? undefined;
+  const { body: policed } = applyParameterPolicy({ ...req }, spec);
 
   const geminiRequest = responsesToGeminiRequest(policed);
 
   let response: Response;
+  const deadline = upstreamDeadline(signal, spec?.limits?.timeoutMs);
   try {
     response = await fetchImpl(upstreamUrl, {
       method: "POST",
@@ -94,6 +94,7 @@ export async function proxyResponsesViaGemini(args: {
         "x-goog-api-key": upstreamKey,
       },
       body: JSON.stringify(geminiRequest),
+      ...(deadline.signal ? { signal: deadline.signal } : {}),
     });
   } catch (err) {
     await recordFailure({
@@ -108,6 +109,8 @@ export async function proxyResponsesViaGemini(args: {
       status: 502,
       error: { code: "upstream_error", message: String(err) },
     };
+  } finally {
+    deadline.done();
   }
 
   if (!response.ok) {
@@ -227,12 +230,14 @@ export async function proxyGeminiDirect(args: {
    * default: a provider configured for another surface has not opted this one
    * into anything.
    */
+  const spec = activeSpecFor(provider, "gemini-generate") ?? undefined;
   const { body: policed } = applyParameterPolicy(
     { ...body } as Record<string, unknown>,
-    activeSpecFor(provider, "gemini-generate") ?? undefined,
+    spec,
   );
 
   let response: Response;
+  const deadline = upstreamDeadline(signal, spec?.limits?.timeoutMs);
   try {
     response = await fetchImpl(upstreamUrl, {
       method: "POST",
@@ -241,6 +246,7 @@ export async function proxyGeminiDirect(args: {
         "x-goog-api-key": upstreamKey,
       },
       body: JSON.stringify(policed),
+      ...(deadline.signal ? { signal: deadline.signal } : {}),
     });
   } catch (err) {
     await recordFailure({ apiKey, provider, model, upstreamModel, error: err });
@@ -249,6 +255,8 @@ export async function proxyGeminiDirect(args: {
       status: 502,
       error: { code: "upstream_error", message: String(err) },
     };
+  } finally {
+    deadline.done();
   }
 
   if (!response.ok) {

@@ -22,6 +22,7 @@ import { shouldRejectBeforeRequest } from "../quota/calculator";
 import { settleUsage } from "./billing";
 import { extractCacheBuckets, type CacheBuckets } from "../quota/rates";
 import { ssePassthrough } from "./stream-tap";
+import { upstreamDeadline } from "../http/upstream-deadline";
 import { providerFaces, type ApiKey, type Provider, type User } from "../db/types";
 import { applyParameterPolicy } from "../protocol/parameter-policy";
 import { readTextSpecs, specForSurface, activeSpecFor } from "../protocol/text-specs";
@@ -185,10 +186,8 @@ async function doProxy(args: {
   // `anthropic-messages` means no policy, which is the correct default: a
   // provider configured for Chat Completions has not opted the Anthropic face
   // into anything.
-  const { body: policed } = applyParameterPolicy(
-    forwardable,
-    activeSpecFor(provider, "anthropic-messages") ?? undefined,
-  );
+  const spec = activeSpecFor(provider, "anthropic-messages") ?? undefined;
+  const { body: policed } = applyParameterPolicy(forwardable, spec);
 
   // Streaming clients ask for SSE; buffered clients get a single JSON body.
   // Anthropic carries input tokens in `message_start` and output tokens in
@@ -199,6 +198,9 @@ async function doProxy(args: {
     : { ...policed, model: upstreamModel, stream: false };
 
   let response: Response;
+  // `limits.timeoutMs` bounds the wait for headers; the stream itself is the
+  // client's clock afterwards.
+  const deadline = upstreamDeadline(signal, spec?.limits?.timeoutMs);
   try {
     response = await fetchImpl(upstreamUrl, {
       method: "POST",
@@ -208,6 +210,7 @@ async function doProxy(args: {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify(forwardBody),
+      ...(deadline.signal ? { signal: deadline.signal } : {}),
     });
   } catch (err) {
     await recordFailure({ apiKey, provider, model: req.model, upstreamModel, error: err });
@@ -216,6 +219,8 @@ async function doProxy(args: {
       status: 502,
       error: { code: "upstream_error", message: String(err) },
     };
+  } finally {
+    deadline.done();
   }
 
   // Streaming: pipe the upstream SSE through and settle usage on flush.
