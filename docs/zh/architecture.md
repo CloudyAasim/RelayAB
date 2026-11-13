@@ -96,7 +96,7 @@
   自己侦测（同源链接点击 + `popstate`，路径变化即结束），侧边栏链接用
   `useLinkStatus` 在点击处显示 spinner。
 - **客户端路由缓存**：`experimental.staleTimes.dynamic = 30`，否则动态页面每次
-  切换都会重新请求 serverless 函数；写操作走 Server Action / `router.refresh()`，
+  切换都会重新请求服务端；写操作走 Server Action / `router.refresh()`，
   不受该窗口影响。
 - **数据访问**：SQLite 走进程内调用，没有网络往返；读多行记录用一条 `IN (…)` 查询，
   `usage_logs` 上按 `(api_key_id, created_at)` 等维度建了索引来支撑聚合。同一请求内

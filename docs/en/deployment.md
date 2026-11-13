@@ -368,8 +368,16 @@ than 8 characters.
 Check the provider's model mapping and that the provider is enabled.
 
 ### 8.8 Long responses get truncated
-Proxy routes set `maxDuration = 300`; give nginx more headroom with
-`proxy_read_timeout 600s`.
+There is no `maxDuration` to blame — that is a Vercel declaration and nothing reads
+it on a self-hosted deployment. What actually truncates is the proxy's **idle**
+timeout:
+
+- nginx's `proxy_read_timeout` is an idle timer (the template in this repo sets 3600s);
+- a slow media generation **heartbeats every 15 s** while it waits (leading JSON
+  whitespace), so a long total duration never trips that idle timer;
+- the deadline is the model spec's `limits.timeoutMs` (sanity bound 3500000 ms).
+
+See the [media protocol](./模型适配协议/README.md) and `src/lib/protocol/limits.ts`.
 
 ---
 

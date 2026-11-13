@@ -138,8 +138,8 @@ Dokku 自带 nginx 有两个默认值**会直接打断这个应用的功能**，
 
 | 配置项 | Dokku 默认 | 后果 |
 |---|---|---|
-| `proxy-read-timeout` | **60s** | 长响应被切成 504。代理路由的 `maxDuration` 是 300 秒 |
-| `client-max-body-size` | **1m** | `/v1/images/edits` 收 base64 图片直接 413。应用侧允许 2MB，nginx 先拒 |
+| `proxy-read-timeout` | **60s** | 长响应被切成 504。它是**空闲**计时器：网关在等待慢的上游时每 15 秒发一拍心跳，所以总时长可以远超它；但默认 60 秒对「一段很长的非流式回答」仍然偏紧，设成 600s 起 |
+| `client-max-body-size` | **1m** | `/v1/images/edits` 收 base64 图片直接 413。应用侧允许 10MB，nginx 先拒 |
 
 ```bash
 dokku nginx:set relay-ab proxy-read-timeout 2100s

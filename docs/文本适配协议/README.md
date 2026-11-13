@@ -43,7 +43,7 @@
   "protocol": "openai-chat",
   "parameters": { "temperature": { "mode": "clamp", "min": 0, "max": 2 } },
   "errors": [{ "httpStatus": 429, "code": "rate_limited" }],
-  "limits": { "timeoutMs": 600000 }
+  "limits": { "timeoutMs": 120000 }
 }
 ```
 
@@ -192,8 +192,12 @@
 
 ### 1.6 `limits`（可选）
 
-`{ "timeoutMs": 600000 }`。**不要超过 600000**（serverless 上限），超了会在
-保存时直接报错。
+`{ "timeoutMs": 120000 }`——一个正整数，**没有平台上限**。旧版这里写「不要超过 600000
+（serverless 上限），超了保存时报错」，两句都是错的：校验器只要求正整数，而 serverless
+在 2026-10-01 就不再是部署形态了。
+
+**注意：这个值目前只是声明。** 文本请求的期限由客户端连接决定（客户端断开就结束）；
+网关还没有拿它裁剪上游请求 —— 这是已知缺口，要么接上，要么删掉，别让它继续假装有效。
 
 ---
 

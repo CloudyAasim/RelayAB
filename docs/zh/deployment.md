@@ -339,7 +339,13 @@ sudo journalctl -u relayab -n 100 --no-pager
 检查 `/admin/providers` 的 model mapping 是否包含请求的 model，以及 Provider 是否 enabled。
 
 ### 8.8 长响应被截断
-代理路由设了 `maxDuration = 300`，nginx 侧要 `proxy_read_timeout 600s` 留出余量。
+没有 `maxDuration` 这回事（那是 Vercel 的声明，自建部署没人读）。真正会截断的是**代理的空闲超时**：
+
+- nginx 的 `proxy_read_timeout` 是**空闲**计时器（本仓库模板已设 3600s）；
+- 慢的媒体生成在等待上游时会**每 15 秒发一拍心跳**（JSON 前导空白），所以总时长再长也不会被它的空闲计时器掐断；
+- 期限由该模型 spec 的 `limits.timeoutMs` 决定（sanity 上限 3500000 毫秒）。
+
+详见 [模型适配协议](./模型适配协议/README.md) 与仓库里的 `src/lib/protocol/limits.ts`。
 
 ---
 
