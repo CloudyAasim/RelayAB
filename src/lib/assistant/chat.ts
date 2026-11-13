@@ -23,6 +23,7 @@
  *    open and run up an upstream bill.
  */
 import { callAssistantModel, UpstreamError, type ChatMessage, type ContentPart, type UpstreamTurn, type UpstreamTransport } from "./client";
+import { normalizeToolArguments } from "./tool-arguments";
 import { toolDefinitions, executeTool, type ToolContext } from "./tools";
 import { systemPrompt } from "./prompts";
 import type { ResolvedCredential } from "./credentials";
@@ -384,18 +385,77 @@ function toolNameOf(signature: string): string {
  * So the field is redacted on the way to the database. The model still sees its
  * own argument in the live request, so nothing about the turn's behaviour
  * changes; only the copy that outlives it is scrubbed.
+ *
+ * **Structural, not textual.** This used to be a regex over the raw JSON text,
+ * and a regex cannot tell a key from the same characters inside a string value:
+ * `{"note":"she said \"token\":\"abc\""}` had its closing quote eaten, the stored
+ * arguments became unparseable, and every later turn replayed them — which is
+ * one of the ways a vendor answers `arguments must be valid JSON`. Parsing and
+ * walking the object cannot make that mistake.
  */
-const SECRET_FIELDS = /("(?:api[_-]?key|secret|password|token)"\s*:\s*)"(?:[^"\\]|\\.)*"/gi;
+const SECRET_FIELD_NAME = /^(?:api[_-]?key|secret|password|token)$/i;
+
+const REDACTED = "***";
+
+function redactValue(value: unknown): { value: unknown; changed: boolean } {
+  if (Array.isArray(value)) {
+    let changed = false;
+    const next = value.map((item) => {
+      const out = redactValue(item);
+      changed ||= out.changed;
+      return out.value;
+    });
+    return { value: next, changed };
+  }
+  if (value && typeof value === "object") {
+    let changed = false;
+    const next: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      if (SECRET_FIELD_NAME.test(key)) {
+        next[key] = REDACTED;
+        changed = true;
+        continue;
+      }
+      const out = redactValue(val);
+      changed ||= out.changed;
+      next[key] = out.value;
+    }
+    return { value: next, changed };
+  }
+  return { value, changed: false };
+}
+
+/**
+ * Redact a tool call's arguments, keeping them parseable.
+ *
+ * Unchanged arguments are returned **byte for byte** — the protocol replays
+ * them, and reformatting a call that held no secret would be its own bug.
+ * Unparseable arguments are left alone: `normalizeToolArguments` replaces them
+ * with `{}` before they are ever sent, so there is nothing here to rescue.
+ */
+function redactArguments(raw: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+  const { value, changed } = redactValue(parsed);
+  return changed ? JSON.stringify(value) : raw;
+}
 
 /** The tool calls as they are stored, with anything key-shaped taken out. */
 export function redactToolCalls(
   toolCalls: UpstreamTurn["toolCalls"],
 ): UpstreamTurn["toolCalls"] {
   return toolCalls.map((call) => ({
-    ...call,
+    // Spelled out, not spread: the row keeps the protocol's three fields, and
+    // `invalidArguments` is a fact about the live turn, not about the call.
+    id: call.id,
+    type: call.type,
     function: {
-      ...call.function,
-      arguments: call.function.arguments.replace(SECRET_FIELDS, '$1"***"'),
+      name: call.function.name,
+      arguments: redactArguments(call.function.arguments),
     },
   }));
 }
@@ -790,7 +850,18 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
     messages.push({
       role: "assistant",
       content: turn.content,
-      tool_calls: turn.toolCalls,
+      /**
+       * The wire shape, spelled out rather than spread.
+       *
+       * `turn.toolCalls` carries our own `invalidArguments` marker, and a vendor
+       * that validates the assistant turn strictly has no reason to accept a
+       * field it has never heard of. Only the protocol's three fields go out.
+       */
+      tool_calls: turn.toolCalls.map((call) => ({
+        id: call.id,
+        type: "function" as const,
+        function: { name: call.function.name, arguments: call.function.arguments },
+      })),
     });
 
     for (const call of turn.toolCalls) {
@@ -826,45 +897,62 @@ export async function runChat(opts: RunChatOptions): Promise<void> {
       emit({ type: "tool", toolName: call.function.name, text: call.function.arguments });
 
       let resultText: string;
-      try {
-        const result = await executeTool(call.function.name, call.function.arguments, ctx);
-        resultText = result.content;
-        if (result.ok) {
-          const actionId = (result.content.match(/"actionId":\s*"([^"]+)"/) ?? [])[1];
-          if (actionId) pendingActions.push(actionId);
-        }
-
-        // Media the tool produced is stored here and referenced by a short
-        // first-party URL, so the model is handed a link it can cite and the
-        // reader gets something playable. Both the payload and the upstream's
-        // own long-lived CDN link stay out of the transcript on purpose.
-        if (result.artifacts?.length) {
-          const refs = await storeArtifacts({
-            userId: user.id,
-            threadId: thread.id,
-            artifacts: result.artifacts,
-          });
-          resultText = withArtifactRefs(resultText, refs);
-          emit({ type: "artifact", artifacts: refs });
-        }
-
+      if (call.invalidArguments) {
         /**
-         * A question ends the turn, whatever came before or comes next.
+         * The model wrote arguments that are not JSON, so there is nothing to
+         * execute. `client.ts` has already replaced them with `{}` on the wire
+         * (a vendor rejects the whole turn on malformed arguments, which is how
+         * this used to surface as a 502), and running the tool against invented
+         * parameters would act on something nobody asked for.
          *
-         * The alternative — carrying on — is the thing worth refusing: nothing
-         * can arrive in the middle of a stream, so a turn that asked and then
-         * kept going would be the model deciding its own answer and reporting it
-         * as the user's. Ending here also means the question is the last thing
-         * on screen, which is where a person looks when they come back to it.
+         * Telling the model is the repair: it is the only party that knows what
+         * it meant, and it now gets the failure as a tool result instead of the
+         * turn dying before it is read.
          */
-        if (result.askedUser) {
-          emit({ type: "question", question: result.askedUser, toolName: call.function.name });
-          askedQuestion = result.askedUser;
+        resultText = `${TOOL_FAILURE_PREFIX}${translate(locale, "assistant.message.invalidToolArguments", {
+          tool: call.function.name,
+        })}`;
+      } else {
+        try {
+          const result = await executeTool(call.function.name, call.function.arguments, ctx);
+          resultText = result.content;
+          if (result.ok) {
+            const actionId = (result.content.match(/"actionId":\s*"([^"]+)"/) ?? [])[1];
+            if (actionId) pendingActions.push(actionId);
+          }
+
+          // Media the tool produced is stored here and referenced by a short
+          // first-party URL, so the model is handed a link it can cite and the
+          // reader gets something playable. Both the payload and the upstream's
+          // own long-lived CDN link stay out of the transcript on purpose.
+          if (result.artifacts?.length) {
+            const refs = await storeArtifacts({
+              userId: user.id,
+              threadId: thread.id,
+              artifacts: result.artifacts,
+            });
+            resultText = withArtifactRefs(resultText, refs);
+            emit({ type: "artifact", artifacts: refs });
+          }
+
+          /**
+           * A question ends the turn, whatever came before or comes next.
+           *
+           * The alternative — carrying on — is the thing worth refusing: nothing
+           * can arrive in the middle of a stream, so a turn that asked and then
+           * kept going would be the model deciding its own answer and reporting it
+           * as the user's. Ending here also means the question is the last thing
+           * on screen, which is where a person looks when they come back to it.
+           */
+          if (result.askedUser) {
+            emit({ type: "question", question: result.askedUser, toolName: call.function.name });
+            askedQuestion = result.askedUser;
+          }
+        } catch (err) {
+          // A tool that throws is a fact the model can reason about, not a reason
+          // to end the conversation.
+          resultText = `${TOOL_FAILURE_PREFIX}${err instanceof Error ? err.message : String(err)}`;
         }
-      } catch (err) {
-        // A tool that throws is a fact the model can reason about, not a reason
-        // to end the conversation.
-        resultText = `${TOOL_FAILURE_PREFIX}${err instanceof Error ? err.message : String(err)}`;
       }
 
       if (resultText.length > MAX_TOOL_RESULT_CHARS) {
@@ -1015,7 +1103,21 @@ export async function toWireMessages(
         tool_calls: row.toolCalls.map((c) => ({
           id: c.id,
           type: "function" as const,
-          function: { name: c.function.name, arguments: c.function.arguments },
+          /**
+           * Normalised on the way out as well as on the way in.
+           *
+           * Rows written before `tool-arguments.ts` existed can hold arguments
+           * that never parsed — from a model that emitted a truncated call, or
+           * from the old regex redaction eating a quote. Replaying one of those
+           * makes the vendor reject the *whole* request with
+           * `arguments must be valid JSON`, which is a conversation that can
+           * never be continued again. `{}` keeps it alive; the tool result in the
+           * transcript is what told the model at the time.
+           */
+          function: {
+            name: c.function.name,
+            arguments: normalizeToolArguments(c.function.arguments).arguments,
+          },
         })),
       });
       continue;

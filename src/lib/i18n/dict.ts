@@ -1341,6 +1341,8 @@ const zhCN: Dict = {
   "assistant.message.emptyAnswer": "模型结束了回合但没有给出文字回复。",
   "assistant.message.loopStopped":
     "助手连续 {count} 次调用同一个工具（{tool}）而没有新的输入，这一轮已经停下。可以直接告诉它接下来该做什么。",
+  "assistant.message.invalidToolArguments":
+    "工具 {tool} 的参数不是合法的 JSON（模型写出来的那一段没能解析），这次调用没有执行。请重新发出一次完整、合法的 JSON 参数。",
   "assistant.message.truncated": "…（内容过长已截断）",
   "assistant.message.turnTooLong":
     "这一轮已经跑了 {minutes} 分钟，已停止。可以把问题拆小一点再试。",
@@ -2968,6 +2970,8 @@ const en: Dict = {
   "assistant.message.emptyAnswer": "The model ended the turn without a text reply.",
   "assistant.message.loopStopped":
     "The assistant called the same tool {count} times in a row ({tool}) with nothing new coming in, so this turn has stopped. You can just tell it what to do next.",
+  "assistant.message.invalidToolArguments":
+    "The arguments for the tool {tool} were not valid JSON (the model's text did not parse), so the call was not executed. Re-emit the call with complete, valid JSON arguments.",
   "assistant.message.truncated": "… (too long, truncated)",
   "assistant.message.turnTooLong":
     "This turn has run for {minutes} minutes and has been stopped. Try splitting the question into a smaller one.",

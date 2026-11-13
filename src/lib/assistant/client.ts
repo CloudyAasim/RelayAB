@@ -13,6 +13,7 @@
  * what lets the final answer appear token-by-token *and* lets the assistant
  * call a tool in the same turn that explains it.
  */
+import { normalizeToolArguments } from "./tool-arguments";
 
 export interface AssistantToolDef {
   type: "function";
@@ -67,7 +68,18 @@ export interface UpstreamTurn {
    */
   reasoning: string;
   /** Fully reassembled tool calls, if any. */
-  toolCalls: Array<{ id: string; type: "function"; function: { name: string; arguments: string } }>;
+  toolCalls: Array<{
+    id: string;
+    type: "function";
+    function: { name: string; arguments: string };
+    /**
+     * The vendor sent arguments that were not a JSON object. `arguments` has
+     * been replaced with `{}` so the call can be replayed — a vendor rejects the
+     * whole turn on malformed arguments — and the turn loop must not execute a
+     * call whose real arguments were lost. See `tool-arguments.ts`.
+     */
+    invalidArguments?: boolean;
+  }>;
   /** How the turn finished: "stop" ends the loop, "tool_calls" continues it. */
   finishReason: string | null;
   usage: { promptTokens: number; completionTokens: number; totalTokens: number } | null;
@@ -443,7 +455,23 @@ async function readTurn(
 
   const toolCalls = [...partialCalls.entries()]
     .sort((a, b) => a[0] - b[0])
-    .map(([, c]) => ({ id: c.id, type: "function" as const, function: { name: c.name, arguments: c.args } }))
+    .map(([, c]) => {
+      /**
+       * Whatever the model emitted, what goes back on the next round must parse.
+       *
+       * The arguments cannot be fixed here — they are the model's own text and
+       * the repair is the model's job — but they can be stopped from taking the
+       * whole turn down. `invalidArguments` is what the loop uses to tell the
+       * model instead of executing a call with arguments it never wrote.
+       */
+      const args = normalizeToolArguments(c.args);
+      return {
+        id: c.id,
+        type: "function" as const,
+        function: { name: c.name, arguments: args.arguments },
+        ...(args.invalid ? { invalidArguments: true } : {}),
+      };
+    })
     .filter((c) => c.function.name);
 
   return { content, reasoning, toolCalls, finishReason, usage };
