@@ -946,6 +946,16 @@ function adminTools(t: (key: string) => string): AssistantToolDef[] {
             type: "boolean",
             description: t("propose_doc_pages.confirmRemovals"),
           },
+          mode: {
+            type: "string",
+            enum: ["upsert", "replace"],
+            description: t("propose_doc_pages.mode"),
+          },
+          removed: {
+            type: "array",
+            items: { type: "string" },
+            description: t("propose_doc_pages.removed"),
+          },
           pages: {
             type: "array",
             description: t("propose_doc_pages.pages"),
@@ -3170,20 +3180,40 @@ export function docPageAdvice(
   };
 }
 
+/**
+ * Propose a change to the parameter-guide pages.
+ *
+ * **Upsert by default.** The guide is a set of long pages (a voice table alone
+ * runs to three hundred lines), so "send the complete list back" was a shape the
+ * caller could not reliably carry: on 2026-11-13 an assistant spent eleven
+ * attempts adding one page and never got a valid payload out. The default is now
+ * "here are the pages I touched" — every id not mentioned is left exactly as it
+ * is. A full replacement is still available for a reorder, and it has to say so
+ * (`mode: "replace"`) and, if it drops pages, `confirmRemovals: true`.
+ *
+ * That inversion is also the safety property: the destructive shape can no
+ * longer happen by accident, because not mentioning a page now means "keep it".
+ */
 async function proposeDocPages(
   args: Record<string, unknown>,
   ctx: ToolContext,
 ): Promise<ToolResult> {
   if (!Array.isArray(args.pages)) return fail(ctx, "pagesNotArray");
 
-  const pages: DocPage[] = [];
+  const incoming: Array<{
+    id: string;
+    title: string;
+    body: string;
+    hidden: boolean;
+    order?: number;
+  }> = [];
   const problems: string[] = [];
-  for (const [i, raw] of args.pages.entries()) {
-    if (!raw || typeof raw !== "object") {
+  for (const [i, rawPage] of args.pages.entries()) {
+    if (!rawPage || typeof rawPage !== "object") {
       problems.push(`pages[${i}] 不是对象`);
       continue;
     }
-    const page = raw as Record<string, unknown>;
+    const page = rawPage as Record<string, unknown>;
     const id = typeof page.id === "string" ? page.id.trim() : "";
     const title = typeof page.title === "string" ? page.title.trim() : "";
     const body = typeof page.body === "string" ? page.body : "";
@@ -3205,41 +3235,76 @@ async function proposeDocPages(
       problems.push(`pages[${i}] 正文超过 60000 字符`);
       continue;
     }
-    pages.push({
+    incoming.push({
       id,
       title,
       body,
-      ...(page.hidden === true ? { hidden: true } : {}),
-      order: typeof page.order === "number" ? page.order : i,
+      hidden: page.hidden === true,
+      ...(typeof page.order === "number" ? { order: page.order } : {}),
     });
   }
-  const dupes = pages.map((p) => p.id).filter((id, i, all) => all.indexOf(id) !== i);
+  const dupes = incoming.map((p) => p.id).filter((id, i, all) => all.indexOf(id) !== i);
   for (const dupe of new Set(dupes)) problems.push(`id「${dupe}」重复了`);
   if (problems.length) return fail(ctx, "pagesInvalid", { problems: problems.join("\n- ") });
-
-  const advice = docPageAdvice(pages);
 
   const { docPages } = await getSettings();
   const summary =
     typeof args.summary === "string" && args.summary.trim() ? args.summary.trim() : "未说明的变更";
   const before = docPages ?? [];
+  const mode = args.mode === "replace" ? "replace" : "upsert";
 
-  /**
-   * A full replacement that drops pages has to say so.
-   *
-   * The failure this guards is the one that actually happened (2026-11-13): a
-   * caller that meant to add one page sent only that page, and "the complete
-   * list" is the whole contract — every page it did not mention would have been
-   * deleted. Refusing here also points at the tool that cannot make this
-   * mistake, which is the more useful half of the message.
-   */
-  const dropped = before.filter((existing) => !pages.some((page) => page.id === existing.id));
-  if (dropped.length > 0 && args.confirmRemovals !== true) {
-    return fail(ctx, "pagesWouldRemove", {
-      count: dropped.length,
-      ids: dropped.map((page) => page.id).join(", "),
+  let after: DocPage[];
+  if (mode === "replace") {
+    /**
+     * A full replacement that drops pages has to say so.
+     *
+     * The failure this guards is the one that actually happened: a caller that
+     * meant to add one page sent only that page, and "the complete list" is the
+     * whole contract — every page it did not mention would have been deleted.
+     */
+    const dropped = before.filter((existing) => !incoming.some((page) => page.id === existing.id));
+    if (dropped.length > 0 && args.confirmRemovals !== true) {
+      return fail(ctx, "pagesWouldRemove", {
+        count: dropped.length,
+        ids: dropped.map((page) => page.id).join(", "),
+      });
+    }
+    after = incoming.map((page, index) => ({
+      id: page.id,
+      title: page.title,
+      body: page.body,
+      order: page.order ?? index,
+      ...(page.hidden ? { hidden: true } : {}),
+    }));
+  } else {
+    // Upsert: mention means "write this", silence means "leave it alone".
+    after = [...before];
+    incoming.forEach((page) => {
+      const existing = before.find((p) => p.id === page.id);
+      const order =
+        page.order ??
+        existing?.order ??
+        before.reduce((max, p) => Math.max(max, p.order ?? 0), -1) + 1;
+      const merged: DocPage = {
+        id: page.id,
+        title: page.title,
+        body: page.body,
+        order,
+        ...(page.hidden ? { hidden: true } : {}),
+      };
+      const at = after.findIndex((p) => p.id === page.id);
+      if (at >= 0) after[at] = merged;
+      else after.push(merged);
     });
+
+    // An explicit removal list is the only way upsert deletes anything.
+    const removedIds = Array.isArray(args.removed)
+      ? args.removed.filter((value): value is string => typeof value === "string")
+      : [];
+    if (removedIds.length > 0) after = after.filter((page) => !removedIds.includes(page.id));
   }
+
+  const advice = docPageAdvice(after);
 
   /**
    * The gate between writing a proposal and asking for approval.
@@ -3251,16 +3316,23 @@ async function proposeDocPages(
    * is the same call the apply route makes, so the two cannot answer
    * differently about what a proposal may contain.
    */
-  const gate = checkProposal("doc_pages.update" as ProposalKind, { docPages: pages });
+  const gate = checkProposal("doc_pages.update" as ProposalKind, { docPages: after });
   if (!gate.ok) return fail(ctx, "proposalRejected", { reason: gate.message! });
+
   const action = await createAssistantAction({
     userId: ctx.user.id,
     kind: "doc_pages.update",
     targetId: "docPages",
     summary,
-    args: { docPages: pages },
-    diff: renderDocPagesDiff(before, pages, summary),
+    args: { docPages: after },
+    diff: renderDocPagesDiff(before, after, summary),
   });
+
+  const added = after.filter((p) => !before.some((b) => b.id === p.id)).map((p) => p.id);
+  const removed = before.filter((b) => !after.some((p) => p.id === b.id)).map((b) => b.id);
+  const changed = after
+    .filter((p) => before.some((b) => b.id === p.id && JSON.stringify(b) !== JSON.stringify(p)))
+    .map((p) => p.id);
 
   return ok({
     // What the shared check had to say about this payload. The admin panel's
@@ -3270,13 +3342,17 @@ async function proposeDocPages(
 
     actionId: action.id,
     summary,
-    removed: before.filter((b) => !pages.some((p) => p.id === b.id)).map((b) => b.id),
-    kept: before.filter((b) => pages.some((p) => p.id === b.id)).map((b) => b.id),
-    added: pages.filter((p) => !before.some((b) => b.id === p.id)).map((p) => p.id),
+    mode,
+    added,
+    changed,
+    removed,
+    // Everything the call did not touch — proof that silence meant "keep".
+    kept: before
+      .filter((b) => !added.includes(b.id) && !changed.includes(b.id) && !removed.includes(b.id))
+      .map((b) => b.id),
     ...(advice ? { advice } : {}),
   });
 }
-
 /**
  * Add, edit or remove ONE parameter-guide page.
  *

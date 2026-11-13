@@ -135,7 +135,7 @@ describe("propose_doc_page", () => {
   });
 });
 
-describe("the full replacement cannot quietly delete pages", () => {
+describe("upsert is the default, and only an explicit replace can delete", () => {
   beforeEach(async () => {
     __resetDbForTest();
     await updateSettings({ docPages: EXISTING });
@@ -151,12 +151,65 @@ describe("the full replacement cannot quietly delete pages", () => {
     expect(userNames).not.toContain("propose_doc_pages");
   });
 
-  it("refuses a one-page list that would drop the other pages, and names the right tool", async () => {
+  it("two pages in, two pages touched — the rest are kept", async () => {
+    // The shape the assistant wanted to send: one new page plus one edited page.
     const ctx = await adminContext();
     const result = await executeTool(
       "propose_doc_pages",
       JSON.stringify({
-        summary: "只发新页",
+        summary: "补 H3 页 + 改概览",
+        pages: [
+          { id: "minimax-h3-image", title: "MiniMax H3 Image", body: "H3 正文" },
+          { id: "overview", title: "总览", body: "总览正文（图片表加了 H3）" },
+        ],
+      }),
+      ctx as never,
+    );
+
+    expect(result.ok, result.content.slice(0, 300)).toBe(true);
+    const payload = JSON.parse(result.content) as Record<string, unknown>;
+    expect(payload.mode).toBe("upsert");
+    expect(payload.added).toEqual(["minimax-h3-image"]);
+    expect(payload.changed).toEqual(["overview"]);
+    expect(payload.removed).toEqual([]);
+    expect(payload.kept).toEqual(["minimax-image", "opencode"]);
+
+    const [action] = await listAssistantActions(ctx.user.id);
+    const pages = (JSON.parse(String(action.args)) as { docPages: DocPage[] }).docPages;
+    expect(pages.map((page) => page.id)).toEqual([
+      "overview",
+      "minimax-image",
+      "opencode",
+      "minimax-h3-image",
+    ]);
+    expect(pages[1]).toEqual(EXISTING[1]);
+    expect(pages[2]).toEqual(EXISTING[2]);
+    expect(pages[0].body).toBe("总览正文（图片表加了 H3）");
+  });
+
+  it("deletes only what `removed` names", async () => {
+    const ctx = await adminContext();
+    const result = await executeTool(
+      "propose_doc_pages",
+      JSON.stringify({ summary: "删一页", pages: [], removed: ["opencode"] }),
+      ctx as never,
+    );
+    expect(result.ok, result.content.slice(0, 300)).toBe(true);
+    const payload = JSON.parse(result.content) as Record<string, unknown>;
+    expect(payload.removed).toEqual(["opencode"]);
+
+    const [action] = await listAssistantActions(ctx.user.id);
+    const pages = (JSON.parse(String(action.args)) as { docPages: DocPage[] }).docPages;
+    expect(pages.map((page) => page.id)).toEqual(["overview", "minimax-image"]);
+  });
+
+  it("refuses mode=replace that drops pages, and names the right tool", async () => {
+    const ctx = await adminContext();
+    const result = await executeTool(
+      "propose_doc_pages",
+      JSON.stringify({
+        summary: "整份替换",
+        mode: "replace",
         pages: [{ id: "minimax-h3-image", title: "MiniMax H3 Image", body: "H3 正文" }],
       }),
       ctx as never,
@@ -164,7 +217,6 @@ describe("the full replacement cannot quietly delete pages", () => {
 
     expect(result.ok).toBe(false);
     expect(result.content).toContain("propose_doc_page");
-    // A refusal is not a proposal: nothing reached the approval queue.
     expect(await listAssistantActions(ctx.user.id)).toHaveLength(0);
     expect((await getSettings()).docPages).toHaveLength(3);
   });
@@ -175,6 +227,7 @@ describe("the full replacement cannot quietly delete pages", () => {
       "propose_doc_pages",
       JSON.stringify({
         summary: "整份重排",
+        mode: "replace",
         confirmRemovals: true,
         pages: [{ id: "minimax-h3-image", title: "MiniMax H3 Image", body: "H3 正文" }],
       }),

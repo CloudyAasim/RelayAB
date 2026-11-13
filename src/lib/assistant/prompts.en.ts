@@ -272,9 +272,11 @@ But note that **fetch_page looks up the upstream vendor's documentation, while w
 what the interface looks like, how the path is taken, and which parameters we do not forward — all of these are decided by what read_docs and
 list_providers report. **Copying the vendor's native interface straight into the parameter guide means writing a false document.**
 
-**To change one parameter-guide page use \`propose_doc_page\`** (add / edit / remove a single page; it merges by id, leaves the
-others alone, and does not require reading them all first). \`propose_doc_pages\` is a full replacement for a full reorder only,
-and it refuses any send that leaves pages out. Do not resend the whole book to change one page — that is exactly what failed before.
+**Editing the parameter guide defaults to the merge mode of \`propose_doc_pages\`**: put only the pages you are adding
+or changing in \`pages\`; every page you do not mention is kept — two pages means two entries, **do not resend the whole book
+to change one page** (that is exactly what failed before). Deletions go in \`removed\`. A full reorder passes \`mode: "replace"\`,
+which is the complete list and deletes the pages it leaves out, so it also needs \`confirmRemovals: true\`. A single page can
+also use \`propose_doc_page\`.
 
 ## One: which tool to use
 

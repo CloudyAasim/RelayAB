@@ -966,8 +966,9 @@ export const TOOL_DESCRIPTIONS: Record<string, ToolText> = {
       "接口路径、我们转发和不转发什么、哪些转换是我们做的——这些必须来自 read_docs 和 list_providers。\n" +
       "把厂商原生接口照抄进来，用户照着调就会踩坑。\n" +
       "每页正文很长（一张音色表就三百多行），所以一页只写一类，别把整本塞进一页。\n" +
-      "pages 是【完整】替换，不是增量。**只改一页请用 propose_doc_page**（新增/修改/删掉单页，其余页面原样保留）；" +
-      "这里只用于整份重排或成批改写。\n" +
+      "**默认是「按 id 合并」**：pages 里只放你要新增或修改的页面，没提到的页面原样保留——" +
+      "所以改两页就只发两页，不必重发整本。删页面写进 removed（或改一页用 propose_doc_page）。\n" +
+      "只有整份重排才传 mode=\"replace\"（那是完整列表，没列出的页面会被删，所以还要 confirmRemovals=true）。\n" +
       "id 会变成读者能收藏的锚点，一旦发布就不要改；id 只能是小写字母、数字和中划线。",
     en:
       "Propose a change to a **parameter guide page**, which runs only after an administrator " +
@@ -984,9 +985,11 @@ export const TOOL_DESCRIPTIONS: Record<string, ToolText> = {
       "Copying the vendor's native API in verbatim leaves users tripping over it.\n" +
       "Each page's body is long (a single voice table runs to three hundred lines), so write one " +
       "kind of thing per page rather than the whole book into one.\n" +
-      "pages is a **complete** replacement, not an increment. **To change one page use " +
-      "propose_doc_page** (add / edit / remove a single page, leaving the rest untouched); this " +
-      "tool is for a full reorder or a bulk rewrite.\n" +
+      "**The default is upsert by id**: put only the pages you are adding or changing in pages; " +
+      "every page you do not mention is left exactly as it is — so two pages means two entries, not " +
+      "the whole book. Deletions go in `removed` (or use propose_doc_page for one page).\n" +
+      "A full reorder passes mode=\"replace\" — that is the complete list, pages left out are " +
+      "deleted, which is why it also needs confirmRemovals=true.\n" +
       "The id becomes an anchor readers can bookmark, so do not change it once published; it may " +
       "only contain lowercase letters, digits and hyphens.",
   },
@@ -1042,6 +1045,14 @@ export const TOOL_DESCRIPTIONS: Record<string, ToolText> = {
   "propose_doc_pages.summary": {
     "zh-CN": "一句话说明这次变更的目的",
     en: "One sentence saying what this change is for",
+  },
+  "propose_doc_pages.mode": {
+    "zh-CN": "upsert（默认，只写要改/加的页）或 replace（整份替换，没列出的页会被删）",
+    en: "upsert (default: only the pages you write) or replace (the complete list; pages left out are deleted)",
+  },
+  "propose_doc_pages.removed": {
+    "zh-CN": "要删掉的页面 id 列表（只合并模式用；不写就不删任何页面）",
+    en: "Ids of pages to delete (upsert mode only; omit and nothing is deleted)",
   },
   "propose_doc_pages.confirmRemovals": {
     "zh-CN":
