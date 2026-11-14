@@ -265,8 +265,7 @@ export function DocsPagesForm({ initial }: { initial: readonly DocPageInput[] })
         <Button size="sm" variant="outline" onClick={addPage}>
           {t("admin.docsSettings.pageNew")}
         </Button>
-        <p className="text-xs text-muted-foreground">{t("admin.docsSettings.pagesHint")}</p>
-      </div>
+        </div>
 
       <div className="mt-4 flex items-center gap-3">
         <Button

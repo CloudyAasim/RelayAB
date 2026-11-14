@@ -581,4 +581,57 @@ describe("secondary labels and descriptions that the layout already says", () =>
     const zh = DICTS["zh-CN"];
     expect(zh["admin.settings.envOverride"]).toContain("数据库");
   });
+});describe("the rendered screens do not repeat their own primary action", () => {
+  const pages = [
+    ["users", ["src", "app", "(admin)", "admin", "users", "page.tsx"]],
+    ["providers", ["src", "app", "(admin)", "admin", "providers", "page.tsx"]],
+    ["media providers", ["src", "app", "(admin)", "admin", "media-providers", "page.tsx"]],
+    ["search", ["src", "app", "(admin)", "admin", "search", "page.tsx"]],
+    ["the account dashboard", ["src", "app", "(user)", "dashboard", "page.tsx"]],
+  ] as const;
+
+  for (const [name, parts] of pages) {
+    it(`${name}: the empty card does not repeat the header's button`, () => {
+      // The button is in the page header. A second copy inside the empty card
+      // is the same primary action twice on one screen.
+      const source = read(...(parts as unknown as string[]));
+      const empty = /<EmptyState[\s\S]{0,400}?\/>/.exec(source)?.[0] ?? "";
+      expect(empty, `${name} empty state should have no action`).not.toContain("action={");
+    });
+  }
+
+  it("the overview's billing note is a tooltip, not a paragraph above the table", () => {
+    const overview = read("src", "app", "(admin)", "admin", "page.tsx");
+    expect(overview).not.toContain('description={t("admin.overview.recentUsageDesc")}');
+    expect(overview).toContain('title={t("admin.overview.recentUsageDesc")}');
+    expect(overview).not.toContain("recentUsageEmptyDescription");
+  });
+
+  it("the usage page says the lag caveat once", () => {
+    const zh = DICTS["zh-CN"];
+    expect(zh["usage.tzNote"]).not.toContain("延迟");
+    expect(zh["usage.description"]).toContain("延迟");
+    expect(DICTS["en"]["usage.tzNote"]).not.toMatch(/lag/i);
+  });
+
+  it("the web-search card shows its subset note only when there is search usage", () => {
+    const card = read("src", "components", "usage", "UsageWebSearchCard.tsx");
+    expect(card).toContain("summary.requests > 0 &&");
+  });
+
+  it("the credential switch is named for screen readers, not as a fourth label", () => {
+    const panel = read("src", "lib", "assistant", "CredentialPanel.tsx");
+    expect(panel).toContain('className="sr-only">{t("assistant.credential.which")}');
+  });
+
+  it("the assistant's model pill is absent when there is no model to name", () => {
+    const chat = read("src", "app", "(user)", "dashboard", "assistant", "AssistantChat.tsx");
+    expect(chat).toMatch(/config\.model && \(/);
+  });
+
+  it("the licence compatibility card has a title, and the sentence stays under the table", () => {
+    const licence = read("src", "app", "license", "page.tsx");
+    expect(licence).toContain('t("license.compat.title")');
+    expect(DICTS["zh-CN"]["license.compat.title"]).toBe("许可证兼容性");
+  });
 });

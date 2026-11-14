@@ -443,7 +443,7 @@ export default async function LicensePage() {
             title={
               <span className="flex items-center gap-2">
                 <FileText className="h-4 w-4 text-muted-foreground" />
-                {t("license.compat.note")}
+                {t("license.compat.title")}
               </span>
             }
           />

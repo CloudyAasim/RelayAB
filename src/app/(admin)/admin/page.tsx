@@ -197,12 +197,10 @@ export default async function AdminOverviewPage() {
                 {t("admin.overview.recentUsage")}
               </span>
             }
-            description={t("admin.overview.recentUsageDesc")}
           />
           {recentUsage.length === 0 ? (
             <EmptyState
               title={t("admin.overview.recentUsageEmpty")}
-              description={t("admin.overview.recentUsageEmptyDescription")}
             />
           ) : (
             <Table bare>
@@ -237,7 +235,9 @@ export default async function AdminOverviewPage() {
                   <TH className="whitespace-nowrap text-right">{t("admin.overview.recentUsageTokens")}</TH>
                   <TH className="whitespace-nowrap text-right">{t("admin.overview.recentUsageCredits")}</TH>
                   <TH className="hidden xl:table-cell whitespace-nowrap text-right">{t("admin.overview.usageCache")}</TH>
-                  <TH className="whitespace-nowrap">{t("admin.overview.billingMode")}</TH>
+                  <TH className="whitespace-nowrap" title={t("admin.overview.recentUsageDesc")}>
+                    {t("admin.overview.billingMode")}
+                  </TH>
                 </TR>
               </THead>
               <TBody>

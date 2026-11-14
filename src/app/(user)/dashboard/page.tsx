@@ -21,7 +21,7 @@ import {
 } from "./CreateKeyButton";
 import { UserKeyActions } from "./UserKeyActions";
 import { AllocationSummary } from "./AllocationSummary";
-import { KeyRound, Coins, Activity, Plus, Sparkles } from "lucide-react";
+import { KeyRound, Coins, Activity, Sparkles } from "lucide-react";
 import {
   cachedGetUserById,
   cachedListApiKeysByUser,
@@ -118,17 +118,6 @@ export default async function DashboardPage() {
               <EmptyState
                 icon={<Sparkles className="h-5 w-5" />}
                 title={t("dashboard.apiKeys.empty.title")}
-                action={
-                  <CreateKeyButton
-                    allocation={allocation}
-                    label={
-                      <>
-                        <Plus className="mr-1.5 h-4 w-4" />
-                        {t("dashboard.createKey.button")}
-                      </>
-                    }
-                  />
-                }
               />
             ) : (
               <div className="overflow-x-auto -mx-3 sm:mx-0">

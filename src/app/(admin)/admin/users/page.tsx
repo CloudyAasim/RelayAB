@@ -64,7 +64,6 @@ export default async function UsersPage() {
             <EmptyState
               icon={<UsersIcon className="h-5 w-5" />}
               title={t("admin.users.empty.title")}
-              action={<CreateUserButton />}
             />
           ) : (
             <Table bare>

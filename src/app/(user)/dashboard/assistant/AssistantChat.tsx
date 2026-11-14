@@ -1229,12 +1229,14 @@ export function AssistantChat({
           </Button>
         )}
 
-        <span
-          className="hidden max-w-[14rem] truncate rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground sm:inline-block"
-          title={effectiveModelLabel}
-        >
-          {effectiveModelLabel}
-        </span>
+        {config.model && (
+          <span
+            className="hidden max-w-[14rem] truncate rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground sm:inline-block"
+            title={effectiveModelLabel}
+          >
+            {effectiveModelLabel}
+          </span>
+        )}
 
         <Button
           type="button"

@@ -61,7 +61,6 @@ export default async function MediaProvidersPage() {
               icon={<ImageIcon className="h-5 w-5" />}
               title={t("admin.mediaProviders.empty")}
               description={t("admin.mediaProviders.empty.description")}
-              action={<CreateMediaProviderButton templates={templates} />}
             />
           ) : (
             <Table bare>

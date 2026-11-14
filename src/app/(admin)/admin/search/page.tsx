@@ -179,7 +179,6 @@ export default async function SearchAdminPage() {
               icon={<Search className="h-5 w-5" />}
               title={t("admin.searchProviders.empty")}
               description={t("admin.searchProviders.emptyHint")}
-              action={<CreateSearchProviderButton templates={TEMPLATE_OPTIONS} />}
             />
           ) : (
             <Table bare>

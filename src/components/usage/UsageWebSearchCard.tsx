@@ -53,7 +53,9 @@ export function UsageWebSearchCard({ summary, totalCredits, labels }: Props) {
           </div>
         </div>
       )}
-      <p className="mt-3 text-xs text-muted-foreground">{labels.subsetHint}</p>
+      {summary.requests > 0 && (
+        <p className="mt-3 text-xs text-muted-foreground">{labels.subsetHint}</p>
+      )}
     </Card>
   );
 }

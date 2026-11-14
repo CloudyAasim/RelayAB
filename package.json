@@ -64,6 +64,7 @@
     "test:integration": "vitest run tests/integration",
     "smoke": "bash scripts/smoke-local.sh",
     "watch-deploy": "node scripts/watch-deploy.cjs",
+    "ui:shots": "node scripts/ui-screenshots.cjs",
     "spec-check": "tsx scripts/spec-check.ts",
     "search-spec-check": "tsx scripts/search-spec-check.ts",
     "check-env": "tsx scripts/check-env.ts",

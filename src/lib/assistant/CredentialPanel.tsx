@@ -300,7 +300,7 @@ export function CredentialChoice({
 
       {/* ---- which credential the next call uses ---- */}
       <fieldset className="space-y-2">
-        <legend className="text-sm font-medium text-foreground">{t("assistant.credential.which")}</legend>
+        <legend className="sr-only">{t("assistant.credential.which")}</legend>
 
         <label
           className={`flex items-start gap-2 rounded-md border px-2.5 py-2 text-sm ${accountLook.className} ${

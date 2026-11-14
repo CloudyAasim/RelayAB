@@ -336,6 +336,19 @@ pnpm type-check          # TypeScript 编译检查
 pnpm build               # Next.js 生产构建
 ```
 
+### 看界面（截图审查）
+
+`scripts/ui-screenshots.cjs` 用真实浏览器把每个界面截成桌面 / 手机两张图，供人过目；
+它同时打印控制台错误、失败请求和横向溢出。需要一次性的 Chromium 下载：
+
+```bash
+pnpm exec playwright install chromium   # 一次性
+# 先起一个可登录的本地实例（设 RELAY_AUTH，并创建管理员账号），然后：
+pnpm ui:shots -- --base http://localhost:3000 --admin-user admin --admin-pass '……'
+```
+
+截图写到 `artifacts/ui/`（已在 `.gitignore` 里），`problems.txt` 是它能自动发现的问题。
+
 ## 项目结构
 
 ```

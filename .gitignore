@@ -65,3 +65,6 @@ data/
 
 # scratch dirs used by the test suite
 node_modules/.tmp-relayab-test/
+
+# ui audit screenshots (scripts/ui-screenshots.cjs)
+artifacts/

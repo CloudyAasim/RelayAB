@@ -90,7 +90,7 @@ export default async function ModelsPage() {
           }}
           mediaLabels={{
             title: t("dashboard.models.media.title"),
-            desc: t("dashboard.models.media.desc"),
+           
             keyLabel: t("dashboard.models.media.keyLabel"),
             keyHint: t("dashboard.models.media.keyHint"),
             keyPlaceholder: t("dashboard.models.gateway.keyPlaceholder"),

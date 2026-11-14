@@ -53,7 +53,7 @@ export interface VoiceOption {
 
 interface Labels {
   title: string;
-  desc: string;
+  desc?: string;
   keyLabel: string;
   keyHint: string;
   keyPlaceholder: string;

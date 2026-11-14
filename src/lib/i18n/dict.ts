@@ -306,7 +306,6 @@ const zhCN: Dict = {
   "admin.docsSettings.pageUp": "上移",
   "admin.docsSettings.pageDown": "下移",
   "admin.docsSettings.pageInvalidId": "标识只能用小写字母、数字和中划线",
-  "admin.docsSettings.pagesHint": "一页只写一类：音色表按语言分页，参数表按能力分页。读者一次只看一页，助手也按页读——一页塞满三百行，两边都读不动。",
   "dashboard.models.gateway.parameters": "请求参数",
   "dashboard.models.gateway.parametersHint":
     "用来验证这个厂商到底认不认这些参数。比如上游的思考等级叫别的名字，只有真发一次才知道。测出来的档位请填到模型配置的「思考等级」里，助手设置的下拉才会列出它们。",
@@ -588,7 +587,7 @@ const zhCN: Dict = {
 
   // ===== Usage =====
   "usage.title": "用量统计",
-  "usage.tzNote": "所有日期按 {zone} 显示。数据来自每次请求的用量日志，可能有轻微延迟。",
+  "usage.tzNote": "所有日期按 {zone} 显示。",
   "usage.range.label": "时间范围",
   "usage.range.today": "今天",
   "usage.range.7d": "近 7 天",
@@ -734,7 +733,8 @@ const zhCN: Dict = {
   // ===== Admin Keys =====
   "admin.keys.title": "接口密钥",
   // ===== Media providers (declarative adapter protocol) =====
-  "admin.mediaProviders.title": "媒体供应商",  "admin.mediaProviders.new": "新增供应商",
+  "admin.mediaProviders.title": "媒体供应商",
+  "admin.mediaProviders.new": "新增供应商",
   "admin.mediaProviders.edit": "编辑",
   "admin.mediaProviders.empty": "还没有媒体供应商。",
   "admin.mediaProviders.name": "名称",
@@ -932,7 +932,8 @@ const zhCN: Dict = {
   "admin.search.recent.credits": "积分",
   "admin.search.recent.success": "成功",
   "admin.search.recent.error": "失败",
-  "admin.settings.publicUrl": "公开访问地址",  "admin.settings.envConfigured": "环境变量已配置",
+  "admin.settings.publicUrl": "公开访问地址",
+  "admin.settings.envConfigured": "环境变量已配置",
   "admin.settings.envOverride": "数据库设置会覆盖环境变量配置。",
 
   // ===== Admin docs (admin-only) =====
@@ -1159,6 +1160,7 @@ const zhCN: Dict = {
   "license.table.version": "版本",
   "license.table.license": "许可证",
   "license.compat.note": "上列直接依赖均与 MIT 兼容；传递依赖里有 LGPL-3.0、CC-BY-4.0 等，义务见第三方组件清单。",
+  "license.compat.title": "许可证兼容性",
   "license.thirdParty.title": "第三方组件（传递依赖）",
   "license.thirdParty.desc": "上表只列直接依赖；镜像里还有它们的依赖。",
   "license.thirdParty.body": "完整清单由构建时的实际依赖生成，按许可证分组，附上各自需要随分发保留的授权文本。除 MIT 与 ISC 之外，还包含 Apache-2.0、BSD-3-Clause、CC-BY-4.0 与 LGPL-3.0 组件。",
@@ -1206,7 +1208,6 @@ const zhCN: Dict = {
   "dashboard.models.gateway.mediaHint": "图片 / 视频 / 语音模型请用对应的 /v1/images/* 、/v1/videos/* 、/v1/audio/* 端点调用。",
   "dashboard.models.custom.title": "测试自定义模型",
   "dashboard.models.media.title": "测试媒体模型",
-  "dashboard.models.media.desc": "图片、视频、语音走各自的端点。同样用你自己的密钥，走的是和客户端完全相同的路径。",
   "dashboard.models.media.keyLabel": "你的 API 密钥",
   "dashboard.models.media.keyHint": "只存在浏览器里，每次请求现发，不保存。",
   "dashboard.models.media.model": "模型",
@@ -1580,7 +1581,7 @@ const zhCN: Dict = {
 
   // ===== 文档：管理员配置 =====
   "admin.docsSettings.siteTitle": "站点信息",
-  "admin.docsSettings.siteDesc": "显示在用户文档页顶部。纯展示内容，不影响任何路由。",
+  "admin.docsSettings.siteDesc": "显示在用户文档页顶部。",
   "admin.docsSettings.siteName": "站点名称",
   "admin.docsSettings.siteNameHint": "留空则显示 RelayAB",
   "admin.docsSettings.siteDescription": "一句话简介",
@@ -1615,12 +1616,8 @@ const zhCN: Dict = {
   "admin.modelNotes.description": "助手与用户文档都会读它。",
   "admin.mediaProviders.empty.description":
     "图片、视频、语音、音乐的上游供应商。",
-  "admin.providers.empty.description":
-    "可用的模型、转发规则和计费都在提供商里配置。",
   "admin.overview.recentUsersEmptyDescription":
     "还没有用户。建好第一个之后，这里会显示最近登录过的账号。",
-  "admin.overview.recentUsageEmptyDescription":
-    "还没有调用记录。账号第一次请求之后，这里会显示最近的调用。",
 };
 
 const en: Dict = {
@@ -1899,7 +1896,6 @@ const en: Dict = {
   "admin.docsSettings.pageUp": "Move up",
   "admin.docsSettings.pageDown": "Move down",
   "admin.docsSettings.pageInvalidId": "An id may only contain lowercase letters, digits and dashes",
-  "admin.docsSettings.pagesHint": "One topic per page: voices by language, parameters by capability. A reader sees one page at a time and the assistant reads one page at a time — a page holding three hundred rows is unreadable on both sides.",
   "dashboard.models.gateway.parameters": "Request parameters",
   "dashboard.models.gateway.parametersHint":
     "Use these to find out whether a vendor actually honours them. If the vendor spells the reasoning level differently, only a real call tells you — put the levels you found into the model configuration’s “Thinking levels” and the assistant’s picker will offer them.",
@@ -2185,7 +2181,7 @@ const en: Dict = {
 
   // ===== Usage =====
   "usage.title": "Usage",
-  "usage.tzNote": "All dates are shown in {zone}. Figures come from per-request usage logs and may lag slightly.",
+  "usage.tzNote": "All dates are shown in {zone}.",
   "usage.range.label": "Range",
   "usage.range.today": "Today",
   "usage.range.7d": "Last 7 days",
@@ -2333,7 +2329,8 @@ const en: Dict = {
   // ===== Admin Keys =====
   "admin.keys.title": "API keys",
   // ===== Media providers (declarative adapter protocol) =====
-  "admin.mediaProviders.title": "Media providers",  "admin.mediaProviders.new": "New provider",
+  "admin.mediaProviders.title": "Media providers",
+  "admin.mediaProviders.new": "New provider",
   "admin.mediaProviders.edit": "Edit",
   "admin.mediaProviders.empty": "No media providers yet.",
   "admin.mediaProviders.name": "Name",
@@ -2533,7 +2530,8 @@ const en: Dict = {
   "admin.search.recent.credits": "Credits",
   "admin.search.recent.success": "Success",
   "admin.search.recent.error": "Failed",
-  "admin.settings.publicUrl": "Public URL",  "admin.settings.envConfigured": "Environment variable configured",
+  "admin.settings.publicUrl": "Public URL",
+  "admin.settings.envConfigured": "Environment variable configured",
   "admin.settings.envOverride": "Database settings will override environment variable.",
 
   // ===== Admin docs (admin-only) =====
@@ -2761,6 +2759,7 @@ const en: Dict = {
   "license.table.version": "Version",
   "license.table.license": "License",
   "license.compat.note": "Every direct dependency above is MIT-compatible; the transitive tree includes LGPL-3.0, CC-BY-4.0 and others — see the third-party notices.",
+  "license.compat.title": "Licence compatibility",
   "license.thirdParty.title": "Third-party components (transitive)",
   "license.thirdParty.desc": "The table above lists direct dependencies only; the image also carries theirs.",
   "license.thirdParty.body": "The full list is generated at image build time from what is actually installed, grouped by licence with the texts that must travel with a distribution. Besides MIT and ISC it contains Apache-2.0, BSD-3-Clause, CC-BY-4.0 and LGPL-3.0 components.",
@@ -2813,7 +2812,6 @@ const en: Dict = {
     "Image, video and speech models are called through /v1/images/*, /v1/videos/* and /v1/audio/*.",
   "dashboard.models.custom.title": "Test a custom model",
   "dashboard.models.media.title": "Test a media model",
-  "dashboard.models.media.desc": "Images, video and speech each use their own endpoint. Same key, same path a client would take.",
   "dashboard.models.media.keyLabel": "Your API key",
   "dashboard.models.media.keyHint": "Lives only in the browser and is sent per request. Never stored.",
   "dashboard.models.media.model": "Model",
@@ -3195,7 +3193,7 @@ const en: Dict = {
 
   // ===== Docs: admin settings =====
   "admin.docsSettings.siteTitle": "Site",
-  "admin.docsSettings.siteDesc": "Shown at the top of the user docs page. Presentation only — it cannot change routing.",
+  "admin.docsSettings.siteDesc": "Shown at the top of the user docs page.",
   "admin.docsSettings.siteName": "Site name",
   "admin.docsSettings.siteNameHint": "Leave blank to show RelayAB",
   "admin.docsSettings.siteDescription": "One-line description",
@@ -3231,12 +3229,8 @@ const en: Dict = {
   "admin.modelNotes.description": "The assistant and the user docs read them.",
   "admin.mediaProviders.empty.description":
     "The upstream vendors behind images, video, speech and music.",
-  "admin.providers.empty.description":
-    "Models, routing rules and pricing are configured per provider.",
   "admin.overview.recentUsersEmptyDescription":
     "No users yet. Once the first one exists, the accounts that signed in recently show up here.",
-  "admin.overview.recentUsageEmptyDescription":
-    "No requests recorded yet. This fills up once an account makes its first call.",
 };
 
 export const DICTS: Record<Locale, Dict> = { "zh-CN": zhCN, en };
