@@ -10,6 +10,7 @@ import {
   Code2,
   Database,
   FileText,
+  Package,
   Scale,
   Server,
   ShieldAlert,
@@ -68,6 +69,7 @@ const RUNTIME_DEPS: Dep[] = [
   // The transport. Node's `fetch` is undici, and the relay needs to reach it
   // directly to take its 300-second header/body timers out of the way
   // (lib/http/transport.ts).
+  // The maintenance scripts (`pnpm configure-minimax`, `reset-password`, …) run\n  // inside the container, so the TS runner is a runtime dependency rather than a\n  // build-time one — the image is built with production dependencies only.\n  { name: "tsx", version: "4.23.13", license: "MIT", repo: "https://github.com/privatenumber/tsx", copyright: "Hirotaka Miyagi" },
   { name: "undici", version: "8.12.4", license: "MIT", repo: "https://github.com/nodejs/undici", copyright: "Node.js contributors" },
   // UI primitives - Radix UI (added in v0.2+)
   { name: "@radix-ui/react-accordion", version: "1.2.20", license: "MIT", copyright: "Radix UI Contributors" },
@@ -100,7 +102,7 @@ const DEV_DEPS: Dep[] = [
   { name: "autoprefixer", version: "10.6.1", license: "MIT", repo: "https://github.com/postcss/autoprefixer", copyright: "Andrey Sitnik" },
   { name: "postcss", version: "8.5.28", license: "MIT", repo: "https://github.com/postcss/postcss", copyright: "Andrey Sitnik" },
   { name: "tailwindcss", version: "3.4.19", license: "MIT", repo: "https://github.com/tailwindlabs/tailwindcss", copyright: "Tailwind Labs Inc." },
-  { name: "tsx", version: "4.23.13", license: "MIT", repo: "https://github.com/privatenumber/tsx", copyright: "Hirotaka Miyagi" },
+  // The maintenance scripts (`pnpm configure-minimax`, `reset-password`, …) run\n  // inside the container, so the TS runner is a runtime dependency rather than a\n  // build-time one — the image is built with production dependencies only.\n  { name: "tsx", version: "4.23.13", license: "MIT", repo: "https://github.com/privatenumber/tsx", copyright: "Hirotaka Miyagi" },
   { name: "typescript", version: "5.9.3", license: "Apache-2.0", repo: "https://github.com/microsoft/TypeScript", copyright: "Microsoft Corporation" },
   { name: "vitest", version: "2.1.9", license: "MIT", repo: "https://github.com/vitest-dev/vitest", copyright: "Anthony Fu and Vitest contributors" },
 ];
@@ -187,6 +189,15 @@ export default async function LicensePage() {
 
   const totalDeps = RUNTIME_DEPS.length + DEV_DEPS.length;
   const repoLabel = repoUrl ?? "github.com/CloudyAasim/RelayAB";
+  /**
+   * The generated notices for the transitive tree.
+   *
+   * The list above is the direct dependencies; the image also ships their
+   * dependencies, which is where the Apache-2.0, BSD-3-Clause, CC-BY-4.0 and
+   * LGPL-3.0 components live. That file is generated from the installed tree at
+   * image build time, so it matches the artefact rather than this page.
+   */
+  const noticesUrl = `${(repoUrl ?? "https://github.com/CloudyAasim/RelayAB").replace(/\.git$/, "")}/blob/server/THIRD-PARTY-NOTICES.md`;
 
   return (
     <div className="relative flex-1 bg-background">
@@ -339,6 +350,35 @@ export default async function LicensePage() {
           </Table>
           <p className="mt-4 text-xs text-muted-foreground">
             {t("license.deps.hint")} {t("license.compat.note")}
+          </p>
+        </Card>
+
+        {/* Transitive dependencies (the ones a direct list never shows) */}
+        <Card className="mt-6">
+          <CardHeader
+            title={
+              <span className="flex items-center gap-2">
+                <Package className="h-4 w-4 text-muted-foreground" />
+                {t("license.thirdParty.title")}
+              </span>
+            }
+            description={t("license.thirdParty.desc")}
+            action={
+              <a
+                href={noticesUrl}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="text-xs font-medium text-primary underline-offset-2 hover:underline"
+              >
+                {t("license.thirdParty.link")} ↗
+              </a>
+            }
+          />
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            {t("license.thirdParty.body")}
+          </p>
+          <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+            {t("license.thirdParty.lgpl")}
           </p>
         </Card>
 

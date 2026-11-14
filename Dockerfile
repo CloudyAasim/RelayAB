@@ -73,11 +73,36 @@ COPY . .
 RUN pnpm build
 
 # ---------------------------------------------------------------------------
+# Production dependencies
+# ---------------------------------------------------------------------------
+# The runtime image used to copy the whole build tree: playwright, vitest,
+# typescript, tailwind — none of it runs in production. That is image size, and
+# it is licence surface: the notices a distributed image must carry grew with
+# every test tool. pnpm has no `prune`, so this is a second install with
+# `--prod` rather than a pruning step.
+#
+# One dev-looking package stays in `dependencies` on purpose: `tsx` runs the
+# maintenance scripts documented for the container (`pnpm reset-password`,
+# `pnpm configure-minimax`, …).
+
+FROM node:24.21.0-bookworm-slim AS prod-deps
+WORKDIR /app
+
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+RUN corepack enable
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+RUN pnpm install --frozen-lockfile --prod
+
+# Regenerated here, not copied from the repository: the committed file was made
+# on a developer machine and carries that platform's optional binaries. The
+# image must describe what it actually ships.
+COPY scripts/gen-third-party-notices.cjs ./scripts/
+RUN node scripts/gen-third-party-notices.cjs
+
+# ---------------------------------------------------------------------------
 # Runtime
 # ---------------------------------------------------------------------------
-# The same node_modules the build used, rather than a prune: pnpm has no
-# `prune`, and the multi-stage trick for that needs a package manager that can
-# do it. Dev dependencies in the image are a size cost, not a correctness one.
 
 FROM node:24.21.0-bookworm-slim AS runtime
 WORKDIR /app
@@ -87,10 +112,11 @@ ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN corepack enable
 
-COPY --from=build /app/node_modules ./node_modules
+COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/.next ./.next
 COPY --from=build /app/public ./public
 COPY --from=build /app/package.json ./
+COPY --from=prod-deps /app/THIRD-PARTY-NOTICES.md ./
 COPY --from=build /app/next.config.mjs ./
 # The custom server. `pnpm start` runs it, and it is what owns the WebSocket
 # surface (`/v1/realtime`) — `next start` alone cannot see the socket an
