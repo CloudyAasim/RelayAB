@@ -116,6 +116,13 @@ describe("License page: transitive dependencies", () => {
     expect(DOCKERFILE).not.toContain("AS prod-deps");
   });
 
+  it("keeps the runtime stage a real FROM, not a commented one", () => {
+    // A header edit once swallowed the newline and produced `#FROM …`, so every
+    // runtime instruction joined the build stage and Docker reported a circular
+    // dependency (2026-11-14).
+    expect(DOCKERFILE).toContain("FROM node:24.21.0-bookworm-slim AS runtime");
+  });
+
   it("generates the notices in the build stage, from the tree that ships", () => {
     expect(DOCKERFILE).toContain("RUN node scripts/gen-third-party-notices.cjs");
     expect(DOCKERFILE).toContain("COPY --from=build /app/THIRD-PARTY-NOTICES.md");

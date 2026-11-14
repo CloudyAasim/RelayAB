@@ -86,7 +86,7 @@ RUN node scripts/gen-third-party-notices.cjs
 # site down on 2026-11-14. Dev dependencies in the image are a size cost; the
 # third-party notices generated in the build stage describe what is actually
 # there, so nothing is undisclosed.
-#FROM node:24.21.0-bookworm-slim AS runtime
+FROM node:24.21.0-bookworm-slim AS runtime
 WORKDIR /app
 
 ENV NODE_ENV=production
