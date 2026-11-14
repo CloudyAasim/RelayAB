@@ -141,9 +141,10 @@ const lines = [
   "dependency tree. **Do not edit by hand** — regenerate after changing",
   "dependencies.",
   "",
-  "The Docker image ships the production dependency tree, so these notices cover",
-  "what a deployment actually contains. Every package also ships its own licence",
-  "file under `node_modules/<package>/`.",
+  "This repository copy comes from the development tree, which is a superset of",
+  "what the image ships: the Docker build regenerates this file inside its",
+  "production-dependencies stage, so the copy inside an image describes that image.",
+  "Every package also ships its own licence file under `node_modules/<package>/`.",
   "",
   `Packages: **${packages.length}** (${[...byLicense.entries()]
     .map(([license, list]) => `${list.length} ${license}`)

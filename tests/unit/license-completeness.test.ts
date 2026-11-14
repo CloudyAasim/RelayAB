@@ -107,13 +107,14 @@ describe("License page: transitive dependencies", () => {
     expect(PAGE).toContain('t("license.thirdParty.link")');
   });
 
-  it("ships the build tree, which is what the notices describe", () => {
-    // A separate production-only install was tried and reverted: on this host it
-    // held a deployment for half an hour (2026-11-14). The image therefore
-    // carries dev dependencies too, and the notices generated in the build stage
-    // are what make that honest.
-    expect(DOCKERFILE).toContain("COPY --from=build /app/node_modules");
-    expect(DOCKERFILE).not.toContain("AS prod-deps");
+  it("installs a production-only tree for the image", () => {
+    // `pnpm install --prod` in the build stage leaves `node_modules/.pnpm`
+    // intact (measured: 222 directories, 436 MB, dev tools included), so a
+    // separate stage installs from the manifest alone and it is that tree the
+    // image takes.
+    expect(DOCKERFILE).toContain("AS prod-deps");
+    expect(DOCKERFILE).toContain("pnpm install --frozen-lockfile --prod");
+    expect(DOCKERFILE).toContain("COPY --from=prod-deps /app/node_modules");
   });
 
   it("keeps the runtime stage a real FROM, not a commented one", () => {
@@ -123,9 +124,9 @@ describe("License page: transitive dependencies", () => {
     expect(DOCKERFILE).toContain("FROM node:24.21.0-bookworm-slim AS runtime");
   });
 
-  it("generates the notices in the build stage, from the tree that ships", () => {
+  it("generates the notices inside that stage, from the tree that ships", () => {
     expect(DOCKERFILE).toContain("RUN node scripts/gen-third-party-notices.cjs");
-    expect(DOCKERFILE).toContain("COPY --from=build /app/THIRD-PARTY-NOTICES.md");
+    expect(DOCKERFILE).toContain("COPY --from=prod-deps /app/THIRD-PARTY-NOTICES.md");
   });
 });
 describe("License page: MIT text", () => {

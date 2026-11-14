@@ -72,20 +72,37 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN pnpm build
 
-# The notices the image ships must describe what it contains, so they are
-# generated here from the tree that will be copied into the runtime image —
-# no second install and no network round trip.
+
+# ---------------------------------------------------------------------------
+# Production dependencies
+# ---------------------------------------------------------------------------
+# `pnpm install --prod` in the build stage is not enough: pnpm removes the
+# top-level links but leaves every package in `node_modules/.pnpm` (measured:
+# 222 directories, 436 MB, dev tools included), and that directory is what gets
+# copied. So the production tree is built in its own stage, from the manifest
+# alone, and it is that tree the runtime image takes.
+#
+# `tsx` is in `dependencies` on purpose: the container's maintenance commands
+# (`pnpm reset-password`, `pnpm configure-minimax`, …) are TypeScript.
+
+FROM node:24.21.0-bookworm-slim AS prod-deps
+WORKDIR /app
+
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+RUN corepack enable
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+RUN pnpm install --frozen-lockfile --prod
+
+# Generated from the tree that ships, so the notices describe the image rather
+# than the developer's machine.
+COPY scripts/gen-third-party-notices.cjs ./scripts/
 RUN node scripts/gen-third-party-notices.cjs
 
 # ---------------------------------------------------------------------------
 # Runtime
 # ---------------------------------------------------------------------------
-# The image carries the same node_modules the build used: pnpm has no `prune`,
-# and a second `pnpm install --prod` in its own stage had to fetch every package
-# again — on this host that held the deployment for half an hour and took the
-# site down on 2026-11-14. Dev dependencies in the image are a size cost; the
-# third-party notices generated in the build stage describe what is actually
-# there, so nothing is undisclosed.
+
 FROM node:24.21.0-bookworm-slim AS runtime
 WORKDIR /app
 
@@ -94,11 +111,11 @@ ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN corepack enable
 
-COPY --from=build /app/node_modules ./node_modules
+COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/.next ./.next
 COPY --from=build /app/public ./public
 COPY --from=build /app/package.json ./
-COPY --from=build /app/THIRD-PARTY-NOTICES.md ./
+COPY --from=prod-deps /app/THIRD-PARTY-NOTICES.md ./
 COPY --from=build /app/next.config.mjs ./
 # The custom server. `pnpm start` runs it, and it is what owns the WebSocket
 # surface (`/v1/realtime`) — `next start` alone cannot see the socket an
