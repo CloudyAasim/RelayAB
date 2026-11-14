@@ -25,6 +25,7 @@ import {
   validateTextSpecs,
 } from "@/lib/protocol/text-specs";
 import { protocolPreset } from "@/lib/protocol/text-protocols";
+import { DICTS } from "@/lib/i18n/dict";
 
 const ROOT = process.cwd();
 const read = (...p: string[]) => readFileSync(join(ROOT, ...p), "utf-8");
@@ -144,16 +145,21 @@ describe("the two modes are exclusive, and say so", () => {
 
   it("as cards with a written state, not a pressed tint", () => {
     // "Which mode am I in" is a question the operator asked out loud, so the
-    // answer is a word on the card, not a background colour.
+    // answer is the selected card: radio dot, border and its own two lines.
+    // It used to also carry a 「当前」 badge, which was the third copy of one
+    // piece of state.
     expect(MODE).toMatch(/aria-pressed=\{on\}/);
-    expect(MODE).toMatch(/mode === "simple"[\s\S]{0,80}t\("admin\.textSpec\.mode\.current"\)/);
-    expect(MODE).toMatch(/mode === "advanced"[\s\S]{0,80}t\("admin\.textSpec\.mode\.current"\)/);
+    expect(MODE).not.toMatch(/admin\.textSpec\.mode\.current/);
     expect(MODE).toMatch(/admin\.textSpec\.mode\.simpleBody/);
     expect(MODE).toMatch(/admin\.textSpec\.mode\.advancedBody/);
   });
 
-  it("with a hint that they configure the same provider", () => {
-    expect(MODE).toMatch(/admin\.textSpec\.modeHint/);
+  it("with the cards themselves saying they configure the same provider", () => {
+    // There used to be a paragraph above the cards spelling out that the two
+    // are complete alternatives. Each card's own two lines say it, and the
+    // paragraph was read as instructions rather than as a choice.
+    expect(MODE).not.toMatch(/admin\.textSpec\.modeHint/);
+    expect(DICTS["zh-CN"]["admin.textSpec.modeHint"]).toBeUndefined();
   });
 
   it("and the switch is inside the form in both places", () => {

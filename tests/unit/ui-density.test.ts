@@ -635,3 +635,90 @@ describe("secondary labels and descriptions that the layout already says", () =>
     expect(DICTS["zh-CN"]["license.compat.title"]).toBe("许可证兼容性");
   });
 });
+/**
+ * Sub-surfaces: the dialogs, drawers and menus reached from a page.
+ *
+ * The pages were clean while the create-provider dialog still opened with a
+ * paragraph about the form's own fields and marked the selected mode three
+ * different ways. These guards are the result of opening each one in a browser
+ * (`scripts/ui-screenshots.cjs`, the `SCENES` list).
+ */
+describe("the dialogs and drawers follow the same rule", () => {
+  const modeSwitch = read("src", "app", "(admin)", "admin", "providers", "ProviderModeSwitch.tsx");
+  const routes = read("src", "app", "(admin)", "admin", "providers", "ProviderSurfaceRoutes.tsx");
+  const mediaForm = read("src", "app", "(admin)", "admin", "media-providers", "MediaProviderForm.tsx");
+  const searchForm = read("src", "app", "(admin)", "admin", "search", "SearchProviderForm.tsx");
+  const keyButton = read("src", "app", "(user)", "dashboard", "CreateKeyButton.tsx");
+  const panel = read("src", "app", "(user)", "dashboard", "assistant", "AssistantSettingsPanel.tsx");
+  const shots = read("scripts", "ui-screenshots.cjs");
+
+  it("the provider dialog does not explain the three modes above them", () => {
+    // 「两套各自都是完整配置，不用两个模式拼在一起填……」 said nothing the three
+    // cards do not: each names itself and its cost.
+    expect(modeSwitch).not.toContain("admin.textSpec.modeHint");
+    expect(DICTS["zh-CN"]["admin.textSpec.modeHint"]).toBeUndefined();
+  });
+
+  it("the selected mode is shown once, by the card itself", () => {
+    // Radio dot + highlighted border + a 「当前」 badge was three copies.
+    expect(modeSwitch).not.toContain('t("admin.textSpec.mode.current")');
+    expect(DICTS["zh-CN"]["admin.textSpec.mode.current"]).toBeUndefined();
+  });
+
+  it("the route selects do not restate their own three options", () => {
+    expect(routes).not.toContain("admin.providers.routes.hint");
+    expect(DICTS["zh-CN"]["admin.providers.routes.hint"]).toBeUndefined();
+  });
+
+  it("a create dialog does not talk about keeping the stored key", () => {
+    // 「留空以保持不变」 only means something when editing.
+    expect(mediaForm).toContain("editing");
+    expect(searchForm).toContain("editing");
+    // …and the search dialog's description no longer lists the fields below it.
+    expect(DICTS["zh-CN"]["admin.searchProviders.formDesc"]).not.toContain("填写后端类型");
+  });
+
+  it("the rename dialog does not use its own name as the field label", () => {
+    // Title 「重命名密钥」 and the input label under it said the same thing.
+    const keyActions = read("src", "app", "(admin)", "admin", "keys", "KeyActions.tsx");
+    expect(keyActions).not.toContain('label={t("admin.keys.rename.title")}');
+    expect(keyActions).toContain('label={t("admin.keys.create.label")}');
+  });
+
+  it("the key dialog's expiry hint is part of the label, not a line under it", () => {
+    expect(keyButton).not.toContain('hint={t("dashboard.createKey.expiresAtHint")}');
+    expect(keyButton).toContain("dashboard.createKey.expiresAtHint");
+  });
+
+  it("the assistant settings drawer does not label the selected pill as current", () => {
+    // The pill is selected; 「当前生效：用我的账号身份」 beside it was the same fact.
+    expect(panel).not.toContain("wayActiveAccount");
+    expect(panel).not.toContain("wayActiveKey");
+    expect(DICTS["zh-CN"]["assistant.settings.wayActiveAccount"]).toBeUndefined();
+  });
+
+  it("the assistant's long explanations are one sentence each", () => {
+    const zh = DICTS["zh-CN"];
+    expect(zh["assistant.settings.reasoningUnknown"]).not.toContain("OpenAI 兼容接口的常见写法");
+    expect(zh["assistant.settings.thinkingModeHint"]).not.toContain("按厂商文档确认后再选");
+    expect(zh["assistant.settings.refreshHint"]).not.toContain("思考等级不在这里填");
+    expect(zh["assistant.settings.searchService.whichServiceHint"]).toContain("服务坏了会直接报错");
+  });
+
+  it("the screenshot script keeps covering the sub-surfaces", () => {
+    // A future refactor that drops the scene list would make the dialogs
+    // invisible to this review again.
+    for (const scene of [
+      "assistant-settings",
+      "assistant-history",
+      "dashboard-create-key",
+      "admin-create-user",
+      "admin-create-provider",
+      "admin-create-media",
+      "admin-create-search",
+      "admin-allocation",
+    ]) {
+      expect(shots, `${scene} scene should stay`).toContain(scene);
+    }
+  });
+});

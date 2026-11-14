@@ -236,7 +236,7 @@ export function KeyActions({ apiKey }: { apiKey: ApiKey }) {
       >
         <div className="space-y-3">
           <Input
-            label={t("admin.keys.rename.title")}
+            label={t("admin.keys.create.label")}
             value={renameValue}
             onChange={(e) => {
               setRenameValue(e.target.value);

@@ -36,13 +36,13 @@ const SHARES = /共用|共享|shared/i;
 
 describe("interface-routing section copy", () => {
   it("says what the three answers are, once", () => {
-    // A picker whose options are not explained leaves the reader to work out
-    // the difference between "not answered" and "answered in another shape" —
-    // which is the difference between a provider that 404s and one that is
-    // translated.
+    // The three option labels are the explanation: 「不支持」, 「原样透传」,
+    // 「路由到…」. There used to be a paragraph above the selects restating
+    // them, which made the section two descriptions of one picker.
     for (const locale of LOCALES) {
-      const hint = text(locale, "admin.providers.routes.hint");
-      expect(hint, `${locale} hint says nothing about the three answers`).not.toBe("");
+      expect(ROUTES, `${locale} section should have no hint paragraph`).not.toContain(
+        "admin.providers.routes.hint",
+      );
       for (const key of [
         "admin.providers.routes.unsupported",
         "admin.providers.routes.passthrough",

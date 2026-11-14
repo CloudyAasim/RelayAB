@@ -63,9 +63,9 @@ describe("when the vendor published no levels", () => {
     // about the model; with it, it is a starting point the reader can check.
     const html = render([]);
     expect(html, "the presets are not labelled as presets").toContain(
-      "厂商的模型列表里没有公布",
+      "厂商没有公布这个模型的思考等级",
     );
-    expect(html, "the presets are not labelled as presets").toContain("常见写法");
+    expect(html, "the presets are not labelled as presets").toContain("按厂商文档确认");
   });
 
   it("and the custom field is there for anything else", () => {

@@ -123,8 +123,7 @@ export function CreateKeyButton({ allocation, primary, label }: Props) {
               placeholder={t("dashboard.createKey.labelPlaceholder")}
             />
             <Input
-              label={t("dashboard.createKey.expiresAt")}
-              hint={t("dashboard.createKey.expiresAtHint")}
+              label={`${t("dashboard.createKey.expiresAt")}（${t("dashboard.createKey.expiresAtHint")}）`}
               type="datetime-local"
               value={expiresAt}
               onChange={(e) => setExpiresAt(e.target.value)}

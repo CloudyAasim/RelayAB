@@ -715,11 +715,6 @@ export function AssistantSettingsPanel({
             is the right behaviour and an unexplained one. Saying it is cheaper
             than a screenshot.
           */}
-          <span className="shrink-0 text-xs font-normal text-muted-foreground">
-            {mode === "account"
-              ? t("assistant.settings.wayActiveAccount")
-              : t("assistant.settings.wayActiveKey")}
-          </span>
         </legend>
         <div className="grid grid-cols-2 gap-1.5" role="none">
           {(["account", "key"] as const).map((m) => (

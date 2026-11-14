@@ -165,7 +165,11 @@ export function MediaProviderForm({ provider, templates, onSaved }: Props) {
       />
 
       <Input
-        label={`${t("admin.mediaProviders.apiKey")} (${t("admin.providers.edit.leaveBlank")})`}
+        label={
+          editing
+            ? `${t("admin.mediaProviders.apiKey")} (${t("admin.providers.edit.leaveBlank")})`
+            : t("admin.mediaProviders.apiKey")
+        }
         type="password"
         value={apiKey}
         onChange={(e) => setApiKey(e.target.value)}

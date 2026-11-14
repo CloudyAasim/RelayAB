@@ -283,7 +283,11 @@ export function SearchProviderForm({ provider, templates, onSaved }: Props) {
 
       <Input
         type="password"
-        label={`${t("admin.searchProviders.apiKey")} (${t("admin.providers.edit.leaveBlank")})`}
+        label={
+          editing
+            ? `${t("admin.searchProviders.apiKey")} (${t("admin.providers.edit.leaveBlank")})`
+            : t("admin.searchProviders.apiKey")
+        }
         value={apiKey}
         onChange={(e) => setApiKey(e.target.value)}
         placeholder={editing ? "••••••" : ""}

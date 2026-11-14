@@ -68,7 +68,6 @@ export function ProviderSurfaceRoutes({
   return (
     <div className={className}>
       <p className="mb-1 text-sm font-medium">{t("admin.providers.routes.title")}</p>
-      <p className="mb-3 text-xs text-muted-foreground">{t("admin.providers.routes.hint")}</p>
 
       <div className="space-y-2">
         {SURFACES.map((surface) => {

@@ -266,7 +266,7 @@ describe("the deployment's default service is the one the panel says is in effec
       ]),
     });
 
-    expect(html).toContain("选一个之后助手才会用站点的搜索");
+    expect(html).toContain("还没选，助手暂时不会用站点的搜索");
     expect(servicePicker(html)).toContain("还没选");
   });
   it("— and a default that cannot answer is said so, not papered over", () => {
@@ -521,7 +521,7 @@ describe("the thinking level offers this model's own words", () => {
       accountFacts: { plain: { contextLength: 64000, maxOutputTokens: 8192, reasoningLevels: [] } },
     });
     expect(html, "the custom option is missing").toContain("自定义");
-    expect(html, "no reason given for the empty list").toContain("厂商的模型列表里没有公布");
+    expect(html, "no reason given for the empty list").toContain("厂商没有公布这个模型的思考等级");
   });
 });
 

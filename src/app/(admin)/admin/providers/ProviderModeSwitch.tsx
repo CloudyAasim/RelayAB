@@ -71,20 +71,19 @@ export function ProviderModeSwitch({
 
   return (
     <div>
-      <p className="mb-1.5 text-xs text-muted-foreground">{t("admin.textSpec.modeHint")}</p>
       <div className="flex gap-2">
         {card(
           "simple",
           t("admin.textSpec.mode.simple"),
           t("admin.textSpec.mode.simpleBody"),
-          mode === "simple" ? t("admin.textSpec.mode.current") : null,
+          null,
         )}
         {card(
           "advanced",
           t("admin.textSpec.mode.advanced"),
           t("admin.textSpec.mode.advancedBody"),
           mode === "advanced"
-            ? t("admin.textSpec.mode.current")
+            ? null
             : interfaceCount > 0
               ? t("admin.textSpec.mode.configured", { n: interfaceCount })
               : null,
@@ -93,7 +92,7 @@ export function ProviderModeSwitch({
           "passthrough",
           t("admin.providers.routes.mode.passthrough"),
           t("admin.providers.routes.mode.passthroughBody"),
-          mode === "passthrough" ? t("admin.textSpec.mode.current") : null,
+          null,
         )}
       </div>
     </div>
