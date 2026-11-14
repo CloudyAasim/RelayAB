@@ -1053,11 +1053,11 @@ export function AssistantSettingsPanel({
 
       <fieldset className="space-y-2.5 border-t border-border pt-3">
         <legend className="text-sm font-medium">{t("assistant.settings.webSearch.title")}</legend>
-        <p className="text-xs text-muted-foreground">
-          {webSearch.available
-            ? t("assistant.settings.webSearch.available")
-            : t("assistant.settings.webSearch.unavailable")}
-        </p>
+        {!webSearch.available && (
+          <p className="text-xs text-muted-foreground">
+            {t("assistant.settings.webSearch.unavailable")}
+          </p>
+        )}
 
         <label className="flex items-start gap-2 text-sm text-foreground">
           <input

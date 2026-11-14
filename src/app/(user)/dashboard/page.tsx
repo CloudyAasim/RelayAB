@@ -118,7 +118,6 @@ export default async function DashboardPage() {
               <EmptyState
                 icon={<Sparkles className="h-5 w-5" />}
                 title={t("dashboard.apiKeys.empty.title")}
-                description={t("dashboard.apiKeys.empty.description")}
                 action={
                   <CreateKeyButton
                     allocation={allocation}

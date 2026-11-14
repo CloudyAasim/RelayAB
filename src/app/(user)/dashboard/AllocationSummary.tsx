@@ -92,13 +92,11 @@ export function AllocationSummary({
           icon={<ListChecks className="h-4 w-4" />}
           label={t("dashboard.allocation.modelWhitelist")}
           value={allowedModels.length > 0 ? allowedModels.join(", ") : t("dashboard.allocation.allModels")}
-          hint={t("dashboard.allocation.modelWhitelistHint")}
         />
         <Field
           icon={<KeyRound className="h-4 w-4" />}
           label={t("dashboard.allocation.activeKeys")}
           value={maxActiveKeys > 0 ? `${activeKeyCount} / ${maxActiveKeys}` : `${activeKeyCount}`}
-          hint={maxActiveKeys > 0 ? t("dashboard.allocation.activeKeysHintCapped") : t("dashboard.allocation.activeKeysHintUncapped")}
         />
       </div>
     </div>

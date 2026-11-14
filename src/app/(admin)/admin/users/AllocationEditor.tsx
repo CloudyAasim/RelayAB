@@ -451,11 +451,7 @@ function AllocationModal({
             </label>
           </div>
 
-          {allModels ? (
-            <p className="text-xs text-muted-foreground">
-              {t("admin.users.allocation.allModelsHint")}
-            </p>
-          ) : modelGroups.length === 0 ? (
+          {allModels ? null : modelGroups.length === 0 ? (
             <p className="text-xs text-muted-foreground">
               {t("admin.users.allocation.noModelsConfigured")}
             </p>

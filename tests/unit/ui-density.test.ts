@@ -488,15 +488,23 @@ describe("the assistant screen says a thing once", () => {
  * one further from the thing it was about.
  */
 describe("the assistant's settings form says a thing once", () => {
+  const PANEL = read(
+    "src",
+    "app",
+    "(user)",
+    "dashboard",
+    "assistant",
+    "AssistantSettingsPanel.tsx",
+  );
+
   it("the deployment's search status does not repeat the toggle hint below it", () => {
-    // 「输入框旁边的地球图标控制当前对话」 and 「每个对话仍然可以在输入框旁边单独
-    // 切换」 are the same sentence, a checkbox's hint apart. The hint is the
-    // one next to the checkbox.
-    expect(DICTS["zh-CN"]["assistant.settings.webSearch.available"]).not.toContain("输入框旁边");
-    expect(DICTS["en"]["assistant.settings.webSearch.available"]).not.toMatch(
-      /beside the input/i,
-    );
-    // …and the hint still says it.
+    // The status line rendered a sentence in both states, and the available
+    // state only said what the enabled toggle already said: 「这个部署可以使用
+    // 网页搜索」 next to a checkbox that is on. It is gone; the unavailable
+    // state keeps its sentence because that one explains why.
+    expect(PANEL).not.toContain("assistant.settings.webSearch.available");
+    expect(PANEL).toContain("assistant.settings.webSearch.unavailable");
+    // …and the hint next to the checkbox still says where the toggle lives.
     expect(DICTS["zh-CN"]["assistant.settings.webSearch.defaultHint"]).toContain("输入框旁边");
   });
 
@@ -525,5 +533,52 @@ describe("the assistant's settings form says a thing once", () => {
     expect(DICTS["en"]["assistant.settings.searchService.whichServiceHint"]).not.toMatch(
       /unpicked|nothing picked/i,
     );
+  });
+});
+
+describe("secondary labels and descriptions that the layout already says", () => {
+  const usersPage = read("src", "app", "(admin)", "admin", "users", "page.tsx");
+  const keysPage = read("src", "app", "(admin)", "admin", "keys", "page.tsx");
+  const homePage = read("src", "app", "(user)", "dashboard", "page.tsx");
+  const settingsPage = read("src", "app", "(admin)", "admin", "settings", "page.tsx");
+  const mediaPage = read("src", "app", "(admin)", "admin", "media-providers", "page.tsx");
+  const modelsPage = read("src", "app", "(user)", "dashboard", "models", "page.tsx");
+  const allocation = read("src", "app", "(user)", "dashboard", "AllocationSummary.tsx");
+  const editor = read("src", "app", "(admin)", "admin", "users", "AllocationEditor.tsx");
+
+  it("an empty state does not tell the reader to click the button beside it", () => {
+    // 「点击右上角「新建用户」创建第一个用户。」 under a card whose own action
+    // is that button (and whose page header has a second copy of it).
+    for (const [name, key] of [
+      ["users", "admin.users.empty.description"],
+      ["keys", "admin.keys.empty.description"],
+      ["the account's keys", "dashboard.apiKeys.empty.description"],
+      ["recent activity", "dashboard.recentActivity.empty.description"],
+    ] as const) {
+      expect(DICTS["zh-CN"][key], `${name} empty description should be gone`).toBeUndefined();
+    }
+  });
+
+  it("the pages that lost theirs do not render a description slot", () => {
+    expect(settingsPage).not.toContain("admin.settings.publicUrlDescription");
+    expect(mediaPage).not.toContain("admin.mediaProviders.description");
+    expect(modelsPage).not.toContain("dashboard.models.description");
+  });
+
+  it("policy rows do not repeat 「管理员分配」 under the value", () => {
+    // The value already says what was allocated; the hint only said who did it.
+    expect(allocation).not.toContain("perKeyQuotaHint");
+    expect(allocation).not.toContain("modelWhitelistHint");
+    expect(allocation).not.toContain("activeKeysHintCapped");
+    // 「允许全部模型」 explains itself; a paragraph under it said the same.
+    expect(editor).not.toContain("allModelsHint");
+  });
+
+  it("the settings page states the public-URL precedence once, where it has the value", () => {
+    // It said 「环境变量优先」 in the paragraph and 「数据库设置会覆盖环境变量」
+    // in the badge underneath — opposite rules on one screen.
+    expect(settingsPage).not.toContain("环境变量优先");
+    const zh = DICTS["zh-CN"];
+    expect(zh["admin.settings.envOverride"]).toContain("数据库");
   });
 });

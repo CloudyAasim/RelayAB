@@ -72,9 +72,6 @@ export default async function SettingsPage() {
             <div className="space-y-6">
               <div>
                 <h3 className="text-lg font-medium mb-2">{t("admin.settings.publicUrl")}</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  {t("admin.settings.publicUrlDescription")}
-                </p>
                 <SettingsForm currentUrl={currentUrl} envConfigured={!!envPublicUrl} />
               </div>
             </div>

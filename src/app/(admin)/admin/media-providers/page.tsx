@@ -46,9 +46,6 @@ export default async function MediaProvidersPage() {
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t("admin.mediaProviders.title")}</SectionPageLayout.Title>
-      <SectionPageLayout.Description>
-        {t("admin.mediaProviders.description")}
-      </SectionPageLayout.Description>
       <SectionPageLayout.Actions>
         <CreateMediaProviderButton templates={templates} />
       </SectionPageLayout.Actions>

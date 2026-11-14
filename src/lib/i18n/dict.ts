@@ -122,11 +122,9 @@ const zhCN: Dict = {
   "dashboard.stat.creditsUsed": "积分用量",
   "dashboard.apiKeys.title": "接口密钥",
   "dashboard.apiKeys.empty.title": "还没有密钥",
-  "dashboard.apiKeys.empty.description": "点击上面的「新建接口密钥」自己创建一个吧。",
   "dashboard.recentActivity.title": "最近活动",
   "dashboard.recentActivity.description": "你所有密钥的最近 50 次请求。",
   "dashboard.recentActivity.empty.title": "还没有活动",
-  "dashboard.recentActivity.empty.description": "发起第一次请求后这里会显示活动。",
   "dashboard.table.time": "时间",
   "dashboard.table.key": "密钥",
   "dashboard.table.model": "模型",
@@ -169,12 +167,8 @@ const zhCN: Dict = {
   "dashboard.pool.used": "已消耗 {used}",
   "dashboard.pool.sharedByKeys": "以上所有密钥共用这个余额",
   "dashboard.allocation.perKeyQuota": "每把密钥额度",
-  "dashboard.allocation.perKeyQuotaHint": "管理员分配",
   "dashboard.allocation.modelWhitelist": "可用模型",
-  "dashboard.allocation.modelWhitelistHint": "管理员分配",
   "dashboard.allocation.activeKeys": "活跃密钥数",
-  "dashboard.allocation.activeKeysHintCapped": "管理员设置了上限",
-  "dashboard.allocation.activeKeysHintUncapped": "管理员未设置上限",
   "dashboard.allocation.allModels": "全部模型",
 
   // ===== User Dashboard: per-key actions =====
@@ -676,7 +670,6 @@ const zhCN: Dict = {
   "admin.users.create": "新建用户",
   "admin.users.created": "用户已创建",
   "admin.users.empty.title": "还没有用户",
-  "admin.users.empty.description": "点击右上角「新建用户」创建第一个用户。",
   "admin.users.create.username": "用户名",
   "admin.users.create.displayName": "显示名",
   "admin.users.create.password": "密码",
@@ -709,7 +702,6 @@ const zhCN: Dict = {
   "admin.users.allocation.resetUsage": "同时把已消耗清零",
   "admin.users.allocation.modelsTitle": "可访问的模型",
   "admin.users.allocation.allModelsToggle": "允许全部模型",
-  "admin.users.allocation.allModelsHint": "该用户可调用任意已配置提供商暴露的模型。",
   "admin.users.allocation.noModelsConfigured": "还没有配置任何提供商，请先去提供商页面添加。",
   "admin.users.allocation.modelSelectionEmpty": "请至少勾选一个模型，否则该用户无法调用任何东西。",
   "admin.users.allocation.models": "可用模型",
@@ -742,9 +734,7 @@ const zhCN: Dict = {
   // ===== Admin Keys =====
   "admin.keys.title": "接口密钥",
   // ===== Media providers (declarative adapter protocol) =====
-  "admin.mediaProviders.title": "媒体供应商",
-  "admin.mediaProviders.description": "新增或调整供应商只需改这里，保存即生效，无需改代码或重新部署。",
-  "admin.mediaProviders.new": "新增供应商",
+  "admin.mediaProviders.title": "媒体供应商",  "admin.mediaProviders.new": "新增供应商",
   "admin.mediaProviders.edit": "编辑",
   "admin.mediaProviders.empty": "还没有媒体供应商。",
   "admin.mediaProviders.name": "名称",
@@ -772,7 +762,6 @@ const zhCN: Dict = {
   "admin.keys.table.noCredits": "未分配",
   "admin.keys.assistantLabel": "AI 助手专用",
   "admin.keys.empty.title": "还没有接口密钥",
-  "admin.keys.empty.description": "点击右上角「新建接口密钥」为用户签发一把。",
   "admin.keys.create": "新建接口密钥",
   "admin.keys.created": "密钥已创建",
   "admin.keys.create.label": "标签",
@@ -859,11 +848,11 @@ const zhCN: Dict = {
   "admin.settings.title": "系统设置",
   "admin.searchProviders.title": "搜索提供商",
   "admin.searchProviders.description":
-    "网页搜索的后端。站点没有配置任何搜索提供商时，回退到环境变量里配置的搜索后端。",
+    "没有配置任何搜索提供商时，回退到环境变量里的搜索后端。",
   "admin.searchProviders.new": "新增搜索提供商",
   "admin.searchProviders.formDesc": "填写后端类型、地址和密钥。SearXNG 只需要地址；Tavily 和 Brave 需要 API 密钥。",
   "admin.searchProviders.empty": "还没有搜索提供商",
-  "admin.searchProviders.emptyHint": "点击右上角「新增搜索提供商」加一个后端，助手和 /v1/search 才能用网页搜索。",
+  "admin.searchProviders.emptyHint": "助手与 /v1/search 共用的网页搜索后端。",
   "admin.searchProviders.name": "名称",
   "admin.searchProviders.serviceId": "客户端名称",
   "admin.searchProviders.noDefault":
@@ -943,9 +932,7 @@ const zhCN: Dict = {
   "admin.search.recent.credits": "积分",
   "admin.search.recent.success": "成功",
   "admin.search.recent.error": "失败",
-  "admin.settings.publicUrl": "公开访问地址",
-  "admin.settings.publicUrlDescription": "设置用户在文档中看到的API访问地址。如果配置了环境变量RELAY_PUBLIC_URL，将优先使用环境变量中的值。",
-  "admin.settings.envConfigured": "环境变量已配置",
+  "admin.settings.publicUrl": "公开访问地址",  "admin.settings.envConfigured": "环境变量已配置",
   "admin.settings.envOverride": "数据库设置会覆盖环境变量配置。",
 
   // ===== Admin docs (admin-only) =====
@@ -1460,7 +1447,6 @@ const zhCN: Dict = {
   "assistant.settings.probeFail": "不通",
   "assistant.settings.probeNeedsKey": "测试连通需要先填入密钥。",
   "assistant.settings.webSearch.title": "网页搜索",
-  "assistant.settings.webSearch.available": "这个部署可以使用网页搜索。",
   "assistant.settings.webSearch.unavailable": "当前不可用：管理员关闭了搜索，或还没有配置搜索后端。",
   "assistant.settings.webSearch.defaultOn": "新对话默认开启网页搜索",
   "assistant.settings.webSearch.defaultHint": "每个对话仍然可以在输入框旁边单独切换。",
@@ -1624,14 +1610,13 @@ const zhCN: Dict = {
   // only label is its title makes the reader guess; these are the sentences
   // that answer "what am I looking at, and what happens if I touch it".
   "usage.description": "数字来自用量日志，可能有轻微延迟。",
-  "dashboard.models.description": "走的是和客户端完全相同的路径。",
   "admin.providers.description": "决定哪些模型可被调用、每家怎么计价。",
   "admin.keys.description": "密钥只显示一次，丢失只能重建。",
   "admin.modelNotes.description": "助手与用户文档都会读它。",
   "admin.mediaProviders.empty.description":
-    "图片、视频、语音、音乐的上游供应商都写在这里；点击右上角「新增供应商」加一个，客户端才能用上对应的模型。",
+    "图片、视频、语音、音乐的上游供应商。",
   "admin.providers.empty.description":
-    "先加一个上游供应商：可用的模型、转发规则和计费都在它里面配。点击右上角「新建」开始。",
+    "可用的模型、转发规则和计费都在提供商里配置。",
   "admin.overview.recentUsersEmptyDescription":
     "还没有用户。建好第一个之后，这里会显示最近登录过的账号。",
   "admin.overview.recentUsageEmptyDescription":
@@ -1727,11 +1712,9 @@ const en: Dict = {
   "dashboard.stat.creditsUsed": "Credits Used",
   "dashboard.apiKeys.title": "API keys",
   "dashboard.apiKeys.empty.title": "No keys yet",
-  "dashboard.apiKeys.empty.description": "Click \"Create API Key\" above to mint your first one.",
   "dashboard.recentActivity.title": "Recent Activity",
   "dashboard.recentActivity.description": "Last 50 requests across all your keys.",
   "dashboard.recentActivity.empty.title": "No activity yet",
-  "dashboard.recentActivity.empty.description": "Activity will appear here after you make your first request.",
   "dashboard.table.time": "Time",
   "dashboard.table.key": "Key",
   "dashboard.table.model": "Model",
@@ -1774,12 +1757,8 @@ const en: Dict = {
   "dashboard.pool.used": "Used: {used}",
   "dashboard.pool.sharedByKeys": "Shared by every key above",
   "dashboard.allocation.perKeyQuota": "Quota per key",
-  "dashboard.allocation.perKeyQuotaHint": "Set by your admin",
   "dashboard.allocation.modelWhitelist": "Allowed models",
-  "dashboard.allocation.modelWhitelistHint": "Set by your admin",
   "dashboard.allocation.activeKeys": "Active keys",
-  "dashboard.allocation.activeKeysHintCapped": "Capped by your admin",
-  "dashboard.allocation.activeKeysHintUncapped": "No cap set",
   "dashboard.allocation.allModels": "All available models",
 
   // ===== User Dashboard: per-key actions =====
@@ -2290,7 +2269,6 @@ const en: Dict = {
   "admin.users.create": "Create New User",
   "admin.users.created": "User Created",
   "admin.users.empty.title": "No users yet",
-  "admin.users.empty.description": "Click \"Create New User\" in the top-right corner to add the first one.",
   "admin.users.create.username": "Username",
   "admin.users.create.displayName": "Display Name",
   "admin.users.create.password": "Password",
@@ -2323,7 +2301,6 @@ const en: Dict = {
   "admin.users.allocation.resetUsage": "Also reset consumption to zero",
   "admin.users.allocation.modelsTitle": "Model access",
   "admin.users.allocation.allModelsToggle": "Allow every model",
-  "admin.users.allocation.allModelsHint": "This account may call any model exposed by a configured provider.",
   "admin.users.allocation.noModelsConfigured": "No providers configured yet — add one on the Providers page first.",
   "admin.users.allocation.modelSelectionEmpty": "Select at least one model, otherwise this account cannot call anything.",
   "admin.users.allocation.models": "Allowed models",
@@ -2356,9 +2333,7 @@ const en: Dict = {
   // ===== Admin Keys =====
   "admin.keys.title": "API keys",
   // ===== Media providers (declarative adapter protocol) =====
-  "admin.mediaProviders.title": "Media providers",
-  "admin.mediaProviders.description": "Adding or tweaking a vendor is a change here — it takes effect on save, with no code change and no redeploy.",
-  "admin.mediaProviders.new": "New provider",
+  "admin.mediaProviders.title": "Media providers",  "admin.mediaProviders.new": "New provider",
   "admin.mediaProviders.edit": "Edit",
   "admin.mediaProviders.empty": "No media providers yet.",
   "admin.mediaProviders.name": "Name",
@@ -2386,7 +2361,6 @@ const en: Dict = {
   "admin.keys.table.noCredits": "Not granted",
   "admin.keys.assistantLabel": "AI assistant only",
   "admin.keys.empty.title": "No API keys yet",
-  "admin.keys.empty.description": "Click \"Create API Key\" in the top-right corner to issue one.",
   "admin.keys.create": "Create API Key",
   "admin.keys.created": "Key Created",
   "admin.keys.create.label": "Label",
@@ -2473,11 +2447,11 @@ const en: Dict = {
   "admin.settings.title": "Settings",
   "admin.searchProviders.title": "Search providers",
   "admin.searchProviders.description":
-    "Backends for web search. With no providers configured, the search backend in the environment variables is the fallback.",
+    "Falls back to the environment-variable backend when no provider is configured.",
   "admin.searchProviders.new": "Add search provider",
   "admin.searchProviders.formDesc": "Pick the backend type, address and key. SearXNG needs only an address; Tavily and Brave need an API key.",
   "admin.searchProviders.empty": "No search providers yet",
-  "admin.searchProviders.emptyHint": "Click “New search provider” to add a backend; the assistant and /v1/search can search once there is one.",
+  "admin.searchProviders.emptyHint": "The web-search backend shared by the assistant and /v1/search.",
   "admin.searchProviders.name": "Name",
   "admin.searchProviders.serviceId": "Client name",
   "admin.searchProviders.noDefault":
@@ -2559,9 +2533,7 @@ const en: Dict = {
   "admin.search.recent.credits": "Credits",
   "admin.search.recent.success": "Success",
   "admin.search.recent.error": "Failed",
-  "admin.settings.publicUrl": "Public URL",
-  "admin.settings.publicUrlDescription": "Set the API URL shown to users in documentation. If RELAY_PUBLIC_URL environment variable is set, it will be used as fallback.",
-  "admin.settings.envConfigured": "Environment variable configured",
+  "admin.settings.publicUrl": "Public URL",  "admin.settings.envConfigured": "Environment variable configured",
   "admin.settings.envOverride": "Database settings will override environment variable.",
 
   // ===== Admin docs (admin-only) =====
@@ -3090,7 +3062,6 @@ const en: Dict = {
   "assistant.settings.probeFail": "Not reachable",
   "assistant.settings.probeNeedsKey": "Enter a key to test the connection.",
   "assistant.settings.webSearch.title": "Web search",
-  "assistant.settings.webSearch.available": "This deployment can search the web.",
   "assistant.settings.webSearch.unavailable": "Unavailable: an administrator turned search off, or no search backend is configured.",
   "assistant.settings.webSearch.defaultOn": "New conversations start with web search on",
   "assistant.settings.webSearch.defaultHint": "Each conversation can still be switched independently beside the input.",
@@ -3253,16 +3224,15 @@ const en: Dict = {
   // it matters — what changing something here actually does.
   "usage.description":
     "The numbers come from the usage log, so they can lag by a moment.",
-  "dashboard.models.description": "The same path a client would take.",
   "admin.providers.description":
     "Which models exist, and what each provider costs.",
   "admin.keys.description":
     "A key is shown once — if it is lost, it has to be replaced.",
   "admin.modelNotes.description": "The assistant and the user docs read them.",
   "admin.mediaProviders.empty.description":
-    "The upstream providers for images, video, speech and music live here. Add one and the client can use the matching models.",
+    "The upstream vendors behind images, video, speech and music.",
   "admin.providers.empty.description":
-    "Add an upstream provider first: the models it offers, how requests are forwarded and how it is billed are all configured on it.",
+    "Models, routing rules and pricing are configured per provider.",
   "admin.overview.recentUsersEmptyDescription":
     "No users yet. Once the first one exists, the accounts that signed in recently show up here.",
   "admin.overview.recentUsageEmptyDescription":

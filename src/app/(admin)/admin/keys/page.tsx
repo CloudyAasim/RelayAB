@@ -68,7 +68,6 @@ export default async function KeysPage() {
             <EmptyState
               icon={<KeyRound className="h-5 w-5" />}
               title={t("admin.keys.empty.title")}
-              description={t("admin.keys.empty.description")}
             />
           ) : (
             <Table bare>
