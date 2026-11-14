@@ -107,16 +107,18 @@ describe("License page: transitive dependencies", () => {
     expect(PAGE).toContain('t("license.thirdParty.link")');
   });
 
-  it("does not pretend the image carries the build tree", () => {
-    // The runtime stage takes production dependencies; dev-only licences do not
-    // travel with the artefact.
-    expect(DOCKERFILE).toContain("COPY --from=prod-deps /app/node_modules");
-    expect(DOCKERFILE).toContain("pnpm install --frozen-lockfile --prod");
+  it("ships the build tree, which is what the notices describe", () => {
+    // A separate production-only install was tried and reverted: on this host it
+    // held a deployment for half an hour (2026-11-14). The image therefore
+    // carries dev dependencies too, and the notices generated in the build stage
+    // are what make that honest.
+    expect(DOCKERFILE).toContain("COPY --from=build /app/node_modules");
+    expect(DOCKERFILE).not.toContain("AS prod-deps");
   });
 
-  it("regenerates the notices inside the image, from what it installs", () => {
-    expect(DOCKERFILE).toContain("gen-third-party-notices.cjs");
-    expect(DOCKERFILE).toContain("COPY --from=prod-deps /app/THIRD-PARTY-NOTICES.md");
+  it("generates the notices in the build stage, from the tree that ships", () => {
+    expect(DOCKERFILE).toContain("RUN node scripts/gen-third-party-notices.cjs");
+    expect(DOCKERFILE).toContain("COPY --from=build /app/THIRD-PARTY-NOTICES.md");
   });
 });
 describe("License page: MIT text", () => {
