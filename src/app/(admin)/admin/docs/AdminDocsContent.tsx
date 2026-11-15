@@ -1,7 +1,7 @@
 /**
  * app/(admin)/admin/docs/AdminDocsContent.tsx
  *
- * One page of the admin operator reference. The shell (DocsShell) owns the
+ * One page of the admin operator reference. The reader (UserDocsApp) owns the
  * outline and prev/next; this file only renders the section body.
  */
 import Link from "next/link";

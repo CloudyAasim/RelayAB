@@ -37,7 +37,6 @@ import { markdownToHtml } from "@/lib/markdown";
 
 const SECTIONS = readFileSync(join(process.cwd(), "src", "lib", "docs", "sections.ts"), "utf-8");
 const CUSTOM = readFileSync(join(process.cwd(), "src", "lib", "docs", "custom.ts"), "utf-8");
-const SHELL = readFileSync(join(process.cwd(), "src", "components", "docs", "DocsShell.tsx"), "utf-8");
 const APP = readFileSync(
   join(process.cwd(), "src", "components", "docs", "UserDocsApp.tsx"),
   "utf-8",
@@ -616,19 +615,9 @@ describe("the outline is never stale", () => {
    * document above. What is left here is the admin reference, which is still
    * paged, and the server side of both.
    */
-  it("the paged shell's links do not prefetch, so no payload is cached ahead of a save", () => {
-    const links = [...SHELL.matchAll(/<Link\b[\s\S]*?>/g)].map((m) => m[0]);
-    expect(links.length, "no links found to check").toBeGreaterThan(0);
-    for (const link of links) {
-      expect(link, "a docs link can still be prefetched").toMatch(/prefetch=\{false\}/);
-    }
-  });
 
-  it("and the paged shell's sub-entries are plain anchors", () => {
-    // They point into the page you are already on, so there is no navigation to
-    // serve from a cache at all.
-    expect(SHELL).toMatch(/<a\s+href=\{`\$\{hrefOf\(section\.id\)\}#\$\{child\.id\}`\}/);
-  });
+
+
 
   it("the save invalidates the docs trees on the server as well", () => {
     // The other half: prefetch off stops the client from holding a stale

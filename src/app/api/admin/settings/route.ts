@@ -157,7 +157,7 @@ export async function PUT(req: Request): Promise<Response> {
     // their own outline. Say so to the server cache, or a reader can be served
     // an outline that predates the save.
     //
-    // This is the server half of the fix; the other half is in `DocsShell`,
+    // This is the server half of the fix; the other half is in `UserDocsApp`,
     // which opts its links out of prefetching, because the 30-second client
     // router cache in `next.config.mjs` would otherwise hand back a payload
     // fetched before the operator ever pressed save.
