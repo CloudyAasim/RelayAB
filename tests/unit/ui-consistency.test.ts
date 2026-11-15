@@ -89,7 +89,9 @@ describe("the shell is shared and the rail keeps its groups", () => {
   });
 
   it("collapsed sidebar groups are separated by a rule, not dropped", () => {
-    expect(read("components", "layouts", "sidebar", "Sidebar.tsx")).toContain("h-px w-6 bg-sidebar-border");
+    expect(read("components", "layouts", "sidebar", "Sidebar.tsx")).toContain(
+      "h-1 w-1 rounded-full bg-sidebar-border",
+    );
   });
 
   it("the assistant's call modes are three native options", () => {
