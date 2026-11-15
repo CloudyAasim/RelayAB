@@ -20,6 +20,8 @@
 import { useState } from "react";
 
 import { Card, CardHeader } from "@/components/ui/Card";
+import { OtherSearchProbe, type OtherSearchLabels } from "./OtherSearchProbe";
+import type { RawRequestLabels } from "./RawRequestPanel";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 
@@ -54,6 +56,11 @@ interface TestResult {
 
 export function SearchTester({
   embedded = false,
+  otherLabels,
+  rawLabels,
+  sourceLabel,
+  sourceLocal,
+  sourceOther,
   labels,
   backendName,
   services = [],
@@ -61,6 +68,12 @@ export function SearchTester({
   /** Rendered inside the test card's tab instead of its own card. */
   embedded?: boolean;
   labels: SearchTestLabels;
+  /** The 其他服务商 form's labels. */
+  otherLabels: OtherSearchLabels;
+  rawLabels: RawRequestLabels;
+  sourceLabel: string;
+  sourceLocal: string;
+  sourceOther: string;
   /** The backend `/v1/search` is using, or null when none is configured. */
   backendName: string | null;
   /**
@@ -104,9 +117,35 @@ export function SearchTester({
   }
 
   const available = Boolean(backendName);
+  const [source, setSource] = useState<"local" | "other">("local");
 
   const content = (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm font-medium text-foreground">{sourceLabel}</span>
+        {[
+          { id: "local" as const, label: sourceLocal },
+          { id: "other" as const, label: sourceOther },
+        ].map((entry) => (
+          <button
+            key={entry.id}
+            type="button"
+            onClick={() => setSource(entry.id)}
+            className={
+              source === entry.id
+                ? "rounded-md border border-primary bg-primary/5 px-2.5 py-1 text-sm font-medium text-foreground"
+                : "rounded-md border border-border px-2.5 py-1 text-sm text-muted-foreground hover:bg-muted/50"
+            }
+          >
+            {entry.label}
+          </button>
+        ))}
+      </div>
+
+      {source === "other" ? (
+        <OtherSearchProbe labels={otherLabels} rawLabels={rawLabels} />
+      ) : (
+        <>
 
       {!available ? (
         <p className="text-sm text-muted-foreground">{labels.unavailable}</p>
@@ -190,6 +229,8 @@ export function SearchTester({
               )}
             </div>
           )}
+        </>
+      )}
         </>
       )}
     </div>

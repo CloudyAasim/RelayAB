@@ -29,6 +29,8 @@ import { Card } from "@/components/ui/Card";
 import { ModelTester } from "./ModelTester";
 import { MediaTester } from "./MediaTester";
 import { SearchTester, type SearchTestLabels } from "./SearchTester";
+import type { RawRequestLabels } from "./RawRequestPanel";
+import type { OtherSearchLabels } from "./OtherSearchProbe";
 
 type GatewayLabels = React.ComponentProps<typeof ModelTester>["labels"];
 type MediaLabels = React.ComponentProps<typeof MediaTester>["labels"];
@@ -43,6 +45,9 @@ export function ModelsWorkspace({
   gatewayLabels,
   mediaLabels,
   probeLabels,
+  rawLabels,
+  otherSearchLabels,
+  searchSource,
   tabLabels,
   searchTest,
 }: {
@@ -52,6 +57,11 @@ export function ModelsWorkspace({
   mediaLabels: MediaLabels;
   /** Labels for the text tab's 其他服务商 form. */
   probeLabels: ProbeLabels;
+  rawLabels: RawRequestLabels;
+  /** Labels for the search tab's 其他服务商 form. */
+  otherSearchLabels: OtherSearchLabels;
+  /** What the two search sources are called. */
+  searchSource: { label: string; local: string; other: string };
   /** What the three tabs are called. */
   tabLabels: { text: string; media: string; search: string };
   /**
@@ -125,6 +135,7 @@ export function ModelsWorkspace({
           chatModels={chatModels}
           labels={gatewayLabels}
           otherLabels={probeLabels}
+          rawLabels={rawLabels}
           onFetched={onFetched}
         />
       )}
@@ -138,6 +149,11 @@ export function ModelsWorkspace({
           labels={searchTest.labels}
           backendName={searchTest.backendName}
           services={searchTest.services}
+          otherLabels={otherSearchLabels}
+          rawLabels={rawLabels}
+          sourceLabel={searchSource.label}
+          sourceLocal={searchSource.local}
+          sourceOther={searchSource.other}
           embedded
         />
       )}

@@ -29,6 +29,7 @@ import { Input } from "@/components/ui/Input";
 import { ModelCombobox } from "../assistant/ModelCombobox";
 import { CredentialChoice, type Mode } from "@/lib/assistant/CredentialPanel";
 import { CustomModelProbe } from "./CustomModelProbe";
+import type { RawRequestLabels } from "./RawRequestPanel";
 
 interface Labels {
   title: string;
@@ -52,6 +53,8 @@ interface Labels {
   decisionAction: Record<string, string>;
   /** Names the interface whose rule produced the decisions below it. */
   decidedBy: string;
+  /** Label above the resolved request URL. */
+  endpoint?: string;
   /** What the three configurations are called on this page. */
   config?: { account: string; key: string; other: string };
 }
@@ -63,6 +66,8 @@ interface Props {
   labels: Labels;
   /** Labels for the inline 其他服务商 form. */
   otherLabels: ProbeLabels;
+  /** Labels for the raw-request escape hatch. */
+  rawLabels: RawRequestLabels;
   /** Models a vendor just listed, so the combobox can offer them. */
   onFetched?: (models: string[]) => void;
   /** Rendered inside the test card's tab instead of its own card. */
@@ -91,7 +96,7 @@ function readableError(status: number, body: string): string {
   return `${status} ${body.slice(0, 400)}`;
 }
 
-export function ModelTester({ chatModels, labels, otherLabels, onFetched, embedded = false }: Props) {
+export function ModelTester({ chatModels, labels, otherLabels, rawLabels, onFetched, embedded = false }: Props) {
   const [relayKey, setRelayKey] = useState("");
   const [configMode, setConfigMode] = useState<ConfigMode>("account");
   const [model, setModel] = useState(chatModels[0] ?? "");
@@ -126,7 +131,14 @@ export function ModelTester({ chatModels, labels, otherLabels, onFetched, embedd
    * are numbers everywhere are coerced; anything in the free-form box is left
    * exactly as typed, because only the sender knows whether it is a number.
    */
-  const NUMERIC = new Set(["temperature", "top_p", "max_tokens", "seed"]);
+  const NUMERIC = new Set([
+    "temperature",
+    "top_p",
+    "max_tokens",
+    "seed",
+    "presence_penalty",
+    "frequency_penalty",
+  ]);
   const buildParameters = (): { ok: true; value: Record<string, unknown> } | { ok: false; message: string } => {
     const value: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(params)) {
@@ -316,9 +328,17 @@ export function ModelTester({ chatModels, labels, otherLabels, onFetched, embedd
       />
 
       {configMode === "other" ? (
-        <CustomModelProbe embedded labels={otherLabels} onFetched={onFetched} />
+        <CustomModelProbe embedded labels={otherLabels} rawLabels={rawLabels} onFetched={onFetched} />
       ) : (
         <>
+          {labels.endpoint && (
+            <div className="rounded-md border border-border bg-muted/30 p-2">
+              <p className="text-xs text-muted-foreground">{labels.endpoint}</p>
+              <code className="break-all text-xs text-foreground">
+                POST {configMode === "account" ? "/api/assistant/test-model" : `${base}/v1/chat/completions`}
+              </code>
+            </div>
+          )}
           <div className="space-y-1.5">
             <ModelCombobox
               id="model-tester-model"
@@ -393,6 +413,30 @@ export function ModelTester({ chatModels, labels, otherLabels, onFetched, embedd
                     placeholder="200"
                     value={params.max_tokens ?? ""}
                     onChange={(e) => setParam("max_tokens", e.target.value)}
+                  />
+                  <Input
+                    label="presence_penalty"
+                    placeholder="-2 - 2"
+                    value={params.presence_penalty ?? ""}
+                    onChange={(e) => setParam("presence_penalty", e.target.value)}
+                  />
+                  <Input
+                    label="frequency_penalty"
+                    placeholder="-2 - 2"
+                    value={params.frequency_penalty ?? ""}
+                    onChange={(e) => setParam("frequency_penalty", e.target.value)}
+                  />
+                  <Input
+                    label="seed"
+                    placeholder="42"
+                    value={params.seed ?? ""}
+                    onChange={(e) => setParam("seed", e.target.value)}
+                  />
+                  <Input
+                    label="stop"
+                    placeholder='["\\n"]'
+                    value={params.stop ?? ""}
+                    onChange={(e) => setParam("stop", e.target.value)}
                   />
                 </div>
                 <Input

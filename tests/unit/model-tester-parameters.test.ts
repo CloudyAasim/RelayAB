@@ -23,7 +23,10 @@ const PAGE = readFileSync(join(ROOT, "src", "app", "(user)", "dashboard", "model
 describe("the tester can send parameters", () => {
   it("the four that are numbers everywhere are coerced, because a string is a 400", () => {
     // `"temperature": "0.5"` reads as a broken model to whoever is testing.
-    expect(TESTER).toMatch(/const NUMERIC = new Set\(\["temperature", "top_p", "max_tokens", "seed"\]\)/);
+    const numeric = TESTER.match(/const NUMERIC = new Set\(\[([\s\S]*?)\]\)/)?.[1] ?? "";
+    for (const key of ["temperature", "top_p", "max_tokens", "seed", "presence_penalty", "frequency_penalty"]) {
+      expect(numeric, `${key} is not coerced`).toContain(`"${key}"`);
+    }
     expect(TESTER).toMatch(/Number\.isFinite\(Number\(trimmed\)\) \? Number\(trimmed\) : trimmed/);
   });
 

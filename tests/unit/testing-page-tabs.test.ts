@@ -22,6 +22,7 @@ const WORKSPACE = read("app", "(user)", "dashboard", "models", "ModelsWorkspace.
 const PAGE = read("app", "(user)", "dashboard", "models", "page.tsx");
 const CHAT = read("app", "(user)", "dashboard", "models", "ModelTester.tsx");
 const MEDIA = read("app", "(user)", "dashboard", "models", "MediaTester.tsx");
+const SEARCH = read("app", "(user)", "dashboard", "models", "SearchTester.tsx");
 const PANEL = read("lib", "assistant", "CredentialPanel.tsx");
 const PROBE = read("app", "(user)", "dashboard", "models", "CustomModelProbe.tsx");
 const PAGE_SRC = read("app", "(user)", "dashboard", "models", "page.tsx");
@@ -82,8 +83,49 @@ describe("the configuration choices are named once", () => {
     expect(CHAT).toContain("labels.config.other");
   });
 
-  it("the media tab names them too, and offers no third option", () => {
+  it("the media tab names them too, and offers the third option", () => {
     expect(MEDIA).toContain("modeLabels={{ account: labels.configAccount, key: labels.configKey }}");
-    expect(MEDIA).not.toContain("extraOption");
+    expect(MEDIA).toContain("extraOption");
+    expect(MEDIA).toContain("<OtherMediaProbe");
+  });
+
+  it("the search tab can test a vendor instead of this deployment", () => {
+    expect(SEARCH).toContain("OtherSearchProbe");
+    expect(SEARCH).toContain("source === \"other\"");
+  });
+
+  it("every configuration shows the endpoint it will call", () => {
+    expect(CHAT).toContain("labels.endpoint");
+    expect(CHAT).toContain("/api/assistant/test-model");
+    expect(MEDIA).toContain("labels.endpointLabel");
+    expect(MEDIA).toContain("/api/assistant/test-media");
+  });
+
+  it("the other-provider text panel sends the full parameter set, streamed", () => {
+    for (const field of [
+      "temperature",
+      "top_p",
+      "max_tokens",
+      "presence_penalty",
+      "frequency_penalty",
+      "seed",
+      "stop",
+      "reasoning_effort",
+    ]) {
+      expect(PROBE, `${field} is missing from the other-provider form`).toContain(`"${field}"`);
+    }
+    expect(PROBE).toContain("/api/models/probe-chat");
+    expect(PROBE).toContain("stream");
+    expect(PROBE).toContain("labels.raw");
+  });
+
+  it("the guided media form and the raw escape hatch both exist", () => {
+    expect(MEDIA).toContain("OtherMediaProbe");
+    expect(PROBE).toContain("RawRequestPanel");
+    expect(read("app", "api", "models", "probe-media", "route.ts")).toContain(
+      '"/images/generations"',
+    );
+    expect(read("app", "api", "models", "probe-raw", "route.ts")).toContain("/probe-raw");
+    expect(read("app", "api", "models", "probe-search", "route.ts")).toContain("searxng");
   });
 });

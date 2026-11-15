@@ -49,6 +49,77 @@ export default async function ModelsPage() {
     .filter((m) => m.kind === "media" && visible(m.id))
     .map((m) => ({ id: m.id, capability: m.capability ?? "", provider: m.provider }));
 
+  const rawLabels = {
+    title: t("dashboard.models.probe.raw"),
+    hint: t("dashboard.models.probe.rawHint"),
+    method: t("dashboard.models.probe.method"),
+    url: t("dashboard.models.probe.url"),
+    headers: t("dashboard.models.probe.headers"),
+    body: t("dashboard.models.probe.body"),
+    send: t("dashboard.models.probe.send"),
+    sending: t("dashboard.models.probe.sending"),
+    status: t("dashboard.models.probe.status"),
+    response: t("dashboard.models.probe.response"),
+    failed: t("common.failed"),
+  };
+
+  const otherMediaLabels = {
+    title: t("dashboard.models.other.title"),
+    hint: t("dashboard.models.other.hint"),
+    capability: t("dashboard.models.other.capability"),
+    capabilities: {
+      "image.generate": t("dashboard.models.other.capabilities.image"),
+      "video.generate": t("dashboard.models.other.capabilities.video"),
+      "audio.tts": t("dashboard.models.other.capabilities.tts"),
+      "audio.stt": t("dashboard.models.other.capabilities.stt"),
+      "music.generate": t("dashboard.models.other.capabilities.music"),
+    },
+    baseUrl: t("dashboard.models.custom.baseUrl"),
+    apiKey: t("dashboard.models.custom.apiKey"),
+    model: t("dashboard.models.custom.model"),
+    prompt: t("dashboard.models.media.prompt"),
+    size: t("dashboard.models.media.size"),
+    voice: t("dashboard.models.media.voice"),
+    duration: t("dashboard.models.media.duration"),
+    n: t("dashboard.models.other.n"),
+    audioFile: t("dashboard.models.media.audioFile"),
+    endpoint: t("dashboard.models.probe.endpoint"),
+    run: t("dashboard.models.media.run"),
+    running: t("dashboard.models.media.running"),
+    ok: t("dashboard.models.custom.ok"),
+    failed: t("dashboard.models.custom.failed"),
+    result: t("dashboard.models.other.result"),
+    raw: t("dashboard.models.probe.raw"),
+  };
+
+  const otherSearchLabels = {
+    title: t("dashboard.models.other.title"),
+    hint: t("dashboard.models.searchOther.hint"),
+    kind: t("dashboard.models.searchOther.kind"),
+    kinds: {
+      searxng: t("dashboard.models.searchOther.kinds.searxng"),
+      tavily: t("dashboard.models.searchOther.kinds.tavily"),
+      brave: t("dashboard.models.searchOther.kinds.brave"),
+      "openai-compatible": t("dashboard.models.searchOther.kinds.openai"),
+    },
+    baseUrl: t("dashboard.models.custom.baseUrl"),
+    apiKey: t("dashboard.models.custom.apiKey"),
+    query: t("dashboard.models.searchOther.query"),
+    limit: t("dashboard.models.searchOther.limit"),
+    endpoint: t("dashboard.models.probe.endpoint"),
+    run: t("dashboard.models.searchOther.run"),
+    running: t("dashboard.models.searchOther.running"),
+    ok: t("dashboard.models.custom.ok"),
+    failed: t("dashboard.models.custom.failed"),
+    raw: t("dashboard.models.probe.raw"),
+  };
+
+  const searchSource = {
+    label: t("dashboard.models.search.source"),
+    local: t("dashboard.models.search.sourceLocal"),
+    other: t("dashboard.models.config.other"),
+  };
+
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t("dashboard.models.title")}</SectionPageLayout.Title>
@@ -61,6 +132,9 @@ export default async function ModelsPage() {
         <ModelsWorkspace
           catalogChatModels={catalogChatModels}
           catalogMediaModels={catalogMediaModels}
+          rawLabels={rawLabels}
+          otherSearchLabels={otherSearchLabels}
+          searchSource={searchSource}
           gatewayLabels={{
             title: t("dashboard.models.gateway.title"),
             desc: t("dashboard.models.gateway.desc"),
@@ -87,6 +161,7 @@ export default async function ModelsPage() {
               renamed: t("dashboard.models.gateway.action.renamed"),
             },
             decidedBy: t("dashboard.models.tester.decidedBy"),
+            endpoint: t("dashboard.models.probe.endpoint"),
             config: {
               account: t("dashboard.models.config.account"),
               key: t("dashboard.models.config.key"),
@@ -102,6 +177,10 @@ export default async function ModelsPage() {
             title: t("dashboard.models.media.title"),
             configAccount: t("dashboard.models.config.account"),
             configKey: t("dashboard.models.config.key"),
+            configOther: t("dashboard.models.config.other"),
+            endpointLabel: t("dashboard.models.probe.endpoint"),
+            otherLabels: otherMediaLabels,
+            rawLabels,
            
             keyLabel: t("dashboard.models.media.keyLabel"),
             keyHint: t("dashboard.models.media.keyHint"),
@@ -189,6 +268,12 @@ export default async function ModelsPage() {
             ok: t("dashboard.models.custom.ok"),
             failed: t("dashboard.models.custom.failed"),
             foundModels: t("dashboard.models.custom.foundModels"),
+            path: t("dashboard.models.probe.path"),
+            endpoint: t("dashboard.models.probe.endpoint"),
+            parameters: t("dashboard.models.gateway.parameters"),
+            extraParameters: t("dashboard.models.gateway.extraParameters"),
+            stream: t("dashboard.models.probe.stream"),
+            raw: t("dashboard.models.probe.raw"),
           }}
         />
       </SectionPageLayout.Content>

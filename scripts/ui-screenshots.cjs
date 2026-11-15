@@ -89,6 +89,14 @@ const SCENES = [
   ["models-media-tab", "/dashboard/models", "user", clickTab("媒体")],
   ["models-search-tab", "/dashboard/models", "admin", clickTab("搜索")],
   ["models-other-provider", "/dashboard/models", "user", clickRadio("其他服务商")],
+  ["models-media-other", "/dashboard/models", "user", async (page) => {
+    await clickTab("媒体")(page);
+    await page.getByRole("radio", { name: "其他服务商" }).first().click();
+  }],
+  ["models-search-other", "/dashboard/models", "admin", async (page) => {
+    await clickTab("搜索")(page);
+    await page.getByRole("button", { name: "其他服务商" }).first().click();
+  }],
   ["admin-provider-edit", "/admin/providers", "admin", clickTitle("编辑")],
   ["admin-media-edit", "/admin/media-providers", "admin", clickTitle("编辑")],
   ["admin-model-expand", "/admin/model-notes", "admin", clickButton(/^▸/)],

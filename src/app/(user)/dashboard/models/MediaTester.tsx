@@ -27,6 +27,8 @@ import { Progress } from "@/components/ui/Progress";
 import { Download } from "lucide-react";
 import { useT } from "@/components/i18n/I18nProvider";
 import { CredentialChoice, type Mode } from "@/lib/assistant/CredentialPanel";
+import { OtherMediaProbe, type OtherMediaLabels } from "./OtherMediaProbe";
+import type { RawRequestLabels } from "./RawRequestPanel";
 import { readMediaTestResult } from "@/lib/media/test-result";
 import { downloadFileName, saveArtifact } from "@/lib/media/download";
 
@@ -57,6 +59,12 @@ interface Labels {
   /** What the credential options are called on this page. */
   configAccount: string;
   configKey: string;
+  /** The third choice: another vendor, tested directly. */
+  configOther: string;
+  /** Label above the resolved request URL. */
+  endpointLabel: string;
+  otherLabels: OtherMediaLabels;
+  rawLabels: RawRequestLabels;
   keyLabel: string;
   keyHint: string;
   keyPlaceholder: string;
@@ -126,6 +134,14 @@ const CAP_LABEL: Record<string, string> = {
  * there is no list to pick from (no vendor answers, or the catalogue could not
  * be read at all).
  */
+const MEDIA_PATHS: Record<string, string> = {
+  "image.generate": "/v1/images/generations",
+  "video.generate": "/v1/videos/generations",
+  "audio.tts": "/v1/audio/speech",
+  "audio.stt": "/v1/audio/transcriptions",
+  "music.generate": "/v1/music/generations",
+};
+
 const DEFAULT_TTS_VOICE = "female-shaonv";
 
 /** The picker's "type one in yourself" option. */
@@ -196,7 +212,8 @@ export function MediaTester({
   const [duration, setDuration] = useState(String(DEFAULT_VIDEO_DURATION));
   const [ratio, setRatio] = useState<string>(DEFAULT_VIDEO_RATIO);
   const [language, setLanguage] = useState("");
-  const [credentialMode, setCredentialMode] = useState<Mode>("account");
+  const [configMode, setConfigMode] = useState<"account" | "key" | "other">("account");
+  const credentialMode: Mode = configMode === "other" ? "key" : configMode;
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
@@ -479,7 +496,7 @@ export function MediaTester({
   }
 
   const isStt = capability === "audio.stt";
-  const hasCredential = credentialMode === "account" || Boolean(relayKey.trim());
+  const hasCredential = configMode === "account" || Boolean(relayKey.trim());
   const canRun = Boolean(model) && hasCredential && !busy && (isStt ? Boolean(file) : Boolean(prompt.trim()));
 
   const content = (
@@ -489,12 +506,35 @@ export function MediaTester({
             second one that the account path would quietly ignore. */}
         <CredentialChoice
           mode={credentialMode}
-          onModeChange={setCredentialMode}
+          onModeChange={(next) => setConfigMode(next)}
           relayKey={relayKey}
           onRelayKeyChange={setRelayKey}
           modeLabels={{ account: labels.configAccount, key: labels.configKey }}
           keyFieldLabel={labels.configKey}
+          extraOption={{
+            label: labels.configOther,
+            selected: configMode === "other",
+            onSelect: () => setConfigMode("other"),
+          }}
+          hideKeyField={configMode === "other"}
         />
+
+        {configMode !== "other" && (
+          <div className="rounded-md border border-border bg-muted/30 p-2">
+            <p className="text-xs text-muted-foreground">{labels.endpointLabel}</p>
+            <code className="break-all text-xs text-foreground">
+              POST{" "}
+              {configMode === "account"
+                ? "/api/assistant/test-media"
+                : `${base}${MEDIA_PATHS[capability] ?? "/v1/images/generations"}`}
+            </code>
+          </div>
+        )}
+
+        {configMode === "other" ? (
+          <OtherMediaProbe labels={labels.otherLabels} rawLabels={labels.rawLabels} />
+        ) : (
+          <>
 
         <div className="space-y-1.5">
           <label htmlFor="media-model" className="block text-sm font-medium text-foreground">
@@ -800,6 +840,8 @@ export function MediaTester({
               </>
             )}
           </div>
+        )}
+          </>
         )}
     </div>
   );
