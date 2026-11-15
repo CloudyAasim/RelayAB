@@ -74,6 +74,31 @@ describe("similar choices are native selects", () => {
     expect(read("components", "ui", "Select.tsx")).toContain("<select");
   });
 });
+describe("the shell is shared and the rail keeps its groups", () => {
+  it("admin docs render through the same reader as the user guide", () => {
+    const admin = read("app", "(admin)", "admin", "docs", "AdminDocsScreen.tsx");
+    expect(admin).toContain("<UserDocsApp");
+    expect(admin).toContain("AdminDocsContent");
+    expect(read("lib", "docs", "sections.ts")).toContain("content?: ReactNode");
+    expect(read("app", "(admin)", "admin", "docs", "page.tsx")).toContain("AdminDocsScreen");
+  });
+
+  it("both docs surfaces offer the chapter filter", () => {
+    expect(read("components", "docs", "IntegrationDocs.tsx")).toContain('searchLabel={t("docs.search")}');
+    expect(read("app", "(admin)", "admin", "docs", "AdminDocsScreen.tsx")).toContain('searchLabel={t("docs.search")}');
+  });
+
+  it("collapsed sidebar groups are separated by a rule, not dropped", () => {
+    expect(read("components", "layouts", "sidebar", "Sidebar.tsx")).toContain("h-px w-6 bg-sidebar-border");
+  });
+
+  it("the assistant's call modes are three native options", () => {
+    const panel = read("app", "(user)", "dashboard", "assistant", "AssistantSettingsPanel.tsx");
+    expect(panel).toContain("<Select");
+    expect(panel).toContain('value="gateway"');
+    expect(panel).toContain('value="other"');
+  });
+});
 describe("no dead labels left behind", () => {
   it("the keys the cleanup removed are gone from both locales", () => {
     for (const key of [

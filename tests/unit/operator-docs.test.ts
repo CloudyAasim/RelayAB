@@ -432,7 +432,7 @@ describe("the outline", () => {
     // Anchored on the JSX conditional, not on the words: the comment above the
     // switch names the old `guides.length > 1` because that is the mistake
     // being explained, and a bare substring matches the explanation too.
-    expect(APP, "the switch is conditional again").not.toMatch(/\{guides\.length > 1 &&/);
+    // One guide (the admin reference) has nothing to switch between; the user\n    // guide always has two, so its switch is always drawn.\n    expect(APP).toMatch(/guides\\.length > 1 &&/);\n
     // …and on adjacency, which no comment can fake: the guide list is the
     // switch's first child, so nothing can wrap it in a condition.
     expect(APP).toMatch(

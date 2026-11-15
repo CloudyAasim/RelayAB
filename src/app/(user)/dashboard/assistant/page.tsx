@@ -25,6 +25,7 @@ import { MAX_SEARCH_RESULTS } from "@/lib/assistant/web-search";
 import { getT } from "@/lib/i18n/server";
 import { SectionPageLayout } from "@/components/layouts";
 import { AssistantChat } from "./AssistantChat";
+import { resolvePublicUrl } from "@/lib/public-url";
 import { AssistantSettingsPanel } from "./AssistantSettingsPanel";
 import { PendingActions } from "./PendingActions";
 
@@ -34,12 +35,13 @@ export default async function AssistantPage() {
   const sessionUser = await getCurrentUser();
   if (!sessionUser) redirect("/login");
 
-  const [{ t }, settings, catalog, searchConfig, searchRows] = await Promise.all([
+  const [{ t }, settings, catalog, searchConfig, searchRows, publicUrl] = await Promise.all([
     getT(),
     getPublicAssistantSettings(sessionUser.id),
     cachedBuildModelCatalog(),
     loadSearchConfig(),
     listSearchProviders(),
+    resolvePublicUrl(),
   ]);
   const isAdmin = sessionUser.role === "admin";
   /**
@@ -154,6 +156,7 @@ export default async function AssistantPage() {
               suggestedModels={suggestedModels}
               accountModels={suggestedModels}
               accountFacts={accountFacts}
+              publicUrl={publicUrl}
                   webSearch={{
                 available: webSearchAvailable,
                 defaultOn: webSearchDefault,

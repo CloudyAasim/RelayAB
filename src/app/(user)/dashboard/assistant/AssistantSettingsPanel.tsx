@@ -29,10 +29,10 @@ import { useT } from "@/components/i18n/I18nProvider";
 import { InfoHint } from "@/components/ui/InfoHint";
 import { MarkdownText } from "@/components/i18n/MarkdownText";
 import { ModelCombobox } from "./ModelCombobox";
+import { Select } from "@/components/ui/Select";
 import { cn } from "@/lib/utils";
 import {
   ASSISTANT_REASONING_SUGGESTIONS,
-  resolveMode,
   type AssistantCredentialMode,
   type AssistantReasoningEffort,
   type AssistantThinkingType,
@@ -225,6 +225,7 @@ export function AssistantSettingsPanel({
   suggestedModels = [],
   accountModels = [],
   accountFacts = {},
+  publicUrl = "",
   webSearch = {
     available: false,
     defaultOn: true,
@@ -262,10 +263,11 @@ export function AssistantSettingsPanel({
    * treating a fact it has as a blank.
    */
   accountFacts?: Record<string, AssistantModelFacts>;
+  /** This deployment's own base URL, for the 服务密钥 path. */
+  publicUrl?: string;
 }) {
   const t = useT();
   const router = useRouter();
-  const modeGroup = `${useId()}-mode`;
   const searchSourceGroup = `${useId()}-search-source`;
 
   /**
@@ -282,8 +284,20 @@ export function AssistantSettingsPanel({
   // The mode comes from the stored row, through the same rule the page and the
   // chat route use. No row at all means the account path, because that is the
   // one that needs nothing but a model.
-  const [mode, setMode] = useState<AssistantCredentialMode>(() =>
-    resolveMode(initial as Parameters<typeof resolveMode>[0]),
+  /**
+   * Three ways to call, two ways to store them.
+   *
+   * 本账号 is the account path. 服务密钥 calls this deployment with a key it
+   * issued; 其他服务商 calls a vendor directly. The last two are both the stored
+   * `key` mode — the difference is only which address the key belongs to — so
+   * the database does not grow a third value and the proxy keeps one rule.
+   */
+  const [mode, setMode] = useState<"account" | "gateway" | "other">(() =>
+    initial?.credentialMode === "account"
+      ? "account"
+      : initial?.baseUrl && publicUrl && initial.baseUrl === publicUrl
+        ? "gateway"
+        : "other",
   );
   const [baseUrl, setBaseUrl] = useState(initial?.baseUrl ?? "");
   const [apiKey, setApiKey] = useState("");
@@ -406,7 +420,13 @@ export function AssistantSettingsPanel({
     if (seed === initial) return;
     setSeed(initial);
     if (!initial) return;
-    setMode(resolveMode(initial as Parameters<typeof resolveMode>[0]));
+    setMode(
+      initial.credentialMode === "account"
+        ? "account"
+        : initial.baseUrl && publicUrl && initial.baseUrl === publicUrl
+          ? "gateway"
+          : "other",
+    );
     setBaseUrl(initial.baseUrl ?? "");
     setModel(initial.model ?? "");
     setAccountModel(initial.accountModel ?? "");
@@ -425,8 +445,8 @@ export function AssistantSettingsPanel({
   /** Everything the form knows, in the shape the route takes. */
   function payload() {
     return {
-      credentialMode: mode,
-      baseUrl: baseUrl.trim(),
+      credentialMode: mode === "account" ? "account" : "key",
+      baseUrl: mode === "gateway" ? publicUrl : baseUrl.trim(),
       model: model.trim(),
       accountModel: mode === "account" ? (accountModel.trim() || null) : null,
       // Omitted entirely when blank: the server keeps the stored key.
@@ -648,7 +668,12 @@ export function AssistantSettingsPanel({
     }
   }
 
-  const missingModel = mode === "account" ? !accountModel.trim() : !model.trim() || !baseUrl.trim();
+  const missingModel =
+    mode === "account"
+      ? !accountModel.trim()
+      : mode === "gateway"
+        ? !model.trim()
+        : !model.trim() || !baseUrl.trim();
   const canSave = busy === null && !missingModel;
 
   /**
@@ -700,52 +725,22 @@ export function AssistantSettingsPanel({
         option puts three lines of prose between the reader and the two fields
         that matter, and the prose is the same on both sides.
       */}
-      <fieldset>
-        <legend className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-foreground">
-          {t("assistant.settings.wayTitle")}
-          <InfoHint
-            text={
-              <>
-                <span className="block">{t("assistant.settings.wayAccountHint")}</span>
-                <span className="mt-1 block">{t("assistant.settings.wayKeyHint")}</span>
-              </>
-            }
-          />
-          {/*
-            Which one is actually in effect, in words.
-            
-            The two options differ by a border colour, and the report this answers
-            was somebody reading a key field and concluding that identity auth
-            needs one — while they were, correctly, on the other option. A row
-            written before the mode existed reads as the key path, because it
-            does have an address and a key in it, so opening on the other option
-            is the right behaviour and an unexplained one. Saying it is cheaper
-            than a screenshot.
-          */}
-        </legend>
-        <div className="grid grid-cols-2 gap-1.5" role="none">
-          {(["account", "key"] as const).map((m) => (
-            <label
-              key={m}
-              className={`cursor-pointer rounded-md border px-2.5 py-2 text-sm transition-colors ${
-                mode === m
-                  ? "border-primary bg-primary/5 font-medium text-foreground"
-                  : "border-border text-muted-foreground hover:bg-muted/50"
-              }`}
-            >
-              <input
-                type="radio"
-                name={modeGroup}
-                className="sr-only"
-                checked={mode === m}
-                onChange={() => setMode(m)}
-              />
-              {m === "account"
-                ? t("assistant.settings.wayAccount")
-                : t("assistant.settings.wayKey")}
-            </label>
-          ))}
-        </div>
+      <Select
+        label={t("assistant.settings.wayTitle")}
+        labelHint={
+          <>
+            <span className="block">{t("assistant.settings.wayAccountHint")}</span>
+            <span className="mt-1 block">{t("assistant.settings.wayGatewayHint")}</span>
+            <span className="mt-1 block">{t("assistant.settings.wayKeyHint")}</span>
+          </>
+        }
+        value={mode}
+        onChange={(e) => setMode(e.target.value as "account" | "gateway" | "other")}
+      >
+        <option value="account">{t("assistant.settings.wayAccount")}</option>
+        <option value="gateway">{t("assistant.settings.wayGateway")}</option>
+        <option value="other">{t("assistant.settings.wayOther")}</option>
+      </Select>
         {/*
           The one thing that made "use my account identity" look like it needed a
           key.
@@ -764,7 +759,6 @@ export function AssistantSettingsPanel({
             text={t("assistant.settings.wayAccountOff")}
           />
         )}
-      </fieldset>
 
       {mode === "account" ? (
         /*
@@ -793,15 +787,17 @@ export function AssistantSettingsPanel({
         />
       ) : (
         <>
-          <Input
-            id="assistant-base-url"
-            name="baseUrl"
-            label={t("assistant.settings.baseUrl")}
-            labelHint={t("assistant.settings.baseUrlHint")}
-            placeholder="https://api.example.com/v1"
-            value={baseUrl}
-            onChange={(e) => setBaseUrl(e.target.value)}
-          />
+          {mode === "other" && (
+            <Input
+              id="assistant-base-url"
+              name="baseUrl"
+              label={t("assistant.settings.baseUrl")}
+              labelHint={t("assistant.settings.baseUrlHint")}
+              placeholder="https://api.example.com/v1"
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+            />
+          )}
           <Input
             id="assistant-api-key"
             name="apiKey"
@@ -811,7 +807,13 @@ export function AssistantSettingsPanel({
               : { labelHint: t("assistant.settings.apiKeyHint") })}
             type="password"
             autoComplete="off"
-            placeholder={initial?.hasApiKey ? "••••••••" : "sk-..."}
+            placeholder={
+              mode === "gateway"
+                ? "sk-relay-..."
+                : initial?.hasApiKey
+                  ? "••••••••"
+                  : "sk-..."
+            }
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
           />
@@ -821,7 +823,7 @@ export function AssistantSettingsPanel({
             customLabel={t("assistant.settings.modelCustom")}
             placeholder="model-name"
             value={model}
-            options={knownModels}
+            options={mode === "gateway" ? accountModels : knownModels}
             onChange={setModel}
             {...(knownModels.length > 0 && knownModels !== suggestedModels
               ? { hint: t("assistant.settings.modelHintProbed", { n: knownModels.length }) }
@@ -1355,7 +1357,7 @@ export function AssistantSettingsPanel({
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        {mode === "key" && (
+        {mode === "other" && (
           <Button
             variant="outline"
             onClick={probe}

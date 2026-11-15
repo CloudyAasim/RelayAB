@@ -35,7 +35,7 @@ const PAGE = read("src", "app", "(user)", "dashboard", "assistant", "page.tsx");
 describe("the model field is one of the pickers, plus a way to type your own", () => {
   it("the settings panel uses it", () => {
     expect(PANEL).toMatch(/<ModelCombobox/);
-    expect(PANEL).toMatch(/options=\{knownModels\}/);
+    expect(PANEL).toContain(`options={mode === "gateway" ? accountModels : knownModels}`);
     expect(PANEL).toMatch(/onChange=\{setModel\}/);
   });
 

@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 import { Check, ChevronLeft, ChevronRight, Copy } from "lucide-react";
 import { DocsContent } from "@/app/(user)/dashboard/docs/DocsContent";
+import { Input } from "@/components/ui/Input";
 import { DocsParameters } from "@/app/(user)/dashboard/docs/DocsParameters";
 import { INTEGRATION_GUIDE, type DocSection, type GuideId, type ProseUserDocId } from "@/lib/docs/sections";
 import { PARAMETERS_SECTION } from "@/lib/docs/custom";
@@ -52,6 +53,8 @@ export function UserDocsApp({
   copyPageLabel,
   copiedLabel,
   copyFailedLabel,
+  searchLabel,
+  searchPlaceholder,
 }: {
   guides: DocGuide[];
   /** From the route, so a deep link opens the right guide and chapter. */
@@ -89,6 +92,9 @@ export function UserDocsApp({
   copyPageLabel: string;
   copiedLabel: string;
   copyFailedLabel: string;
+  /** Optional: filter the chapter list. */
+  searchLabel?: string;
+  searchPlaceholder?: string;
 }) {
   const integration = guides.find((g) => g.id === INTEGRATION_GUIDE) ?? guides[0];
 
@@ -120,6 +126,10 @@ export function UserDocsApp({
   // resolves it; an unknown one lands on the first page rather than on nothing.
   const [pageId, setPageId] = useState<string | null>(initialPage);
   const [copied, setCopied] = useState(false);
+  const [query, setQuery] = useState("");
+  const visibleChapters = query.trim()
+    ? chapters.filter((c) => c.label.toLowerCase().includes(query.trim().toLowerCase()))
+    : chapters;
   const bodyRef = useRef<HTMLDivElement | null>(null);
 
   // Back/forward moves between chapters and pages; the tabs have to follow.
@@ -139,7 +149,7 @@ export function UserDocsApp({
   }, [guides, chapters]);
 
   function toIntegration(id: string) {
-    setGuide(INTEGRATION_GUIDE);
+    setGuide(integration.id);
     setChapter(id);
     // Shareable, but not a navigation. `pushState` would put every chapter in
     // the history and make the back button walk the document.
@@ -201,6 +211,7 @@ export function UserDocsApp({
         the point; a reader cannot see a split they are never shown, and "these
         are not separated" is what a one-document page looks like from outside.
       */}
+      {guides.length > 1 && (
       <div role="tablist" aria-label={outlineLabel} className="flex gap-2">
         {guides.map((g) => {
           const on = g.id === guide;
@@ -243,6 +254,16 @@ export function UserDocsApp({
           );
         })}
       </div>
+      )}
+
+      {searchLabel && chapters.length > 4 && (
+        <Input
+          label={searchLabel}
+          placeholder={searchPlaceholder}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      )}
 
       {/*
         The integration guide's own chapters, only while it is open. The
@@ -251,7 +272,7 @@ export function UserDocsApp({
       */}
       {!onParameters && (
         <div role="tablist" aria-label={outlineLabel} className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
-          {chapters.map((s) => {
+          {visibleChapters.map((s) => {
             const on = s.id === chapter;
             return (
               <button
@@ -312,6 +333,8 @@ export function UserDocsApp({
             activeId={activePage?.id ?? null}
             onSelect={toParameters}
           />
+        ) : chapters.find((c) => c.id === chapter)?.content ? (
+          chapters.find((c) => c.id === chapter)!.content
         ) : chapter === "catalog" ? (
           catalogue ?? null
         ) : (

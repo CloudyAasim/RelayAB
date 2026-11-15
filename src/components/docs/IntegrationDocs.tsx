@@ -64,6 +64,8 @@ export async function IntegrationDocs({
       copyPageLabel={t("docs.copyPage")}
       copiedLabel={t("docs.copy.copied")}
       copyFailedLabel={t("docs.copy.failed")}
+      searchLabel={t("docs.search")}
+      searchPlaceholder={t("docs.searchPlaceholder")}
     />
   );
 }

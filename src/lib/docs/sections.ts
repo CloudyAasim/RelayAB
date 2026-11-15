@@ -20,9 +20,19 @@ export interface DocChildLink {
   label: string;
 }
 
+import type { ReactNode } from "react";
+
 export interface DocSection {
   id: string;
   label: string;
+  /**
+   * A rendered body, when the caller already has one.
+   *
+   * The admin reference is built from components, not from the prose the user
+   * guide lives in; carrying the node on the chapter lets both surfaces use the
+   * same reader instead of the admin keeping a second one.
+   */
+  content?: ReactNode;
   /**
    * The operator's own pages filed under this chapter.
    *
@@ -101,7 +111,7 @@ export type ProseUserDocId = Exclude<UserDocId, "catalog" | "parameters">;
  * wiring something up; the parameters guide repeatedly, while choosing a value —
  * and only the second one is long enough to need paging.
  */
-export type GuideId = "integration" | "parameters";
+export type GuideId = "integration" | "parameters" | "admin";
 
 export const INTEGRATION_GUIDE = "integration" satisfies GuideId;
 

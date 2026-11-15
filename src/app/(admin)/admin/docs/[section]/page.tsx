@@ -2,13 +2,8 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getT } from "@/lib/i18n/server";
 import { SectionPageLayout } from "@/components/layouts";
-import { DocsShell } from "@/components/docs/DocsShell";
-import { AdminDocsContent } from "../AdminDocsContent";
-import {
-  ADMIN_DOC_DEFAULT,
-  adminDocSections,
-  isAdminDocId,
-} from "@/lib/docs/sections";
+import { AdminDocsScreen } from "../AdminDocsScreen";
+import { ADMIN_DOC_DEFAULT, isAdminDocId } from "@/lib/docs/sections";
 
 export const dynamic = "force-dynamic";
 
@@ -32,15 +27,7 @@ export default async function AdminDocsSectionPage({
       <SectionPageLayout.Title>{t("admin.docs.title")}</SectionPageLayout.Title>
       <SectionPageLayout.Description>{t("admin.docs.subtitle")}</SectionPageLayout.Description>
       <SectionPageLayout.Content>
-        <DocsShell
-          basePath="/admin/docs"
-          sections={adminDocSections(t)}
-          copyPageLabel={t("docs.copyPage")}
-          copiedLabel={t("docs.copy.copied")}
-          copyFailedLabel={t("docs.copy.failed")}
-        >
-          <AdminDocsContent section={section} t={t} />
-        </DocsShell>
+        <AdminDocsScreen section={section} />
       </SectionPageLayout.Content>
     </SectionPageLayout>
   );

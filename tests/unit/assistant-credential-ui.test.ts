@@ -342,7 +342,7 @@ describe("credential UI: one form, and a model on both paths", () => {
     expect(SETTINGS_PANEL_SRC).not.toMatch(/credentialMode === "key"/);
     expect(CHAT).toContain("{settingsPanel}");
     // And the mode switch lives in the form, not beside it.
-    expect(SETTINGS_PANEL_SRC).toMatch(/const \[mode, setMode\] = useState<AssistantCredentialMode>/);
+    expect(SETTINGS_PANEL_SRC).toMatch(/const \[mode, setMode\] = useState<"account" \| "gateway" \| "other">/);
     expect(SETTINGS_PANEL_SRC, "the chat still keeps a mode of its own").not.toContain(
       "setCredentialMode",
     );
@@ -364,7 +364,7 @@ describe("credential UI: one form, and a model on both paths", () => {
     // whole path was built to stop.
     expect(SETTINGS_PANEL_SRC).not.toContain("assistant.accountModelAuto");
     // The key path's own combobox, unchanged.
-    expect(SETTINGS_PANEL_SRC).toContain("options={knownModels}");
+    expect(SETTINGS_PANEL_SRC).toContain(`options={mode === "gateway" ? accountModels : knownModels}`);
   });
 
   it("the model is stored, not carried by the request", () => {

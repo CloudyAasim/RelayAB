@@ -63,6 +63,7 @@ const ROUTES = [
   ["user-models", "/dashboard/models", "user"],
   ["user-settings", "/dashboard/settings", "user"],
   ["user-docs", "/dashboard/docs", "user"],
+
   ["user-assistant", "/dashboard/assistant", "user"],
   ["user-models-media", "/dashboard/models", "user"],
   ["user-models-other", "/dashboard/models", "user"],
@@ -76,6 +77,10 @@ const SCENES = [
   ["assistant-settings-4", "/dashboard/assistant", "user", openAssistantSettings(2400)],
   ["assistant-settings-hint", "/dashboard/assistant", "user", openAssistantHint],
   ["assistant-history", "/dashboard/assistant", "user", clickButton(/历史对话/)],
+  ["sidebar-collapsed", "/dashboard", "admin", async (page) => {
+    await page.getByRole("button", { name: "切换侧边栏" }).first().click({ force: true });
+    await page.waitForTimeout(500);
+  }],
   ["dashboard-create-key", "/dashboard", "user", clickButton(/新建接口密钥/)],
   ["dashboard-key-menu", "/dashboard", "user", clickButton(/^操作$/)],
   ["admin-create-user", "/admin/users", "admin", clickButton(/新建用户/)],

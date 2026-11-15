@@ -249,11 +249,16 @@ export function SidebarGroup({
   const { collapsed } = useSidebar();
   return (
     <div className={cn("py-1", className)}>
-      {label && !collapsed && (
-        <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          {label}
-        </div>
-      )}
+      {label &&
+        (collapsed ? (
+          // In the icon rail a word would not fit, but the group still needs a
+          // seam between it and the one above. A short rule is that seam.
+          <div aria-hidden className="mx-auto my-2 h-px w-6 bg-sidebar-border" />
+        ) : (
+          <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            {label}
+          </div>
+        ))}
       {children}
     </div>
   );
