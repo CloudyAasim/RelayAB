@@ -90,7 +90,7 @@ describe("the shell is shared and the rail keeps its groups", () => {
 
   it("collapsed sidebar groups are separated by a rule, not dropped", () => {
     expect(read("components", "layouts", "sidebar", "Sidebar.tsx")).toContain(
-      "h-px w-10 rounded-full bg-sidebar-border/70",
+      "absolute left-1/2 h-px w-10 -translate-x-1/2 rounded-full bg-sidebar-border/70",
     );
   });
 
