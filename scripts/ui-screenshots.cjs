@@ -88,6 +88,7 @@ const SCENES = [
   ["admin-allocation", "/admin/users", "admin", clickButton(/配置额度/)],
   ["models-media-tab", "/dashboard/models", "user", clickTab("媒体")],
   ["models-search-tab", "/dashboard/models", "admin", clickTab("搜索")],
+  ["models-gateway-params", "/dashboard/models", "user", clickButton("请求参数")],
   ["models-other-provider", "/dashboard/models", "user", clickRadio("其他服务商")],
   ["models-media-other", "/dashboard/models", "user", async (page) => {
     await clickTab("媒体")(page);

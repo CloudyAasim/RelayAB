@@ -39,6 +39,15 @@ interface Labels {
   failed: string;
   foundModels: string;
   raw: string;
+  /** The two thinking controls, named as the assistant settings name them. */
+  reasoning: string;
+  reasoningOff: string;
+  thinkingMode: string;
+  thinkingVendorDefault: string;
+  thinkingOn: string;
+  thinkingOff: string;
+  /** The folded sampling group. */
+  sampling: string;
 }
 
 interface ProbeResult {
@@ -74,6 +83,8 @@ export function CustomModelProbe({
   const [prompt, setPrompt] = useState("");
   const [path, setPath] = useState("");
   const [stream, setStream] = useState(true);
+  const [effort, setEffort] = useState<"" | "low" | "medium" | "high">("");
+  const [thinking, setThinking] = useState<"" | "enabled" | "disabled">("");
   const [params, setParams] = useState<Record<string, string>>({});
   const [extraJson, setExtraJson] = useState("");
   const [busy, setBusy] = useState(false);
@@ -102,6 +113,8 @@ export function CustomModelProbe({
       if (trimmed === "") continue;
       out[key] = NUMERIC.has(key) && Number.isFinite(Number(trimmed)) ? Number(trimmed) : trimmed;
     }
+    if (effort) out.reasoning_effort = effort;
+    if (thinking) out.thinking = { type: thinking };
     if (extraJson.trim()) {
       try {
         const parsed = JSON.parse(extraJson) as unknown;
@@ -276,38 +289,69 @@ export function CustomModelProbe({
         />
       </div>
 
+      {/* 思考等级 / 思考开关 first: they are what this tester exists to verify. */}
       <div className="grid gap-2 sm:grid-cols-2">
-        <Input label="temperature" placeholder="0 - 2" value={params.temperature ?? ""} onChange={(e) => setParam("temperature", e.target.value)} />
-        <Input label="top_p" placeholder="0 - 1" value={params.top_p ?? ""} onChange={(e) => setParam("top_p", e.target.value)} />
-        <Input label="max_tokens" placeholder="256" value={params.max_tokens ?? ""} onChange={(e) => setParam("max_tokens", e.target.value)} />
-        <Input
-          label="presence_penalty"
-          placeholder="-2 - 2"
-          value={params.presence_penalty ?? ""}
-          onChange={(e) => setParam("presence_penalty", e.target.value)}
-        />
-        <Input
-          label="frequency_penalty"
-          placeholder="-2 - 2"
-          value={params.frequency_penalty ?? ""}
-          onChange={(e) => setParam("frequency_penalty", e.target.value)}
-        />
-        <Input label="seed" placeholder="42" value={params.seed ?? ""} onChange={(e) => setParam("seed", e.target.value)} />
-        <Input label="stop" placeholder='["\\n"]' value={params.stop ?? ""} onChange={(e) => setParam("stop", e.target.value)} />
-        <Input
-          label="reasoning_effort"
-          placeholder="low / medium / high"
-          value={params.reasoning_effort ?? ""}
-          onChange={(e) => setParam("reasoning_effort", e.target.value)}
-        />
+        <div>
+          <label htmlFor="probe-reasoning" className="mb-1.5 block text-sm font-medium text-foreground">
+            {labels.reasoning}
+          </label>
+          <select
+            id="probe-reasoning"
+            value={effort}
+            onChange={(e) => setEffort(e.target.value as typeof effort)}
+            className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+          >
+            <option value="">{labels.reasoningOff}</option>
+            <option value="low">low</option>
+            <option value="medium">medium</option>
+            <option value="high">high</option>
+          </select>
+        </div>
+        <div>
+          <label htmlFor="probe-thinking" className="mb-1.5 block text-sm font-medium text-foreground">
+            {labels.thinkingMode}
+          </label>
+          <select
+            id="probe-thinking"
+            value={thinking}
+            onChange={(e) => setThinking(e.target.value as typeof thinking)}
+            className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+          >
+            <option value="">{labels.thinkingVendorDefault}</option>
+            <option value="enabled">{labels.thinkingOn}</option>
+            <option value="disabled">{labels.thinkingOff}</option>
+          </select>
+        </div>
       </div>
 
-      <Input
-        label={labels.extraParameters}
-        placeholder='{"response_format":{"type":"json_object"}}'
-        value={extraJson}
-        onChange={(e) => setExtraJson(e.target.value)}
-      />
+      <details className="rounded-md border border-border px-3 py-2">
+        <summary className="cursor-pointer text-sm font-medium text-foreground">{labels.sampling}</summary>
+        <div className="grid gap-2 pt-2 sm:grid-cols-2">
+          <Input label="temperature" placeholder="0 - 2" value={params.temperature ?? ""} onChange={(e) => setParam("temperature", e.target.value)} />
+          <Input label="top_p" placeholder="0 - 1" value={params.top_p ?? ""} onChange={(e) => setParam("top_p", e.target.value)} />
+          <Input label="max_tokens" placeholder="256" value={params.max_tokens ?? ""} onChange={(e) => setParam("max_tokens", e.target.value)} />
+          <Input
+            label="presence_penalty"
+            placeholder="-2 - 2"
+            value={params.presence_penalty ?? ""}
+            onChange={(e) => setParam("presence_penalty", e.target.value)}
+          />
+          <Input
+            label="frequency_penalty"
+            placeholder="-2 - 2"
+            value={params.frequency_penalty ?? ""}
+            onChange={(e) => setParam("frequency_penalty", e.target.value)}
+          />
+          <Input label="seed" placeholder="42" value={params.seed ?? ""} onChange={(e) => setParam("seed", e.target.value)} />
+          <Input label="stop" placeholder='["\\n"]' value={params.stop ?? ""} onChange={(e) => setParam("stop", e.target.value)} />
+        </div>
+        <Input
+          label={labels.extraParameters}
+          placeholder='{"response_format":{"type":"json_object"}}'
+          value={extraJson}
+          onChange={(e) => setExtraJson(e.target.value)}
+        />
+      </details>
 
       <details className="rounded-md border border-border px-3 py-2">
         <summary className="cursor-pointer text-sm font-medium text-foreground">{labels.parameters}</summary>

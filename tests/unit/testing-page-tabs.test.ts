@@ -101,22 +101,26 @@ describe("the configuration choices are named once", () => {
     expect(MEDIA).toContain("/api/assistant/test-media");
   });
 
-  it("the other-provider text panel sends the full parameter set, streamed", () => {
-    for (const field of [
-      "temperature",
-      "top_p",
-      "max_tokens",
-      "presence_penalty",
-      "frequency_penalty",
-      "seed",
-      "stop",
-      "reasoning_effort",
-    ]) {
+  it("the other-provider text panel leads with thinking, folds sampling, streams", () => {
+    for (const field of ["temperature", "top_p", "max_tokens", "presence_penalty", "frequency_penalty", "seed", "stop"]) {
       expect(PROBE, `${field} is missing from the other-provider form`).toContain(`"${field}"`);
     }
+    // The two thinking controls are the point; sampling is folded behind them.
+    expect(PROBE).toContain("labels.reasoning");
+    expect(PROBE).toContain("labels.thinkingMode");
+    expect(PROBE).toContain("out.reasoning_effort = effort");
+    expect(PROBE).toContain("out.thinking = { type: thinking }");
     expect(PROBE).toContain("/api/models/probe-chat");
     expect(PROBE).toContain("stream");
     expect(PROBE).toContain("labels.raw");
+  });
+
+  it("the gateway tester focuses the same way", () => {
+    expect(CHAT).toContain("labels.reasoning");
+    expect(CHAT).toContain("labels.thinkingMode");
+    expect(CHAT).toContain("value.reasoning_effort = effort");
+    expect(CHAT).toContain("value.thinking = { type: thinking }");
+    expect(CHAT).toContain("labels.sampling");
   });
 
   it("the guided media form and the raw escape hatch both exist", () => {

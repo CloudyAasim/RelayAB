@@ -55,6 +55,15 @@ interface Labels {
   decidedBy: string;
   /** Label above the resolved request URL. */
   endpoint?: string;
+  /** The two thinking controls, named as the assistant settings name them. */
+  reasoning: string;
+  reasoningOff: string;
+  thinkingMode: string;
+  thinkingVendorDefault: string;
+  thinkingOn: string;
+  thinkingOff: string;
+  /** The folded sampling group. */
+  sampling: string;
   /** What the three configurations are called on this page. */
   config?: { account: string; key: string; other: string };
 }
@@ -106,6 +115,8 @@ export function ModelTester({ chatModels, labels, otherLabels, rawLabels, onFetc
   const [error, setError] = useState<string | null>(null);
   const [latency, setLatency] = useState<number | null>(null);
   const [paramsOpen, setParamsOpen] = useState(false);
+  const [effort, setEffort] = useState<"" | "low" | "medium" | "high">("");
+  const [thinking, setThinking] = useState<"" | "enabled" | "disabled">("");
   const [params, setParams] = useState<Record<string, string>>({});
   const [extraJson, setExtraJson] = useState("");
   const [extraError, setExtraError] = useState<string | null>(null);
@@ -121,7 +132,8 @@ export function ModelTester({ chatModels, labels, otherLabels, rawLabels, onFetc
       return next;
     });
 
-  const paramCount = Object.keys(params).length + (extraJson.trim() ? 1 : 0);
+  const paramCount =
+    Object.keys(params).length + (extraJson.trim() ? 1 : 0) + (effort ? 1 : 0) + (thinking ? 1 : 0);
 
   /**
    * Numbers go as numbers.
@@ -145,6 +157,8 @@ export function ModelTester({ chatModels, labels, otherLabels, rawLabels, onFetc
       const trimmed = v.trim();
       value[k] = NUMERIC.has(k) && trimmed !== "" && Number.isFinite(Number(trimmed)) ? Number(trimmed) : trimmed;
     }
+    if (effort) value.reasoning_effort = effort;
+    if (thinking) value.thinking = { type: thinking };
     if (extraJson.trim()) {
       let parsed: unknown;
       try {
@@ -388,65 +402,97 @@ export function ModelTester({ chatModels, labels, otherLabels, rawLabels, onFetc
 
             {paramsOpen && (
               <div className="space-y-3 border-t border-border px-3 py-3">
-                <p className="text-xs text-muted-foreground">{labels.parametersHint}</p>
+                {/* 思考等级 / 思考开关 first: they are what this tester exists to
+                    verify. Sampling knobs are folded below them. */}
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <Input
-                    label="reasoning_effort"
-                    placeholder="low / medium / high"
-                    value={params.reasoning_effort ?? ""}
-                    onChange={(e) => setParam("reasoning_effort", e.target.value)}
-                  />
-                  <Input
-                    label="temperature"
-                    placeholder="0 - 2"
-                    value={params.temperature ?? ""}
-                    onChange={(e) => setParam("temperature", e.target.value)}
-                  />
-                  <Input
-                    label="top_p"
-                    placeholder="0 - 1"
-                    value={params.top_p ?? ""}
-                    onChange={(e) => setParam("top_p", e.target.value)}
-                  />
-                  <Input
-                    label="max_tokens"
-                    placeholder="200"
-                    value={params.max_tokens ?? ""}
-                    onChange={(e) => setParam("max_tokens", e.target.value)}
-                  />
-                  <Input
-                    label="presence_penalty"
-                    placeholder="-2 - 2"
-                    value={params.presence_penalty ?? ""}
-                    onChange={(e) => setParam("presence_penalty", e.target.value)}
-                  />
-                  <Input
-                    label="frequency_penalty"
-                    placeholder="-2 - 2"
-                    value={params.frequency_penalty ?? ""}
-                    onChange={(e) => setParam("frequency_penalty", e.target.value)}
-                  />
-                  <Input
-                    label="seed"
-                    placeholder="42"
-                    value={params.seed ?? ""}
-                    onChange={(e) => setParam("seed", e.target.value)}
-                  />
-                  <Input
-                    label="stop"
-                    placeholder='["\\n"]'
-                    value={params.stop ?? ""}
-                    onChange={(e) => setParam("stop", e.target.value)}
-                  />
+                  <div>
+                    <label htmlFor="tester-reasoning" className="mb-1.5 block text-sm font-medium text-foreground">
+                      {labels.reasoning}
+                    </label>
+                    <select
+                      id="tester-reasoning"
+                      value={effort}
+                      onChange={(e) => setEffort(e.target.value as typeof effort)}
+                      className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                    >
+                      <option value="">{labels.reasoningOff}</option>
+                      <option value="low">low</option>
+                      <option value="medium">medium</option>
+                      <option value="high">high</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="tester-thinking" className="mb-1.5 block text-sm font-medium text-foreground">
+                      {labels.thinkingMode}
+                    </label>
+                    <select
+                      id="tester-thinking"
+                      value={thinking}
+                      onChange={(e) => setThinking(e.target.value as typeof thinking)}
+                      className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                    >
+                      <option value="">{labels.thinkingVendorDefault}</option>
+                      <option value="enabled">{labels.thinkingOn}</option>
+                      <option value="disabled">{labels.thinkingOff}</option>
+                    </select>
+                  </div>
                 </div>
-                <Input
-                  label={labels.extraParameters}
-                  hint={labels.extraParametersHint}
-                  placeholder='{"seed":42,"thinking":{"type":"enabled","budget_tokens":4000}}'
-                  value={extraJson}
-                  onChange={(e) => setExtraJson(e.target.value)}
-                />
-                {extraError && <p className="text-xs text-destructive">{extraError}</p>}
+
+                <details className="rounded-md border border-border px-3 py-2">
+                  <summary className="cursor-pointer text-sm font-medium text-foreground">{labels.sampling}</summary>
+                  <div className="grid gap-2 pt-2 sm:grid-cols-2">
+                    <Input
+                      label="temperature"
+                      placeholder="0 - 2"
+                      value={params.temperature ?? ""}
+                      onChange={(e) => setParam("temperature", e.target.value)}
+                    />
+                    <Input
+                      label="top_p"
+                      placeholder="0 - 1"
+                      value={params.top_p ?? ""}
+                      onChange={(e) => setParam("top_p", e.target.value)}
+                    />
+                    <Input
+                      label="max_tokens"
+                      placeholder="200"
+                      value={params.max_tokens ?? ""}
+                      onChange={(e) => setParam("max_tokens", e.target.value)}
+                    />
+                    <Input
+                      label="presence_penalty"
+                      placeholder="-2 - 2"
+                      value={params.presence_penalty ?? ""}
+                      onChange={(e) => setParam("presence_penalty", e.target.value)}
+                    />
+                    <Input
+                      label="frequency_penalty"
+                      placeholder="-2 - 2"
+                      value={params.frequency_penalty ?? ""}
+                      onChange={(e) => setParam("frequency_penalty", e.target.value)}
+                    />
+                    <Input
+                      label="seed"
+                      placeholder="42"
+                      value={params.seed ?? ""}
+                      onChange={(e) => setParam("seed", e.target.value)}
+                    />
+                    <Input
+                      label="stop"
+                      placeholder='["\\n"]'
+                      value={params.stop ?? ""}
+                      onChange={(e) => setParam("stop", e.target.value)}
+                    />
+                  </div>
+                  <Input
+                    label={labels.extraParameters}
+                    hint={labels.extraParametersHint}
+                    placeholder='{"seed":42,"thinking":{"type":"enabled","budget_tokens":4000}}'
+                    value={extraJson}
+                    onChange={(e) => setExtraJson(e.target.value)}
+                  />
+                  {extraError && <p className="text-xs text-destructive">{extraError}</p>}
+                </details>
               </div>
             )}
           </div>
