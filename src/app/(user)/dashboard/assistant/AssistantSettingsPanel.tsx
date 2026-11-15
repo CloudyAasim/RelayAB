@@ -21,10 +21,10 @@
  * their vendor's documentation.
  */
 import { useEffect, useId, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import Link from "next/link";
 import { useT } from "@/components/i18n/I18nProvider";
 import { InfoHint } from "@/components/ui/InfoHint";
 import { MarkdownText } from "@/components/i18n/MarkdownText";
@@ -225,7 +225,6 @@ export function AssistantSettingsPanel({
   suggestedModels = [],
   accountModels = [],
   accountFacts = {},
-  isAdmin = false,
   webSearch = {
     available: false,
     defaultOn: true,
@@ -242,7 +241,6 @@ export function AssistantSettingsPanel({
 }: {
   initial: AssistantSettingsView | null;
   /** Admins additionally see where the backend comes from and how to manage it. */
-  isAdmin?: boolean;
   webSearch?: WebSearchSettings;
   /**
    * Models to offer on the key path before anything is probed.
@@ -1324,25 +1322,6 @@ export function AssistantSettingsPanel({
           )}
         </div>
 
-        {isAdmin && (
-          <div className="space-y-1 rounded-md bg-muted/50 p-2 text-xs text-muted-foreground">
-            <p>
-              {webSearch.backendName
-                ? t("assistant.settings.webSearch.backend", { name: webSearch.backendName })
-                : t("assistant.settings.webSearch.noBackend")}
-            </p>
-            <p>
-              {webSearch.backendSource === "db"
-                ? t("assistant.settings.webSearch.sourceDb")
-                : webSearch.backendSource === "env"
-                  ? t("assistant.settings.webSearch.sourceEnv")
-                  : t("assistant.settings.webSearch.sourceNone")}
-            </p>
-            <Link href="/admin/search" className="inline-block text-primary hover:underline">
-              {t("assistant.settings.webSearch.manage")}
-            </Link>
-          </div>
-        )}
       </fieldset>
 
       {/*

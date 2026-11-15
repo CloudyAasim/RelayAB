@@ -221,18 +221,18 @@ describe("boundaries", () => {
   });
 });
 
-describe("role-separated rendering", () => {
-  it("shows the backend facts and the management link only to administrators", () => {
-    // The whole administrator block is behind this condition, so it cannot be
-    // rendered for a regular user by accident.
-    expect(PANEL).toMatch(/isAdmin\s*&&\s*\(/);
-    expect(PANEL).toContain("/admin/search");
-    expect(PANEL).toMatch(/webSearch\.backendSource === "db"/);
+describe("the panel does not carry administrator bookkeeping", () => {
+  it("shows neither the deployment's backend facts nor a management link", () => {
+    // 「当前后端：… / 来自搜索提供商列表 / 管理搜索提供商 →」 lived here and
+    // belonged to the operator's page, not to a user's assistant settings.
+    expect(PANEL).not.toContain("/admin/search");
+    expect(PANEL).not.toContain("webSearch.backendSource");
+    expect(PANEL).not.toContain("assistant.settings.webSearch.manage");
+    expect(PANEL).not.toContain("isAdmin");
   });
 
-  it("is fed the availability and the role by the page, not guessed in the client", () => {
+  it("is fed the availability by the page, not guessed in the client", () => {
     expect(PAGE).toMatch(/webSearchAvailable\s*=/);
-    expect(PAGE).toMatch(/isAdmin=\{isAdmin\}/);
     expect(PAGE).toMatch(/available:\s*webSearchAvailable/);
   });
 });

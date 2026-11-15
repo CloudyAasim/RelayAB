@@ -154,8 +154,7 @@ export default async function AssistantPage() {
               suggestedModels={suggestedModels}
               accountModels={suggestedModels}
               accountFacts={accountFacts}
-              isAdmin={isAdmin}
-              webSearch={{
+                  webSearch={{
                 available: webSearchAvailable,
                 defaultOn: webSearchDefault,
                 limit: webSearchLimit,
