@@ -722,3 +722,55 @@ describe("the dialogs and drawers follow the same rule", () => {
     }
   });
 });
+/**
+ * Explanations on demand, not on screen.
+ *
+ * The assistant's settings drawer had grown six paragraphs of grey text, and a
+ * 384px drawer of sentences is the opposite of a layout that speaks. Those
+ * paragraphs now live in an (i) badge beside the label they explain.
+ */
+describe("explanations are behind a badge, not printed under the field", () => {
+  const PANEL = read("src", "app", "(user)", "dashboard", "assistant", "AssistantSettingsPanel.tsx");
+  const MODEL_FORM = read("src", "app", "(admin)", "admin", "model-notes", "ModelConfigForm.tsx");
+  const USAGE_CARD = read("src", "components", "usage", "UsageWebSearchCard.tsx");
+  const HINT = read("src", "components", "ui", "InfoHint.tsx");
+
+  it("the hint is a tooltip, so it cannot close the sheet it lives in", () => {
+    // A popover portals outside the dialog's DOM; Radix Dialog reads a pointer
+    // there as "outside" and closes the sheet. The tooltip is exempt.
+    expect(HINT).toContain("Tooltip");
+    expect(HINT).not.toContain("Popover");
+    expect(HINT).toContain("aria-label");
+    expect(HINT).toContain("onClick");
+  });
+
+  it("the assistant's long explanations are badges next to their labels", () => {
+    for (const key of [
+      "assistant.settings.thinkingModeHint",
+      "assistant.settings.modelParamsHint",
+      "assistant.settings.refreshHint",
+      "assistant.settings.searchService.whichServiceHint",
+    ]) {
+      expect(PANEL, `${key} should be passed to a hint`).toContain(`InfoHint text={t("${key}")}`);
+    }
+    // This one shares the badge with the "vendor published nothing" note.
+    expect(PANEL).toMatch(/InfoHint[\s\S]{0,400}assistant\.settings\.reasoningDefaultIsNotOff/);
+    // …and the paragraphs they used to be are gone.
+    expect(PANEL).not.toMatch(/<p[^>]*>\s*\{t\("assistant\.settings\.modelParamsHint"\)\}/);
+    expect(PANEL).not.toMatch(/<p[^>]*>\s*\{t\("assistant\.settings\.thinkingModeHint"\)\}/);
+    expect(PANEL).not.toMatch(/<p[^>]*>\s*\{t\("assistant\.settings\.refreshHint"\)\}/);
+  });
+
+  it("a field explanation sits on the label, and the input component supports it", () => {
+    const input = read("src", "components", "ui", "Input.tsx");
+    expect(input).toContain("labelHint");
+    expect(PANEL).toContain('labelHint={t("assistant.settings.searchService.urlHint")}');
+    expect(PANEL).toContain('labelHint={t("assistant.settings.searchService.keyHint")}');
+  });
+
+  it("the model notes and the usage card use the same badge", () => {
+    expect(MODEL_FORM).toContain('labelHint={t("admin.providers.create.reasoningLevelsHint")}');
+    expect(MODEL_FORM).toContain('labelHint={t("admin.providers.models.cacheCostHint")}');
+    expect(USAGE_CARD).toContain("InfoHint");
+  });
+});

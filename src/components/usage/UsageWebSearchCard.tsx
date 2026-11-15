@@ -1,4 +1,5 @@
 import { Card, CardHeader } from "@/components/ui/Card";
+import { InfoHint } from "@/components/ui/InfoHint";
 import { formatCredits, formatNumber } from "@/lib/utils";
 import type { UsageSummary } from "@/lib/usage/report";
 
@@ -32,7 +33,14 @@ export function UsageWebSearchCard({ summary, totalCredits, labels }: Props) {
 
   return (
     <Card>
-      <CardHeader title={labels.title} description={labels.description} />
+      <CardHeader
+        title={
+          <span className="flex items-center gap-1.5">
+            {labels.title}
+            <InfoHint text={labels.description} />
+          </span>
+        }
+      />
       {summary.requests === 0 ? (
         <p className="text-sm text-muted-foreground">{labels.empty}</p>
       ) : (

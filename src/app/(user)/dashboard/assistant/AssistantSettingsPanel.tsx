@@ -26,6 +26,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useT } from "@/components/i18n/I18nProvider";
+import { InfoHint } from "@/components/ui/InfoHint";
 import { MarkdownText } from "@/components/i18n/MarkdownText";
 import { ModelCombobox } from "./ModelCombobox";
 import { cn } from "@/lib/utils";
@@ -702,8 +703,16 @@ export function AssistantSettingsPanel({
         that matter, and the prose is the same on both sides.
       */}
       <fieldset>
-        <legend className="mb-1.5 flex items-baseline justify-between gap-2 text-sm font-medium text-foreground">
+        <legend className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-foreground">
           {t("assistant.settings.wayTitle")}
+          <InfoHint
+            text={
+              <>
+                <span className="block">{t("assistant.settings.wayAccountHint")}</span>
+                <span className="mt-1 block">{t("assistant.settings.wayKeyHint")}</span>
+              </>
+            }
+          />
           {/*
             Which one is actually in effect, in words.
             
@@ -739,11 +748,6 @@ export function AssistantSettingsPanel({
             </label>
           ))}
         </div>
-        <p className="mt-1.5 text-xs text-muted-foreground">
-          {mode === "account"
-            ? t("assistant.settings.wayAccountHint")
-            : t("assistant.settings.wayKeyHint")}
-        </p>
         {/*
           The one thing that made "use my account identity" look like it needed a
           key.
@@ -787,7 +791,7 @@ export function AssistantSettingsPanel({
           value={accountModel}
           options={accountModels}
           onChange={chooseAccountModel}
-          hint={t("assistant.settings.accountModelHint")}
+          labelHint={t("assistant.settings.accountModelHint")}
         />
       ) : (
         <>
@@ -795,7 +799,7 @@ export function AssistantSettingsPanel({
             id="assistant-base-url"
             name="baseUrl"
             label={t("assistant.settings.baseUrl")}
-            hint={t("assistant.settings.baseUrlHint")}
+            labelHint={t("assistant.settings.baseUrlHint")}
             placeholder="https://api.example.com/v1"
             value={baseUrl}
             onChange={(e) => setBaseUrl(e.target.value)}
@@ -804,11 +808,9 @@ export function AssistantSettingsPanel({
             id="assistant-api-key"
             name="apiKey"
             label={t("assistant.settings.apiKey")}
-            hint={
-              initial?.hasApiKey
-                ? t("assistant.settings.apiKeyConfigured")
-                : t("assistant.settings.apiKeyHint")
-            }
+            {...(initial?.hasApiKey
+              ? { hint: t("assistant.settings.apiKeyConfigured") }
+              : { labelHint: t("assistant.settings.apiKeyHint") })}
             type="password"
             autoComplete="off"
             placeholder={initial?.hasApiKey ? "••••••••" : "sk-..."}
@@ -823,11 +825,9 @@ export function AssistantSettingsPanel({
             value={model}
             options={knownModels}
             onChange={setModel}
-            hint={
-              knownModels.length > 0 && knownModels !== suggestedModels
-                ? t("assistant.settings.modelHintProbed", { n: knownModels.length })
-                : t("assistant.settings.modelHint")
-            }
+            {...(knownModels.length > 0 && knownModels !== suggestedModels
+              ? { hint: t("assistant.settings.modelHintProbed", { n: knownModels.length }) }
+              : { labelHint: t("assistant.settings.modelHint") })}
           />
         </>
       )}
@@ -843,8 +843,9 @@ export function AssistantSettingsPanel({
         one language and still says what to look up in the vendor's docs.
       */}
       <fieldset className="rounded-md border border-border p-3">
-        <legend className="px-1 text-sm font-medium text-foreground">
+        <legend className="flex items-center gap-1.5 px-1 text-sm font-medium text-foreground">
           {t("assistant.settings.modelParams")}
+          <InfoHint text={t("assistant.settings.modelParamsHint")} />
         </legend>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
@@ -860,15 +861,29 @@ export function AssistantSettingsPanel({
               nothing anywhere would report that it did nothing. That is worse
               than a refusal, so the control is switched off and says why.
             */}
-            <label
-              htmlFor="assistant-reasoning"
-              className={cn(
-                "block text-xs font-medium",
-                effortUnsupported ? "text-muted-foreground" : "text-foreground",
-              )}
-            >
-              {t("assistant.settings.reasoning")}
-            </label>
+            <div className="flex items-center gap-1.5">
+              <label
+                htmlFor="assistant-reasoning"
+                className={cn(
+                  "text-xs font-medium",
+                  effortUnsupported ? "text-muted-foreground" : "text-foreground",
+                )}
+              >
+                {t("assistant.settings.reasoning")}
+              </label>
+              <InfoHint
+                text={
+                  <>
+                    <span className="block">\n                      <MarkdownText text={t("assistant.settings.reasoningDefaultIsNotOff")} />\n                    </span>
+                    {mode === "account" &&
+                      !effortUnsupported &&
+                      (facts?.reasoningLevels?.length ?? 0) === 0 && (
+                        <span className="mt-1 block">{t("assistant.settings.reasoningUnknown")}</span>
+                      )}
+                  </>
+                }
+              />
+            </div>
             {/*
               A picker with a way out, and the way out is the point.
 
@@ -906,9 +921,6 @@ export function AssistantSettingsPanel({
                   thinking stays on. A user who wants to spend less and picks the
                   default gets the opposite, and nothing on screen says so.
                 */}
-                <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                  <MarkdownText text={t("assistant.settings.reasoningDefaultIsNotOff")} />
-                </p>
               </>
             )}
           </div>
@@ -926,12 +938,12 @@ export function AssistantSettingsPanel({
               request with a 400, which is the vendor's own words rather than a
               guess made here.
             */}
-            <label
-              htmlFor="assistant-thinking"
-              className="block text-xs font-medium text-foreground"
-            >
-              {t("assistant.settings.thinkingMode")}
-            </label>
+            <div className="flex items-center gap-1.5">
+              <label htmlFor="assistant-thinking" className="text-xs font-medium text-foreground">
+                {t("assistant.settings.thinkingMode")}
+              </label>
+              <InfoHint text={t("assistant.settings.thinkingModeHint")} />
+            </div>
             <select
               id="assistant-thinking"
               name="thinkingType"
@@ -954,11 +966,7 @@ export function AssistantSettingsPanel({
               <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
                 <MarkdownText text={t("assistant.settings.thinkingSwitchNotSupported")} />
               </p>
-            ) : (
-              <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                {t("assistant.settings.thinkingModeHint")}
-              </p>
-            )}
+            ) : null}
           </div>
           {/*
             The context window stays on the open form.
@@ -1034,9 +1042,6 @@ export function AssistantSettingsPanel({
           </div>
         </details>
 
-        <p className="mt-2.5 text-xs text-muted-foreground">
-          {t("assistant.settings.modelParamsHint")}
-        </p>
         {/* Says where the two numbers came from, because "filled in by itself"
             and "you typed this" look identical in a box. */}
         {mode === "account" && facts && (
@@ -1086,7 +1091,7 @@ export function AssistantSettingsPanel({
                   : 1,
               );
             }}
-            hint={t("assistant.settings.webSearch.limitHint", { max: webSearch.maxResults })}
+            labelHint={t("assistant.settings.webSearch.limitHint", { max: webSearch.maxResults })}
           />
         </div>
 
@@ -1109,7 +1114,17 @@ export function AssistantSettingsPanel({
           </p>
 
           <fieldset className="space-y-2">
-            <legend className="sr-only">{t("assistant.settings.searchService.sourceLegend")}</legend>
+            <legend className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              {t("assistant.settings.searchService.sourceLegend")}
+              <InfoHint
+                text={
+                  <>
+                    <span className="block">{t("assistant.settings.searchService.sourceDeploymentHint")}</span>
+                    <span className="mt-1 block">{t("assistant.settings.searchService.sourceOwnHint")}</span>
+                  </>
+                }
+              />
+            </legend>
             <div className="grid grid-cols-2 gap-1.5" role="none">
               {(["deployment", "own"] as const).map((option) => (
                 <label
@@ -1136,11 +1151,6 @@ export function AssistantSettingsPanel({
                 </label>
               ))}
             </div>
-            <p className="text-xs text-muted-foreground">
-              {searchSource === "deployment"
-                ? t("assistant.settings.searchService.sourceDeploymentHint")
-                : t("assistant.settings.searchService.sourceOwnHint")}
-            </p>
 
             {/*
               Which of the deployment's services.
@@ -1158,12 +1168,15 @@ export function AssistantSettingsPanel({
             */}
             {searchSource === "deployment" && webSearch.services.length > 0 && (
               <div className="space-y-1.5">
-                <label
-                  htmlFor="assistant-search-service"
-                  className="block text-sm font-medium text-foreground"
-                >
-                  {t("assistant.settings.searchService.whichService")}
-                </label>
+                <div className="flex items-center gap-1.5">
+                  <label
+                    htmlFor="assistant-search-service"
+                    className="text-sm font-medium text-foreground"
+                  >
+                    {t("assistant.settings.searchService.whichService")}
+                  </label>
+                  <InfoHint text={t("assistant.settings.searchService.whichServiceHint")} />
+                </div>
                 <select
                   id="assistant-search-service"
                   name="searchServiceId"
@@ -1184,9 +1197,6 @@ export function AssistantSettingsPanel({
                     </option>
                   ))}
                 </select>
-                <p className="text-xs text-muted-foreground">
-                  {t("assistant.settings.searchService.whichServiceHint")}
-                </p>
                 {searchServiceId &&
                   !webSearch.services.some((service) => service.id === searchServiceId) && (
                     <p className="text-xs text-destructive">
@@ -1209,7 +1219,7 @@ export function AssistantSettingsPanel({
                 placeholder="https://your-gateway.example.com/v1/search"
                 value={searchBaseUrl}
                 onChange={(e) => setSearchBaseUrl(e.target.value)}
-                hint={t("assistant.settings.searchService.urlHint")}
+                labelHint={t("assistant.settings.searchService.urlHint")}
               />
               <Input
                 id="assistant-search-api-key"
@@ -1229,7 +1239,7 @@ export function AssistantSettingsPanel({
                   setSearchApiKey(e.target.value);
                   if (e.target.value) setClearSearchKey(false);
                 }}
-                hint={t("assistant.settings.searchService.keyHint")}
+                labelHint={t("assistant.settings.searchService.keyHint")}
               />
               {webSearch.ownHasKey && !clearSearchKey && (
                 <button
@@ -1350,17 +1360,18 @@ export function AssistantSettingsPanel({
       */}
       {mode === "account" && (
         <div className="space-y-1.5 border-t border-border pt-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={refreshModels}
-            disabled={refreshing}
-          >
-            {refreshing ? t("assistant.settings.refreshing") : t("assistant.settings.refresh")}
-          </Button>
-          <p className="text-xs text-muted-foreground">
-            {refreshNote ?? t("assistant.settings.refreshHint")}
-          </p>
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={refreshModels}
+              disabled={refreshing}
+            >
+              {refreshing ? t("assistant.settings.refreshing") : t("assistant.settings.refresh")}
+            </Button>
+            <InfoHint text={t("assistant.settings.refreshHint")} />
+          </div>
+          {refreshNote && <p className="text-xs text-muted-foreground">{refreshNote}</p>}
         </div>
       )}
 
@@ -1508,11 +1519,6 @@ function ReasoningCombobox({
         Suppressed when the control is off: a note explaining a list you cannot
         use is noise, and the field's own explanation is the relevant one.
       */}
-      {!fromVendor && !disabled && (
-        <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-          {t("assistant.settings.reasoningUnknown")}
-        </p>
-      )}
       {custom && (
         <>
         <input

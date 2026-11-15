@@ -72,6 +72,7 @@ const SCENES = [
   ["assistant-settings-2", "/dashboard/assistant", "user", openAssistantSettings(700)],
   ["assistant-settings-3", "/dashboard/assistant", "user", openAssistantSettings(1500)],
   ["assistant-settings-4", "/dashboard/assistant", "user", openAssistantSettings(2400)],
+  ["assistant-settings-hint", "/dashboard/assistant", "user", openAssistantHint],
   ["assistant-history", "/dashboard/assistant", "user", clickButton(/历史对话/)],
   ["dashboard-create-key", "/dashboard", "user", clickButton(/新建接口密钥/)],
   ["dashboard-key-menu", "/dashboard", "user", clickButton(/^操作$/)],
@@ -121,6 +122,13 @@ function openMenuThen(menuName, itemName) {
     await page.waitForTimeout(300);
     await page.getByRole("button", { name: itemName }).first().click();
   };
+}
+/** A settings hint, opened: the content on demand is part of the review too. */
+async function openAssistantHint(page) {
+  await page.locator('button[title="助手设置"]').first().click();
+  await page.waitForTimeout(1500);
+  await page.getByRole("button", { name: "说明" }).first().click();
+  await page.waitForTimeout(400);
 }
 /** The assistant's settings sheet, scrolled to a section. */
 function openAssistantSettings(scrollTop) {
@@ -284,6 +292,9 @@ async function main() {
         if ((response?.status() ?? 0) >= 400) {
           problems.push(`${name}/${widthName}: HTTP ${response.status()} at ${route}`);
         }
+        // Park the pointer: a stray hover would open an (i) tooltip over the
+        // page it is documenting.
+        await page.mouse.move(2, 2);
         await shoot(page, path.join(OUT, `${name}-${widthName}.png`), problems, `${name}/${widthName}`);
         shots++;
       } catch (error) {
@@ -299,6 +310,9 @@ async function main() {
       try {
         await page.goto(`${BASE}${route}`, { waitUntil: "networkidle", timeout: 30000 });
         await open(page);
+        // The hint scene exists to show the popup; every other scene parks the
+        // pointer so a stray hover does not open one over the screenshot.
+        if (!name.includes("hint")) await page.mouse.move(2, 2);
         await shoot(page, path.join(OUT, `${name}-${widthName}.png`), problems, `${name}/${widthName}`);
         shots++;
       } catch (error) {

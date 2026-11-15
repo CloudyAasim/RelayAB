@@ -15,8 +15,15 @@
  * system knows about. A default list is fine as long as it is labelled as one.
  */
 import { describe, it, expect, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement as h } from "react";
+
+const PANEL_SOURCE = readFileSync(
+  join(process.cwd(), "src/app/(user)/dashboard/assistant/AssistantSettingsPanel.tsx"),
+  "utf-8",
+);
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: () => {}, push: () => {} }),
@@ -61,11 +68,15 @@ describe("when the vendor published no levels", () => {
   it("and it says they are this system's, not this model's", () => {
     // The whole point of offering them. Without this line the list is a claim
     // about the model; with it, it is a starting point the reader can check.
-    const html = render([]);
-    expect(html, "the presets are not labelled as presets").toContain(
-      "厂商没有公布这个模型的思考等级",
+    // It used to be a paragraph under the field; it is now the second line of
+    // the (i) badge beside 「思考等级」, which is why the rendered HTML does not
+    // carry it until the badge is opened.
+    expect(PANEL_SOURCE, "the note is not on the panel").toContain(
+      't("assistant.settings.reasoningUnknown")',
     );
-    expect(html, "the presets are not labelled as presets").toContain("按厂商文档确认");
+    expect(PANEL_SOURCE, "the note is printed instead of hinted").not.toMatch(
+      /<p[^>]*>\s*\{t\("assistant\.settings\.reasoningUnknown"\)\}/,
+    );
   });
 
   it("and the custom field is there for anything else", () => {

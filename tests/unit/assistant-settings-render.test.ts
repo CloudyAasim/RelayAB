@@ -17,6 +17,8 @@
  * seeded from props, and the only effects (the credential fetch) are stubbed.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement as h } from "react";
 
@@ -521,7 +523,14 @@ describe("the thinking level offers this model's own words", () => {
       accountFacts: { plain: { contextLength: 64000, maxOutputTokens: 8192, reasoningLevels: [] } },
     });
     expect(html, "the custom option is missing").toContain("自定义");
-    expect(html, "no reason given for the empty list").toContain("厂商没有公布这个模型的思考等级");
+    // Behind the (i) badge beside 「思考等级」 now, not printed under the field.
+    const panelSource = readFileSync(
+      join(process.cwd(), "src/app/(user)/dashboard/assistant/AssistantSettingsPanel.tsx"),
+      "utf-8",
+    );
+    expect(panelSource, "no reason given for the empty list").toContain(
+      't("assistant.settings.reasoningUnknown")',
+    );
   });
 });
 

@@ -1,21 +1,27 @@
 import { cn } from "@/lib/utils";
-import { forwardRef, type InputHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import { forwardRef, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
+import { InfoHint } from "./InfoHint";
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
+  /** An explanation shown on demand beside the label, instead of under the field. */
+  labelHint?: ReactNode;
   hint?: string;
   error?: string;
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ className, label, hint, error, id, ...rest }, ref) => {
+  ({ className, label, labelHint, hint, error, id, ...rest }, ref) => {
     const inputId = id ?? rest.name;
     return (
       <div className="space-y-1.5">
         {label && (
-          <label htmlFor={inputId} className="block text-sm font-medium text-foreground">
-            {label}
-          </label>
+          <div className="flex items-center gap-1.5">
+            <label htmlFor={inputId} className="block text-sm font-medium text-foreground">
+              {label}
+            </label>
+            {labelHint ? <InfoHint text={labelHint} label={label} /> : null}
+          </div>
         )}
         <input
           id={inputId}
@@ -40,19 +46,24 @@ Input.displayName = "Input";
 
 interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   label?: string;
+  /** An explanation shown on demand beside the label, instead of under the field. */
+  labelHint?: ReactNode;
   hint?: string;
   error?: string;
 }
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
-  ({ className, label, hint, error, id, ...rest }, ref) => {
+  ({ className, label, labelHint, hint, error, id, ...rest }, ref) => {
     const tid = id ?? rest.name;
     return (
       <div className="space-y-1.5">
         {label && (
-          <label htmlFor={tid} className="block text-sm font-medium text-foreground">
-            {label}
-          </label>
+          <div className="flex items-center gap-1.5">
+            <label htmlFor={tid} className="block text-sm font-medium text-foreground">
+              {label}
+            </label>
+            {labelHint ? <InfoHint text={labelHint} label={label} /> : null}
+          </div>
         )}
         <textarea
           id={tid}

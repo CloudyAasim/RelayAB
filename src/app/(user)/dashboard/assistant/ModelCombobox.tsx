@@ -25,7 +25,9 @@
  * nothing to throw.
  */
 import { useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { Input } from "@/components/ui/Input";
+import { InfoHint } from "@/components/ui/InfoHint";
 import { useT } from "@/components/i18n/I18nProvider";
 
 /** The sentinel option that reveals the free-text field. */
@@ -35,6 +37,7 @@ export function ModelCombobox({
   id,
   label,
   hint,
+  labelHint,
   value,
   options,
   placeholder,
@@ -45,6 +48,7 @@ export function ModelCombobox({
   label: string;
   /** What the options are, and how to replace them. Shown under the field. */
   hint?: string;
+  labelHint?: ReactNode;
   value: string;
   options: string[];
   placeholder?: string;
@@ -66,9 +70,12 @@ export function ModelCombobox({
 
   return (
     <div className="space-y-1.5">
-      <label htmlFor={id} className="block text-sm font-medium text-foreground">
-        {label}
-      </label>
+      <div className="flex items-center gap-1.5">
+        <label htmlFor={id} className="text-sm font-medium text-foreground">
+          {label}
+        </label>
+        {labelHint ? <InfoHint text={labelHint} label={label} /> : null}
+      </div>
 
       {/*
         The same element and the same class list as the pickers on the model

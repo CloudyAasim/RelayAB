@@ -1129,6 +1129,7 @@ const zhCN: Dict = {
   // ===== Common actions =====
   "common.save": "保存",
   "common.cancel": "取消",
+  "common.help": "说明",
   "common.delete": "删除",
   "common.edit": "编辑",
   "common.current": "当前",
@@ -2721,6 +2722,7 @@ const en: Dict = {
   // ===== Common actions =====
   "common.save": "Save",
   "common.cancel": "Cancel",
+  "common.help": "Help",
   "common.delete": "Delete",
   "common.edit": "Edit",
   "common.current": "Current",

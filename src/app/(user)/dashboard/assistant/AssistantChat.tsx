@@ -21,6 +21,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { InfoHint } from "@/components/ui/InfoHint";
 import { Switch } from "@/components/ui/Switch";
 import {
   Sheet,
@@ -1656,8 +1657,14 @@ export function AssistantChat({
       <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
         <SheetContent side="right" className="overflow-y-auto">
           <SheetHeader>
-            <SheetTitle>{t("assistant.settings.title")}</SheetTitle>
-            <SheetDescription>{t("assistant.settings.desc")}</SheetDescription>
+            <SheetTitle className="flex items-center gap-1.5">
+              {t("assistant.settings.title")}
+              <InfoHint text={t("assistant.settings.desc")} />
+            </SheetTitle>
+            {/* Kept for the dialog's accessible name, not for reading. */}
+            <SheetDescription className="sr-only">
+              {t("assistant.settings.desc")}
+            </SheetDescription>
           </SheetHeader>
           <div className="mt-4 space-y-4">
             {/* Whether a reply is rendered or shown raw. A display choice, so
@@ -1681,13 +1688,11 @@ export function AssistantChat({
                     writePretty(checked);
                   }}
                 />
-                <span>
-                  <span className="block text-sm font-medium text-foreground">
+                <span className="flex items-center gap-1.5">
+                  <span className="text-sm font-medium text-foreground">
                     {t("assistant.pretty.switch")}
                   </span>
-                  <span className="mt-0.5 block text-xs text-muted-foreground">
-                    {t("assistant.pretty.hint")}
-                  </span>
+                  <InfoHint text={t("assistant.pretty.hint")} />
                 </span>
               </label>
             </div>

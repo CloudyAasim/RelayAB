@@ -22,6 +22,7 @@ import { useMemo, useState } from "react";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { InfoHint } from "@/components/ui/InfoHint";
 import { Badge } from "@/components/ui/Badge";
 import { useT } from "@/components/i18n/I18nProvider";
 import { MarkdownText } from "@/components/i18n/MarkdownText";import { sanitizeLevelList } from "@/lib/providers/reasoning-levels";
@@ -243,9 +244,12 @@ export function ModelConfigForm({ rows }: { rows: ModelConfigRow[] }) {
                         </div>
                         {row.gatewayEditable && (
                           <div>
-                            <label className="block text-sm font-medium text-foreground">
-                              {t("admin.modelConfig.purpose")}
-                            </label>
+                            <div className="flex items-center gap-1.5">
+                              <label className="text-sm font-medium text-foreground">
+                                {t("admin.modelConfig.purpose")}
+                              </label>
+                              <InfoHint text={t("admin.modelConfig.purposeHint")} />
+                            </div>
                             <select
                               value={row.purpose ?? "chat"}
                               onChange={(e) =>
@@ -264,9 +268,6 @@ export function ModelConfigForm({ rows }: { rows: ModelConfigRow[] }) {
                                 {t("admin.modelConfig.purpose.moderation")}
                               </option>
                             </select>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {t("admin.modelConfig.purposeHint")}
-                            </p>
                           </div>
                         )}
                       </div>
@@ -282,6 +283,7 @@ export function ModelConfigForm({ rows }: { rows: ModelConfigRow[] }) {
                             <Input
                               type="number"
                               label={t("admin.providers.create.contextLength")}
+                              labelHint={t("admin.modelConfig.factsHint")}
                               value={String(row.contextLength)}
                               onChange={(e) =>
                                 update(index, { contextLength: num(e.target.value, row.contextLength) })
@@ -314,7 +316,7 @@ export function ModelConfigForm({ rows }: { rows: ModelConfigRow[] }) {
                             */}
                             <Input
                               label={t("admin.providers.create.reasoningLevels")}
-                              hint={t("admin.providers.create.reasoningLevelsHint")}
+                              labelHint={t("admin.providers.create.reasoningLevelsHint")}
                               placeholder="minimal, low, medium, high"
                               value={(row.reasoningLevels ?? []).join(", ")}
                               onChange={(e) =>
@@ -402,6 +404,7 @@ export function ModelConfigForm({ rows }: { rows: ModelConfigRow[] }) {
                               type="number"
                               label={t("admin.providers.create.cachedInputCost")}
                               hint={t("admin.providers.create.cachedInputCostSame")}
+                              labelHint={t("admin.providers.models.cacheCostHint")}
                               value={row.cachedInputCost === undefined ? "" : String(row.cachedInputCost)}
                               onChange={(e) =>
                                 update(index, {
@@ -419,12 +422,6 @@ export function ModelConfigForm({ rows }: { rows: ModelConfigRow[] }) {
                               }
                             />
                           </div>
-                          <p className="text-xs text-muted-foreground">
-                            {t("admin.providers.models.cacheCostHint")}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {t("admin.modelConfig.factsHint")}
-                          </p>
                         </>
                       ) : (
                         <div className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
