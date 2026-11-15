@@ -134,11 +134,6 @@ export default async function ModelsPage() {
     offset: t("dashboard.models.searchOther.offset"),
   };
 
-  const searchSource = {
-    label: t("dashboard.models.search.source"),
-    local: t("dashboard.models.search.sourceLocal"),
-    other: t("dashboard.models.config.other"),
-  };
 
   return (
     <SectionPageLayout>
@@ -154,7 +149,6 @@ export default async function ModelsPage() {
           catalogMediaModels={catalogMediaModels}
           rawLabels={rawLabels}
           otherSearchLabels={otherSearchLabels}
-          searchSource={searchSource}
           gatewayLabels={{
             title: t("dashboard.models.gateway.title"),
             desc: t("dashboard.models.gateway.desc"),
@@ -249,9 +243,19 @@ export default async function ModelsPage() {
             unsupported: t("dashboard.models.media.unsupported"),
             download: t("dashboard.models.media.download"),
           }}
-          searchTest={
-            searchConfig
-              ? {
+          isAdmin={sessionUser.role === "admin"}
+          searchUi={{
+            config: {
+              account: t("dashboard.models.config.account"),
+              key: t("dashboard.models.config.key"),
+              other: t("dashboard.models.config.other"),
+            },
+            resultCount: t("dashboard.models.search.resultCount"),
+            limitHint: t("dashboard.models.search.limitHint"),
+            serviceKey: t("dashboard.models.search.serviceKey"),
+            notAdmin: t("dashboard.models.search.notAdmin"),
+          }}
+          searchTest={{
                   labels: {
                     title: t("admin.search.test.title"),
                     desc: t("admin.search.test.desc"),
@@ -276,16 +280,14 @@ export default async function ModelsPage() {
                     whichServiceNone: t("admin.search.test.whichServiceNone"),
                     whichServiceNoneOne: t("admin.search.test.whichServiceNoneOne"),
                   },
-                  backendName: searchConfig.backendConfigured ? searchConfig.backendName : null,
+                  backendName: searchConfig?.backendConfigured ? searchConfig.backendName : null,
                   // The services on offer, so the operator can pick the one to
                   // test: there is no default one to test.
                   services: searchServicesOnOffer.map((service) => ({
                     id: service.id,
                     name: service.name,
                   })),
-                }
-              : undefined
-          }
+          }}
           probeLabels={{
             title: t("dashboard.models.custom.title"),
             desc: t("dashboard.models.custom.desc"),

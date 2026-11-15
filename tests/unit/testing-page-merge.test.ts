@@ -38,7 +38,7 @@ describe("one testing page", () => {
 
   it("renders the search tester next to the model testers", () => {
     expect(WORKSPACE).toMatch(/import \{ SearchTester/);
-    expect(WORKSPACE).toMatch(/searchTest && \(/);
+    expect(WORKSPACE).toContain('{tab === "search" && (');
     expect(WORKSPACE).toMatch(/<SearchTester\s+labels=\{searchTest\.labels\}/);
     // …and the tester is told which services there are, because there is no
     // default one: the operator picks the service to test.

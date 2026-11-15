@@ -96,12 +96,12 @@ const SCENES = [
   }],
   ["models-search-options", "/dashboard/models", "admin", async (page) => {
     await clickTab("搜索")(page);
-    await page.getByRole("button", { name: "其他服务商" }).first().click();
+    await page.getByRole("radio", { name: "其他服务商" }).first().click();
     await page.getByText("可选参数", { exact: true }).first().click();
   }],
   ["models-search-other", "/dashboard/models", "admin", async (page) => {
     await clickTab("搜索")(page);
-    await page.getByRole("button", { name: "其他服务商" }).first().click();
+    await page.getByRole("radio", { name: "其他服务商" }).first().click();
   }],
   ["admin-provider-edit", "/admin/providers", "admin", clickTitle("编辑")],
   ["admin-media-edit", "/admin/media-providers", "admin", clickTitle("编辑")],

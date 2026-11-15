@@ -47,7 +47,8 @@ export function ModelsWorkspace({
   probeLabels,
   rawLabels,
   otherSearchLabels,
-  searchSource,
+  searchUi,
+  isAdmin,
   tabLabels,
   searchTest,
 }: {
@@ -60,15 +61,24 @@ export function ModelsWorkspace({
   rawLabels: RawRequestLabels;
   /** Labels for the search tab's 其他服务商 form. */
   otherSearchLabels: OtherSearchLabels;
-  /** What the two search sources are called. */
-  searchSource: { label: string; local: string; other: string };
+  /** Labels for the search tab's three configurations and the result count. */
+  searchUi: {
+    config: { account: string; key: string; other: string };
+    resultCount: string;
+    limitHint: string;
+    serviceKey: string;
+    notAdmin: string;
+  };
+  /** Only an administrator can run the deployment's own search. */
+  isAdmin: boolean;
   /** What the three tabs are called. */
   tabLabels: { text: string; media: string; search: string };
   /**
-   * Present only for administrators: the search test route is admin-only, and
-   * its results name the backend, which a regular user has no reason to see.
+   * The deployment's search facts. Only an administrator can run the account
+   * path; `backendName` is null for everyone else, and the other two
+   * configurations still work.
    */
-  searchTest?: {
+  searchTest: {
     labels: SearchTestLabels;
     backendName: string | null;
     /** The deployment's search services, so the operator can pick one to test. */
@@ -103,7 +113,7 @@ export function ModelsWorkspace({
   const tabs: Array<{ id: Tab; label: string; visible: boolean }> = [
     { id: "text", label: tabLabels.text, visible: true },
     { id: "media", label: tabLabels.media, visible: true },
-    { id: "search", label: tabLabels.search, visible: Boolean(searchTest) },
+    { id: "search", label: tabLabels.search, visible: true },
   ];
 
   return (
@@ -144,16 +154,19 @@ export function ModelsWorkspace({
         <MediaTester embedded models={mediaModels} labels={mediaLabels} />
       )}
 
-      {tab === "search" && searchTest && (
+      {tab === "search" && (
         <SearchTester
           labels={searchTest.labels}
           backendName={searchTest.backendName}
           services={searchTest.services}
+          isAdmin={isAdmin}
+          config={searchUi.config}
+          resultCount={searchUi.resultCount}
+          limitHint={searchUi.limitHint}
+          serviceKey={searchUi.serviceKey}
+          notAdmin={searchUi.notAdmin}
           otherLabels={otherSearchLabels}
           rawLabels={rawLabels}
-          sourceLabel={searchSource.label}
-          sourceLocal={searchSource.local}
-          sourceOther={searchSource.other}
           embedded
         />
       )}

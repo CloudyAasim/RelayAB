@@ -38,9 +38,9 @@ describe("one testing surface, three tabs", () => {
     expect(WORKSPACE).toMatch(/label: tabLabels\.search/);
   });
 
-  it("the search tab exists only when the page was given a search test", () => {
-    // The route behind it is admin-only; a tab nobody can use is not rendered.
-    expect(WORKSPACE).toMatch(/visible: Boolean\(searchTest\)/);
+  it("the search tab is always there; the account path inside it is the gated one", () => {
+    expect(WORKSPACE).toContain('{ id: "search", label: tabLabels.search, visible: true }');
+    expect(SEARCH).toContain("disabled: !isAdmin");
   });
 
   it("the testers are embedded, not cards inside a card", () => {
@@ -89,9 +89,13 @@ describe("the configuration choices are named once", () => {
     expect(MEDIA).toContain("<OtherMediaProbe");
   });
 
-  it("the search tab can test a vendor instead of this deployment", () => {
+  it("the search tab names the same three configurations", () => {
     expect(SEARCH).toContain("OtherSearchProbe");
-    expect(SEARCH).toContain("source === \"other\"");
+    expect(SEARCH).toContain("mode === \"other\"");
+    expect(SEARCH).toContain("config.account");
+    expect(SEARCH).toContain("config.key");
+    expect(SEARCH).toContain("config.other");
+    expect(SEARCH).toContain("resultCount");
   });
 
   it("every configuration shows the endpoint it will call", () => {

@@ -270,6 +270,27 @@ describe("probe-search: the backend's own optional parameters", () => {
     expect(url.searchParams.get("pageno")).toBe("2");
   });
 
+  it("trims a searxng page to the requested result count", async () => {
+    await signIn();
+    vi.stubGlobal("fetch", async () => {
+      const results = Array.from({ length: 10 }, (_, i) => ({ title: `t${i}`, url: `https://e/${i}`, content: "" }));
+      return new Response(JSON.stringify({ results }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    const { POST } = await import("@/app/api/models/probe-search/route");
+    const res = await POST(
+      jsonRequest("/api/models/probe-search", {
+        kind: "searxng",
+        baseUrl: "http://relay-search.web:8080",
+        query: "q",
+        limit: 3,
+      }),
+    );
+    const json = (await res.json()) as { data: { json: { results: unknown[] } } };
+    expect(json.data.json.results).toHaveLength(3);
+  });
   it("tavily carries depth, topic, answer, raw content, days and country", async () => {
     await signIn();
     let body: Record<string, unknown> = {};

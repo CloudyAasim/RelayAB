@@ -186,6 +186,21 @@ export async function POST(req: Request): Promise<Response> {
     } catch {
       /* text below */
     }
+    // SearXNG has no count parameter; its page size is the engine's. The tester
+    // asks for N results, so trim the page to N instead of silently ignoring
+    // the field. (The count still cannot exceed what the page returned.)
+    if (
+      input.kind === "searxng" &&
+      input.limit &&
+      json &&
+      typeof json === "object" &&
+      Array.isArray((json as { results?: unknown }).results)
+    ) {
+      json = {
+        ...(json as Record<string, unknown>),
+        results: (json as { results: unknown[] }).results.slice(0, input.limit),
+      };
+    }
     return NextResponse.json({
       ok: true,
       data: {
