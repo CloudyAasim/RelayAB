@@ -32,6 +32,7 @@ import {
 import { searchErrorHttp } from "@/lib/search/types";
 import type { WebSearchResult } from "@/lib/search/types";
 import { runBilledSearch } from "@/lib/search/billing";
+import { searchResultsToMarkdown } from "@/lib/search/markdown";
 import { loadSearchConfig } from "@/lib/search/config";
 
 export const runtime = "nodejs";
@@ -82,6 +83,15 @@ interface SearchBody {
    * vendor answered.
    */
   service?: unknown;
+  /**
+   * The response body's shape: `json` (default) or `markdown`.
+   *
+   * Markdown carries the same results as a numbered link list, so a caller that
+   * wants to paste them into a prompt or a document does not have to walk the
+   * JSON first. The JSON fields are still returned alongside it; `markdown` is
+   * the addition, not a replacement.
+   */
+  format?: unknown;
 }
 
 function parseLimit(raw: unknown): number {
@@ -153,6 +163,8 @@ async function handle(req: Request, body: SearchBody): Promise<Response> {
   }
   const limit = parseLimit(body.limit ?? body.count);
   const needContent = parseNeedContent(body.need_content);
+  const markdownWanted =
+    typeof body.format === "string" && ["markdown", "md"].includes(body.format.trim().toLowerCase());
 
   /**
    * The service to search with.
@@ -198,6 +210,21 @@ async function handle(req: Request, body: SearchBody): Promise<Response> {
       // got the one it asked for.
       ...(outcome.serviceId ? { service: outcome.serviceId } : {}),
       results: outcome.results.map(publicResult),
+      ...(markdownWanted
+        ? {
+            markdown: searchResultsToMarkdown(
+              outcome.query,
+              outcome.results.map((r) => ({
+                title: r.title,
+                url: r.url,
+                snippet: r.snippet,
+                ...(r.date ? { date: r.date } : {}),
+                ...(r.siteName ? { site_name: r.siteName } : {}),
+              })),
+              { provider: outcome.provider },
+            ),
+          }
+        : {}),
       // Whole 积分, the same unit an operator types into the panel.
       credits,
     },
@@ -229,5 +256,6 @@ export async function GET(req: Request): Promise<Response> {
     limit: url.searchParams.get("limit") ?? url.searchParams.get("count") ?? undefined,
     need_content: url.searchParams.get("need_content") ?? undefined,
     service: url.searchParams.get("service") ?? undefined,
+    format: url.searchParams.get("format") ?? undefined,
   });
 }

@@ -356,3 +356,25 @@ describe("what is refused without charging", () => {
     expect(await listUsageByKey(keyId)).toHaveLength(0);
   });
 });
+
+describe("format=markdown", () => {
+  it("adds a numbered link list to the same response", async () => {
+    stubSearch([
+      { title: "First result", url: "https://example.com/a", content: "alpha" },
+      { title: "Second result", url: "https://example.com/b", content: "beta" },
+    ]);
+    const res = await post({ query: "q", format: "markdown" });
+    const json = (await res.json()) as { markdown?: string; results: unknown[] };
+    expect(json.results).toHaveLength(2);
+    expect(json.markdown).toContain("1. **[First result](https://example.com/a)**");
+    expect(json.markdown).toContain("2. **[Second result](https://example.com/b)**");
+    expect(json.markdown).toContain("# Search results: q");
+  });
+
+  it("stays out of the body when the caller did not ask", async () => {
+    stubSearch([{ title: "Only", url: "https://example.com/a", content: "alpha" }]);
+    const res = await post({ query: "q" });
+    const json = (await res.json()) as { markdown?: string };
+    expect(json.markdown).toBeUndefined();
+  });
+});

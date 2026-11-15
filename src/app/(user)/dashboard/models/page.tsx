@@ -279,6 +279,10 @@ export default async function ModelsPage() {
                     whichService: t("admin.search.test.whichService"),
                     whichServiceNone: t("admin.search.test.whichServiceNone"),
                     whichServiceNoneOne: t("admin.search.test.whichServiceNoneOne"),
+                    viewList: t("admin.search.test.viewList"),
+                    viewMarkdown: t("admin.search.test.viewMarkdown"),
+                    copy: t("admin.search.test.copy"),
+                    copied: t("admin.search.test.copied"),
                   },
                   backendName: searchConfig?.backendConfigured ? searchConfig.backendName : null,
                   // The services on offer, so the operator can pick the one to

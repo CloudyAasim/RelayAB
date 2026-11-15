@@ -21,6 +21,8 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { OtherSearchProbe, type OtherSearchLabels } from "./OtherSearchProbe";
 import type { RawRequestLabels } from "./RawRequestPanel";
 import { Input } from "@/components/ui/Input";
+import { MarkdownText } from "@/components/i18n/MarkdownText";
+import { searchResultsToMarkdown } from "@/lib/search/markdown";
 import { Button } from "@/components/ui/Button";
 
 export interface SearchTestLabels {
@@ -41,6 +43,11 @@ export interface SearchTestLabels {
   whichServiceNone: string;
   /** The picker's entry when the deployment has exactly one service. */
   whichServiceNoneOne: string;
+  /** The result view toggle and copy control. */
+  viewList: string;
+  viewMarkdown: string;
+  copy: string;
+  copied: string;
 }
 
 interface TestResult {
@@ -56,6 +63,40 @@ type Mode = "account" | "key" | "other";
 
 /** `/v1/search` and the admin route both cap the result count at this. */
 const OWN_SEARCH_MAX = 8;
+
+function ResultViewToggle({
+  view,
+  onChange,
+  labels,
+}: {
+  view: "list" | "markdown";
+  onChange: (view: "list" | "markdown") => void;
+  labels: { list: string; markdown: string };
+}) {
+  return (
+    <div className="flex gap-1">
+      {(
+        [
+          { id: "list" as const, label: labels.list },
+          { id: "markdown" as const, label: labels.markdown },
+        ]
+      ).map((entry) => (
+        <button
+          key={entry.id}
+          type="button"
+          onClick={() => onChange(entry.id)}
+          className={
+            view === entry.id
+              ? "rounded-md border border-primary bg-primary/5 px-2 py-0.5 text-xs font-medium text-foreground"
+              : "rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted/50"
+          }
+        >
+          {entry.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export function SearchTester({
   embedded = false,
@@ -99,6 +140,8 @@ export function SearchTester({
   const [error, setError] = useState<string | null>(null);
   const [test, setTest] = useState<TestResult | null>(null);
   const [raw, setRaw] = useState<unknown>(null);
+  const [view, setView] = useState<"list" | "markdown">("list");
+  const [copied, setCopied] = useState(false);
   const [latency, setLatency] = useState<number | null>(null);
 
   const available = Boolean(backendName);
@@ -303,28 +346,74 @@ export function SearchTester({
           {test.results.length === 0 ? (
             <p className="text-sm text-muted-foreground">{labels.empty}</p>
           ) : (
-            <ol className="list-decimal space-y-2 pl-5">
-              {test.results.map((r) => (
-                <li key={r.url} className="text-sm">
-                  <a
-                    href={r.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="font-medium text-primary hover:underline"
+            <>
+              <ResultViewToggle
+                view={view}
+                onChange={setView}
+                labels={{ list: labels.viewList, markdown: labels.viewMarkdown }}
+              />
+              {view === "markdown" ? (
+                <div className="space-y-2">
+                  <MarkdownText
+                    text={searchResultsToMarkdown(query, test.results, { provider: test.provider })}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      void navigator.clipboard?.writeText(
+                        searchResultsToMarkdown(query, test.results, { provider: test.provider }),
+                      );
+                      setCopied(true);
+                    }}
                   >
-                    {r.title}
-                  </a>
-                  <p className="break-all text-xs text-muted-foreground">{r.url}</p>
-                  {r.snippet && <p className="mt-0.5 text-muted-foreground">{r.snippet}</p>}
-                </li>
-              ))}
-            </ol>
+                    {copied ? labels.copied : labels.copy}
+                  </Button>
+                </div>
+              ) : (
+                <ol className="list-decimal space-y-2 pl-5">
+                  {test.results.map((r) => (
+                    <li key={r.url} className="text-sm">
+                      <a
+                        href={r.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-medium text-primary hover:underline"
+                      >
+                        {r.title}
+                      </a>
+                      <p className="break-all text-xs text-muted-foreground">{r.url}</p>
+                      {r.snippet && <p className="mt-0.5 text-muted-foreground">{r.snippet}</p>}
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </>
           )}
         </div>
       )}
 
       {raw !== null && (
         <div className="space-y-2">
+          {Array.isArray((raw as { results?: unknown }).results) &&
+            (raw as { results: Array<{ title?: string; url: string; snippet?: string }> }).results.length > 0 && (
+              <>
+                <ResultViewToggle
+                  view={view}
+                  onChange={setView}
+                  labels={{ list: labels.viewList, markdown: labels.viewMarkdown }}
+                />
+                {view === "markdown" && (
+                  <MarkdownText
+                    text={searchResultsToMarkdown(
+                      query,
+                      (raw as { results: Array<{ title?: string; url: string; snippet?: string }> }).results,
+                    )}
+                  />
+                )}
+              </>
+            )}
           {latency !== null && (
             <p className="text-sm text-muted-foreground">{latency} ms</p>
           )}
