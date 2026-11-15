@@ -3,8 +3,14 @@
 /**
  * src/app/(user)/dashboard/models/ModelsWorkspace.tsx
  *
- * The model testers, the search tester, and the one piece of state the model
- * tools share.
+ * The test page: one card, three tabs, one shared piece of state.
+ *
+ * **Why one card.** The page used to stack three cards — chat, media, and a
+ * separate "other provider" probe — each with its own key input and its own
+ * idea of what "configured" meant. They answer the same question ("what does
+ * this thing do when I call it"), so they share one surface, and the tabs are
+ * the only thing separating them. The other-provider form is now the text
+ * tab's third configuration (其他服务商), not a fourth card.
  *
  * **Why this is a client component at all.** The probe can ask a vendor what
  * models it serves, and the testers can only choose from what they are given.
@@ -19,15 +25,17 @@
  * short of the build would have caught it.
  */
 import { useCallback, useState } from "react";
+import { Card } from "@/components/ui/Card";
 import { ModelTester } from "./ModelTester";
 import { MediaTester } from "./MediaTester";
-import { CustomModelProbe } from "./CustomModelProbe";
 import { SearchTester, type SearchTestLabels } from "./SearchTester";
 
 type GatewayLabels = React.ComponentProps<typeof ModelTester>["labels"];
 type MediaLabels = React.ComponentProps<typeof MediaTester>["labels"];
-type ProbeLabels = React.ComponentProps<typeof CustomModelProbe>["labels"];
+type ProbeLabels = React.ComponentProps<typeof ModelTester>["otherLabels"];
 type MediaModel = React.ComponentProps<typeof MediaTester>["models"][number];
+
+type Tab = "text" | "media" | "search";
 
 export function ModelsWorkspace({
   catalogChatModels,
@@ -35,13 +43,17 @@ export function ModelsWorkspace({
   gatewayLabels,
   mediaLabels,
   probeLabels,
+  tabLabels,
   searchTest,
 }: {
   catalogChatModels: string[];
   catalogMediaModels: MediaModel[];
   gatewayLabels: GatewayLabels;
   mediaLabels: MediaLabels;
+  /** Labels for the text tab's 其他服务商 form. */
   probeLabels: ProbeLabels;
+  /** What the three tabs are called. */
+  tabLabels: { text: string; media: string; search: string };
   /**
    * Present only for administrators: the search test route is admin-only, and
    * its results name the backend, which a regular user has no reason to see.
@@ -68,6 +80,8 @@ export function ModelsWorkspace({
     [],
   );
 
+  const [tab, setTab] = useState<Tab>("text");
+
   const chatModels = [...new Set([...catalogChatModels, ...probed])];
   const mediaModels = [
     ...catalogMediaModels,
@@ -76,21 +90,57 @@ export function ModelsWorkspace({
     ...probed.map((id) => ({ id, capability: "", provider: "" })),
   ];
 
+  const tabs: Array<{ id: Tab; label: string; visible: boolean }> = [
+    { id: "text", label: tabLabels.text, visible: true },
+    { id: "media", label: tabLabels.media, visible: true },
+    { id: "search", label: tabLabels.search, visible: Boolean(searchTest) },
+  ];
+
   return (
-    <div className="space-y-4">
-      <ModelTester chatModels={chatModels} labels={gatewayLabels} />
+    <Card>
+      <div role="tablist" className="mb-4 flex gap-1 border-b border-border">
+        {tabs
+          .filter((entry) => entry.visible)
+          .map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === entry.id}
+              onClick={() => setTab(entry.id)}
+              className={
+                tab === entry.id
+                  ? "-mb-px border-b-2 border-primary px-3 pb-2 pt-1 text-sm font-medium text-foreground"
+                  : "-mb-px border-b-2 border-transparent px-3 pb-2 pt-1 text-sm text-muted-foreground hover:text-foreground"
+              }
+            >
+              {entry.label}
+            </button>
+          ))}
+      </div>
 
-      <MediaTester models={mediaModels} labels={mediaLabels} />
-
-      <CustomModelProbe labels={probeLabels} onFetched={onFetched} />
-
-      {searchTest && (
-        <SearchTester
-        labels={searchTest.labels}
-        backendName={searchTest.backendName}
-        services={searchTest.services}
-      />
+      {tab === "text" && (
+        <ModelTester
+          embedded
+          chatModels={chatModels}
+          labels={gatewayLabels}
+          otherLabels={probeLabels}
+          onFetched={onFetched}
+        />
       )}
-    </div>
+
+      {tab === "media" && (
+        <MediaTester embedded models={mediaModels} labels={mediaLabels} />
+      )}
+
+      {tab === "search" && searchTest && (
+        <SearchTester
+          labels={searchTest.labels}
+          backendName={searchTest.backendName}
+          services={searchTest.services}
+          embedded
+        />
+      )}
+    </Card>
   );
 }

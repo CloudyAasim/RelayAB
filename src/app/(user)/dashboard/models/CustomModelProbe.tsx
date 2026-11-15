@@ -48,9 +48,12 @@ interface ProbeResult {
 
 export function CustomModelProbe({
   labels,
+  embedded = false,
   onFetched,
 }: {
   labels: Labels;
+  /** Rendered inside the test card's tab instead of its own card. */
+  embedded?: boolean;
   /**
    * The models the vendor just listed.
    *
@@ -118,10 +121,8 @@ export function CustomModelProbe({
     }
   }
 
-  return (
-    <Card>
-      <CardHeader title={labels.title} description={labels.desc} />
-      <div className="space-y-4">
+  const content = (
+    <div className="space-y-4">
         <p className="rounded-md border border-border bg-muted/30 p-2 text-xs text-muted-foreground">
           {labels.ephemeral}
         </p>
@@ -212,7 +213,14 @@ export function CustomModelProbe({
             )}
           </div>
         )}
-      </div>
+    </div>
+  );
+
+  if (embedded) return content;
+  return (
+    <Card>
+      <CardHeader title={labels.title} description={labels.desc} />
+      {content}
     </Card>
   );
 }

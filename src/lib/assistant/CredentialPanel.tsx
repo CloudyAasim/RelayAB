@@ -236,12 +236,30 @@ export function CredentialChoice({
   relayKey,
   onRelayKeyChange,
   accountBlockedReason,
+  modeLabels,
+  extraOption,
+  hideKeyField,
+  keyFieldLabel,
 }: {
   mode: Mode;
   onModeChange: (mode: Mode) => void;
   relayKey: string;
   onRelayKeyChange: (value: string) => void;
   accountBlockedReason?: string | null;
+  /**
+   * What the two options are called on this screen.
+   *
+   * The assistant settings call them "my account identity" and "my own key",
+   * because there they choose who pays. The test page calls them 本账号 and
+   * 服务密钥, because there they choose which credential the call presents.
+   */
+  modeLabels?: { account: string; key: string };
+  /** A third choice owned by the screen (the test page's 其他服务商). */
+  extraOption?: { label: string; selected: boolean; onSelect: () => void };
+  /** Hide the key field while a screen-owned third option is selected. */
+  hideKeyField?: boolean;
+  /** What the key field itself is called, when the screen says it differently. */
+  keyFieldLabel?: string;
 }) {
   const t = useT();
   const { data: state, loaded } = useCredentialStore();
@@ -274,6 +292,9 @@ export function CredentialChoice({
   const canUseAccount = state.created && state.enabled && !blockedReason;
 
   useEffect(() => {
+    // A screen-owned third option (其他服务商) is not one of the two this panel
+    // reconciles; moving the selection under it would fight the reader.
+    if (extraOption?.selected) return;
     const next = reconcileMode({
       loaded,
       canUseAccount,
@@ -282,7 +303,7 @@ export function CredentialChoice({
       hasKey: Boolean(relayKey.trim()),
     });
     if (next !== mode) onModeChange(next);
-  }, [loaded, canUseAccount, mode, onModeChange, relayKey]);
+  }, [loaded, canUseAccount, mode, onModeChange, relayKey, extraOption?.selected]);
 
   const choose = useCallback(
     (next: Mode) => {
@@ -292,8 +313,14 @@ export function CredentialChoice({
     [onModeChange],
   );
 
-  const accountLook = optionAppearance({ selected: mode === "account", available: canUseAccount });
-  const keyLook = optionAppearance({ selected: mode === "key", available: true });
+  const accountLook = optionAppearance({
+    selected: mode === "account" && !extraOption?.selected,
+    available: canUseAccount,
+  });
+  const keyLook = optionAppearance({
+    selected: mode === "key" && !extraOption?.selected,
+    available: true,
+  });
 
   return (
     <div className="space-y-3">
@@ -311,12 +338,12 @@ export function CredentialChoice({
             type="radio"
             name={modeGroup}
             className="mt-0.5 accent-primary"
-            checked={mode === "account"}
+            checked={mode === "account" && !extraOption?.selected}
             disabled={!canUseAccount}
             onChange={() => choose("account")}
           />
           <span>
-            {t("assistant.credential.modeAccount")}
+            {modeLabels?.account ?? t("assistant.credential.modeAccount")}
             {!canUseAccount && (
               <span className="block text-xs text-muted-foreground">
                 {blockedReason ?? (
@@ -342,17 +369,36 @@ export function CredentialChoice({
             type="radio"
             name={modeGroup}
             className="mt-0.5 accent-primary"
-            checked={mode === "key"}
+            checked={mode === "key" && !extraOption?.selected}
             onChange={() => choose("key")}
           />
-          <span>{t("assistant.credential.modeKey")}</span>
+          <span>{modeLabels?.key ?? t("assistant.credential.modeKey")}</span>
         </label>
+
+        {extraOption && (
+          <label
+            className={`flex cursor-pointer items-start gap-2 rounded-md border px-2.5 py-2 text-sm ${
+              extraOption.selected
+                ? "border-primary bg-primary/5 font-medium text-foreground"
+                : "border-border text-muted-foreground hover:bg-muted/50"
+            }`}
+          >
+            <input
+              type="radio"
+              name={modeGroup}
+              className="mt-0.5 accent-primary"
+              checked={extraOption.selected}
+              onChange={extraOption.onSelect}
+            />
+            <span>{extraOption.label}</span>
+          </label>
+        )}
       </fieldset>
 
-      {mode === "key" && (
+      {mode === "key" && !hideKeyField && (
         <div className="space-y-1.5">
           <label htmlFor={keyFieldId} className="block text-sm font-medium text-foreground">
-            {t("assistant.credential.keyLabel")}
+            {keyFieldLabel ?? t("assistant.credential.keyLabel")}
           </label>
           <input
             id={keyFieldId}

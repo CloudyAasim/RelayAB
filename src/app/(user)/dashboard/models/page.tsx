@@ -87,9 +87,21 @@ export default async function ModelsPage() {
               renamed: t("dashboard.models.gateway.action.renamed"),
             },
             decidedBy: t("dashboard.models.tester.decidedBy"),
+            config: {
+              account: t("dashboard.models.config.account"),
+              key: t("dashboard.models.config.key"),
+              other: t("dashboard.models.config.other"),
+            },
+          }}
+          tabLabels={{
+            text: t("dashboard.models.tabs.text"),
+            media: t("dashboard.models.tabs.media"),
+            search: t("dashboard.models.tabs.search"),
           }}
           mediaLabels={{
             title: t("dashboard.models.media.title"),
+            configAccount: t("dashboard.models.config.account"),
+            configKey: t("dashboard.models.config.key"),
            
             keyLabel: t("dashboard.models.media.keyLabel"),
             keyHint: t("dashboard.models.media.keyHint"),

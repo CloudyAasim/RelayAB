@@ -64,6 +64,8 @@ const ROUTES = [
   ["user-settings", "/dashboard/settings", "user"],
   ["user-docs", "/dashboard/docs", "user"],
   ["user-assistant", "/dashboard/assistant", "user"],
+  ["user-models-media", "/dashboard/models", "user"],
+  ["user-models-other", "/dashboard/models", "user"],
 ];
 
 /** Sub-surfaces: drawers, dialogs and menus opened from a page. */
@@ -84,6 +86,9 @@ const SCENES = [
   ["admin-create-key", "/admin/keys", "admin", clickButton(/新建接口密钥/)],
   ["admin-key-menu", "/admin/keys", "admin", clickButton(/^操作$/)],
   ["admin-allocation", "/admin/users", "admin", clickButton(/配置额度/)],
+  ["models-media-tab", "/dashboard/models", "user", clickTab("媒体")],
+  ["models-search-tab", "/dashboard/models", "admin", clickTab("搜索")],
+  ["models-other-provider", "/dashboard/models", "user", clickRadio("其他服务商")],
   ["admin-provider-edit", "/admin/providers", "admin", clickTitle("编辑")],
   ["admin-media-edit", "/admin/media-providers", "admin", clickTitle("编辑")],
   ["admin-model-expand", "/admin/model-notes", "admin", clickButton(/^▸/)],
@@ -129,6 +134,19 @@ async function openAssistantHint(page) {
   await page.waitForTimeout(1500);
   await page.getByRole("button", { name: "说明" }).first().click();
   await page.waitForTimeout(400);
+}
+/** A tab on the test page. */
+function clickTab(name) {
+  return async (page) => {
+    await page.getByRole("tab", { name }).first().click();
+  };
+}
+
+/** The 其他服务商 radio on the test page's configuration control. */
+function clickRadio(name) {
+  return async (page) => {
+    await page.getByRole("radio", { name }).first().click();
+  };
 }
 /** The assistant's settings sheet, scrolled to a section. */
 function openAssistantSettings(scrollTop) {

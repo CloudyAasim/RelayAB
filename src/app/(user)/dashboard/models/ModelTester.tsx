@@ -15,6 +15,12 @@
  * a server route, so what is being tested is exactly what a client would see —
  * including a buffering mistake in the reverse proxy, which a server-side
  * proxy would hide.
+ *
+ * **Three configurations, one control.** The credential selector used to offer
+ * 本账号 and 服务密钥; "其他服务商" was a separate card at the bottom of the page
+ * with a second copy of the model/key fields. It is the same question ("what am
+ * I testing, and with which credential"), so it is the third option here and the
+ * card is gone.
  */
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -22,6 +28,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { ModelCombobox } from "../assistant/ModelCombobox";
 import { CredentialChoice, type Mode } from "@/lib/assistant/CredentialPanel";
+import { CustomModelProbe } from "./CustomModelProbe";
 
 interface Labels {
   title: string;
@@ -45,12 +52,24 @@ interface Labels {
   decisionAction: Record<string, string>;
   /** Names the interface whose rule produced the decisions below it. */
   decidedBy: string;
+  /** What the three configurations are called on this page. */
+  config?: { account: string; key: string; other: string };
 }
+
+type ProbeLabels = React.ComponentProps<typeof CustomModelProbe>["labels"];
 
 interface Props {
   chatModels: string[];
   labels: Labels;
+  /** Labels for the inline 其他服务商 form. */
+  otherLabels: ProbeLabels;
+  /** Models a vendor just listed, so the combobox can offer them. */
+  onFetched?: (models: string[]) => void;
+  /** Rendered inside the test card's tab instead of its own card. */
+  embedded?: boolean;
 }
+
+type ConfigMode = "account" | "key" | "other";
 
 /**
  * A gateway refusal, in a sentence.
@@ -72,9 +91,9 @@ function readableError(status: number, body: string): string {
   return `${status} ${body.slice(0, 400)}`;
 }
 
-export function ModelTester({ chatModels, labels }: Props) {
+export function ModelTester({ chatModels, labels, otherLabels, onFetched, embedded = false }: Props) {
   const [relayKey, setRelayKey] = useState("");
-  const [credentialMode, setCredentialMode] = useState<Mode>("account");
+  const [configMode, setConfigMode] = useState<ConfigMode>("account");
   const [model, setModel] = useState(chatModels[0] ?? "");
   const [prompt, setPrompt] = useState("");
   const [answer, setAnswer] = useState("");
@@ -86,7 +105,7 @@ export function ModelTester({ chatModels, labels }: Props) {
   const [extraJson, setExtraJson] = useState("");
   const [extraError, setExtraError] = useState<string | null>(null);
   const [decisions, setDecisions] = useState<Array<{ name: string; action: string; note?: string }>>([]);
-const [governedBy, setGovernedBy] = useState<string | null>(null);
+  const [governedBy, setGovernedBy] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const setParam = (key: string, value: string) =>
@@ -135,7 +154,10 @@ const [governedBy, setGovernedBy] = useState<string | null>(null);
   );
 
   const canSend = Boolean(
-    model && prompt.trim() && !busy && (credentialMode === "account" || relayKey.trim()),
+    model &&
+      prompt.trim() &&
+      !busy &&
+      (configMode === "account" || (configMode === "key" && relayKey.trim())),
   );
 
   const stop = useCallback(() => {
@@ -167,7 +189,7 @@ const [governedBy, setGovernedBy] = useState<string | null>(null);
       // Account path: the browser holds no token, so the call goes through the
       // server. Key path: the browser calls the public route itself, which is
       // what makes it evidence that the route works.
-      if (credentialMode === "account") {
+      if (configMode === "account") {
         const res = await fetch("/api/assistant/test-model", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -265,165 +287,189 @@ const [governedBy, setGovernedBy] = useState<string | null>(null);
     }
   }
 
+  const credentialMode: Mode = configMode === "other" ? "key" : configMode;
+
+  const content = (
+    <div className="space-y-4">
+      {/*
+        Configuration first: it decides where the call goes and who pays for it,
+        so it belongs above the model and the prompt — not at the bottom, where
+        the reader met it after filling the form.
+      */}
+      <CredentialChoice
+        mode={credentialMode}
+        onModeChange={(next) => setConfigMode(next)}
+        relayKey={relayKey}
+        onRelayKeyChange={setRelayKey}
+        modeLabels={labels.config ? { account: labels.config.account, key: labels.config.key } : undefined}
+        extraOption={
+          labels.config
+            ? {
+                label: labels.config.other,
+                selected: configMode === "other",
+                onSelect: () => setConfigMode("other"),
+              }
+            : undefined
+        }
+        hideKeyField={configMode === "other"}
+        keyFieldLabel={labels.config?.key}
+      />
+
+      {configMode === "other" ? (
+        <CustomModelProbe embedded labels={otherLabels} onFetched={onFetched} />
+      ) : (
+        <>
+          <div className="space-y-1.5">
+            <ModelCombobox
+              id="model-tester-model"
+              label={labels.model}
+              customLabel={labels.modelCustom}
+              placeholder="model-name"
+              value={model}
+              options={chatModels}
+              onChange={setModel}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="model-tester-prompt" className="block text-sm font-medium text-foreground">
+              {labels.prompt}
+            </label>
+            <textarea
+              id="model-tester-prompt"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              rows={3}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              placeholder="Say PONG"
+            />
+          </div>
+
+          {/*
+            The request parameters, folded away.
+
+            A tester that only sends a prompt answers "is this model up", and
+            "does this vendor actually honour `reasoning_effort`" is the question
+            an operator with a text spec needs answered. Folded, because the
+            common case is one prompt and nothing else.
+          */}
+          <div className="rounded-md border border-border">
+            <button
+              type="button"
+              onClick={() => setParamsOpen((v) => !v)}
+              aria-expanded={paramsOpen}
+              className="flex w-full items-center justify-between px-3 py-2 text-left text-sm"
+            >
+              <span className="font-medium text-foreground">{labels.parameters}</span>
+              <span className="text-xs text-muted-foreground">
+                {paramCount > 0 ? `${paramCount} 项` : ""} {paramsOpen ? "▾" : "▸"}
+              </span>
+            </button>
+
+            {paramsOpen && (
+              <div className="space-y-3 border-t border-border px-3 py-3">
+                <p className="text-xs text-muted-foreground">{labels.parametersHint}</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Input
+                    label="reasoning_effort"
+                    placeholder="low / medium / high"
+                    value={params.reasoning_effort ?? ""}
+                    onChange={(e) => setParam("reasoning_effort", e.target.value)}
+                  />
+                  <Input
+                    label="temperature"
+                    placeholder="0 - 2"
+                    value={params.temperature ?? ""}
+                    onChange={(e) => setParam("temperature", e.target.value)}
+                  />
+                  <Input
+                    label="top_p"
+                    placeholder="0 - 1"
+                    value={params.top_p ?? ""}
+                    onChange={(e) => setParam("top_p", e.target.value)}
+                  />
+                  <Input
+                    label="max_tokens"
+                    placeholder="200"
+                    value={params.max_tokens ?? ""}
+                    onChange={(e) => setParam("max_tokens", e.target.value)}
+                  />
+                </div>
+                <Input
+                  label={labels.extraParameters}
+                  hint={labels.extraParametersHint}
+                  placeholder='{"seed":42,"thinking":{"type":"enabled","budget_tokens":4000}}'
+                  value={extraJson}
+                  onChange={(e) => setExtraJson(e.target.value)}
+                />
+                {extraError && <p className="text-xs text-destructive">{extraError}</p>}
+              </div>
+            )}
+          </div>
+
+          {/*
+            What the operator's protocol did to them. Without this a tester sees
+            "I asked for low reasoning and got a different answer" and has no way
+            to tell a broken model from a deliberate override.
+          */}
+          {decisions.length > 0 && (
+            <ul className="space-y-1 rounded-md bg-muted/50 p-2 text-xs text-muted-foreground">
+              {/* Which interface's rule did this. A provider carries one per
+                  interface and the test goes out through Chat Completions, so
+                  without the label these lines belong to nobody. */}
+              {governedBy && (
+                <li className="text-xs opacity-80">
+                  {labels.decidedBy} <code className="text-foreground">{governedBy}</code>
+                </li>
+              )}
+              {decisions.map((d) => (
+                <li key={d.name}>
+                  <code className="text-foreground">{d.name}</code> · {labels.decisionAction[d.action] ?? d.action}
+                  {d.note ? ` · ${d.note}` : ""}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="flex items-center gap-2">
+            <Button onClick={send} disabled={!canSend}>
+              {busy ? labels.stop : labels.send}
+            </Button>
+            {busy && (
+              <Button variant="outline" onClick={stop}>
+                {labels.stop}
+              </Button>
+            )}
+            {latency !== null && !busy && (
+              <span className="text-xs text-muted-foreground">{latency} ms</span>
+            )}
+          </div>
+
+          {configMode === "key" && !relayKey.trim() && (
+            <p className="text-xs text-muted-foreground">{labels.needsKey}</p>
+          )}
+          {error && (
+            <pre className="overflow-x-auto rounded-md bg-destructive/10 p-3 text-xs text-destructive">
+              {error}
+            </pre>
+          )}
+
+          <div className="rounded-md border border-border bg-muted/30 p-3">
+            <p className="mb-1 text-xs font-medium text-muted-foreground">{model || "—"}</p>
+            <p className="whitespace-pre-wrap break-words text-sm">
+              {answer || <span className="text-muted-foreground">{labels.empty}</span>}
+            </p>
+          </div>
+        </>
+      )}
+    </div>
+  );
+
+  if (embedded) return content;
   return (
     <Card>
       <CardHeader title={labels.title} description={labels.desc} />
-      <div className="space-y-4">
-        {/* The key field used to live here, directly above the model picker.
-            It now belongs to CredentialPanel below, which is the one place
-            that decides whether a call runs as the account or with a pasted
-            key - two key inputs on one card meant one of them was silently
-            ignored. */}
-
-        <div className="space-y-1.5">
-          <ModelCombobox
-            id="model-tester-model"
-            label={labels.model}
-            customLabel={labels.modelCustom}
-            placeholder="model-name"
-            value={model}
-            options={chatModels}
-            onChange={setModel}
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <label htmlFor="model-tester-prompt" className="block text-sm font-medium text-foreground">
-            {labels.prompt}
-          </label>
-          <textarea
-            id="model-tester-prompt"
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            rows={3}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            placeholder="Say PONG"
-          />
-        </div>
-
-        {/*
-          The request parameters, folded away.
-
-          A tester that only sends a prompt answers "is this model up", and
-          "does this vendor actually honour `reasoning_effort`" is the question
-          an operator with a text spec needs answered. Folded, because the
-          common case is one prompt and nothing else.
-        */}
-        <div className="rounded-md border border-border">
-          <button
-            type="button"
-            onClick={() => setParamsOpen((v) => !v)}
-            aria-expanded={paramsOpen}
-            className="flex w-full items-center justify-between px-3 py-2 text-left text-sm"
-          >
-            <span className="font-medium text-foreground">{labels.parameters}</span>
-            <span className="text-xs text-muted-foreground">
-              {paramCount > 0 ? `${paramCount} 项` : ""} {paramsOpen ? "▾" : "▸"}
-            </span>
-          </button>
-
-          {paramsOpen && (
-            <div className="space-y-3 border-t border-border px-3 py-3">
-              <p className="text-xs text-muted-foreground">{labels.parametersHint}</p>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <Input
-                  label="reasoning_effort"
-                  placeholder="low / medium / high"
-                  value={params.reasoning_effort ?? ""}
-                  onChange={(e) => setParam("reasoning_effort", e.target.value)}
-                />
-                <Input
-                  label="temperature"
-                  placeholder="0 - 2"
-                  value={params.temperature ?? ""}
-                  onChange={(e) => setParam("temperature", e.target.value)}
-                />
-                <Input
-                  label="top_p"
-                  placeholder="0 - 1"
-                  value={params.top_p ?? ""}
-                  onChange={(e) => setParam("top_p", e.target.value)}
-                />
-                <Input
-                  label="max_tokens"
-                  placeholder="200"
-                  value={params.max_tokens ?? ""}
-                  onChange={(e) => setParam("max_tokens", e.target.value)}
-                />
-              </div>
-              <Input
-                label={labels.extraParameters}
-                hint={labels.extraParametersHint}
-                placeholder='{"seed":42,"thinking":{"type":"enabled","budget_tokens":4000}}'
-                value={extraJson}
-                onChange={(e) => setExtraJson(e.target.value)}
-              />
-              {extraError && <p className="text-xs text-destructive">{extraError}</p>}
-            </div>
-          )}
-        </div>
-
-        {/*
-          What the operator's protocol did to them. Without this a tester sees
-          "I asked for low reasoning and got a different answer" and has no way
-          to tell a broken model from a deliberate override.
-        */}
-        {decisions.length > 0 && (
-          <ul className="space-y-1 rounded-md bg-muted/50 p-2 text-xs text-muted-foreground">
-            {/* Which interface's rule did this. A provider carries one per
-                interface and the test goes out through Chat Completions, so
-                without the label these lines belong to nobody. */}
-            {governedBy && (
-              <li className="text-xs opacity-80">
-                {labels.decidedBy} <code className="text-foreground">{governedBy}</code>
-              </li>
-            )}
-            {decisions.map((d) => (
-              <li key={d.name}>
-                <code className="text-foreground">{d.name}</code> · {labels.decisionAction[d.action] ?? d.action}
-                {d.note ? ` · ${d.note}` : ""}
-              </li>
-            ))}
-          </ul>
-        )}
-
-        <CredentialChoice
-          mode={credentialMode}
-          onModeChange={setCredentialMode}
-          relayKey={relayKey}
-          onRelayKeyChange={setRelayKey}
-        />
-
-        <div className="flex items-center gap-2">
-          <Button onClick={send} disabled={!canSend}>
-            {busy ? labels.stop : labels.send}
-          </Button>
-          {busy && (
-            <Button variant="outline" onClick={stop}>
-              {labels.stop}
-            </Button>
-          )}
-          {latency !== null && !busy && (
-            <span className="text-xs text-muted-foreground">{latency} ms</span>
-          )}
-        </div>
-
-        {credentialMode === "key" && !relayKey.trim() && (
-          <p className="text-xs text-muted-foreground">{labels.needsKey}</p>
-        )}
-        {error && (
-          <pre className="overflow-x-auto rounded-md bg-destructive/10 p-3 text-xs text-destructive">
-            {error}
-          </pre>
-        )}
-
-        <div className="rounded-md border border-border bg-muted/30 p-3">
-          <p className="mb-1 text-xs font-medium text-muted-foreground">{model || "—"}</p>
-          <p className="whitespace-pre-wrap break-words text-sm">
-            {answer || <span className="text-muted-foreground">{labels.empty}</span>}
-          </p>
-        </div>
-      </div>
+      {content}
     </Card>
   );
 }

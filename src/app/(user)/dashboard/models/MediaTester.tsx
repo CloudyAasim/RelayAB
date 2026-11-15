@@ -54,6 +54,9 @@ export interface VoiceOption {
 interface Labels {
   title: string;
   desc?: string;
+  /** What the credential options are called on this page. */
+  configAccount: string;
+  configKey: string;
   keyLabel: string;
   keyHint: string;
   keyPlaceholder: string;
@@ -180,7 +183,11 @@ function ArtifactDownload({ src, filename, label }: { src: string; filename: str
   );
 }
 
-export function MediaTester({ models, labels }: Props) {
+export function MediaTester({
+  models,
+  labels,
+  embedded = false,
+}: Props & { embedded?: boolean }) {
   const [relayKey, setRelayKey] = useState("");
   const [model, setModel] = useState(models[0]?.id ?? "");
   const [prompt, setPrompt] = useState("");
@@ -475,10 +482,8 @@ export function MediaTester({ models, labels }: Props) {
   const hasCredential = credentialMode === "account" || Boolean(relayKey.trim());
   const canRun = Boolean(model) && hasCredential && !busy && (isStt ? Boolean(file) : Boolean(prompt.trim()));
 
-  return (
-    <Card>
-      <CardHeader title={labels.title} description={labels.desc} />
-      <div className="space-y-4">
+  const content = (
+    <div className="space-y-4">
         {/* Same reason as on the chat tester: the key belongs to the panel that
             decides which credential a call spends, and this card was showing a
             second one that the account path would quietly ignore. */}
@@ -487,6 +492,8 @@ export function MediaTester({ models, labels }: Props) {
           onModeChange={setCredentialMode}
           relayKey={relayKey}
           onRelayKeyChange={setRelayKey}
+          modeLabels={{ account: labels.configAccount, key: labels.configKey }}
+          keyFieldLabel={labels.configKey}
         />
 
         <div className="space-y-1.5">
@@ -794,7 +801,14 @@ export function MediaTester({ models, labels }: Props) {
             )}
           </div>
         )}
-      </div>
+    </div>
+  );
+
+  if (embedded) return content;
+  return (
+    <Card>
+      <CardHeader title={labels.title} description={labels.desc} />
+      {content}
     </Card>
   );
 }

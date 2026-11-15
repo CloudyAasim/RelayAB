@@ -200,7 +200,7 @@ describe("credential UI: the page never rests on an unusable option", () => {
   });
 
   it("shows the key field only while the key path is selected", () => {
-    expect(PANEL).toMatch(/\{mode === "key" && \(/);
+    expect(PANEL).toMatch(/\{mode === "key" && !hideKeyField && \(/);
   });
 
   it("gives each instance its own radio group", () => {
@@ -216,8 +216,9 @@ describe("credential UI: the page never rests on an unusable option", () => {
     expect(PANEL).toMatch(/const modeGroup = `\$\{instanceId\}-mode`;/);
     // …and the id it is built from is per instance, like the key field beside it.
     expect(PANEL).toMatch(/const instanceId = useId\(\);/);
-    // Both radios in one group, so they are still exclusive within a panel.
-    expect((PANEL.match(/name=\{modeGroup\}/g) ?? []).length).toBe(2);
+    // All three radios in one group, so they are still exclusive within a
+    // panel — the third one is the screen-owned 其他服务商 option.
+    expect((PANEL.match(/name=\{modeGroup\}/g) ?? []).length).toBe(3);
   });
 });
 

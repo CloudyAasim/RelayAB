@@ -53,10 +53,13 @@ interface TestResult {
 }
 
 export function SearchTester({
+  embedded = false,
   labels,
   backendName,
   services = [],
 }: {
+  /** Rendered inside the test card's tab instead of its own card. */
+  embedded?: boolean;
   labels: SearchTestLabels;
   /** The backend `/v1/search` is using, or null when none is configured. */
   backendName: string | null;
@@ -102,9 +105,8 @@ export function SearchTester({
 
   const available = Boolean(backendName);
 
-  return (
-    <Card>
-      <CardHeader title={labels.title} description={labels.desc} />
+  const content = (
+    <div className="space-y-4">
 
       {!available ? (
         <p className="text-sm text-muted-foreground">{labels.unavailable}</p>
@@ -190,6 +192,14 @@ export function SearchTester({
           )}
         </>
       )}
+    </div>
+  );
+
+  if (embedded) return content;
+  return (
+    <Card>
+      <CardHeader title={labels.title} description={labels.desc} />
+      {content}
     </Card>
   );
 }

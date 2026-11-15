@@ -1191,6 +1191,12 @@ const zhCN: Dict = {
 
   // ===== 模型测试 =====
   "dashboard.models.title": "测试",
+  "dashboard.models.tabs.text": "文本",
+  "dashboard.models.tabs.media": "媒体",
+  "dashboard.models.tabs.search": "搜索",
+  "dashboard.models.config.account": "本账号",
+  "dashboard.models.config.key": "服务密钥",
+  "dashboard.models.config.other": "其他服务商",
   "dashboard.models.gateway.title": "测试本网关提供的模型",
   "dashboard.models.gateway.desc": "用你自己的 API 密钥发起一次真实请求，走的是和客户端完全相同的路径。",
   "dashboard.models.gateway.model": "模型",
@@ -2780,6 +2786,12 @@ const en: Dict = {
   "nav.models": "Testing",
   "nav.assistant": "AI assistant",
   "dashboard.models.title": "Testing",
+  "dashboard.models.tabs.text": "Text",
+  "dashboard.models.tabs.media": "Media",
+  "dashboard.models.tabs.search": "Search",
+  "dashboard.models.config.account": "This account",
+  "dashboard.models.config.key": "Service key",
+  "dashboard.models.config.other": "Other provider",
   "dashboard.models.gateway.title": "Test a model this gateway serves",
   "dashboard.models.gateway.desc":
     "Sends a real request with your own API key, over exactly the path a client would use.",
