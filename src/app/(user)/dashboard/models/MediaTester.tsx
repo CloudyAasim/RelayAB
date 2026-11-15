@@ -28,6 +28,7 @@ import { Download } from "lucide-react";
 import { useT } from "@/components/i18n/I18nProvider";
 import { CredentialChoice, type Mode } from "@/lib/assistant/CredentialPanel";
 import { OtherMediaProbe, type OtherMediaLabels } from "./OtherMediaProbe";
+import { EndpointLine } from "@/components/ui/EndpointLine";
 import type { RawRequestLabels } from "./RawRequestPanel";
 import { readMediaTestResult } from "@/lib/media/test-result";
 import { downloadFileName, saveArtifact } from "@/lib/media/download";
@@ -520,15 +521,14 @@ export function MediaTester({
         />
 
         {configMode !== "other" && (
-          <div className="rounded-md border border-border bg-muted/30 p-2">
-            <p className="text-xs text-muted-foreground">{labels.endpointLabel}</p>
-            <code className="break-all text-xs text-foreground">
-              POST{" "}
-              {configMode === "account"
+          <EndpointLine
+            label={labels.endpointLabel}
+            url={
+              configMode === "account"
                 ? "/api/assistant/test-media"
-                : `${base}${MEDIA_PATHS[capability] ?? "/v1/images/generations"}`}
-            </code>
-          </div>
+                : `${base}${MEDIA_PATHS[capability] ?? "/v1/images/generations"}`
+            }
+          />
         )}
 
         {configMode === "other" ? (

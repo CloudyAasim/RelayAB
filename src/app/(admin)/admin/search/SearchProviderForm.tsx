@@ -4,10 +4,11 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { useT } from "@/components/i18n/I18nProvider";
-import { Input } from "@/components/ui/Input";
+import { Input, Textarea } from "@/components/ui/Input";
+import { FormFooter, FormStatus } from "@/components/ui/FormStatus";
 import { Button } from "@/components/ui/Button";
 import { Switch } from "@/components/ui/Switch";
-import { AlertCircle, CheckCircle2, Save } from "lucide-react";
+import { Save } from "lucide-react";
 
 /** The vendors that ship with a template, plus whatever a row names itself. */
 export const BUILTIN_KINDS = ["searxng", "tavily", "brave", "openai-compatible"] as const;
@@ -334,35 +335,22 @@ export function SearchProviderForm({ provider, templates, onSaved }: Props) {
               </button>
             ))}
         </label>
-        <textarea
+        <Textarea
           value={specText}
           onChange={(e) => setSpecText(e.target.value)}
           rows={14}
           spellCheck={false}
-          placeholder={'{\n  "specVersion": 1,\n  "transport": { … }\n}'}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm"
         />
       </div>
 
-      {error && (
-        <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span className="break-all">{error}</span>
-        </div>
-      )}
-      {saved && (
-        <div className="flex items-center gap-2 text-sm text-success">
-          <CheckCircle2 className="h-4 w-4" />
-          {t("admin.searchProviders.saved")}
-        </div>
-      )}
+      <FormStatus error={error} saved={saved} savedText={t("admin.searchProviders.saved")} />
 
-      <div className="flex justify-end gap-2 border-t border-border pt-3">
+      <FormFooter>
         <Button type="button" loading={busy} onClick={save}>
           <Save className="mr-1.5 h-4 w-4" />
           {t("common.save")}
         </Button>
-      </div>
+      </FormFooter>
     </div>
   );
 }

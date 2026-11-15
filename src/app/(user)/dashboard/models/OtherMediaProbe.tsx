@@ -13,6 +13,7 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { RawRequestPanel, type RawRequestLabels } from "./RawRequestPanel";
+import { EndpointLine } from "@/components/ui/EndpointLine";
 
 type Capability = "image.generate" | "video.generate" | "audio.tts" | "audio.stt" | "music.generate";
 
@@ -25,7 +26,6 @@ const PATHS: Record<Capability, string> = {
 };
 
 export interface OtherMediaLabels {
-  title: string;
   hint: string;
   capability: string;
   capabilities: Record<Capability, string>;
@@ -198,10 +198,7 @@ export function OtherMediaProbe({
         onChange={(e) => setApiKey(e.target.value)}
       />
 
-      <div className="rounded-md border border-border bg-muted/30 p-2">
-        <p className="text-xs text-muted-foreground">{labels.endpoint}</p>
-        <code className="break-all text-xs text-foreground">POST {endpoint}</code>
-      </div>
+      <EndpointLine label={labels.endpoint} url={endpoint} />
 
       {isStt ? (
         <div className="space-y-1.5">

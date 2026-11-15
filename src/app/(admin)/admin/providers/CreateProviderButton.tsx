@@ -26,6 +26,7 @@ import {
   newModelRow,
 } from "./model-rows";
 import { ProviderForm } from "./form/ProviderForm";
+import { FormFooter, FormStatus } from "@/components/ui/FormStatus";
 import { ModelPickerModal, type PickedEntry } from "./ModelPickerModal";
 import { useProviderForm } from "./form/use-provider-form";
 
@@ -303,16 +304,16 @@ export function CreateProviderButton({ onCreated }: Props) {
             }
           />
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          <FormStatus error={error} />
 
-          <div className="flex justify-end gap-2 border-t pt-3">
+          <FormFooter>
             <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
               {t("common.cancel")}
             </Button>
             <Button type="submit" loading={loading || isPending}>
               {t("admin.providers.create.submit")}
             </Button>
-          </div>
+          </FormFooter>
         </form>
       </Modal>
 

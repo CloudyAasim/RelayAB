@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Input } from "@/components/ui/Input";
+import { Input, Textarea } from "@/components/ui/Input";
+import { FormFooter, FormStatus } from "@/components/ui/FormStatus";
 import { Button } from "@/components/ui/Button";
 import { Switch } from "@/components/ui/Switch";
 import { useT } from "@/components/i18n/I18nProvider";
-import { AlertCircle, CheckCircle2, Save } from "lucide-react";
+import { Save } from "lucide-react";
 
 export interface MediaTemplate {
   id: string;
@@ -197,81 +198,61 @@ export function MediaProviderForm({ provider, templates, onSaved }: Props) {
       </div>
 
       {mode === "restricted" && (
-        <div>
-          <label className="mb-1.5 block text-sm font-medium">
-            {t("admin.mediaProviders.passthroughPaths")}
-          </label>
-          <textarea
-            value={passthroughPaths}
-            onChange={(e) => setPassthroughPaths(e.target.value)}
-            rows={3}
+        <Textarea
+          label={t("admin.mediaProviders.passthroughPaths")}
+          value={passthroughPaths}
+          onChange={(e) => setPassthroughPaths(e.target.value)}
+          rows={3}
+          spellCheck={false}
+          placeholder={"/v1/videos\n/v1/images/edits"}
+        />
+      )}
+
+      <Textarea
+        label={t("admin.mediaProviders.models")}
+        value={models}
+        onChange={(e) => setModels(e.target.value)}
+        rows={5}
+        spellCheck={false}
+        placeholder={'{\n  "image-01": { "upstreamId": "image-01", "pricePerItem": 2, "enabled": true }\n}'}
+      />
+
+      {usesSpecs && (
+        <div className="space-y-1.5">
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="block text-sm font-medium text-foreground">
+              {t("admin.mediaProviders.specs")}
+            </label>
+            {templates &&
+              !editing &&
+              templates.map((template) => (
+                <button
+                  key={template.id}
+                  type="button"
+                  onClick={() => loadTemplate(template)}
+                  className="text-xs font-normal text-primary hover:underline"
+                >
+                  {template.name}
+                </button>
+              ))}
+          </div>
+          <Textarea
+            value={specs}
+            onChange={(e) => setSpecs(e.target.value)}
+            rows={12}
             spellCheck={false}
-            placeholder={"/v1/videos\n/v1/images/edits"}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm"
           />
         </div>
       )}
 
-      <div>
-        <label className="mb-1.5 block text-sm font-medium">
-          {t("admin.mediaProviders.models")}
-        </label>
-        <textarea
-          value={models}
-          onChange={(e) => setModels(e.target.value)}
-          rows={5}
-          spellCheck={false}
-          placeholder={'{\n  "image-01": { "upstreamId": "image-01", "pricePerItem": 2, "enabled": true }\n}'}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm"
-        />
-      </div>
+      <FormStatus error={error} saved={saved} savedText={t("admin.mediaProviders.saved")} />
 
-      {usesSpecs && (
-      <div>
-        <label className="mb-1.5 flex flex-wrap items-center gap-3 text-sm font-medium">
-          {t("admin.mediaProviders.specs")}
-          {templates &&
-            !editing &&
-            templates.map((template) => (
-              <button
-                key={template.id}
-                type="button"
-                onClick={() => loadTemplate(template)}
-                className="text-xs font-normal text-primary hover:underline"
-              >
-                {template.name}
-              </button>
-            ))}
-        </label>
-        <textarea
-          value={specs}
-          onChange={(e) => setSpecs(e.target.value)}
-          rows={12}
-          spellCheck={false}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm"
-        />
-      </div>
-      )}
-
-      {error && (
-        <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span className="break-all">{error}</span>
-        </div>
-      )}
-      {saved && (
-        <div className="flex items-center gap-2 text-sm text-success">
-          <CheckCircle2 className="h-4 w-4" />
-          {t("admin.mediaProviders.saved")}
-        </div>
-      )}
-
-      <div className="flex justify-end gap-2 border-t border-border pt-3">
+      <FormFooter>
         <Button type="button" loading={busy} onClick={save}>
           <Save className="mr-1.5 h-4 w-4" />
           {t("common.save")}
         </Button>
-      </div>
+      </FormFooter>
     </div>
   );
 }

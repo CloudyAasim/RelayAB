@@ -13,6 +13,7 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { RawRequestPanel, type RawRequestLabels } from "./RawRequestPanel";
+import { EndpointLine } from "@/components/ui/EndpointLine";
 
 type Kind = "searxng" | "tavily" | "brave" | "openai-compatible";
 
@@ -24,7 +25,6 @@ const DEFAULTS: Record<Kind, string> = {
 };
 
 export interface OtherSearchLabels {
-  title: string;
   hint: string;
   kind: string;
   kinds: Record<Kind, string>;
@@ -323,12 +323,11 @@ export function OtherSearchProbe({
         </div>
       </details>
 
-      <div className="rounded-md border border-border bg-muted/30 p-2">
-        <p className="text-xs text-muted-foreground">{labels.endpoint}</p>
-        <code className="break-all text-xs text-foreground">
-          {kind === "searxng" || kind === "brave" ? "GET" : "POST"} {endpoint || "—"}
-        </code>
-      </div>
+      <EndpointLine
+        label={labels.endpoint}
+        method={kind === "searxng" || kind === "brave" ? "GET" : "POST"}
+        url={endpoint || "—"}
+      />
 
       <div className="flex flex-wrap items-center gap-2">
         <Button type="button" onClick={run} disabled={!canRun}>

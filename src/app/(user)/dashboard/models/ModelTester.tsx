@@ -27,6 +27,7 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { ModelCombobox } from "../assistant/ModelCombobox";
+import { EndpointLine } from "@/components/ui/EndpointLine";
 import { CredentialChoice, type Mode } from "@/lib/assistant/CredentialPanel";
 import { CustomModelProbe } from "./CustomModelProbe";
 import type { RawRequestLabels } from "./RawRequestPanel";
@@ -370,12 +371,10 @@ export function ModelTester({ chatModels, labels, otherLabels, rawLabels, onFetc
       ) : (
         <>
           {labels.endpoint && (
-            <div className="rounded-md border border-border bg-muted/30 p-2">
-              <p className="text-xs text-muted-foreground">{labels.endpoint}</p>
-              <code className="break-all text-xs text-foreground">
-                POST {configMode === "account" ? "/api/assistant/test-model" : `${base}/v1/chat/completions`}
-              </code>
-            </div>
+            <EndpointLine
+              label={labels.endpoint}
+              url={configMode === "account" ? "/api/assistant/test-model" : `${base}/v1/chat/completions`}
+            />
           )}
           <div className="space-y-1.5">
             <ModelCombobox

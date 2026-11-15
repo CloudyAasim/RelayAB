@@ -64,7 +64,6 @@ export default async function ModelsPage() {
   };
 
   const otherMediaLabels = {
-    title: t("dashboard.models.other.title"),
     hint: t("dashboard.models.other.hint"),
     capability: t("dashboard.models.other.capability"),
     capabilities: {
@@ -98,7 +97,6 @@ export default async function ModelsPage() {
   };
 
   const otherSearchLabels = {
-    title: t("dashboard.models.other.title"),
     hint: t("dashboard.models.searchOther.hint"),
     kind: t("dashboard.models.searchOther.kind"),
     kinds: {
@@ -293,8 +291,6 @@ export default async function ModelsPage() {
                   })),
           }}
           probeLabels={{
-            title: t("dashboard.models.custom.title"),
-            desc: t("dashboard.models.custom.desc"),
             ephemeral: t("dashboard.models.custom.ephemeral"),
             baseUrl: t("dashboard.models.custom.baseUrl"),
             apiKey: t("dashboard.models.custom.apiKey"),

@@ -105,6 +105,7 @@ const SCENES = [
   }],
   ["admin-provider-edit", "/admin/providers", "admin", clickTitle("编辑")],
   ["admin-media-edit", "/admin/media-providers", "admin", clickTitle("编辑")],
+  ["admin-search-edit", "/admin/search", "admin", clickTitle("编辑")],
   ["admin-model-expand", "/admin/model-notes", "admin", clickButton(/^▸/)],
   ["admin-key-rename", "/admin/keys", "admin", openMenuThen(/^操作$/, /重命名/)],
   ["user-key-edit", "/dashboard", "user", openMenuThen(/^操作$/, /编辑/)],

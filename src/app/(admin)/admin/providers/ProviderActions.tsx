@@ -10,6 +10,7 @@ import type { UpstreamFormat } from "@/lib/db/types";
 import { mergeFetchedModels } from "./model-rows";
 import { ModelPickerModal, type PickedEntry } from "./ModelPickerModal";
 import { ProviderForm } from "./form/ProviderForm";
+import { FormFooter, FormStatus } from "@/components/ui/FormStatus";
 import { formValuesFromProvider, useProviderForm } from "./form/use-provider-form";
 
 interface Props {
@@ -267,16 +268,16 @@ function EditProviderModal({ open, onClose, provider, onSaved }: EditModalProps)
           }
         />
 
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        <FormStatus error={error} />
 
-        <div className="flex justify-end gap-2 border-t pt-3">
+        <FormFooter>
           <Button type="button" variant="ghost" onClick={onClose}>
             {t("common.cancel")}
           </Button>
           <Button type="submit" loading={loading}>
             {t("common.save")}
           </Button>
-        </div>
+        </FormFooter>
       </form>
     </Modal>
 
