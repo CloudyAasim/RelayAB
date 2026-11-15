@@ -911,7 +911,7 @@ const zhCN: Dict = {
   "admin.search.test.empty": "后端没有返回结果。",
   "admin.search.test.whichService": "测哪一个搜索服务",
   "admin.search.test.whichServiceNone": "还没选（站点有多个时必须选）",
-  "admin.search.test.whichServiceNoneOne": "不特别指定（就用站点的这一个）",
+  "admin.search.test.whichServiceNoneOne": "默认",
   "admin.search.stats.title": "用量",
   "admin.search.stats.desc": "所有账号合计，按成功调用统计。",
   "admin.search.stats.last24h": "最近 24 小时",
@@ -1461,8 +1461,8 @@ const zhCN: Dict = {
     "助手用你自己的搜索服务，费用由你的服务商收，不经过本中转站计费。",
   "assistant.settings.searchService.whichService": "用站点的哪一个",
   "assistant.settings.searchService.notChosen": "还没选",
-  "assistant.settings.searchService.notChosenOne": "不特别指定（就用站点的这一个）",
-  "assistant.settings.searchService.notChosenDefault": "不特别指定（就用站点的默认服务）",
+  "assistant.settings.searchService.notChosenOne": "默认",
+  "assistant.settings.searchService.notChosenDefault": "默认",
   "assistant.settings.searchService.defaultBroken":
     "站点指定的默认搜索服务现在用不了，助手不联网时会直接报错。你自己选一个就能用。",
   "assistant.settings.searchService.needsChoice":
@@ -2498,7 +2498,7 @@ const en: Dict = {
   "admin.search.test.empty": "The backend returned no results.",
   "admin.search.test.whichService": "Which search service to test",
   "admin.search.test.whichServiceNone": "Not chosen yet (required when the deployment has several)",
-  "admin.search.test.whichServiceNoneOne": "Not specific (use the deployment's only one)",
+  "admin.search.test.whichServiceNoneOne": "Default",
   "admin.search.stats.title": "Usage",
   "admin.search.stats.desc": "All accounts combined, counting successful calls.",
   "admin.search.stats.last24h": "Last 24 hours",
@@ -3061,8 +3061,8 @@ const en: Dict = {
     "The assistant uses your own search service. Your vendor bills you; nothing is charged here.",
   "assistant.settings.searchService.whichService": "Which one of the deployment's",
   "assistant.settings.searchService.notChosen": "Not chosen yet",
-  "assistant.settings.searchService.notChosenOne": "Not specific (use the deployment's only one)",
-  "assistant.settings.searchService.notChosenDefault": "Not specific (use the deployment's default)",
+  "assistant.settings.searchService.notChosenOne": "Default",
+  "assistant.settings.searchService.notChosenDefault": "Default",
   "assistant.settings.searchService.defaultBroken":
     "The deployment's default search service cannot answer right now, so the assistant's search fails by name. Pick one yourself and it works.",
   "assistant.settings.searchService.needsChoice":

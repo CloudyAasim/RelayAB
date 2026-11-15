@@ -244,7 +244,7 @@ describe("the deployment's default service is the one the panel says is in effec
       "现在生效：站点的搜索服务（Tavily）",
     );
     // And "not picking one" says what it means now.
-    expect(servicePicker(html)).toContain("不特别指定（就用站点的默认服务）");
+    expect(servicePicker(html)).toContain("默认");
     // And it does not ask them to choose, because there is nothing to choose.
     expect(html).not.toContain("选一个之后助手才会用站点的搜索");
   });
