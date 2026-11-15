@@ -741,7 +741,25 @@ describe("explanations are behind a badge, not printed under the field", () => {
     expect(HINT).toContain("Tooltip");
     expect(HINT).not.toContain("Popover");
     expect(HINT).toContain("aria-label");
-    expect(HINT).toContain("onClick");
+  });
+
+  it("hovering keeps it open, and moving into the tooltip does not close it", () => {
+    // The bug: 16px icon, tooltip above it — moving towards the text left the
+    // icon and it vanished. So: pointer events (not mouse only), a grace
+    // period, and the same handlers on the content.
+    expect(HINT).toContain("onPointerEnter");
+    expect(HINT).toContain("onPointerLeave");
+    expect(HINT).toContain("CLOSE_GRACE_MS");
+    expect(HINT).not.toContain("onMouseLeave");
+    expect(HINT).toMatch(/<TooltipContent[\s\S]{0,400}onPointerEnter/);
+    // Radix's own close bookkeeping must not win over the pointer.
+    expect(HINT).toMatch(/!pinned\.current && !hovering\.current/);
+  });
+
+  it("a click pins it (there is no hover on a touch screen)", () => {
+    // An earlier edit turned the click handler into a comment; this pins it.
+    expect(HINT).toMatch(/onClick=\{\(\) => \{\s*pinned\.current = true;\s*setOpen\(true\);/);
+    expect(HINT).toContain("pointerdown");
   });
 
   it("the assistant's long explanations are badges next to their labels", () => {
