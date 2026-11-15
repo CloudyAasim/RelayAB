@@ -182,6 +182,7 @@ export default async function ModelsPage() {
             baseUrl: t("dashboard.models.custom.baseUrl"),
             apiKey: t("dashboard.models.custom.apiKey"),
             model: t("dashboard.models.custom.model"),
+            prompt: t("dashboard.models.custom.prompt"),
             listModels: t("dashboard.models.custom.listModels"),
             testChat: t("dashboard.models.custom.testChat"),
             testing: t("dashboard.models.custom.testing"),

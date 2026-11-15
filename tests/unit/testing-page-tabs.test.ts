@@ -23,6 +23,8 @@ const PAGE = read("app", "(user)", "dashboard", "models", "page.tsx");
 const CHAT = read("app", "(user)", "dashboard", "models", "ModelTester.tsx");
 const MEDIA = read("app", "(user)", "dashboard", "models", "MediaTester.tsx");
 const PANEL = read("lib", "assistant", "CredentialPanel.tsx");
+const PROBE = read("app", "(user)", "dashboard", "models", "CustomModelProbe.tsx");
+const PAGE_SRC = read("app", "(user)", "dashboard", "models", "page.tsx");
 
 describe("one testing surface, three tabs", () => {
   it("the tabs are 文本 / 媒体 / 搜索", () => {
@@ -45,6 +47,16 @@ describe("one testing surface, three tabs", () => {
     expect(MEDIA).toContain("embedded");
     expect(WORKSPACE).toMatch(/<ModelTester\s+embedded/);
     expect(WORKSPACE).toMatch(/<MediaTester embedded/);
+  });
+
+  it("the other-provider form can actually be tested: address, key, model, prompt", () => {
+    // Reported: selecting 其他服务商 showed only the three connection fields, so
+    // there was no way to send anything of your own. The prompt is the test.
+    expect(PROBE).toContain("labels.prompt");
+    expect(PROBE).toContain("<textarea");
+    expect(PROBE).toContain("prompt: prompt.trim()");
+    expect(translate("zh-CN", "dashboard.models.custom.prompt")).toBe("测试内容");
+    expect(PAGE_SRC).toContain('prompt: t("dashboard.models.custom.prompt")');
   });
 
   it("the other-provider form is the third configuration, not another card", () => {

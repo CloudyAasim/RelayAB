@@ -26,6 +26,8 @@ interface Labels {
   baseUrl: string;
   apiKey: string;
   model: string;
+  /** What to send to the model — the same field the gateway tester has. */
+  prompt: string;
   listModels: string;
   testChat: string;
   testing: string;
@@ -68,6 +70,7 @@ export function CustomModelProbe({
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState("");
+  const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ProbeResult | null>(null);
 
@@ -83,7 +86,7 @@ export function CustomModelProbe({
         body: JSON.stringify({
           baseUrl: baseUrl.trim(),
           apiKey: apiKey.trim(),
-          ...(mode === "chat" ? { model: model.trim() } : {}),
+          ...(mode === "chat" ? { model: model.trim(), prompt: prompt.trim() } : {}),
           mode,
         }),
       });
@@ -147,6 +150,20 @@ export function CustomModelProbe({
           value={model}
           onChange={(e) => setModel(e.target.value)}
         />
+
+        <div className="space-y-1.5">
+          <label htmlFor="custom-probe-prompt" className="block text-sm font-medium text-foreground">
+            {labels.prompt}
+          </label>
+          <textarea
+            id="custom-probe-prompt"
+            rows={3}
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="Say PONG"
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          />
+        </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <Button
