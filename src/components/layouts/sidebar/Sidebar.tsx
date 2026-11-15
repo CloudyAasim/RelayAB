@@ -253,7 +253,10 @@ export function SidebarGroup({
         (collapsed ? (
           // In the icon rail a word would not fit, but the group still needs a
           // seam between it and the one above. A short rule is that seam.
-          <div aria-hidden className="mx-auto my-3 h-1 w-1 rounded-full bg-sidebar-border" />
+          <div
+            aria-hidden
+            className="mx-auto my-3 h-px w-10 rounded-full bg-sidebar-border/70"
+          />
         ) : (
           <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
             {label}
