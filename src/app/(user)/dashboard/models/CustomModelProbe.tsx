@@ -48,6 +48,8 @@ interface Labels {
   thinkingOff: string;
   /** The folded sampling group. */
   sampling: string;
+  /** The system prompt field. */
+  systemPrompt?: string;
 }
 
 interface ProbeResult {
@@ -81,6 +83,7 @@ export function CustomModelProbe({
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState("");
   const [prompt, setPrompt] = useState("");
+  const [system, setSystem] = useState("");
   const [path, setPath] = useState("");
   const [stream, setStream] = useState(true);
   const [effort, setEffort] = useState<"" | "low" | "medium" | "high">("");
@@ -176,6 +179,7 @@ export function CustomModelProbe({
           apiKey: apiKey.trim(),
           model: model.trim(),
           prompt: prompt.trim(),
+          ...(system.trim() ? { messages: [{ role: "system", content: system.trim() }, { role: "user", content: prompt.trim() }] } : {}),
           ...(path.trim() ? { path: path.trim() } : {}),
           stream,
           parameters: built,
@@ -274,6 +278,19 @@ export function CustomModelProbe({
         <p className="text-xs text-muted-foreground">{labels.endpoint}</p>
         <code className="break-all text-xs text-foreground">POST {endpoint}</code>
       </div>
+
+      {labels.systemPrompt && (
+        <details className="rounded-md border border-border px-3 py-2">
+          <summary className="cursor-pointer text-sm font-medium text-foreground">{labels.systemPrompt}</summary>
+          <textarea
+            rows={3}
+            value={system}
+            onChange={(e) => setSystem(e.target.value)}
+            placeholder="You are a helpful assistant."
+            className="mt-2 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          />
+        </details>
+      )}
 
       <div className="space-y-1.5">
         <label htmlFor="custom-probe-prompt" className="block text-sm font-medium text-foreground">

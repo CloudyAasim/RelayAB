@@ -64,6 +64,11 @@ interface Labels {
   thinkingOff: string;
   /** The folded sampling group. */
   sampling: string;
+  /** Multi-turn: system prompt, conversation, clear, role labels. */
+  systemPrompt: string;
+  clear: string;
+  you: string;
+  assistantRole: string;
   /** What the three configurations are called on this page. */
   config?: { account: string; key: string; other: string };
 }
@@ -110,6 +115,8 @@ export function ModelTester({ chatModels, labels, otherLabels, rawLabels, onFetc
   const [configMode, setConfigMode] = useState<ConfigMode>("account");
   const [model, setModel] = useState(chatModels[0] ?? "");
   const [prompt, setPrompt] = useState("");
+  const [system, setSystem] = useState("");
+  const [turns, setTurns] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
   const [answer, setAnswer] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -208,6 +215,13 @@ export function ModelTester({ chatModels, labels, otherLabels, rawLabels, onFetc
     setDecisions([]);
     const started = Date.now();
 
+    const userMessage = { role: "user" as const, content: prompt.trim() };
+    const history = [
+      ...(system.trim() ? [{ role: "system" as const, content: system.trim() }] : []),
+      ...turns,
+      userMessage,
+    ];
+
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -219,7 +233,7 @@ export function ModelTester({ chatModels, labels, otherLabels, rawLabels, onFetc
         const res = await fetch("/api/assistant/test-model", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model, prompt, parameters: built.value }),
+          body: JSON.stringify({ model, messages: history, parameters: built.value }),
           signal: controller.signal,
         });
         const json = (await res.json().catch(() => null)) as {
@@ -237,7 +251,10 @@ export function ModelTester({ chatModels, labels, otherLabels, rawLabels, onFetc
           setError(json?.error?.message ?? `HTTP ${res.status}`);
           return;
         }
-        setAnswer(json.data?.answer ?? "");
+        const accountAnswer = json.data?.answer ?? "";
+        setAnswer(accountAnswer);
+        setTurns((prev) => [...prev, userMessage, { role: "assistant", content: accountAnswer }]);
+        setPrompt("");
         setLatency(json.data?.latencyMs ?? Date.now() - started);
         setDecisions(json.data?.parameterDecisions ?? []);
         // Which interface's rule explained the request. A provider carries one
@@ -256,7 +273,7 @@ export function ModelTester({ chatModels, labels, otherLabels, rawLabels, onFetc
         body: JSON.stringify({
           ...built.value,
           model,
-          messages: [{ role: "user", content: prompt }],
+          messages: history,
           stream: true,
         }),
         signal: controller.signal,
@@ -274,6 +291,7 @@ export function ModelTester({ chatModels, labels, otherLabels, rawLabels, onFetc
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      let text = "";
 
       for (;;) {
         const { done, value } = await reader.read();
@@ -292,8 +310,11 @@ export function ModelTester({ chatModels, labels, otherLabels, rawLabels, onFetc
             const chunk = JSON.parse(data) as {
               choices?: Array<{ delta?: { content?: string | null } }>;
             };
-            const text = chunk.choices?.[0]?.delta?.content;
-            if (text) setAnswer((prev) => prev + text);
+            const delta = chunk.choices?.[0]?.delta?.content;
+            if (delta) {
+              text += delta;
+              setAnswer(text);
+            }
           } catch {
             // A keep-alive or partial line is not a failure; the next chunk
             // carries the real payload.
@@ -301,6 +322,9 @@ export function ModelTester({ chatModels, labels, otherLabels, rawLabels, onFetc
         }
       }
       setLatency(Date.now() - started);
+      setTurns((prev) => [...prev, userMessage, { role: "assistant", content: text }]);
+      setPrompt("");
+      setAnswer("");
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
         setLatency(Date.now() - started);
@@ -364,6 +388,17 @@ export function ModelTester({ chatModels, labels, otherLabels, rawLabels, onFetc
               onChange={setModel}
             />
           </div>
+
+          <details className="rounded-md border border-border px-3 py-2">
+            <summary className="cursor-pointer text-sm font-medium text-foreground">{labels.systemPrompt}</summary>
+            <textarea
+              rows={3}
+              value={system}
+              onChange={(e) => setSystem(e.target.value)}
+              placeholder="You are a helpful assistant."
+              className="mt-2 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            />
+          </details>
 
           <div className="space-y-1.5">
             <label htmlFor="model-tester-prompt" className="block text-sm font-medium text-foreground">
@@ -530,6 +565,17 @@ export function ModelTester({ chatModels, labels, otherLabels, rawLabels, onFetc
                 {labels.stop}
               </Button>
             )}
+            {turns.length > 0 && !busy && (
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setTurns([]);
+                  setAnswer("");
+                }}
+              >
+                {labels.clear}
+              </Button>
+            )}
             {latency !== null && !busy && (
               <span className="text-xs text-muted-foreground">{latency} ms</span>
             )}
@@ -544,11 +590,33 @@ export function ModelTester({ chatModels, labels, otherLabels, rawLabels, onFetc
             </pre>
           )}
 
-          <div className="rounded-md border border-border bg-muted/30 p-3">
-            <p className="mb-1 text-xs font-medium text-muted-foreground">{model || "—"}</p>
-            <p className="whitespace-pre-wrap break-words text-sm">
-              {answer || <span className="text-muted-foreground">{labels.empty}</span>}
-            </p>
+          <div className="space-y-2">
+            {turns.map((turn, index) => (
+              <div
+                key={index}
+                className={
+                  turn.role === "user"
+                    ? "rounded-md border border-border bg-background p-3"
+                    : "rounded-md border border-border bg-muted/30 p-3"
+                }
+              >
+                <p className="mb-1 text-xs font-medium text-muted-foreground">
+                  {turn.role === "user" ? labels.you : labels.assistantRole}
+                </p>
+                <p className="whitespace-pre-wrap break-words text-sm">{turn.content}</p>
+              </div>
+            ))}
+            {answer && (
+              <div className="rounded-md border border-border bg-muted/30 p-3">
+                <p className="mb-1 text-xs font-medium text-muted-foreground">{labels.assistantRole}</p>
+                <p className="whitespace-pre-wrap break-words text-sm">{answer}</p>
+              </div>
+            )}
+            {turns.length === 0 && !answer && (
+              <p className="rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+                {labels.empty}
+              </p>
+            )}
           </div>
         </>
       )}

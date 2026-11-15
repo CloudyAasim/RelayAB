@@ -83,6 +83,11 @@ export default async function ModelsPage() {
     duration: t("dashboard.models.media.duration"),
     n: t("dashboard.models.other.n"),
     audioFile: t("dashboard.models.media.audioFile"),
+    negativePrompt: t("dashboard.models.other.negativePrompt"),
+    seed: t("dashboard.models.other.seed"),
+    speed: t("dashboard.models.other.speed"),
+    format: t("dashboard.models.other.format"),
+    language: t("dashboard.models.other.language"),
     endpoint: t("dashboard.models.probe.endpoint"),
     run: t("dashboard.models.media.run"),
     running: t("dashboard.models.media.running"),
@@ -112,6 +117,21 @@ export default async function ModelsPage() {
     ok: t("dashboard.models.custom.ok"),
     failed: t("dashboard.models.custom.failed"),
     raw: t("dashboard.models.probe.raw"),
+    options: t("dashboard.models.searchOther.options"),
+    language: t("dashboard.models.searchOther.language"),
+    safesearch: t("dashboard.models.searchOther.safesearch"),
+    timeRange: t("dashboard.models.searchOther.timeRange"),
+    categories: t("dashboard.models.searchOther.categories"),
+    pageno: t("dashboard.models.searchOther.pageno"),
+    searchDepth: t("dashboard.models.searchOther.searchDepth"),
+    topic: t("dashboard.models.searchOther.topic"),
+    includeAnswer: t("dashboard.models.searchOther.includeAnswer"),
+    includeRawContent: t("dashboard.models.searchOther.includeRawContent"),
+    days: t("dashboard.models.searchOther.days"),
+    country: t("dashboard.models.searchOther.country"),
+    freshness: t("dashboard.models.searchOther.freshness"),
+    extraSnippets: t("dashboard.models.searchOther.extraSnippets"),
+    offset: t("dashboard.models.searchOther.offset"),
   };
 
   const searchSource = {
@@ -169,6 +189,10 @@ export default async function ModelsPage() {
             thinkingOn: t("assistant.settings.thinkingOn"),
             thinkingOff: t("assistant.settings.thinkingOff"),
             sampling: t("dashboard.models.sampling"),
+            systemPrompt: t("dashboard.models.test.system"),
+            clear: t("dashboard.models.test.clear"),
+            you: t("dashboard.models.test.you"),
+            assistantRole: t("dashboard.models.test.assistant"),
 
             config: {
               account: t("dashboard.models.config.account"),
@@ -290,6 +314,7 @@ export default async function ModelsPage() {
             extraParameters: t("dashboard.models.gateway.extraParameters"),
             stream: t("dashboard.models.probe.stream"),
             raw: t("dashboard.models.probe.raw"),
+            systemPrompt: t("dashboard.models.test.system"),
           }}
         />
       </SectionPageLayout.Content>

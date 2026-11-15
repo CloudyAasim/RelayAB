@@ -241,6 +241,98 @@ describe("POST /api/models/probe-search", () => {
   });
 });
 
+describe("probe-search: the backend's own optional parameters", () => {
+  it("searxng carries language, safesearch, time_range, categories and pageno", async () => {
+    await signIn();
+    const urls: string[] = [];
+    vi.stubGlobal("fetch", async (url: string | URL | Request) => {
+      urls.push(String(url));
+      return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+    });
+    const { POST } = await import("@/app/api/models/probe-search/route");
+    await POST(
+      jsonRequest("/api/models/probe-search", {
+        kind: "searxng",
+        baseUrl: "http://relay-search.web:8080",
+        query: "q",
+        language: "zh-CN",
+        safesearch: "2",
+        timeRange: "week",
+        categories: "news",
+        pageno: 2,
+      }),
+    );
+    const url = new URL(urls[0] ?? "");
+    expect(url.searchParams.get("language")).toBe("zh-CN");
+    expect(url.searchParams.get("safesearch")).toBe("2");
+    expect(url.searchParams.get("time_range")).toBe("week");
+    expect(url.searchParams.get("categories")).toBe("news");
+    expect(url.searchParams.get("pageno")).toBe("2");
+  });
+
+  it("tavily carries depth, topic, answer, raw content, days and country", async () => {
+    await signIn();
+    let body: Record<string, unknown> = {};
+    vi.stubGlobal("fetch", async (_url: string | URL | Request, init?: RequestInit) => {
+      body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+    });
+    const { POST } = await import("@/app/api/models/probe-search/route");
+    await POST(
+      jsonRequest("/api/models/probe-search", {
+        kind: "tavily",
+        baseUrl: "https://api.tavily.com/search",
+        apiKey: "k",
+        query: "q",
+        searchDepth: "advanced",
+        topic: "news",
+        includeAnswer: true,
+        includeRawContent: true,
+        days: 7,
+        country: "china",
+      }),
+    );
+    expect(body).toMatchObject({
+      search_depth: "advanced",
+      topic: "news",
+      include_answer: true,
+      include_raw_content: true,
+      days: 7,
+      country: "china",
+    });
+  });
+
+  it("brave carries country, language, safesearch, freshness, snippets and offset", async () => {
+    await signIn();
+    const urls: string[] = [];
+    vi.stubGlobal("fetch", async (url: string | URL | Request) => {
+      urls.push(String(url));
+      return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+    });
+    const { POST } = await import("@/app/api/models/probe-search/route");
+    await POST(
+      jsonRequest("/api/models/probe-search", {
+        kind: "brave",
+        baseUrl: "https://api.search.brave.com/res/v1/web/search",
+        apiKey: "k",
+        query: "q",
+        country: "CN",
+        language: "zh-hans",
+        safesearch: "strict",
+        freshness: "pw",
+        extraSnippets: true,
+        offset: 2,
+      }),
+    );
+    const url = new URL(urls[0] ?? "");
+    expect(url.searchParams.get("country")).toBe("CN");
+    expect(url.searchParams.get("search_lang")).toBe("zh-hans");
+    expect(url.searchParams.get("safesearch")).toBe("strict");
+    expect(url.searchParams.get("freshness")).toBe("pw");
+    expect(url.searchParams.get("extra_snippets")).toBe("true");
+    expect(url.searchParams.get("offset")).toBe("2");
+  });
+});
 describe("POST /api/models/probe-raw", () => {
   it("sends the method, URL and body exactly as given", async () => {
     await signIn();

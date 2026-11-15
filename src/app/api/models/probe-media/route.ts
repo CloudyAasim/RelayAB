@@ -33,6 +33,12 @@ const BodySchema = z.object({
   voice: z.string().max(100).optional(),
   duration: z.number().int().min(1).max(600).optional(),
   n: z.number().int().min(1).max(8).optional(),
+  /** Vendor options the guided form exposes. */
+  negativePrompt: z.string().max(4000).optional(),
+  seed: z.number().int().optional(),
+  speed: z.number().min(0.25).max(4).optional(),
+  responseFormat: z.string().max(20).optional(),
+  language: z.string().max(20).optional(),
   /** `data:<mime>;base64,…` for speech-to-text. */
   dataUrl: z.string().max(40_000_000).optional(),
   path: z.string().max(300).optional(),
@@ -96,6 +102,7 @@ async function buildRequest(
     form.append("model", input.model);
     form.append("file", new Blob([file.bytes as unknown as BlobPart], { type: file.mime }), "audio");
     if (input.prompt?.trim()) form.append("prompt", input.prompt.trim());
+    if (input.language) form.append("language", input.language);
     return { init: { method: "POST", headers, body: form } };
   }
 
@@ -106,11 +113,15 @@ async function buildRequest(
   if (input.size) body.size = input.size;
   if (input.duration !== undefined) body.duration = input.duration;
   if (input.voice) body.voice = input.voice;
+  if (input.negativePrompt) body.negative_prompt = input.negativePrompt;
+  if (input.seed !== undefined) body.seed = input.seed;
 
   if (capability === "audio.tts") {
     // The speech endpoint calls the text `input`, not `prompt`.
     body.input = input.prompt ?? "";
     body.voice = input.voice || "alloy";
+    if (input.speed !== undefined) body.speed = input.speed;
+    if (input.responseFormat) body.response_format = input.responseFormat;
     delete body.prompt;
   }
 

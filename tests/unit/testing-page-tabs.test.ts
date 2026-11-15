@@ -123,6 +123,35 @@ describe("the configuration choices are named once", () => {
     expect(CHAT).toContain("labels.sampling");
   });
 
+  it("the text tester is a conversation: system prompt, turns, clear", () => {
+    expect(CHAT).toContain("setTurns");
+    expect(CHAT).toContain("labels.systemPrompt");
+    expect(CHAT).toContain("messages: history");
+    expect(CHAT).toContain("labels.clear");
+    expect(CHAT).toContain("labels.assistantRole");
+    // Both routes accept the array, not just a single prompt.
+    expect(read("app", "api", "assistant", "test-model", "route.ts")).toContain("messages:");
+    expect(read("app", "api", "models", "probe-chat", "route.ts")).toContain("messages:");
+  });
+
+  it("the media form exposes the vendor options, not only prompt and size", () => {
+    const OTHER_MEDIA = read("app", "(user)", "dashboard", "models", "OtherMediaProbe.tsx");
+    for (const field of ["negativePrompt", "seed", "speed", "format", "language"]) {
+      expect(OTHER_MEDIA, `${field} is missing`).toContain(`labels.${field}`);
+    }
+    expect(read("app", "api", "models", "probe-media", "route.ts")).toContain("negative_prompt");
+  });
+
+  it("the search form exposes each backend's own optional parameters", () => {
+    const OTHER_SEARCH = read("app", "(user)", "dashboard", "models", "OtherSearchProbe.tsx");
+    for (const field of ["language", "safesearch", "timeRange", "categories", "pageno", "searchDepth", "topic", "freshness", "extraSnippets", "offset"]) {
+      expect(OTHER_SEARCH, `${field} is missing`).toContain(`labels.${field}`);
+    }
+    const ROUTE = read("app", "api", "models", "probe-search", "route.ts");
+    expect(ROUTE).toContain("time_range");
+    expect(ROUTE).toContain("search_depth");
+    expect(ROUTE).toContain("search_lang");
+  });
   it("the guided media form and the raw escape hatch both exist", () => {
     expect(MEDIA).toContain("OtherMediaProbe");
     expect(PROBE).toContain("RawRequestPanel");

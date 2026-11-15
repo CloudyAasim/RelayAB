@@ -2,20 +2,24 @@
  * app/api/models/probe-search/route.ts
  *
  *   POST /api/models/probe-search
- *   Body: { kind, baseUrl, apiKey?, query, limit? }
+ *   Body: { kind, baseUrl, apiKey?, query, limit? } plus the kind's own options.
  *
- * Ask one search backend of an arbitrary vendor the same way its own documented
- * API is asked. Four shapes cover the vendors this deployment already speaks
- * elsewhere (the search adapter protocol), so the test does not re-invent them:
+ * Ask one search backend of an arbitrary vendor the way its own documented API
+ * is asked. The four shapes are the vendors this deployment already speaks in
+ * its search adapter protocol; anything else is one raw request away.
  *
  *   searxng            GET  {base}/search?q=…&format=json
- *   tavily             POST {base}                      {api_key, query, max_results}
- *   brave              GET  {base}?q=…&count=…          X-Subscription-Token
- *   openai-compatible  POST {base}                      {query, limit}  Bearer
+ *                      + language, safesearch, time_range, categories, pageno
+ *   tavily             POST {base}  {api_key, query, max_results, search_depth,
+ *                                    topic, include_answer, include_raw_content,
+ *                                    days, country}
+ *   brave              GET  {base}?q=…&count=…  X-Subscription-Token
+ *                      + country, search_lang, safesearch, freshness,
+ *                        extra_snippets, offset
+ *   openai-compatible  POST {base}  {query, limit}  Bearer
  *
  * `baseUrl` is the endpoint unless the shape says otherwise (searxng appends
- * `/search`), which is why the resolved endpoint is returned to the page: the
- * tester shows what it actually called.
+ * `/search`), which is why the resolved endpoint is returned to the page.
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -31,9 +35,30 @@ const BodySchema = z.object({
   apiKey: z.string().max(500).optional(),
   query: z.string().min(1, "请填写关键词").max(500),
   limit: z.number().int().min(1).max(20).optional(),
+
+  // SearXNG
+  language: z.string().max(20).optional(),
+  safesearch: z.string().max(20).optional(),
+  timeRange: z.string().max(20).optional(),
+  categories: z.string().max(200).optional(),
+  pageno: z.number().int().min(1).max(20).optional(),
+
+  // Tavily
+  searchDepth: z.enum(["basic", "advanced"]).optional(),
+  topic: z.enum(["general", "news", "finance"]).optional(),
+  includeAnswer: z.boolean().optional(),
+  includeRawContent: z.boolean().optional(),
+  days: z.number().int().min(1).max(365).optional(),
+  country: z.string().max(20).optional(),
+
+  // Brave
+  freshness: z.string().max(30).optional(),
+  extraSnippets: z.boolean().optional(),
+  offset: z.number().int().min(0).max(9).optional(),
 });
 
 type Kind = (typeof KINDS)[number];
+type Input = z.infer<typeof BodySchema>;
 
 function endpointFor(kind: Kind, baseUrl: string): string {
   const base = baseUrl.trim().replace(/\/+$/, "");
@@ -49,47 +74,69 @@ function protocolProblem(url: string): string | null {
   }
 }
 
-function build(kind: Kind, endpoint: string, query: string, apiKey?: string, limit?: number) {
+function build(input: Input): { url: string; init: RequestInit } {
+  const { kind, query } = input;
+  const key = input.apiKey?.trim() || "";
+  const max = input.limit ?? 5;
   const headers: Record<string, string> = {};
-  const key = apiKey?.trim() || "";
-  const max = limit ?? 5;
 
   if (kind === "searxng") {
     if (key) headers.Authorization = `Bearer ${key}`;
-    const url = new URL(endpoint);
+    const url = new URL(endpointFor(kind, input.baseUrl));
     url.searchParams.set("q", query);
     url.searchParams.set("format", "json");
-    return { url: url.toString(), init: { method: "GET", headers } as RequestInit };
+    if (input.language) url.searchParams.set("language", input.language);
+    if (input.safesearch) url.searchParams.set("safesearch", input.safesearch);
+    if (input.timeRange) url.searchParams.set("time_range", input.timeRange);
+    if (input.categories) url.searchParams.set("categories", input.categories);
+    if (input.pageno) url.searchParams.set("pageno", String(input.pageno));
+    return { url: url.toString(), init: { method: "GET", headers } };
   }
 
   if (kind === "tavily") {
     if (key) headers.Authorization = `Bearer ${key}`;
     return {
-      url: endpoint,
+      url: endpointFor(kind, input.baseUrl),
       init: {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ api_key: key, query, max_results: max }),
-      } as RequestInit,
+        body: JSON.stringify({
+          api_key: key,
+          query,
+          max_results: max,
+          ...(input.searchDepth ? { search_depth: input.searchDepth } : {}),
+          ...(input.topic ? { topic: input.topic } : {}),
+          ...(input.includeAnswer ? { include_answer: true } : {}),
+          ...(input.includeRawContent ? { include_raw_content: true } : {}),
+          ...(input.days ? { days: input.days } : {}),
+          ...(input.country ? { country: input.country } : {}),
+        }),
+      },
     };
   }
 
   if (kind === "brave") {
     if (key) headers["X-Subscription-Token"] = key;
-    const url = new URL(endpoint);
+    const url = new URL(endpointFor(kind, input.baseUrl));
     url.searchParams.set("q", query);
     url.searchParams.set("count", String(max));
-    return { url: url.toString(), init: { method: "GET", headers } as RequestInit };
+    if (input.country) url.searchParams.set("country", input.country);
+    if (input.language) url.searchParams.set("search_lang", input.language);
+    if (input.safesearch) url.searchParams.set("safesearch", input.safesearch);
+    if (input.freshness) url.searchParams.set("freshness", input.freshness);
+    if (input.extraSnippets) url.searchParams.set("extra_snippets", "true");
+    if (input.offset) url.searchParams.set("offset", String(input.offset));
+    return { url: url.toString(), init: { method: "GET", headers } };
   }
 
   if (key) headers.Authorization = `Bearer ${key}`;
   return {
-    url: endpoint,
+    url: endpointFor(kind, input.baseUrl),
     init: {
       method: "POST",
       headers: { ...headers, "Content-Type": "application/json" },
       body: JSON.stringify({ query, limit: max }),
-    } as RequestInit,
+    },
   };
 }
 
@@ -120,14 +167,14 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  const { kind, baseUrl, apiKey, query, limit } = parsed.data;
-  const endpoint = endpointFor(kind, baseUrl);
+  const input = parsed.data;
+  const endpoint = endpointFor(input.kind, input.baseUrl);
   const problem = protocolProblem(endpoint);
   if (problem) {
     return NextResponse.json({ ok: false, error: { code: "bad_endpoint", message: problem } }, { status: 400 });
   }
 
-  const { url, init } = build(kind, endpoint, query, apiKey, limit);
+  const { url, init } = build(input);
   const started = Date.now();
   try {
     const res = await fetch(url, { ...init, signal: AbortSignal.timeout(60_000) });

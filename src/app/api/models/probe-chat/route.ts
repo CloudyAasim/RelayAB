@@ -27,6 +27,16 @@ const BodySchema = z.object({
   apiKey: z.string().min(1, "请填写 API 密钥").max(500),
   model: z.string().min(1, "请填写模型名").max(200),
   prompt: z.string().max(20000).optional(),
+  /** A full conversation, when the page is testing multi-turn chat. */
+  messages: z
+    .array(
+      z.object({
+        role: z.enum(["system", "user", "assistant"]),
+        content: z.string().max(20000),
+      }),
+    )
+    .max(50)
+    .optional(),
   /** The endpoint path under the base URL, when the vendor does not use /chat/completions. */
   path: z.string().max(300).optional(),
   stream: z.boolean().optional(),
@@ -98,7 +108,10 @@ export async function POST(req: Request): Promise<Response> {
       },
       body: JSON.stringify({
         model,
-        messages: [{ role: "user", content: prompt?.trim() || "Say PONG" }],
+        messages:
+          parsed.data.messages && parsed.data.messages.length > 0
+            ? parsed.data.messages
+            : [{ role: "user", content: prompt?.trim() || "Say PONG" }],
         ...(parameters ?? {}),
         stream: Boolean(stream),
       }),

@@ -94,6 +94,11 @@ const SCENES = [
     await clickTab("媒体")(page);
     await page.getByRole("radio", { name: "其他服务商" }).first().click();
   }],
+  ["models-search-options", "/dashboard/models", "admin", async (page) => {
+    await clickTab("搜索")(page);
+    await page.getByRole("button", { name: "其他服务商" }).first().click();
+    await page.getByText("可选参数", { exact: true }).first().click();
+  }],
   ["models-search-other", "/dashboard/models", "admin", async (page) => {
     await clickTab("搜索")(page);
     await page.getByRole("button", { name: "其他服务商" }).first().click();

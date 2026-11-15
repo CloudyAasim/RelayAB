@@ -37,6 +37,22 @@ const BodySchema = z.object({
    */
   parameters: z.record(z.string(), z.unknown()).optional(),
   maxTokens: z.number().int().positive().max(100_000).optional(),
+  /**
+   * The conversation to send, when the page is testing a multi-turn chat.
+   *
+   * `prompt` stays as the single-turn shorthand; `messages` wins when both are
+   * present. Roles are the OpenAI ones, and the array is capped so one test
+   * cannot become an unbounded payload.
+   */
+  messages: z
+    .array(
+      z.object({
+        role: z.enum(["system", "user", "assistant"]),
+        content: z.string().max(20_000),
+      }),
+    )
+    .max(50)
+    .optional(),
 });
 
 /**
@@ -201,15 +217,18 @@ export async function POST(req: Request): Promise<Response> {
     req: {
       ...explained.applied,
       model: parsed.data.model,
-      messages: [
-        {
-          role: "user",
-          content:
-            parsed.data.prompt && parsed.data.prompt.trim()
-              ? parsed.data.prompt
-              : "用一句话介绍你自己。",
-        },
-      ],
+      messages:
+        parsed.data.messages && parsed.data.messages.length > 0
+          ? parsed.data.messages
+          : [
+              {
+                role: "user",
+                content:
+                  parsed.data.prompt && parsed.data.prompt.trim()
+                    ? parsed.data.prompt
+                    : "用一句话介绍你自己。",
+              },
+            ],
       stream: false,
     } as never,
     apiKey: credential.account.apiKey,

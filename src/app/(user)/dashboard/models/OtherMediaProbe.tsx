@@ -38,6 +38,11 @@ export interface OtherMediaLabels {
   duration: string;
   n: string;
   audioFile: string;
+  negativePrompt: string;
+  seed: string;
+  speed: string;
+  format: string;
+  language: string;
   endpoint: string;
   run: string;
   running: string;
@@ -84,6 +89,11 @@ export function OtherMediaProbe({
   const [voice, setVoice] = useState("");
   const [duration, setDuration] = useState("");
   const [n, setN] = useState("1");
+  const [negativePrompt, setNegativePrompt] = useState("");
+  const [seed, setSeed] = useState("");
+  const [speed, setSpeed] = useState("");
+  const [format, setFormat] = useState("");
+  const [language, setLanguage] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
@@ -122,6 +132,11 @@ export function OtherMediaProbe({
           ...(needsVoice && voice ? { voice } : {}),
           ...(duration ? { duration: Number(duration) } : {}),
           ...(n ? { n: Number(n) } : {}),
+          ...(negativePrompt.trim() ? { negativePrompt: negativePrompt.trim() } : {}),
+          ...(seed ? { seed: Number(seed) } : {}),
+          ...(capability === "audio.tts" && speed ? { speed: Number(speed) } : {}),
+          ...(capability === "audio.tts" && format ? { responseFormat: format } : {}),
+          ...(capability === "audio.stt" && language.trim() ? { language: language.trim() } : {}),
           ...(isStt && file ? { dataUrl: await fileToDataUrl(file) } : {}),
         }),
       });
@@ -217,6 +232,15 @@ export function OtherMediaProbe({
         </div>
       )}
 
+      {capability === "image.generate" && (
+        <Input
+          label={labels.negativePrompt}
+          placeholder="blurry, low quality"
+          value={negativePrompt}
+          onChange={(e) => setNegativePrompt(e.target.value)}
+        />
+      )}
+
       <div className="grid gap-2 sm:grid-cols-3">
         {needsSize && (
           <Input label={labels.size} placeholder="1024x1024" value={size} onChange={(e) => setSize(e.target.value)} />
@@ -235,6 +259,18 @@ export function OtherMediaProbe({
         )}
         {capability === "image.generate" && (
           <Input label={labels.n} type="number" min={1} max={8} value={n} onChange={(e) => setN(e.target.value)} />
+        )}
+        {capability === "audio.tts" && (
+          <Input label={labels.speed} placeholder="1" value={speed} onChange={(e) => setSpeed(e.target.value)} />
+        )}
+        {capability === "audio.tts" && (
+          <Input label={labels.format} placeholder="mp3" value={format} onChange={(e) => setFormat(e.target.value)} />
+        )}
+        {capability === "audio.stt" && (
+          <Input label={labels.language} placeholder="zh" value={language} onChange={(e) => setLanguage(e.target.value)} />
+        )}
+        {capability !== "audio.stt" && (
+          <Input label={labels.seed} placeholder="42" value={seed} onChange={(e) => setSeed(e.target.value)} />
         )}
       </div>
 
