@@ -143,21 +143,20 @@ describe("the two modes are exclusive, and say so", () => {
     expect(FORM).toContain("protocolMode === \"passthrough\"");
   });
 
-  it("as cards with a written state, not a pressed tint", () => {
-    // "Which mode am I in" is a question the operator asked out loud, so the
-    // answer is the selected card: radio dot, border and its own two lines.
-    // It used to also carry a 「当前」 badge, which was the third copy of one
-    // piece of state.
-    expect(MODE).toMatch(/aria-pressed=\{on\}/);
+  it("is a native select with the selected mode's sentence under it", () => {
+    // The modes were three cards; the rest of the admin uses a dropdown for a
+    // choice of this kind, and three cards used the top of the dialog. The
+    // explanation did not go with them: the selected mode's own body is the
+    // select's hint.
+    expect(MODE).toContain("<Select");
+    expect(MODE).toMatch(/value=\{mode\}/);
+    expect(MODE).toMatch(/admin\.providers\.modeLabel/);
     expect(MODE).not.toMatch(/admin\.textSpec\.mode\.current/);
     expect(MODE).toMatch(/admin\.textSpec\.mode\.simpleBody/);
     expect(MODE).toMatch(/admin\.textSpec\.mode\.advancedBody/);
   });
 
-  it("with the cards themselves saying they configure the same provider", () => {
-    // There used to be a paragraph above the cards spelling out that the two
-    // are complete alternatives. Each card's own two lines say it, and the
-    // paragraph was read as instructions rather than as a choice.
+  it("and does not bring back the paragraphs the cards replaced", () => {
     expect(MODE).not.toMatch(/admin\.textSpec\.modeHint/);
     expect(DICTS["zh-CN"]["admin.textSpec.modeHint"]).toBeUndefined();
   });

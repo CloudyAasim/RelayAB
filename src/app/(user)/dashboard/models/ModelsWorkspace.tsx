@@ -68,6 +68,7 @@ export function ModelsWorkspace({
     limitHint: string;
     serviceKey: string;
     notAdmin: string;
+    configLabel: string;
   };
   /** Only an administrator can run the deployment's own search. */
   isAdmin: boolean;
@@ -165,6 +166,7 @@ export function ModelsWorkspace({
           limitHint={searchUi.limitHint}
           serviceKey={searchUi.serviceKey}
           notAdmin={searchUi.notAdmin}
+          configLabel={searchUi.configLabel}
           otherLabels={otherSearchLabels}
           rawLabels={rawLabels}
           embedded

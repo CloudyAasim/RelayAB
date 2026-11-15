@@ -65,6 +65,15 @@ describe("one endpoint line", () => {
   });
 });
 
+describe("similar choices are native selects", () => {
+  it("the provider mode, the test configuration and the search source are selects", () => {
+    expect(read("app", "(admin)", "admin", "providers", "ProviderModeSwitch.tsx")).toContain("<Select");
+    expect(read("app", "(user)", "dashboard", "models", "ModelTester.tsx")).toContain('variant="select"');
+    expect(read("app", "(user)", "dashboard", "models", "MediaTester.tsx")).toContain('variant="select"');
+    expect(read("app", "(user)", "dashboard", "models", "SearchTester.tsx")).toContain("<Select");
+    expect(read("components", "ui", "Select.tsx")).toContain("<select");
+  });
+});
 describe("no dead labels left behind", () => {
   it("the keys the cleanup removed are gone from both locales", () => {
     for (const key of [

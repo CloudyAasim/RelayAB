@@ -252,6 +252,7 @@ export default async function ModelsPage() {
             limitHint: t("dashboard.models.search.limitHint"),
             serviceKey: t("dashboard.models.search.serviceKey"),
             notAdmin: t("dashboard.models.search.notAdmin"),
+            configLabel: t("dashboard.models.config.label"),
           }}
           searchTest={{
                   labels: {

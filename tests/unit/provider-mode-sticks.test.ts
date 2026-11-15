@@ -72,6 +72,6 @@ describe("the chosen mode survives a render the operator did not ask for", () =>
     expect(HOOK).not.toMatch(/activeMode:\s*provider\.textSpecs\?\.length/);
     expect(HOOK).toMatch(/activeMode: activeModeOf\(provider\),/);
     // And the switch writes it directly rather than asking the row again.
-    expect(SWITCH).toMatch(/onClick=\{\(\) => onChange\(id\)\}/);
+    expect(SWITCH).toMatch(/onChange=\{\(e\) => onChange\(e\.target\.value as Mode\)\}/);
   });
 });

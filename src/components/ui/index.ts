@@ -14,6 +14,7 @@ export * from "./Label";
 export * from "./Modal";
 export * from "./PageSkeleton";
 export * from "./Popover";
+export * from "./Select";
 export * from "./Separator";
 export * from "./Sheet";
 export * from "./Table";

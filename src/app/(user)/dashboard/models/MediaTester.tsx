@@ -518,6 +518,7 @@ export function MediaTester({
             onSelect: () => setConfigMode("other"),
           }}
           hideKeyField={configMode === "other"}
+          variant="select"
         />
 
         {configMode !== "other" && (

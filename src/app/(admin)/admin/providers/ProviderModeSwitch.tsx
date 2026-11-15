@@ -3,98 +3,53 @@
 /**
  * src/app/(admin)/admin/providers/ProviderModeSwitch.tsx
  *
- * Two modes, as cards, because a pill does not say which one you are in.
+ * Which half of the provider editor is open: 简易模式 / 高级模式（协议） / 透传模式.
  *
- * The complaint that produced this was that you could not tell which mode was
- * open. The previous version was a two-segment pill whose pressed state was a
- * background tint, which is not a thing anybody reads.
- *
- * The mode is **additive**: both fill in the same fields, and advanced adds the
- * per-interface parameter rules. It is not a choice between two different
- * forms — that spelling, where the branch wrapped the whole form, is what once
- * hid the API key in advanced mode.
+ * **A native select, like every other choice of this kind.** The modes were
+ * three cards for a while; the cards were clearer than the pill before them,
+ * but they were also a second visual language for a choice the rest of the
+ * admin uses a dropdown for — and three cards take the top of the dialog away
+ * from the fields. The selected mode's own sentence sits under the select, so
+ * the explanation did not go with the cards.
  */
-import { Button } from "@/components/ui/Button";
+import { Select } from "@/components/ui/Select";
 import { useT } from "@/components/i18n/I18nProvider";
+
+type Mode = "simple" | "advanced" | "passthrough";
 
 export function ProviderModeSwitch({
   mode,
   onChange,
   interfaceCount,
 }: {
-  mode: "simple" | "advanced" | "passthrough";
-  onChange: (mode: "simple" | "advanced" | "passthrough") => void;
-  /** How many interfaces have a rule written, for the advanced card. */
+  mode: Mode;
+  onChange: (mode: Mode) => void;
+  /** How many interfaces have a rule written, for the advanced option. */
   interfaceCount: number;
 }) {
   const t = useT();
-  const card = (
-    id: "simple" | "advanced" | "passthrough",
-    title: string,
-    body: string,
-    badge: string | null,
-  ) => {
-    const on = mode === id;
-    return (
-      <button
-        type="button"
-        onClick={() => onChange(id)}
-        aria-pressed={on}
-        className={
-          on
-            ? "flex-1 rounded-lg border-2 border-primary bg-primary/5 p-3 text-left"
-            : "flex-1 rounded-lg border-2 border-border p-3 text-left hover:border-muted-foreground/40"
-        }
-      >
-        <div className="flex items-center gap-2">
-          <span
-            className={
-              on
-                ? "flex h-4 w-4 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground"
-                : "flex h-4 w-4 items-center justify-center rounded-full border border-border"
-            }
-            aria-hidden
-          >
-            {on ? "●" : ""}
-          </span>
-          <span className="text-sm font-medium text-foreground">{title}</span>
-          {badge && (
-            <span className="ml-auto rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">
-              {badge}
-            </span>
-          )}
-        </div>
-        <p className="mt-1 pl-6 text-xs text-muted-foreground">{body}</p>
-      </button>
-    );
+
+  const bodies: Record<Mode, string> = {
+    simple: t("admin.textSpec.mode.simpleBody"),
+    advanced: t("admin.textSpec.mode.advancedBody"),
+    passthrough: t("admin.providers.routes.mode.passthroughBody"),
   };
 
   return (
-    <div>
-      <div className="flex gap-2">
-        {card(
-          "simple",
-          t("admin.textSpec.mode.simple"),
-          t("admin.textSpec.mode.simpleBody"),
-          null,
-        )}
-        {card(
-          "advanced",
-          t("admin.textSpec.mode.advanced"),
-          t("admin.textSpec.mode.advancedBody"),
-          mode === "advanced"
-            ? null
-            : interfaceCount > 0
-              ? t("admin.textSpec.mode.configured", { n: interfaceCount })
-              : null,
-        )}
-        {card(
-          "passthrough",
-          t("admin.providers.routes.mode.passthrough"),
-          t("admin.providers.routes.mode.passthroughBody"),
-          null,
-        )}
-      </div>
-    </div>
+    <Select
+      label={t("admin.providers.modeLabel")}
+      value={mode}
+      onChange={(e) => onChange(e.target.value as Mode)}
+      hint={bodies[mode]}
+    >
+      <option value="simple">{t("admin.textSpec.mode.simple")}</option>
+      <option value="advanced">
+        {t("admin.textSpec.mode.advanced")}
+        {interfaceCount > 0
+          ? ` · ${t("admin.textSpec.mode.configured", { n: interfaceCount })}`
+          : ""}
+      </option>
+      <option value="passthrough">{t("admin.providers.routes.mode.passthrough")}</option>
+    </Select>
   );
 }

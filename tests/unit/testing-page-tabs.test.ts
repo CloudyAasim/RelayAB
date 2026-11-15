@@ -40,7 +40,7 @@ describe("one testing surface, three tabs", () => {
 
   it("the search tab is always there; the account path inside it is the gated one", () => {
     expect(WORKSPACE).toContain('{ id: "search", label: tabLabels.search, visible: true }');
-    expect(SEARCH).toContain("disabled: !isAdmin");
+    expect(SEARCH).toMatch(/<option value="account" disabled=\{!isAdmin\}>/);
   });
 
   it("the testers are embedded, not cards inside a card", () => {

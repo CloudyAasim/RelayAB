@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/Input";
 import { MarkdownText } from "@/components/i18n/MarkdownText";
 import { searchResultsToMarkdown } from "@/lib/search/markdown";
 import { Button } from "@/components/ui/Button";
+import { Select } from "@/components/ui/Select";
 
 export interface SearchTestLabels {
   title: string;
@@ -108,6 +109,7 @@ export function SearchTester({
   limitHint,
   serviceKey,
   notAdmin,
+  configLabel,
   labels,
   backendName,
   services = [],
@@ -126,6 +128,7 @@ export function SearchTester({
   limitHint: string;
   serviceKey: string;
   notAdmin: string;
+  configLabel: string;
   /** The backend `/v1/search` is using, or null when none is configured. */
   backendName: string | null;
   /** The deployment's search services, by client-visible names. */
@@ -205,40 +208,18 @@ export function SearchTester({
 
   const content = (
     <div className="space-y-4">
-      <fieldset className="space-y-2">
-        <legend className="sr-only">{config.account}</legend>
-        {(
-          [
-            { id: "account" as const, label: config.account, disabled: !isAdmin },
-            { id: "key" as const, label: config.key, disabled: false },
-            { id: "other" as const, label: config.other, disabled: false },
-          ]
-        ).map((entry) => (
-          <label
-            key={entry.id}
-            className={`flex items-start gap-2 rounded-md border px-2.5 py-2 text-sm ${
-              mode === entry.id
-                ? "border-primary bg-primary/5 font-medium text-foreground"
-                : "border-border text-muted-foreground hover:bg-muted/50"
-            } ${entry.disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
-          >
-            <input
-              type="radio"
-              name="search-config"
-              className="mt-0.5 accent-primary"
-              checked={mode === entry.id}
-              disabled={entry.disabled}
-              onChange={() => setMode(entry.id)}
-            />
-            <span>
-              {entry.label}
-              {entry.id === "account" && !isAdmin && (
-                <span className="block text-xs text-muted-foreground">{notAdmin}</span>
-              )}
-            </span>
-          </label>
-        ))}
-      </fieldset>
+      <Select
+        label={configLabel}
+        value={mode}
+        onChange={(e) => setMode(e.target.value as Mode)}
+        hint={!isAdmin ? notAdmin : undefined}
+      >
+        <option value="account" disabled={!isAdmin}>
+          {config.account}
+        </option>
+        <option value="key">{config.key}</option>
+        <option value="other">{config.other}</option>
+      </Select>
 
       {mode === "other" ? (
         <OtherSearchProbe labels={otherLabels} rawLabels={rawLabels} />

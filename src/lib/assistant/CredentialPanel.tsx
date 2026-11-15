@@ -23,6 +23,7 @@
 import { useCallback, useEffect, useId, useRef } from "react";
 import { Button } from "@/components/ui/Button";
 import { useT } from "@/components/i18n/I18nProvider";
+import { Select } from "@/components/ui/Select";
 import { useCredentialStore } from "./credential-store";
 import type { CredentialAction } from "./credential-store";
 
@@ -240,6 +241,7 @@ export function CredentialChoice({
   extraOption,
   hideKeyField,
   keyFieldLabel,
+  variant = "rows",
 }: {
   mode: Mode;
   onModeChange: (mode: Mode) => void;
@@ -260,6 +262,8 @@ export function CredentialChoice({
   hideKeyField?: boolean;
   /** What the key field itself is called, when the screen says it differently. */
   keyFieldLabel?: string;
+  /** Rows (default) or one native select. Same choice, two densities. */
+  variant?: "rows" | "select";
 }) {
   const t = useT();
   const { data: state, loaded } = useCredentialStore();
@@ -326,6 +330,40 @@ export function CredentialChoice({
     <div className="space-y-3">
 
       {/* ---- which credential the next call uses ---- */}
+      {variant === "select" ? (
+        <>
+          <Select
+            label={t("assistant.credential.which")}
+            value={extraOption?.selected ? "other" : mode}
+            onChange={(e) => {
+              const next = e.target.value;
+              if (next === "other") {
+                extraOption?.onSelect();
+                return;
+              }
+              choose(next as Mode);
+            }}
+          >
+            <option value="account" disabled={!canUseAccount}>
+              {modeLabels?.account ?? t("assistant.credential.modeAccount")}
+            </option>
+            <option value="key">{modeLabels?.key ?? t("assistant.credential.modeKey")}</option>
+            {extraOption && <option value="other">{extraOption.label}</option>}
+          </Select>
+          {!canUseAccount && (
+            <p className="text-xs text-muted-foreground">
+              {blockedReason ?? (
+                <>
+                  {t("assistant.credential.modeAccountLocked")}{" "}
+                  <a href="/dashboard/settings" className="text-primary underline underline-offset-2">
+                    {t("settings.assistantCredential.title")}
+                  </a>
+                </>
+              )}
+            </p>
+          )}
+        </>
+      ) : (
       <fieldset className="space-y-2">
         <legend className="sr-only">{t("assistant.credential.which")}</legend>
 
@@ -394,6 +432,7 @@ export function CredentialChoice({
           </label>
         )}
       </fieldset>
+      )}
 
       {mode === "key" && !hideKeyField && (
         <div className="space-y-1.5">

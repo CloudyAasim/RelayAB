@@ -363,6 +363,7 @@ export function ModelTester({ chatModels, labels, otherLabels, rawLabels, onFetc
             : undefined
         }
         hideKeyField={configMode === "other"}
+        variant="select"
         keyFieldLabel={labels.config?.key}
       />
 
