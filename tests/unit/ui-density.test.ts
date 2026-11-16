@@ -783,7 +783,8 @@ describe("explanations are behind a badge, not printed under the field", () => {
     const input = read("src", "components", "ui", "Input.tsx");
     expect(input).toContain("labelHint");
     expect(PANEL).toContain('labelHint={t("assistant.settings.searchService.urlHint")}');
-    expect(PANEL).toContain('labelHint={t("assistant.settings.searchService.keyHint")}');
+    expect(PANEL).toContain('t("assistant.settings.searchService.keyHint")');
+    expect(PANEL).toContain('t("assistant.settings.searchService.serviceKeyHint")');
   });
 
   it("the model notes and the usage card use the same badge", () => {

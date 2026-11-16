@@ -1527,8 +1527,12 @@ const zhCN: Dict = {
   "assistant.settings.webSearch.limitHint": "1–{max} 条，默认 6。",
   "assistant.settings.searchService.title": "搜索服务用哪个",
   "assistant.settings.searchService.sourceLegend": "搜索服务来源",
-  "assistant.settings.searchService.sourceDeployment": "站点的搜索",
-  "assistant.settings.searchService.sourceOwn": "我自己的",
+  "assistant.settings.searchService.sourceDeployment": "本账号",
+  "assistant.settings.searchService.sourceServiceKey": "服务密钥",
+  "assistant.settings.searchService.sourceServiceKeyHint": "走本部署的搜索接口，用你填的密钥计费。",
+  "assistant.settings.searchService.serviceKey": "服务密钥",
+  "assistant.settings.searchService.serviceKeyHint": "本部署签发的密钥，搜索费用记在这把密钥上。",
+  "assistant.settings.searchService.sourceOwn": "其他服务商",
   "assistant.settings.searchService.sourceDeploymentHint":
     "助手用站点的搜索提供商（管理员配置的），按站点的价格扣你的积分。",
   "assistant.settings.searchService.needsCredential":
@@ -3204,7 +3208,11 @@ const en: Dict = {
   "assistant.settings.searchService.title": "Which search service to use",
   "assistant.settings.searchService.sourceLegend": "Search service source",
   "assistant.settings.searchService.sourceDeployment": "The deployment's",
-  "assistant.settings.searchService.sourceOwn": "My own",
+  "assistant.settings.searchService.sourceServiceKey": "Service key",
+  "assistant.settings.searchService.sourceServiceKeyHint": "Calls this deployment's search endpoint with a key it issued; the call is charged to that key.",
+  "assistant.settings.searchService.serviceKey": "Service key",
+  "assistant.settings.searchService.serviceKeyHint": "A key issued by this deployment; the search is charged to it.",
+  "assistant.settings.searchService.sourceOwn": "Other provider",
   "assistant.settings.searchService.sourceDeploymentHint":
     "The assistant uses the deployment's search providers, at the deployment's price on your balance.",
   "assistant.settings.searchService.needsCredential":

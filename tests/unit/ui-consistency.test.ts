@@ -101,6 +101,17 @@ describe("the shell is shared and the rail keeps its groups", () => {
     expect(panel).toContain('value="other"');
   });
 });
+describe("the search source is the same three choices", () => {
+  it("account / service key / other provider, as a native select", () => {
+    const panel = read("app", "(user)", "dashboard", "assistant", "AssistantSettingsPanel.tsx");
+    expect(panel).toContain('value="serviceKey"');
+    expect(panel).toContain('t("assistant.settings.searchService.sourceServiceKey")');
+    expect(panel).toContain('t("assistant.settings.searchService.sourceOwn")');
+    // Derived from what is stored, so the panel and the server agree.
+    expect(panel).toContain("/v1/search");
+    expect(panel).toContain('searchMode === "serviceKey"');
+  });
+});
 describe("no dead labels left behind", () => {
   it("the keys the cleanup removed are gone from both locales", () => {
     for (const key of [

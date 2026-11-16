@@ -352,8 +352,9 @@ describe("the account path shows no key field", () => {
       initial: { baseUrl: "", model: "", accountModel: "gpt-4o", credentialMode: "account", hasApiKey: false },
     });
     // The choice is there, by the words a person would read.
-    expect(html, "no source choice on the page").toContain("站点的搜索");
-    expect(html, "no source choice on the page").toContain("我自己的");
+    expect(html, "the account option is not named").toContain("本账号");
+    expect(html, "the service-key option is not named").toContain("服务密钥");
+    expect(html, "the other-provider option is not named").toContain("其他服务商");
     // Nothing configured → the deployment's side, and no key field for a
     // service that is not in use.
     expect(html, "the search-service key is shown without a choice").not.toContain(

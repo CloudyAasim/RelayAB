@@ -76,6 +76,13 @@ const SCENES = [
   ["assistant-settings-3", "/dashboard/assistant", "user", openAssistantSettings(1500)],
   ["assistant-settings-4", "/dashboard/assistant", "user", openAssistantSettings(2400)],
   ["assistant-settings-hint", "/dashboard/assistant", "user", openAssistantHint],
+  ["assistant-settings-search-key", "/dashboard/assistant", "user", async (page) => {
+    await clickSelector('button[title="助手设置"]')(page);
+    const select = page.locator("select").filter({ has: page.locator('option[value="serviceKey"]') });
+    await select.scrollIntoViewIfNeeded();
+    await select.selectOption("serviceKey");
+    await page.waitForTimeout(400);
+  }],
   ["assistant-history", "/dashboard/assistant", "user", clickButton(/历史对话/)],
   ["sidebar-collapsed", "/dashboard", "admin", async (page) => {
     await page.getByRole("button", { name: "切换侧边栏" }).first().click({ force: true });

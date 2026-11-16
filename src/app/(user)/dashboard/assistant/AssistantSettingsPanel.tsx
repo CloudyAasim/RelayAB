@@ -30,6 +30,7 @@ import { InfoHint } from "@/components/ui/InfoHint";
 import { MarkdownText } from "@/components/i18n/MarkdownText";
 import { ModelCombobox } from "./ModelCombobox";
 import { Select } from "@/components/ui/Select";
+import { EndpointLine } from "@/components/ui/EndpointLine";
 import { cn } from "@/lib/utils";
 import {
   ASSISTANT_REASONING_SUGGESTIONS,
@@ -268,7 +269,6 @@ export function AssistantSettingsPanel({
 }) {
   const t = useT();
   const router = useRouter();
-  const searchSourceGroup = `${useId()}-search-source`;
 
   /**
    * Whether the account path can actually spend anything.
@@ -346,6 +346,21 @@ export function AssistantSettingsPanel({
   const [searchSource, setSearchSource] = useState<"deployment" | "own">(
     initial?.searchSource ?? (webSearch.ownInUse ? "own" : "deployment"),
   );
+  /**
+   * 本账号 / 服务密钥 / 其他服务商, derived from what is stored.
+   *
+   * 服务密钥 is the deployment's own /v1/search called with a key this
+   * deployment issued: stored as `own` + the deployment URL, so the server
+   * needs no third value and the proxy keeps one rule. A stored own address that
+   * is not that endpoint is a vendor, which is the third option.
+   */
+  const serviceKeyUrl = publicUrl ? `${publicUrl.replace(/\/+$/, "")}/v1/search` : "";
+  const searchMode: "account" | "serviceKey" | "other" =
+    searchSource === "deployment"
+      ? "account"
+      : serviceKeyUrl && searchBaseUrl.trim() === serviceKeyUrl
+        ? "serviceKey"
+        : "other";
   /**
    * Which of the deployment's search services, when there is more than one.
    *
@@ -470,7 +485,7 @@ export function AssistantSettingsPanel({
       // "leave whatever was there". The key is sent only when it was typed —
       // a blank box must not overwrite a stored key — and `null` is the
       // explicit "delete it", which a blank box cannot express.
-      searchBaseUrl: searchBaseUrl.trim() || null,
+      searchBaseUrl: searchSource === "deployment" ? null : searchBaseUrl.trim() || null,
       searchSource,
       // Which of the deployment's services, when the user picked one. Empty
       // means the deployment's default, so it is sent as null rather than
@@ -1113,44 +1128,37 @@ export function AssistantSettingsPanel({
             {t("assistant.settings.searchService.title")}
           </p>
 
-          <fieldset className="space-y-2">
-            <legend className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-              {t("assistant.settings.searchService.sourceLegend")}
-              <InfoHint
-                text={
-                  <>
-                    <span className="block">{t("assistant.settings.searchService.sourceDeploymentHint")}</span>
-                    <span className="mt-1 block">{t("assistant.settings.searchService.sourceOwnHint")}</span>
-                  </>
-                }
-              />
-            </legend>
-            <div className="grid grid-cols-2 gap-1.5" role="none">
-              {(["deployment", "own"] as const).map((option) => (
-                <label
-                  key={option}
-                  className={`cursor-pointer rounded-md border px-2.5 py-2 text-sm transition-colors ${
-                    searchSource === option
-                      ? "border-primary bg-primary/5 font-medium text-foreground"
-                      : "border-border text-muted-foreground hover:bg-muted/50"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name={searchSourceGroup}
-                    className="sr-only"
-                    checked={searchSource === option}
-                    onChange={() => {
-                      setSearchSource(option);
-                      setSearchProbe(null);
-                    }}
-                  />
-                  {option === "deployment"
-                    ? t("assistant.settings.searchService.sourceDeployment")
-                    : t("assistant.settings.searchService.sourceOwn")}
-                </label>
-              ))}
-            </div>
+          <Select
+            label={t("assistant.settings.searchService.sourceLegend")}
+            labelHint={
+              <>
+                <span className="block">{t("assistant.settings.searchService.sourceDeploymentHint")}</span>
+                <span className="mt-1 block">{t("assistant.settings.searchService.sourceServiceKeyHint")}</span>
+                <span className="mt-1 block">{t("assistant.settings.searchService.sourceOwnHint")}</span>
+              </>
+            }
+            value={searchMode}
+            onChange={(e) => {
+              const next = e.target.value as "account" | "serviceKey" | "other";
+              setSearchProbe(null);
+              if (next === "account") {
+                setSearchSource("deployment");
+                return;
+              }
+              setSearchSource("own");
+              if (next === "serviceKey") {
+                setSearchBaseUrl(serviceKeyUrl);
+              } else if (searchBaseUrl.trim() === serviceKeyUrl) {
+                setSearchBaseUrl("");
+              }
+            }}
+          >
+            <option value="account">{t("assistant.settings.searchService.sourceDeployment")}</option>
+            <option value="serviceKey" disabled={!serviceKeyUrl}>
+              {t("assistant.settings.searchService.sourceServiceKey")}
+            </option>
+            <option value="other">{t("assistant.settings.searchService.sourceOwn")}</option>
+          </Select>
 
             {/*
               Which of the deployment's services.
@@ -1166,7 +1174,7 @@ export function AssistantSettingsPanel({
               There is no "the deployment's default" to fall back on — that is
               the point: the service that answers is the one somebody chose.
             */}
-            {searchSource === "deployment" && webSearch.services.length > 0 && (
+            {searchMode === "account" && webSearch.services.length > 0 && (
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1.5">
                   <label
@@ -1207,10 +1215,17 @@ export function AssistantSettingsPanel({
                   )}
               </div>
             )}
-          </fieldset>
 
-          {searchSource === "own" ? (
+          {searchMode === "serviceKey" && serviceKeyUrl ? (
+            <EndpointLine
+              label={t("assistant.settings.searchService.url")}
+              url={serviceKeyUrl}
+            />
+          ) : null}
+
+          {searchMode !== "account" ? (
             <>
+              {searchMode === "other" && (
               <Input
                 id="assistant-search-base-url"
                 name="searchBaseUrl"
@@ -1221,25 +1236,36 @@ export function AssistantSettingsPanel({
                 onChange={(e) => setSearchBaseUrl(e.target.value)}
                 labelHint={t("assistant.settings.searchService.urlHint")}
               />
+              )}
               <Input
                 id="assistant-search-api-key"
                 name="searchApiKey"
-                label={t("assistant.settings.searchService.key")}
+                label={
+                  searchMode === "serviceKey"
+                    ? t("assistant.settings.searchService.serviceKey")
+                    : t("assistant.settings.searchService.key")
+                }
                 type="password"
                 autoComplete="off"
                 placeholder={
-                  clearSearchKey
-                    ? t("assistant.settings.searchService.keyClearing")
-                    : webSearch.ownHasKey
-                      ? t("assistant.settings.searchService.keyStored")
-                      : ""
+                  searchMode === "serviceKey"
+                    ? "sk-relay-..."
+                    : clearSearchKey
+                      ? t("assistant.settings.searchService.keyClearing")
+                      : webSearch.ownHasKey
+                        ? t("assistant.settings.searchService.keyStored")
+                        : ""
                 }
                 value={searchApiKey}
                 onChange={(e) => {
                   setSearchApiKey(e.target.value);
                   if (e.target.value) setClearSearchKey(false);
                 }}
-                labelHint={t("assistant.settings.searchService.keyHint")}
+                labelHint={
+                  searchMode === "serviceKey"
+                    ? t("assistant.settings.searchService.serviceKeyHint")
+                    : t("assistant.settings.searchService.keyHint")
+                }
               />
               {webSearch.ownHasKey && !clearSearchKey && (
                 <button
@@ -1316,7 +1342,7 @@ export function AssistantSettingsPanel({
             the plaintext of. Without it the search is refused, exactly as the
             model calls are.
           */}
-          {searchSource === "deployment" && !accountUsable && (
+          {searchMode === "account" && !accountUsable && (
             <CredentialNotice
               loading={!credentialLoaded}
               text={t("assistant.settings.searchService.needsCredential")}
