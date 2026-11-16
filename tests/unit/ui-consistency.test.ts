@@ -101,6 +101,15 @@ describe("the shell is shared and the rail keeps its groups", () => {
     expect(panel).toContain('value="other"');
   });
 });
+describe("the service-key path still picks a service", () => {
+  it("shows the deployment service picker and sends the choice to /v1/search", () => {
+    const panel = read("app", "(user)", "dashboard", "assistant", "AssistantSettingsPanel.tsx");
+    expect(panel).toContain('searchMode !== "other" && webSearch.services.length > 0');
+    const user = read("lib", "search", "user.ts");
+    expect(user).toContain("service: serviceId");
+    expect(user).toContain("resolvePublicUrl");
+  });
+});
 describe("the search source is the same three choices", () => {
   it("account / service key / other provider, as a native select", () => {
     const panel = read("app", "(user)", "dashboard", "assistant", "AssistantSettingsPanel.tsx");

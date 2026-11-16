@@ -43,6 +43,7 @@ import { effectiveSearchConfig } from "@/lib/search/effective";
 import { TAVILY_TEMPLATE, OPENAI_COMPATIBLE_TEMPLATE } from "@/lib/search/templates";
 import { parseSearchSpec, type SearchSpec } from "@/lib/search/spec";
 import { userSearchBackend } from "@/lib/search/user";
+import { resolvePublicUrl } from "@/lib/public-url";
 import { DICTS } from "@/lib/i18n/dict";
 
 const ROOT = process.cwd();
@@ -259,6 +260,31 @@ describe("the user's own search service", () => {
     expect(JSON.parse(String(request.body))).toEqual({ query: "q", limit: 3 });
   });
 
+  it("keeps the chosen deployment service when the endpoint is this deployment", async () => {
+    // 服务密钥 mode: the address is this deployment's /v1/search, and the
+    // account also chose which of the deployment's services to use. /v1/search
+    // takes that as `service`, so the request has to carry it.
+    const user = await makeUser("own-key");
+    const base = (await resolvePublicUrl()).replace(/\/+$/, "");
+    await saveAssistantSettings(user.id, {
+      baseUrl: "",
+      model: "",
+      accountModel: "m",
+      credentialMode: "account",
+      searchSource: "own",
+      searchBaseUrl: `${base}/v1/search`,
+      searchApiKey: "sk-relay-mine",
+      searchServiceId: "svc-1",
+    });
+    const backend = await userSearchBackend(user.id);
+    expect(backend).not.toBeNull();
+    const request = buildSearchRequest(backend!.spec, backend!.endpointBase, {
+      query: "q",
+      limit: 3,
+      apiKey: backend!.apiKey,
+    });
+    expect(JSON.parse(String(request.body))).toEqual({ query: "q", limit: 3, service: "svc-1" });
+  });
   it("and is absent when the account has not configured one", async () => {
     const user = await makeUser("own3");
     await saveAssistantSettings(user.id, {

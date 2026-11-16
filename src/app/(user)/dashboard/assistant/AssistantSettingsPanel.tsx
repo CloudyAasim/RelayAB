@@ -1174,7 +1174,7 @@ export function AssistantSettingsPanel({
               There is no "the deployment's default" to fall back on — that is
               the point: the service that answers is the one somebody chose.
             */}
-            {searchMode === "account" && webSearch.services.length > 0 && (
+            {searchMode !== "other" && webSearch.services.length > 0 && (
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1.5">
                   <label

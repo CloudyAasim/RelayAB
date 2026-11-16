@@ -38,6 +38,7 @@
  * are charged, because the deployment pays those vendors.
  */
 import { decryptSecret } from "../crypto/secrets";
+import { resolvePublicUrl } from "../public-url";
 import { getAssistantSettings } from "../db/assistant";
 import { createSearchBackend, type SearchBackend } from "../assistant/web-search";
 import { isPrivateAddress } from "../assistant/web-fetch";
@@ -127,8 +128,37 @@ export async function userSearchBackend(userId: string): Promise<SearchBackend |
     }
   }
 
+  /**
+   * 服务密钥 模式：地址就是本部署的 /v1/search。
+   *
+   * In that mode the account also chose **which** of the deployment's services
+   * to use. /v1/search takes that as `service` in the body, so the request is
+   * built with it as a literal — the spec scope carries query/limit only, and a
+   * literal is exactly what a per-user value is.
+   *
+   * Only for this deployment's own endpoint: a vendor's OpenAI-compatible
+   * search does not know what a service id is, and sending one there would add
+   * an unexplained field to somebody else's request.
+   */
+  const base = OPENAI_COMPATIBLE_TEMPLATE.spec;
+  const serviceId = settings?.searchServiceId?.trim();
+  let spec = base;
+  if (serviceId) {
+    const publicUrl = await resolvePublicUrl();
+    const serviceKeyUrl = publicUrl ? `${publicUrl.replace(/\/+$/, "")}/v1/search` : "";
+    if (serviceKeyUrl && baseUrl.replace(/\/+$/, "") === serviceKeyUrl) {
+      spec = {
+        ...base,
+        transport: {
+          ...base.transport,
+          body: { ...base.transport.body, service: serviceId },
+        },
+      };
+    }
+  }
+
   return createSearchBackend({
-    spec: OPENAI_COMPATIBLE_TEMPLATE.spec,
+    spec,
     baseUrl,
     ...(apiKey ? { apiKey } : {}),
     source: "user",
