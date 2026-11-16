@@ -249,18 +249,39 @@ export function SidebarGroup({
   const { collapsed } = useSidebar();
   return (
     <div className={cn("py-1", className)}>
-      {label &&
-        (collapsed ? (
-          // In the icon rail a word would not fit, but the group still needs a
-          // seam between it and the one above. A short rule is that seam.
-          <div aria-hidden className="relative my-3 -ml-3 h-px w-[calc(100%+0.75rem)]">
-            <div className="absolute left-1/2 h-px w-10 -translate-x-1/2 rounded-full bg-sidebar-border/70" />
-          </div>
-        ) : (
-          <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+      {label && (
+        <div className="relative flex h-7 items-center px-3">
+          {/*
+            The line is the label's collapsed form, not a replacement for it.
+            Both live in the same row and cross-fade while the line's width
+            opens from 0 to the rail's column, so collapsing reads as the
+            title turning into a seam rather than one element blinking out
+            and another appearing.
+          */}
+          <span
+            className={cn(
+              "truncate text-xs font-medium uppercase tracking-wider text-muted-foreground transition-[opacity,transform] duration-200 ease-sidebar motion-reduce:transition-none",
+              collapsed && "-translate-x-1 opacity-0",
+            )}
+          >
             {label}
+          </span>
+          <div
+            aria-hidden
+            className={cn(
+              "pointer-events-none absolute left-[-0.75rem] right-0 top-1/2 flex -translate-y-1/2 justify-center transition-opacity duration-300 ease-sidebar motion-reduce:transition-none",
+              collapsed ? "opacity-100" : "opacity-0",
+            )}
+          >
+            <div
+              className={cn(
+                "h-px rounded-full bg-sidebar-border/70 transition-[width] duration-300 ease-sidebar motion-reduce:transition-none",
+                collapsed ? "w-10" : "w-0",
+              )}
+            />
           </div>
-        ))}
+        </div>
+      )}
       {children}
     </div>
   );
