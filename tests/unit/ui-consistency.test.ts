@@ -121,6 +121,17 @@ describe("the search source is the same three choices", () => {
     expect(panel).toContain('searchMode === "serviceKey"');
   });
 });
+describe("an off credential can be turned on where it blocks you", () => {
+  it("the locked account option offers 现在开启, and the store notices other tabs", () => {
+    const panel = read("lib", "assistant", "CredentialPanel.tsx");
+    expect(panel).toContain('mutate("enable")');
+    expect(panel).toContain('t("assistant.credential.enableNow")');
+    const settings = read("app", "(user)", "dashboard", "assistant", "AssistantSettingsPanel.tsx");
+    expect(settings).toContain("onEnable=");
+    const store = read("lib", "assistant", "credential-store.ts");
+    expect(store).toContain('window.addEventListener("focus"');
+  });
+});
 describe("no dead labels left behind", () => {
   it("the keys the cleanup removed are gone from both locales", () => {
     for (const key of [

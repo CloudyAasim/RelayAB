@@ -208,11 +208,32 @@ export interface WebSearchSettings {
  * without a link reads as a dead end. So it is one component now, and the two
  * call sites cannot drift apart again.
  */
-function CredentialNotice({ text, loading }: { text: string; loading: boolean }) {
+function CredentialNotice({
+  text,
+  loading,
+  onEnable,
+}: {
+  text: string;
+  loading: boolean;
+  /** When the credential exists but is switched off, unlock it here. */
+  onEnable?: () => void;
+}) {
   const t = useT();
   return (
     <p className="mt-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-300">
       {loading ? t("assistant.settings.wayAccountLoading") : text}
+      {!loading && onEnable && (
+        <>
+          {" "}
+          <button
+            type="button"
+            onClick={onEnable}
+            className="underline underline-offset-2"
+          >
+            {t("assistant.credential.enableNow")}
+          </button>
+        </>
+      )}
       {" "}
       <Link href="/dashboard/settings" className="underline underline-offset-2">
         {t("assistant.settings.wayAccountGo")}
@@ -278,7 +299,12 @@ export function AssistantSettingsPanel({
    * "not loaded yet" is its own answer and says so rather than flashing a
    * warning at somebody whose credential is fine.
    */
-  const { data: credentialState, loaded: credentialLoaded } = useCredentialStore();
+  const {
+    data: credentialState,
+    loaded: credentialLoaded,
+    busy: credentialBusy,
+    mutate: mutateCredential,
+  } = useCredentialStore();
   const accountUsable = credentialState.created && credentialState.enabled;
 
   // The mode comes from the stored row, through the same rule the page and the
@@ -772,6 +798,11 @@ export function AssistantSettingsPanel({
           <CredentialNotice
             loading={!credentialLoaded}
             text={t("assistant.settings.wayAccountOff")}
+            onEnable={
+              credentialState.created && !credentialState.enabled && !credentialBusy
+                ? () => void mutateCredential("enable")
+                : undefined
+            }
           />
         )}
 
@@ -1346,6 +1377,11 @@ export function AssistantSettingsPanel({
             <CredentialNotice
               loading={!credentialLoaded}
               text={t("assistant.settings.searchService.needsCredential")}
+              onEnable={
+                credentialState.created && !credentialState.enabled && !credentialBusy
+                  ? () => void mutateCredential("enable")
+                  : undefined
+              }
             />
           )}
         </div>

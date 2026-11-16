@@ -139,6 +139,27 @@ export function useCredentialStore(): Snapshot & {
   // which double-fires under StrictMode.
   useEffect(() => {
     ensureLoaded();
+    /**
+     * Re-read when the tab becomes active again.
+     *
+     * `ensureLoaded` fetches once per page lifetime. That is right for the
+     * panels inside one page, and wrong for the one case that produced the bug
+     * report: the credential is created in another tab (or another window),
+     * and this tab's store keeps saying "not created" — so every account
+     * option stays disabled with no way to make it notice.
+     *
+     * One small GET on focus is cheap, and it is the only event that can tell
+     * this page somebody else changed the row.
+     */
+    const onFocus = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
   }, []);
 
   return {

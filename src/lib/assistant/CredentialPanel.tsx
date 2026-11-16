@@ -266,7 +266,7 @@ export function CredentialChoice({
   variant?: "rows" | "select";
 }) {
   const t = useT();
-  const { data: state, loaded } = useCredentialStore();
+  const { data: state, loaded, busy, mutate } = useCredentialStore();
   /**
    * Per instance, and both of them.
    *
@@ -355,9 +355,24 @@ export function CredentialChoice({
               {blockedReason ?? (
                 <>
                   {t("assistant.credential.modeAccountLocked")}{" "}
-                  <a href="/dashboard/settings" className="text-primary underline underline-offset-2">
-                    {t("settings.assistantCredential.title")}
-                  </a>
+                  {state.created ? (
+                    // Created but switched off: the switch lives on the settings
+                    // screen, but the wall is here. Let the reader open it where
+                    // they hit it instead of sending them to another page to
+                    // find a control they have already used once.
+                    <button
+                      type="button"
+                      disabled={busy !== null}
+                      onClick={() => void mutate("enable")}
+                      className="text-primary underline underline-offset-2 disabled:opacity-50"
+                    >
+                      {t("assistant.credential.enableNow")}
+                    </button>
+                  ) : (
+                    <a href="/dashboard/settings" className="text-primary underline underline-offset-2">
+                      {t("settings.assistantCredential.title")}
+                    </a>
+                  )}
                 </>
               )}
             </p>

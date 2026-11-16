@@ -1343,6 +1343,7 @@ const zhCN: Dict = {
   "assistant.credential.switchHint": "开启后，助手实测模型、生成图片/语音/视频时会以你的身份调用本部署，费用走你自己的额度。不需要也不会保存任何密钥。默认关闭。",
   "assistant.credential.notCreated": "你还没有助手凭据。创建之后还需要手动开启，创建本身不会让它生效。",
   "assistant.credential.create": "创建助手凭据",
+  "assistant.credential.enableNow": "现在开启",
   "assistant.credential.creating": "创建中…",
   "assistant.credential.rotate": "重建",
   "assistant.credential.rotating": "重建中…",
@@ -3018,6 +3019,7 @@ const en: Dict = {
   "assistant.credential.notCreated":
     "You have no assistant credential yet. Creating one does not activate it — you still have to switch it on.",
   "assistant.credential.create": "Create assistant credential",
+  "assistant.credential.enableNow": "Turn it on now",
   "assistant.credential.creating": "Creating…",
   "assistant.credential.rotate": "Rebuild",
   "assistant.credential.rotating": "Rebuilding…",
