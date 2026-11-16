@@ -1043,6 +1043,16 @@ function adminTools(t: (key: string) => string): AssistantToolDef[] {
             description: t("propose_media_provider_update.specs"),
             items: { type: "object" },
           },
+          mode: {
+            type: "string",
+            enum: ["advanced", "simple", "passthrough", "restricted"],
+            description: t("propose_media_provider_update.mode"),
+          },
+          passthroughPaths: {
+            type: "array",
+            items: { type: "string" },
+            description: t("propose_media_provider_update.passthroughPaths"),
+          },
           enabled: { type: "boolean" },
         },
         required: ["providerId", "summary"],
@@ -1148,6 +1158,17 @@ function adminTools(t: (key: string) => string): AssistantToolDef[] {
             description: t("propose_media_provider_create.specs"),
             items: { type: "object" },
           },
+          mode: {
+            type: "string",
+            enum: ["advanced", "simple", "passthrough", "restricted"],
+            description: t("propose_media_provider_create.mode"),
+          },
+          passthroughPaths: {
+            type: "array",
+            items: { type: "string" },
+            description: t("propose_media_provider_create.passthroughPaths"),
+          },
+          enabled: { type: "boolean" },
         },
         required: ["name", "summary", "models"],
         additionalProperties: false,
@@ -4113,6 +4134,8 @@ async function proposeMediaProviderUpdate(
   const patch: Record<string, unknown> = {};
   if (typeof args.baseUrl === "string") patch.baseUrl = args.baseUrl.trim();
   if (typeof args.enabled === "boolean") patch.enabled = args.enabled;
+  if (typeof args.mode === "string") patch.mode = args.mode;
+  if (Array.isArray(args.passthroughPaths)) patch.passthroughPaths = args.passthroughPaths;
   if (args.models && typeof args.models === "object") patch.models = args.models;
 
   if (args.specEdits !== undefined) {
@@ -4412,6 +4435,9 @@ async function proposeMediaProviderCreate(
     spec.priority = args.priority;
   }
   if (Array.isArray(args.specs)) spec.specs = args.specs;
+  if (typeof args.mode === "string") spec.mode = args.mode;
+  if (Array.isArray(args.passthroughPaths)) spec.passthroughPaths = args.passthroughPaths;
+  if (typeof args.enabled === "boolean") spec.enabled = args.enabled;
 
   const summary =
     typeof args.summary === "string" && args.summary.trim() ? args.summary.trim() : "未说明的变更";

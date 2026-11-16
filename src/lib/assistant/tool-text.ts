@@ -1140,6 +1140,22 @@ export const TOOL_DESCRIPTIONS: Record<string, ToolText> = {
     "zh-CN": "要修改的 spec 在现有列表中的下标，从 0 开始",
     en: "The index of the spec to change in the existing list, counting from 0",
   },
+  "propose_media_provider_update.mode": {
+    "zh-CN":
+      "接入模式，不传则不改：advanced（按 spec 翻译）、simple（按接口路由）、" +
+      "passthrough（原样转发，不翻译）、restricted（只放行 passthroughPaths 列出的路径）。",
+    en:
+      "The access mode; omitted means no change: advanced (translated by spec), simple (routed by " +
+      "the surface table), passthrough (forwarded untouched), restricted (only the paths listed in " +
+      "passthroughPaths are let through).",
+  },
+  "propose_media_provider_update.passthroughPaths": {
+    "zh-CN":
+      "passthrough / restricted 时放行的路径列表，例如 /v1/images/generations；不传则不改。",
+    en:
+      "The paths let through for passthrough / restricted, e.g. /v1/images/generations; omitted " +
+      "means no change.",
+  },
   "propose_media_provider_update.specs": {
     "zh-CN":
       "【完整】替换整个 specs 数组。只在新增或删除整个能力 spec 时用；改字段请用 specEdits。" +
@@ -1266,6 +1282,19 @@ export const TOOL_DESCRIPTIONS: Record<string, ToolText> = {
       "\"code:model-name\", for example all_zero:MiniMax-M2. Only write it when the user has said " +
       "plainly that this model really is free. Do not send the same thing again — saying it a second " +
       "time gets the same refusal.",
+  },
+  "propose_media_provider_create.mode": {
+    "zh-CN":
+      "接入模式：advanced（按 spec 翻译）、simple（按接口路由）、passthrough（原样转发）、" +
+      "restricted（只放行 passthroughPaths 列出的路径）；不传按 advanced。",
+    en:
+      "The access mode: advanced (translated by spec), simple (routed by the surface table), " +
+      "passthrough (forwarded untouched), restricted (only the paths listed in passthroughPaths); " +
+      "defaults to advanced.",
+  },
+  "propose_media_provider_create.passthroughPaths": {
+    "zh-CN": "passthrough / restricted 时放行的路径列表，例如 /v1/images/generations。",
+    en: "The paths let through for passthrough / restricted, e.g. /v1/images/generations.",
   },
   "propose_media_provider_create": {
     "zh-CN":

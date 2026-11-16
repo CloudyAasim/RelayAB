@@ -209,6 +209,16 @@ export const MediaArgsSchema = z
     enabled: z.boolean().optional(),
     models: z.record(z.string(), z.unknown()).optional(),
     specs: z.array(z.record(z.string(), z.unknown())).optional(),
+    /**
+     * How the provider is spoken to, and for the two passthrough modes which
+     * paths are let through.
+     *
+     * These were the only fields of a media provider the assistant could not
+     * propose: a row could be created or edited by the panel with a mode, and
+     * an assistant-built one was stuck on whatever default the route applied.
+     */
+    mode: z.enum(["advanced", "simple", "passthrough", "restricted"]).optional(),
+    passthroughPaths: z.array(z.string().min(1).max(200)).max(50).optional(),
   })
   .strict();
 
@@ -254,6 +264,8 @@ export const MediaProviderCreateSchema = z
     priority: z.number().int().optional(),
     models: z.record(z.string(), z.unknown()),
     specs: z.array(z.record(z.string(), z.unknown())).default([]),
+    mode: z.enum(["advanced", "simple", "passthrough", "restricted"]).optional(),
+    passthroughPaths: z.array(z.string().min(1).max(200)).max(50).optional(),
   })
   .strict();
 
