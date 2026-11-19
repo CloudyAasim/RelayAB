@@ -9,11 +9,15 @@
  *   `publicUrl` is **operational** — it changes the address the app tells the
  *   world to use, so it is validated as a URL and merged over the env value.
  *
- *   The rest (`siteName`, `siteDescription`, `announcement`,
- *   `supportContact`, `modelNotes`) is **presentation** — it only changes what
- *   the docs page says. Nothing in the request path reads it, which is why it
- *   needs no URL validation and why a copy edit can never become a routing
- *   change.
+ *   The rest (`siteName`, `siteDescription`, `supportContact`, `modelNotes`)
+ *   is **presentation** — it only changes what the docs page says. Nothing in
+ *   the request path reads it, which is why it needs no URL validation and why
+ *   a copy edit can never become a routing change.
+ *
+ *   Announcements are **not** here. They were a string on this schema, and the
+ *   string could not be scheduled, could not expire, and publishing the next
+ *   one erased the last. They are rows with a lifetime now, with their own
+ *   endpoints under `/api/admin/announcements`.
  *
  *   `modelNotes` is keyed by client-visible model id and can only carry
  *   prose (`displayName`, `note`, `tags`, `hidden`). It deliberately has no
@@ -63,7 +67,6 @@ const UpdateSchema = z
     publicUrl: z.string().url().optional(),
     siteName: z.string().max(120).optional(),
     siteDescription: z.string().max(500).optional(),
-    announcement: z.string().max(20_000).optional(),
     supportContact: z.string().max(500).optional(),
     publicCatalog: z.boolean().optional(),
     modelNotes: z.record(z.string().min(1).max(200), ModelNoteSchema).optional(),

@@ -85,13 +85,12 @@ describe("each form sends only its own fields", () => {
       docsSitePayload({
         siteName: "n",
         siteDescription: "d",
-        announcement: "a",
         supportContact: "c",
         publicCatalog: true,
       }),
     );
     expect(keys.sort()).toEqual(
-      ["announcement", "publicCatalog", "siteDescription", "siteName", "supportContact"].sort(),
+      ["publicCatalog", "siteDescription", "siteName", "supportContact"].sort(),
     );
   });
 
@@ -109,9 +108,26 @@ describe("each form sends only its own fields", () => {
     const site = JSON.stringify(docsSitePayload({ siteName: "n" }));
     const model = JSON.stringify(modelConfigPayload([row()]));
 
-    expect(pages).not.toMatch(/modelNotes|siteName|publicCatalog|announcement|supportContact/);
+    expect(pages).not.toMatch(/modelNotes|siteName|publicCatalog|supportContact/);
     expect(site).not.toMatch(/modelNotes|docPages/);
-    expect(model).not.toMatch(/docPages|siteName|publicCatalog|announcement|supportContact/);
+    expect(model).not.toMatch(/docPages|siteName|publicCatalog|supportContact/);
+  });
+
+  it("and none of them writes an announcement", () => {
+    // The announcement textarea this form used to hold is gone: a notice has a
+    // lifetime, so it is a row with a schedule, not a value on the settings
+    // card. Two settings keys that both claimed to be "the announcement" is
+    // exactly the drift that retirement removed. The prose above the form may
+    // still say where it went, so this reads the field, not the comments.
+    expect(
+      JSON.stringify(
+        docsSitePayload({ siteName: "n", siteDescription: "d", supportContact: "c" }),
+      ),
+    ).not.toMatch(/announcement/i);
+    expect(SITE).not.toMatch(/docs-announcement|setAnnouncement/);
+    expect(SETTINGS_PAGE).not.toMatch(/announcement/i);
+    const route = read("src", "app", "api", "admin", "settings", "route.ts");
+    expect(route).not.toMatch(/announcement:\s*z\./);
   });
 
   it("the model form has its own endpoint, because its data lives elsewhere", () => {

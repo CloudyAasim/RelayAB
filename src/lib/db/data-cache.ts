@@ -23,6 +23,10 @@ import { getUserById as _getUserById } from "./users";
 import { listApiKeysByUser as _listApiKeysByUser } from "./keys";
 import { aggregateByUser } from "./usage";
 import { getSettings as _getSettings, type AppSettings } from "./settings";
+import {
+  listActiveAnnouncements as _listActiveAnnouncements,
+  type AnnouncementRecord,
+} from "./announcements";
 import { buildModelCatalog as _buildModelCatalog, type ModelCatalog } from "../docs/catalog";
 import type { User } from "./types";
 import type { ApiKey } from "./types";
@@ -82,3 +86,17 @@ export const cachedGetSettings = cache(async (): Promise<AppSettings> => {
 export const cachedBuildModelCatalog = cache(async (): Promise<ModelCatalog> => {
   return _buildModelCatalog();
 });
+
+/**
+ * The notices a reader should see, deduped within a render.
+ *
+ * The shell asks for these once and passes them down as props, so this exists to
+ * stop a layout that also wants them from querying twice — not to cache across
+ * requests. A published notice has to be on the next page load, and the whole
+ * point of the switch beside it is that switching it off takes effect at once.
+ */
+export const cachedListActiveAnnouncements = cache(
+  async (): Promise<AnnouncementRecord[]> => {
+    return _listActiveAnnouncements();
+  },
+);

@@ -456,6 +456,28 @@ CREATE TABLE IF NOT EXISTS media_jobs (
 );
 CREATE INDEX IF NOT EXISTS idx_media_jobs_user ON media_jobs(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_media_jobs_status ON media_jobs(status);
+
+-- Operator announcements: a title, a body, a level, and the window in which it
+-- is worth reading. Rows rather than one blob of text because an announcement
+-- is a *thing with a lifetime* — the previous single string could not be
+-- scheduled, could not expire, and could not be kept as history. The window
+-- (starts_at/ends_at) is nullable on both sides: an announcement with
+-- neither is live from the moment it is written until somebody takes it down.
+CREATE TABLE IF NOT EXISTS announcements (
+  id          TEXT PRIMARY KEY,
+  title       TEXT NOT NULL,
+  body        TEXT NOT NULL,
+  level       TEXT NOT NULL DEFAULT 'info',
+  pinned      INTEGER NOT NULL DEFAULT 0,
+  enabled     INTEGER NOT NULL DEFAULT 1,
+  starts_at   TEXT,
+  ends_at     TEXT,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
+-- The read that every logged-in page performs: "which announcements are live,
+-- most important first". The pinned column sorts before recency.
+CREATE INDEX IF NOT EXISTS idx_announcements_live ON announcements(enabled, pinned DESC, created_at DESC);
 `;
 
 // ---------------------------------------------------------------------------
@@ -737,7 +759,51 @@ const DATA_MIGRATIONS: ReadonlyArray<{ version: number; apply: (conn: Database) 
         conn.exec("ALTER TABLE media_providers ADD COLUMN passthrough_paths TEXT NOT NULL DEFAULT '[]'");
       }
     },
-  },];
+  },
+  {
+    /**
+     * v7 — the one docs announcement becomes the first announcement row.
+     *
+     * `settings.announcement` was a single string the public docs page printed
+     * above the catalogue. It could not be scheduled, could not expire, could
+     * not be taken down without erasing the text, and logged-in users never saw
+     * it at all.
+     *
+     * The rows replace it, so the stored text has to move with it: an operator
+     * who had written something there would otherwise redeploy into a docs page
+     * that had gone quiet, with the text still sitting in a settings key nothing
+     * reads any more. It is migrated as one announcement, enabled, with no
+     * window — which is exactly what it was: live from when it was written until
+     * somebody removed it.
+     *
+     * The first line becomes the title because a row needs one and the old field
+     * had none; the body keeps the **whole** text, first line included, so
+     * nothing is lost if that first line was the sentence that mattered. The
+     * settings row is deleted afterwards, which is also what makes this
+     * idempotent.
+     */
+    version: 7,
+    apply: (conn) => {
+      const row = conn
+        .prepare("SELECT value FROM settings WHERE key = 'announcement'")
+        .get() as { value: string } | undefined;
+      const text = String(row?.value ?? "").trim();
+      if (text) {
+        const firstLine = text.split("\n")[0].trim();
+        const title = (firstLine || text).slice(0, 120);
+        const now = new Date().toISOString();
+        conn
+          .prepare(
+            `INSERT INTO announcements
+               (id, title, body, level, pinned, enabled, starts_at, ends_at, created_at, updated_at)
+             VALUES (?, ?, ?, 'info', 0, 1, NULL, NULL, ?, ?)`,
+          )
+          .run(`ann_${now.replace(/[^0-9]/g, "").slice(0, 17)}`, title, text, now, now);
+      }
+      conn.prepare("DELETE FROM settings WHERE key = 'announcement'").run();
+    },
+  },
+];
 
 function applyDataMigrations(conn: Database): void {
   const current = conn.prepare("SELECT MAX(version) AS version FROM schema_version").get() as

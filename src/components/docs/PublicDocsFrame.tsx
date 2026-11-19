@@ -6,6 +6,7 @@ import { IntegrationDocs } from "./IntegrationDocs";
 import { buildModelCatalog } from "@/lib/docs/catalog";
 import { resolvePublicUrl } from "@/lib/public-url";
 import { ModelCatalogPanel } from "./ModelCatalogPanel";
+import { listActiveAnnouncements, toPublicAnnouncement } from "@/lib/db/announcements";
 
 /**
  * Public (no-login) docs frame: brand header + the whole docs body.
@@ -100,15 +101,28 @@ export async function PublicDocsFrame({
   );
 }
 
-/** The catalogue, read live. Its own component so the frame stays cheap. */
+/**
+ * The catalogue, read live. Its own component so the frame stays cheap.
+ *
+ * The notice is fetched here because this page has no shell to carry it: an
+ * anonymous visitor gets no banner (there is no account to hang one off), so the
+ * newest active announcement rides on the catalogue instead. A signed-in reader
+ * sees the same row in the banner — one surface, not two, which is why
+ * `UserDocsScreen` passes no notice at all.
+ */
 async function PublicCatalogue() {
-  const [catalog, publicUrl] = await Promise.all([buildModelCatalog(), resolvePublicUrl()]);
+  const [{ models, providers, site }, publicUrl, active] = await Promise.all([
+    buildModelCatalog(),
+    resolvePublicUrl(),
+    listActiveAnnouncements(),
+  ]);
   return (
     <ModelCatalogPanel
-      models={catalog.models}
-      providers={catalog.providers}
-      site={catalog.site}
+      models={models}
+      providers={providers}
+      site={site}
       publicUrl={publicUrl}
+      announcement={active.length ? toPublicAnnouncement(active[0]) : null}
     />
   );
 }

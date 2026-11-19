@@ -44,7 +44,6 @@ export default async function SettingsPage() {
     site = {
       ...(settings.siteName !== undefined && { siteName: settings.siteName }),
       ...(settings.siteDescription !== undefined && { siteDescription: settings.siteDescription }),
-      ...(settings.announcement !== undefined && { announcement: settings.announcement }),
       ...(settings.supportContact !== undefined && { supportContact: settings.supportContact }),
       ...(settings.publicCatalog !== undefined && { publicCatalog: settings.publicCatalog }),
     };

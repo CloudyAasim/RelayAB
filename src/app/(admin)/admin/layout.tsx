@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { AuthenticatedLayout } from "@/components/layouts";
+import { cachedListActiveAnnouncements } from "@/lib/db/data-cache";
+import { toPublicAnnouncement } from "@/lib/db/announcements";
 
 export const dynamic = "force-dynamic";
 
@@ -34,11 +36,19 @@ export default async function AdminLayout({
   if (!user) redirect("/login");
   if (user.role !== "admin") redirect("/dashboard");
 
+  // The administrator sees the same strip, and needs to: publishing a notice
+  // from the page next door and then not seeing it is the one moment this
+  // feature has to be trustworthy. The admin rows are filtered to the active
+  // window here exactly as they are for a user, so "scheduled" and "off" stay
+  // invisible until they mean something.
+  const announcements = (await cachedListActiveAnnouncements()).map(toPublicAnnouncement);
+
   return (
     <AuthenticatedLayout
       role={user.role}
       username={user.username}
       displayName={user.displayName}
+      announcements={announcements}
     >
       {children}
     </AuthenticatedLayout>

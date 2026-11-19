@@ -13,17 +13,36 @@
  * that the gateway would not actually serve.
  */
 import { useMemo, useState } from "react";
+import { Pin } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
 import { useT } from "@/components/i18n/I18nProvider";
 import { thinkingShape, type ThinkingShape } from "@/lib/docs/thinking";
 import type { CatalogModel } from "@/lib/docs/catalog";
+import { AnnouncementMarkdown } from "@/components/announcements/AnnouncementMarkdown";
+import {
+  LevelChip,
+  LevelIcon,
+  noticeTextClass,
+  noticeToneClass,
+} from "@/components/announcements/level";
+import type { PublicAnnouncement } from "@/lib/announcements/types";
+import { cn, formatDate } from "@/lib/utils";
 
 interface Props {
   models: CatalogModel[];
   providers: Array<{ name: string; enabled: boolean; modelCount: number }>;
-  site: { name: string; description: string; announcement: string; supportContact: string };
+  site: { name: string; description: string; supportContact: string };
   publicUrl: string;
+  /**
+   * The notice this deployment is running right now, if any.
+   *
+   * A separate prop rather than a field of `site`: `site` is the operator's
+   * naming and support text, which is set once, while this is a row that comes
+   * and goes. It is the newest active announcement — the docs page shows one,
+   * not a feed, the same way the banner does.
+   */
+  announcement?: PublicAnnouncement | null;
 }
 
 function fmt(n: number | null): string {
@@ -70,7 +89,13 @@ function reasoningText(
   return t("docs.catalog.reasoningNone");
 }
 
-export function ModelCatalog({ models, providers, site, publicUrl }: Props) {
+export function ModelCatalog({
+  models,
+  providers,
+  site,
+  publicUrl,
+  announcement = null,
+}: Props) {
   const t = useT();
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState<"all" | "chat" | "media">("all");
@@ -100,13 +125,36 @@ export function ModelCatalog({ models, providers, site, publicUrl }: Props) {
         <h2 className="text-lg font-semibold text-foreground">{site.name}</h2>
         {site.description && <p className="mt-1 text-sm text-muted-foreground">{site.description}</p>}
 
-        {site.announcement && (
-          <div className="mt-3 rounded-md border border-primary/30 bg-primary/5 p-3 text-sm">
-            {site.announcement.split("\n").map((line, i) => (
-              <p key={i} className="whitespace-pre-wrap">
-                {line}
+        {announcement && (
+          <div
+            className={cn(
+              "mt-3 rounded-md border p-3 text-sm",
+              noticeToneClass(announcement.level),
+            )}
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <LevelIcon
+                level={announcement.level}
+                className={cn("h-4 w-4 shrink-0", noticeTextClass(announcement.level))}
+              />
+              <span className="font-medium text-foreground">{announcement.title}</span>
+              <LevelChip
+                level={announcement.level}
+                label={t(`announcements.level.${announcement.level}`)}
+              />
+              {announcement.pinned && (
+                <Badge tone="purple">
+                  <Pin className="h-3 w-3" aria-hidden="true" />
+                  {t("announcements.pinnedBadge")}
+                </Badge>
+              )}
+            </div>
+            <AnnouncementMarkdown body={announcement.body} className="mt-1" />
+            {announcement.endsAt && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t("announcements.until", { date: formatDate(announcement.endsAt) })}
               </p>
-            ))}
+            )}
           </div>
         )}
 

@@ -116,7 +116,6 @@ export interface ModelCatalog {
   site: {
     name: string;
     description: string;
-    announcement: string;
     supportContact: string;
   };
 }
@@ -328,7 +327,6 @@ export async function buildModelCatalog(): Promise<ModelCatalog> {
     site: {
       name: settings.siteName?.trim() || "RelayAB",
       description: settings.siteDescription?.trim() || "",
-      announcement: settings.announcement ?? "",
       supportContact: settings.supportContact?.trim() || "",
     },
   };

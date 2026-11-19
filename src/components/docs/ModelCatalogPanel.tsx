@@ -12,12 +12,14 @@
  */
 import { ModelCatalog } from "./ModelCatalog";
 import type { CatalogModel } from "@/lib/docs/catalog";
+import type { PublicAnnouncement } from "@/lib/announcements/types";
 
 interface Props {
   models: CatalogModel[];
   providers: Array<{ name: string; enabled: boolean; modelCount: number }>;
-  site: { name: string; description: string; announcement: string; supportContact: string };
+  site: { name: string; description: string; supportContact: string };
   publicUrl: string;
+  announcement?: PublicAnnouncement | null;
 }
 
 export function ModelCatalogPanel(props: Props) {

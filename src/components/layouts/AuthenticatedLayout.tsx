@@ -44,8 +44,11 @@ import {
   FlaskConical,
   Sparkles,
   Search,
+  Megaphone,
   type LucideIcon,
 } from "lucide-react";
+import { AnnouncementBanner } from "@/components/announcements/AnnouncementBanner";
+import type { PublicAnnouncement } from "@/lib/announcements/types";
 
 /**
  * Pages whose content manages its own edges against the viewport.
@@ -78,6 +81,11 @@ export const USER_NAV: NavSection[] = [
       { href: "/dashboard/models", labelKey: "nav.models", titleKey: "dashboard.models.title", icon: FlaskConical },
       { href: "/dashboard/assistant", labelKey: "nav.assistant", titleKey: "assistant.title", icon: Sparkles },
       { href: "/dashboard/docs", labelKey: "nav.docs", titleKey: "docs.title", icon: BookOpen },
+      // The history the banner cannot show: a notice that has finished, or one
+      // the reader closed and wants back. It reads as a page of its own rather
+      // than a panel, because "what did this deployment tell me" is a question
+      // that spans more than today.
+      { href: "/dashboard/announcements", labelKey: "announcements.title", titleKey: "announcements.title", icon: Megaphone },
       { href: "/dashboard/settings", labelKey: "nav.settings", titleKey: "settings.title", icon: Settings },
     ],
   },
@@ -97,6 +105,9 @@ export const ADMIN_NAV: NavSection[] = [
       // Its own page, at the same level: it is a list over every model the
       // deployment serves, not another field of the system settings.
       { href: "/admin/model-notes", labelKey: "admin.modelNotes.nav", titleKey: "admin.modelNotes.title", icon: FileText },
+      // Publishing, not configuration: a notice has a lifetime of its own, which
+      // is why it stopped being a field on the settings page.
+      { href: "/admin/announcements", labelKey: "nav.announcements", titleKey: "admin.announcements.title", icon: Megaphone },
       { href: "/admin/settings", labelKey: "admin.settings.title", icon: Settings },
     ],
   },
@@ -114,6 +125,7 @@ export const ADMIN_NAV: NavSection[] = [
       { href: "/dashboard/usage", labelKey: "nav.usage", titleKey: "usage.title", icon: BarChart3 },
       { href: "/dashboard/models", labelKey: "nav.models", titleKey: "dashboard.models.title", icon: FlaskConical },
       { href: "/dashboard/assistant", labelKey: "nav.assistant", titleKey: "assistant.title", icon: Sparkles },
+      { href: "/dashboard/announcements", labelKey: "announcements.title", titleKey: "announcements.title", icon: Megaphone },
       { href: "/dashboard/settings", labelKey: "nav.settings", titleKey: "settings.title", icon: Settings },
     ],
   },
@@ -123,14 +135,35 @@ interface AuthenticatedLayoutProps {
   role: "admin" | "user";
   username: string;
   displayName?: string;
+  /**
+   * The notices live right now, newest first.
+   *
+   * Fetched by the segment layout rather than here: this is a client component,
+   * and reaching for the database from it would either drag `node:sqlite` into
+   * the browser bundle or force a round trip after the shell has painted. The
+   * layout already runs on the server for every page under it, so it asks once
+   * and passes the answer down.
+   */
+  announcements?: PublicAnnouncement[];
   children: ReactNode;
 }
 
-export function AuthenticatedLayout({ role, username, displayName, children }: AuthenticatedLayoutProps) {
+export function AuthenticatedLayout({
+  role,
+  username,
+  displayName,
+  announcements = [],
+  children,
+}: AuthenticatedLayoutProps) {
   return (
     <TooltipProvider delayDuration={300}>
     <SidebarProvider>
-      <SidebarShell role={role} username={username} displayName={displayName}>
+      <SidebarShell
+        role={role}
+        username={username}
+        displayName={displayName}
+        announcements={announcements}
+      >
         {children}
       </SidebarShell>
     </SidebarProvider>
@@ -138,7 +171,13 @@ export function AuthenticatedLayout({ role, username, displayName, children }: A
   );
 }
 
-function SidebarShell({ role, username, displayName, children }: AuthenticatedLayoutProps) {
+function SidebarShell({
+  role,
+  username,
+  displayName,
+  announcements = [],
+  children,
+}: AuthenticatedLayoutProps) {
   const t = useT();
   const pathname = usePathname();
   const { collapsed } = useSidebar();
@@ -241,6 +280,22 @@ function SidebarShell({ role, username, displayName, children }: AuthenticatedLa
 
       <SidebarInset>
         <AppHeader username={username} displayName={displayName} role={role} />
+        {/*
+          The notice strip, above the page and below the header.
+
+          Not on the edge-to-edge routes. The assistant computes its height as
+          "the viewport minus the app header" and pins its composer to the bottom
+          of it, so a strip inserted above the page does not push the content
+          down — it pushes the composer *under the fold*, on the one screen whose
+          height is exact. Skipping it there is the only arrangement where both
+          the notice and the chat can be right; the notice centre still lists it.
+
+          Inside `SidebarInset` rather than over the whole window: the panel is
+          the app's frame, and a bar crossing it would be a second frame.
+        */}
+        {announcements.length > 0 && !EDGE_TO_EDGE_ROUTES.has(pathname) && (
+          <AnnouncementBanner announcements={announcements} />
+        )}
         {/*
           The assistant owns the whole viewport, and the padding has to go on
           *this* element rather than be cancelled by the chat with negative

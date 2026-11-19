@@ -20,7 +20,23 @@
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 
-type Tone = "neutral" | "primary" | "success" | "warning" | "danger" | "info" | "purple" | "slate" | "orange";
+/**
+ * The tones a badge can carry.
+ *
+ * Exported because the announcement levels are a map from a level to one of
+ * these, and a second hand-written copy of the list is how a level ends up
+ * asking for a tone that does not exist.
+ */
+export type Tone =
+  | "neutral"
+  | "primary"
+  | "success"
+  | "warning"
+  | "danger"
+  | "info"
+  | "purple"
+  | "slate"
+  | "orange";
 
 const toneClass: Record<Tone, string> = {
   neutral: "bg-muted text-muted-foreground",

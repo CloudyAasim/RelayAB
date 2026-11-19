@@ -14,9 +14,14 @@
  *
  * A deliberate split runs through what is here. `publicUrl` and
  * `defaultContextLength` are *operational* — they change behaviour, so they
- * are typed and validated. `siteName`, `announcement` and `modelNotes` are
+ * are typed and validated. `siteName`, `siteDescription` and `modelNotes` are
  * *presentation* — they only change what the docs page says. Keeping the two
  * apart is what stops a copy edit from silently becoming a routing change.
+ *
+ * The announcements used to be here as one Markdown string. They are rows in
+ * their own table now (`lib/db/announcements.ts`), because a notice has a
+ * lifetime and site copy does not: it starts mattering at one moment and stops
+ * at another, and the settings table has no way to say either.
  */
 import { getAll, getOne, run, withTransaction } from "./sqlite";
 
@@ -26,8 +31,6 @@ export interface AppSettings {
   siteName?: string;
   /** One line under the site name. */
   siteDescription?: string;
-  /** Markdown, rendered on the docs landing page. */
-  announcement?: string;
   /** Where to send people with problems. */
   supportContact?: string;
   /**
@@ -128,7 +131,6 @@ export interface ModelNote {
 const PUBLIC_URL_KEY = "publicUrl";
 const SITE_NAME_KEY = "siteName";
 const SITE_DESCRIPTION_KEY = "siteDescription";
-const ANNOUNCEMENT_KEY = "announcement";
 const SUPPORT_CONTACT_KEY = "supportContact";
 const PUBLIC_CATALOG_KEY = "publicCatalog";
 const SEARCH_ENABLED_KEY = "searchEnabled";
@@ -142,7 +144,6 @@ const SCALAR_KEYS = [
   PUBLIC_URL_KEY,
   SITE_NAME_KEY,
   SITE_DESCRIPTION_KEY,
-  ANNOUNCEMENT_KEY,
   SUPPORT_CONTACT_KEY,
 ] as const;
 

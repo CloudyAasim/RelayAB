@@ -54,6 +54,7 @@ const ROUTES = [
   ["admin-media-providers", "/admin/media-providers", "admin"],
   ["admin-search", "/admin/search", "admin"],
   ["admin-model-notes", "/admin/model-notes", "admin"],
+  ["admin-announcements", "/admin/announcements", "admin"],
   ["admin-settings", "/admin/settings", "admin"],
   ["admin-usage", "/admin/usage", "admin"],
   ["admin-docs", "/admin/docs", "admin"],
@@ -61,6 +62,7 @@ const ROUTES = [
   ["user-dashboard", "/dashboard", "user"],
   ["user-usage", "/dashboard/usage", "user"],
   ["user-models", "/dashboard/models", "user"],
+  ["user-announcements", "/dashboard/announcements", "user"],
   ["user-settings", "/dashboard/settings", "user"],
   ["user-docs", "/dashboard/docs", "user"],
 
@@ -96,24 +98,26 @@ const SCENES = [
   ["admin-create-media", "/admin/media-providers", "admin", clickButton(/新增供应商/)],
   ["admin-create-search", "/admin/search", "admin", clickButton(/新增搜索提供商/)],
   ["admin-create-key", "/admin/keys", "admin", clickButton(/新建接口密钥/)],
+  ["admin-create-announcement", "/admin/announcements", "admin", clickButton(/发布公告/)],
+  ["admin-announcement-menu", "/admin/announcements", "admin", clickTitle("编辑")],
   ["admin-key-menu", "/admin/keys", "admin", clickButton(/^操作$/)],
   ["admin-allocation", "/admin/users", "admin", clickButton(/配置额度/)],
   ["models-media-tab", "/dashboard/models", "user", clickTab("媒体")],
   ["models-search-tab", "/dashboard/models", "admin", clickTab("搜索")],
   ["models-gateway-params", "/dashboard/models", "user", clickButton("请求参数")],
-  ["models-other-provider", "/dashboard/models", "user", clickRadio("其他服务商")],
+  ["models-other-provider", "/dashboard/models", "user", chooseOtherConfiguration],
   ["models-media-other", "/dashboard/models", "user", async (page) => {
     await clickTab("媒体")(page);
-    await page.getByRole("radio", { name: "其他服务商" }).first().click();
+    await chooseOtherConfiguration(page);
   }],
   ["models-search-options", "/dashboard/models", "admin", async (page) => {
     await clickTab("搜索")(page);
-    await page.getByRole("radio", { name: "其他服务商" }).first().click();
+    await chooseOtherConfiguration(page);
     await page.getByText("可选参数", { exact: true }).first().click();
   }],
   ["models-search-other", "/dashboard/models", "admin", async (page) => {
     await clickTab("搜索")(page);
-    await page.getByRole("radio", { name: "其他服务商" }).first().click();
+    await chooseOtherConfiguration(page);
   }],
   ["admin-provider-edit", "/admin/providers", "admin", clickTitle("编辑")],
   ["admin-media-edit", "/admin/media-providers", "admin", clickTitle("编辑")],
@@ -169,11 +173,21 @@ function clickTab(name) {
   };
 }
 
-/** The 其他服务商 radio on the test page's configuration control. */
-function clickRadio(name) {
-  return async (page) => {
-    await page.getByRole("radio", { name }).first().click();
-  };
+/**
+ * The 其他服务商 configuration on the test page.
+ *
+ * It is the third option of a native select, not a radio: all three testers
+ * pick their credential with `Select`, which keeps the mode pickers and the
+ * test page in one visual language. Selecting by value rather than by label,
+ * because the three tabs word the option differently (配置 labels on text and
+ * media, 搜索配置 on search) while all of them store it as "other".
+ */
+async function chooseOtherConfiguration(page) {
+  await page.waitForTimeout(300);
+  const select = page.locator("select").filter({ has: page.locator('option[value="other"]') });
+  await select.first().scrollIntoViewIfNeeded();
+  await select.first().selectOption("other");
+  await page.waitForTimeout(300);
 }
 /** The assistant's settings sheet, scrolled to a section. */
 function openAssistantSettings(scrollTop) {
@@ -266,6 +280,35 @@ async function seed(contexts, problems) {
   const keyList = keys.ok() ? (await keys.json().catch(() => null))?.data?.keys ?? [] : [];
   if (!keyList.some((key) => key?.label === "UI 审计密钥")) {
     await post(contexts.user.request, "/api/user/keys", { label: "UI 审计密钥" }, "account key");
+  }
+
+  /**
+   * One live notice with a pinned sibling.
+   *
+   * The strip, the centre and the docs block only exist when there is a row, so
+   * a pass without them photographs three empty states and calls it a review.
+   * Two rows also give the banner its "还有 1 条" link and the admin table a
+   * pinned badge.
+   */
+  const notices = await contexts.admin.request.get(`${BASE}/api/admin/announcements`);
+  const noticeList = notices.ok() ? (await notices.json().catch(() => null))?.data?.announcements ?? [] : [];
+  const hasNotice = (title) => noticeList.some((entry) => entry?.title === title);
+  if (!hasNotice("UI 审计公告：计划维护")) {
+    await post(contexts.admin.request, "/api/admin/announcements", {
+      title: "UI 审计公告：计划维护",
+      body: "本周日 02:00–04:00 进行例行维护，期间接口短暂不可用。\n\n维护完成后无需任何操作。",
+      level: "warning",
+      pinned: true,
+      enabled: true,
+    }, "announcement (pinned)");
+  }
+  if (!hasNotice("UI 审计公告：新模型上线")) {
+    await post(contexts.admin.request, "/api/admin/announcements", {
+      title: "UI 审计公告：新模型上线",
+      body: "已接入 `claude-opus-5-5`，可在模型测试页试用。",
+      level: "success",
+      enabled: true,
+    }, "announcement (live)");
   }
 }
 
