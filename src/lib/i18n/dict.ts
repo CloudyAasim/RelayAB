@@ -835,6 +835,11 @@ const zhCN: Dict = {
   "announcements.posted": "发布于 {date}",
   "announcements.ended": "已结束",
   "announcements.moreCount": "还有 {count} 条",
+  "announcements.read": "查看全文",
+  "announcements.back": "返回公告列表",
+  "announcements.notFound": "这条公告不存在，或者已经不再公开。",
+  "announcements.notFound.description": "它可能被删除了，也可能还没有发布、或者被停用了。",
+  "announcements.detail.description": "公告全文。",
 
   // ===== Admin Providers =====
   "admin.providers.create": "添加上游提供商",
@@ -2547,6 +2552,11 @@ const en: Dict = {
   "announcements.posted": "Posted {date}",
   "announcements.ended": "Ended",
   "announcements.moreCount": "{count} more",
+  "announcements.read": "Read the full notice",
+  "announcements.back": "Back to all announcements",
+  "announcements.notFound": "This announcement does not exist, or is no longer public.",
+  "announcements.notFound.description": "It may have been deleted, or not published yet, or switched off.",
+  "announcements.detail.description": "The full notice.",
 
   // ===== Admin Providers =====
   "admin.providers.create": "Add Upstream Provider",

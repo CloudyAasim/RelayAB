@@ -229,6 +229,34 @@ export async function listActiveAnnouncements(now: Date = new Date()): Promise<A
 }
 
 /**
+ * One row, but only if a reader may know about it.
+ *
+ * Deliberately not `getAnnouncementById`: that one is the admin's read and
+ * returns drafts and withdrawn rows, so using it for a reader's page would turn
+ * a guessed id into a link to a notice that was never published — the one thing
+ * `listPublishedAnnouncements` goes out of its way to keep out of the history.
+ *
+ * The same two rules as the list, so a row that appears in the centre always
+ * opens and a row that does not, never does. Expired rows stay readable: the
+ * detail page is where "what did that maintenance notice actually say?"
+ * gets answered after the window closes.
+ */
+export async function getPublishedAnnouncement(
+  id: string,
+  now: Date = new Date(),
+): Promise<AnnouncementRecord | null> {
+  const iso = now.toISOString();
+  return getOne(
+    `SELECT * FROM announcements
+      WHERE id = ?
+        AND enabled = 1
+        AND (starts_at IS NULL OR starts_at <= ?)`,
+    [id, iso],
+    rowToAnnouncement,
+  );
+}
+
+/**
  * Every row a reader may know about: started, and not switched off.
  *
  * The announcement centre's list. Live first, then finished — a notice that has

@@ -27,6 +27,15 @@ const LEVEL = read("components", "announcements", "level.tsx");
 const MARKDOWN = read("components", "announcements", "AnnouncementMarkdown.tsx");
 const SHELL = read("components", "layouts", "AuthenticatedLayout.tsx");
 const READER_PAGE = read("app", "(user)", "dashboard", "announcements", "page.tsx");
+const DETAIL_PAGE = read("app", "(user)", "dashboard", "announcements", "[id]", "page.tsx");
+const DETAIL_NOT_FOUND = read(
+  "app",
+  "(user)",
+  "dashboard",
+  "announcements",
+  "[id]",
+  "not-found.tsx",
+);
 const ADMIN_PAGE = read("app", "(admin)", "admin", "announcements", "page.tsx");
 const CATALOG = read("components", "docs", "ModelCatalog.tsx");
 const PUBLIC_FRAME = read("components", "docs", "PublicDocsFrame.tsx");
@@ -50,10 +59,30 @@ describe("the announcement strip carries one notice, not a feed", () => {
 
   it("shows only the first notice and links to the rest", () => {
     expect(BANNER).toContain("visible[0]");
-    expect(BANNER).toContain('href="/dashboard/announcements"');
-    // `-1` because the one in the strip is already visible.
+    // The centre's address comes from one shared constant, not a literal
+    // repeated per surface — a renamed route then breaks one file, not five.
+    expect(BANNER).toContain("href={ANNOUNCEMENTS_HREF}");
     expect(BANNER).toContain("visible.length - 1");
     expect(BANNER).toContain('t("announcements.moreCount"');
+  });
+
+  it("opens the notice itself, and shows enough of it to be worth opening", () => {
+    // A title alone said that something had happened but not what, and a strip
+    // with no link made the full text unreachable. Both facts are the feature.
+    expect(BANNER).toContain("href={announcementHref(current.id)}");
+    expect(BANNER).toContain("announcementExcerpt(current.body)");
+    // One line: the strip must not grow with the notice.
+    expect(BANNER).toContain("truncate");
+  });
+
+  it("keeps the controls out of the link", () => {
+    // `<button>` inside `<a>` is invalid, and the dismissal needs to be its own
+    // target for a screen reader. The link wraps the text, nothing else.
+    const linkEnd = BANNER.indexOf("</Link>");
+    const dismissAt = BANNER.indexOf("onClick={() => dismiss(current.id)}");
+    expect(dismissAt).toBeGreaterThan(linkEnd);
+    // The count link is a sibling of the notice link, not nested in it.
+    expect(BANNER.indexOf("announcements.moreCount")).toBeGreaterThan(linkEnd);
   });
 
   it("remembers a dismissal before it re-renders", () => {
@@ -183,6 +212,72 @@ describe("the notice centre is a reader's history", () => {
   });
 });
 
+describe("the notice has a page of its own", () => {
+  it("renders the body in full, which is the reason the route exists", () => {
+    // The strip is one line; a notice with steps, a table or a key list is
+    // unreadable there. This page must not truncate, fold or summarise.
+    expect(DETAIL_PAGE).toContain("<AnnouncementMarkdown");
+    expect(DETAIL_PAGE).toContain("body={announcement.body}");
+    expect(DETAIL_PAGE).not.toContain("announcementExcerpt");
+  });
+
+  it("is a reader's page, not the admin's read", () => {
+    // `getAnnouncementById` returns drafts and withdrawn rows; a guessed id
+    // must not become a link to a notice nobody published.
+    expect(DETAIL_PAGE).toContain("getPublishedAnnouncement(id, now)");
+    expect(DETAIL_PAGE).not.toContain("getAnnouncementById");
+  });
+
+  it("says a notice is gone rather than quietly showing the list", () => {
+    // A stale link that lands on the centre leaves the reader wondering whether
+    // they clicked the right thing.
+    expect(DETAIL_PAGE).toContain("notFound()");
+    expect(DETAIL_PAGE).not.toContain("redirect(ANNOUNCEMENTS_HREF)");
+  });
+
+  it("is gated and always fresh, like the centre", () => {
+    expect(DETAIL_PAGE).toContain('export const dynamic = "force-dynamic"');
+    expect(DETAIL_PAGE).toContain("getCurrentUser()");
+    expect(DETAIL_PAGE).toContain('redirect("/login")');
+  });
+
+  it("takes one clock reading, so the wash and the badge cannot disagree", () => {
+    expect(DETAIL_PAGE).toContain("const now = new Date();");
+    // Assignment rather than the bare call: the comment above the read explains
+    // the rule and mentions `new Date()` itself, and prose is not a clock read.
+    expect(DETAIL_PAGE.match(/= new Date\(\)/g)).toHaveLength(1);
+  });
+
+  it("says how to get back to the rest", () => {
+    expect(DETAIL_PAGE).toContain("ANNOUNCEMENTS_HREF");
+    expect(DETAIL_PAGE).toContain('t("announcements.back")');
+  });
+
+  it("has a 404 of its own, in words the reader can act on", () => {
+    // `notFound()` alone falls through to Next's built-in English "This page
+    // could not be found" — and this segment streams (dashboard/loading.tsx),
+    // so the status line is already a 200 by then. The body is the contract.
+    expect(DETAIL_NOT_FOUND).toContain('t("announcements.notFound")');
+    expect(DETAIL_NOT_FOUND).toContain('t("announcements.notFound.description")');
+    expect(DETAIL_NOT_FOUND).toContain("ANNOUNCEMENTS_HREF");
+  });
+
+  it("scopes that 404 to this segment rather than the whole dashboard", () => {
+    // A house-wide boundary would change the 404 story of every other page,
+    // which this feature has no business touching.
+    expect(DETAIL_NOT_FOUND).not.toContain('"use client"');
+  });
+});
+
+describe("the centre links into each notice", () => {
+  it("gives every card a way to its own page", () => {
+    // The card itself is not a link: it holds a rendered body, so wrapping it
+    // would make selecting a notice's text open it instead.
+    expect(READER_PAGE).toContain("announcementHref(announcement.id)");
+    expect(READER_PAGE).toContain('t("announcements.read")');
+  });
+});
+
 describe("the admin page publishes, it does not merely list", () => {
   it("shows every row, including the ones readers cannot see", () => {
     // A notice that has not started and one that was never written look
@@ -247,6 +342,11 @@ describe("the announcement words exist in both locales", () => {
     "announcements.posted",
     "announcements.ended",
     "announcements.moreCount",
+    "announcements.read",
+    "announcements.back",
+    "announcements.notFound",
+    "announcements.notFound.description",
+    "announcements.detail.description",
     "nav.announcements",
     "admin.announcements.title",
     "admin.announcements.description",

@@ -40,6 +40,8 @@ import {
   noticeToneClass,
 } from "@/components/announcements/level";
 import { Megaphone, Pin } from "lucide-react";
+import Link from "next/link";
+import { announcementHref } from "@/lib/announcements/links";
 
 export const dynamic = "force-dynamic";
 
@@ -105,6 +107,18 @@ export default async function AnnouncementsPage() {
                         </Badge>
                       )}
                       {!live && <Badge tone="neutral">{t("announcements.ended")}</Badge>}
+                      {/*
+                        The whole card is not a link: it contains a rendered
+                        body, so wrapping it would make selecting the text of
+                        a notice open it instead. This one explicit affordance
+                        is where the reader gets the permalink.
+                      */}
+                      <Link
+                        href={announcementHref(announcement.id)}
+                        className="ml-auto text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                      >
+                        {t("announcements.read")}
+                      </Link>
                     </div>
                     <AnnouncementMarkdown
                       body={announcement.body}

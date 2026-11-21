@@ -26,6 +26,7 @@ import {
   listActiveAnnouncements,
   listAnnouncements,
   listPublishedAnnouncements,
+  getPublishedAnnouncement,
   toPublicAnnouncement,
   updateAnnouncement,
   type AnnouncementRecord,
@@ -292,6 +293,55 @@ describe("the published history", () => {
     await createAnnouncement({ title: "live", body: "B" });
     await createAnnouncement({ title: "pinned", body: "B", pinned: true });
     expect((await listPublishedAnnouncements(now))[0].title).toBe("pinned");
+  });
+});
+
+describe("one published row by id", () => {
+  const now = new Date("2026-06-15T12:00:00.000Z");
+
+  it("finds a live row and a finished one alike", async () => {
+    const live = await createAnnouncement({ title: "live", body: "B" });
+    const over = await createAnnouncement({
+      title: "over",
+      body: "B",
+      startsAt: "2026-05-01T00:00:00.000Z",
+      endsAt: "2026-06-01T00:00:00.000Z",
+    });
+
+    // A finished notice stays readable: the detail page is where "what did that
+    // maintenance window actually say?" gets answered after it closed.
+    expect((await getPublishedAnnouncement(live.id, now))?.title).toBe("live");
+    expect((await getPublishedAnnouncement(over.id, now))?.title).toBe("over");
+  });
+
+  it("refuses a draft and a withdrawal, so a guessed id opens nothing", async () => {
+    // The same two rules as the list: a row that appears in the centre always
+    // opens, and one that does not, never does.
+    const draft = await createAnnouncement({
+      title: "draft",
+      body: "B",
+      startsAt: "2099-01-01T00:00:00.000Z",
+    });
+    const withdrawn = await createAnnouncement({ title: "withdrawn", body: "B", enabled: false });
+
+    expect(await getPublishedAnnouncement(draft.id, now)).toBeNull();
+    expect(await getPublishedAnnouncement(withdrawn.id, now)).toBeNull();
+  });
+
+  it("returns null for an id that never existed", async () => {
+    expect(await getPublishedAnnouncement("no-such-id", now)).toBeNull();
+  });
+
+  it("still finds a draft once it starts, without being told to", async () => {
+    const draft = await createAnnouncement({
+      title: "later",
+      body: "B",
+      startsAt: "2026-07-01T00:00:00.000Z",
+    });
+    expect(await getPublishedAnnouncement(draft.id, now)).toBeNull();
+    expect((await getPublishedAnnouncement(draft.id, new Date("2026-07-02T00:00:00.000Z")))?.title).toBe(
+      "later",
+    );
   });
 });
 

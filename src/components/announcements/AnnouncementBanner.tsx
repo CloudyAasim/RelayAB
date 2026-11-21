@@ -10,6 +10,20 @@
  * The list of everything lives at `/dashboard/announcements`; this is the one
  * thing that has to be seen today.
  *
+ * The strip is a link, not a label. A title alone said that something had
+ * happened, not what — and left the reader no next step, so the notice was
+ * either ignored or dismissed out of a vague sense of being interrupted. It now
+ * shows the title *and* the first line of the body, and the whole thing opens
+ * the notice at `/dashboard/announcements/<id>`: the one place where the body is
+ * rendered in full, at reading width.
+ *
+ * Three things stay outside that link, because they are controls rather than
+ * content: the 「还有 N 条」 count, the close button, and the level icon (part of
+ * the link, but with no text to select). Only the text is wrapped, so a click
+ * on the strip at large opens the notice while the two buttons keep their own
+ * jobs — a `<button>` inside an `<a>` is invalid HTML, and a screen reader needs
+ * the dismissal to be its own target anyway.
+ *
  * Dismissal is per browser (`lib/announcements/dismissal.ts`), so the state
  * cannot be known on the server, and the banner is therefore rendered after
  * mount. Rendering it first and hiding it after hydration would flash a notice
@@ -20,6 +34,8 @@ import Link from "next/link";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/components/i18n/I18nProvider";
+import { announcementExcerpt } from "@/lib/announcements/excerpt";
+import { announcementHref, ANNOUNCEMENTS_HREF } from "@/lib/announcements/links";
 import { LevelIcon, noticeTextClass, noticeToneClass } from "./level";
 import { readDismissedIds, writeDismissedIds } from "@/lib/announcements/dismissal";
 import type { PublicAnnouncement } from "@/lib/announcements/types";
@@ -46,6 +62,9 @@ export function AnnouncementBanner({
   const visible = announcements.filter((a) => !dismissed.includes(a.id));
   if (visible.length === 0) return null;
   const current = visible[0];
+  // Computed per render, not memoised: it is one string over ≤160 characters,
+  // and a `useMemo` here would have to depend on `current` anyway.
+  const excerpt = announcementExcerpt(current.body);
 
   const dismiss = (id: string) => {
     const next = [...dismissed, id];
@@ -60,17 +79,37 @@ export function AnnouncementBanner({
     <div
       className={cn(
         "flex items-center gap-2 border-b px-4 py-2 text-sm sm:px-6",
+        // The whole strip is clickable, so the wash is also the hover surface;
+        // the link's own hover only darkens the two lines of text.
         noticeToneClass(current.level),
       )}
     >
-      <LevelIcon
-        level={current.level}
-        className={cn("h-4 w-4 shrink-0", noticeTextClass(current.level))}
-      />
-      <p className="min-w-0 flex-1 truncate font-medium text-foreground">{current.title}</p>
+      <Link
+        href={announcementHref(current.id)}
+        className="group flex min-w-0 flex-1 items-baseline gap-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <LevelIcon
+          level={current.level}
+          className={cn("h-4 w-4 shrink-0 self-center", noticeTextClass(current.level))}
+        />
+        {/*
+          Title and body on one line, title first, because the title is what a
+          returning reader scans for ("is this the one I already read?"). The
+          body is capped at one line by `truncate` and by `announcementExcerpt`
+          cutting the string first — the strip must not grow with the notice.
+        */}
+        <span className="min-w-0 flex-1 truncate">
+          <span className="font-medium text-foreground group-hover:underline">{current.title}</span>
+          {excerpt && (
+            <span className="ml-2 text-muted-foreground group-hover:text-foreground">
+              {excerpt}
+            </span>
+          )}
+        </span>
+      </Link>
       {visible.length > 1 && (
         <Link
-          href="/dashboard/announcements"
+          href={ANNOUNCEMENTS_HREF}
           className="shrink-0 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
         >
           {t("announcements.moreCount", { count: visible.length - 1 })}
