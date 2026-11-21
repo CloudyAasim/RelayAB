@@ -32,25 +32,49 @@ const ICONS: Record<AnnouncementLevel, LucideIcon> = {
 };
 
 /**
- * The surface a notice is drawn on.
+ * A notice that **is** the panel: a hairline in the level's colour, and that
+ * colour at ten percent.
  *
- * Hairline border plus a wash of the level's own colour — the same treatment the
- * level badge uses, so a chip and the box around it are visibly the same fact.
- * Not a filled block: a notice that shouts turns the page into an alarm, and the
- * ordinary case has to stay quiet.
+ * This goes on the card itself — `<Card className={live ? noticeToneClass(level)
+ * : "bg-muted/30"}>` — never on a box drawn inside one. The centre used to nest
+ * it: a `rounded-md` bordered tint inside a `rounded-lg` bordered `Card`, so one
+ * fact arrived with two hairlines and two radii, and the notice read as a card
+ * that somebody had put another card in. Kirigami's `InlineMessage` is the
+ * reference for the replacement: one pale rectangle, the level's own colour.
+ *
+ * The border is `/30` at every level. `warning` used to be `/40`, which made one
+ * level's hairline heavier than the other three for no reason a reader could
+ * see.
  */
 const NOTICE_CLASS: Record<AnnouncementLevel, string> = {
   info: "border-info/30 bg-info/10",
   success: "border-success/30 bg-success/10",
-  warning: "border-warning/40 bg-warning/10",
+  warning: "border-warning/30 bg-warning/10",
   danger: "border-destructive/30 bg-destructive/10",
+};
+
+/**
+ * The wash without a hairline: for a notice that is already *inside* a bordered
+ * panel and only needs to be a region of it.
+ *
+ * The docs catalog is the case — the newest active notice sits in the panel that
+ * also carries the site's own name and description, and a second border around
+ * it would draw a box inside a box for a block that is not one.
+ */
+const SURFACE_CLASS: Record<AnnouncementLevel, string> = {
+  info: "bg-info/10",
+  success: "bg-success/10",
+  warning: "bg-warning/10",
+  danger: "bg-destructive/10",
 };
 
 /**
  * The level's colour as foreground, for the icon that sits beside the title.
  *
  * The notice's own wash is too pale to tint text with, so the mark takes the
- * saturated end of the same colour instead.
+ * saturated end of the same colour instead. On the banner strip this is the whole
+ * of the level's presence: the strip itself stays window chrome, and only the
+ * mark carries the colour.
  */
 const TEXT_CLASS: Record<AnnouncementLevel, string> = {
   info: "text-info",
@@ -65,6 +89,10 @@ export function levelTone(level: AnnouncementLevel): Tone {
 
 export function noticeToneClass(level: AnnouncementLevel): string {
   return NOTICE_CLASS[level];
+}
+
+export function noticeSurfaceClass(level: AnnouncementLevel): string {
+  return SURFACE_CLASS[level];
 }
 
 export function noticeTextClass(level: AnnouncementLevel): string {
@@ -82,7 +110,15 @@ export function LevelIcon({
   return <Icon className={className} aria-hidden="true" />;
 }
 
-/** The level as a chip. Needs no translation of its own: the caller labels it. */
+/**
+ * The level as a chip. Needs no translation of its own: the caller labels it.
+ *
+ * The chip already carries the level's mark, so a surface that shows a chip does
+ * not also draw a bare `LevelIcon` beside the title — that is the same fact twice
+ * in a row (two warning triangles, side by side), and it was what the centre and
+ * every detail page did. A surface picks one: the chip, or the mark on the
+ * heading, not both.
+ */
 export function LevelChip({
   level,
   label,

@@ -22,9 +22,7 @@ import type { CatalogModel } from "@/lib/docs/catalog";
 import { AnnouncementMarkdown } from "@/components/announcements/AnnouncementMarkdown";
 import {
   LevelChip,
-  LevelIcon,
-  noticeTextClass,
-  noticeToneClass,
+  noticeSurfaceClass,
 } from "@/components/announcements/level";
 import type { PublicAnnouncement } from "@/lib/announcements/types";
 import { cn, formatDate } from "@/lib/utils";
@@ -126,17 +124,25 @@ export function ModelCatalog({
         {site.description && <p className="mt-1 text-sm text-muted-foreground">{site.description}</p>}
 
         {announcement && (
+          /*
+           * A washed region of this panel, not a bordered box inside it.
+           *
+           * The panel above already owns the hairline and the corner, so a
+           * second bordered rounded box here read as a card inside a card in a
+           * third radius. `noticeSurfaceClass` is the borderless wash: it says
+           * "this paragraph is the notice" with colour alone, which is all the
+           * block needs when it is already framed by the panel around it.
+           *
+           * No standalone `LevelIcon` either — `LevelChip` is the mark plus the
+           * word, and drawing both put the same level on screen twice.
+           */
           <div
             className={cn(
-              "mt-3 rounded-md border p-3 text-sm",
-              noticeToneClass(announcement.level),
+              "mt-3 rounded-md p-3 text-sm",
+              noticeSurfaceClass(announcement.level),
             )}
           >
             <div className="flex flex-wrap items-center gap-2">
-              <LevelIcon
-                level={announcement.level}
-                className={cn("h-4 w-4 shrink-0", noticeTextClass(announcement.level))}
-              />
               <span className="font-medium text-foreground">{announcement.title}</span>
               <LevelChip
                 level={announcement.level}

@@ -100,11 +100,27 @@ describe("the announcement strip carries one notice, not a feed", () => {
   });
 
   it("takes its colours from the shared level map, not from its own copy", () => {
-    expect(BANNER).toContain("noticeToneClass(current.level)");
+    // The level reaches the strip as a foreground colour on the mark. It must
+    // not also arrive as a wash: that painted the padding, the 「还有 N 条」 link
+    // and the close button in an alarm colour, turning a strip of window chrome
+    // into a coloured band pinned above every page.
+    expect(BANNER).toContain("noticeTextClass(current.level)");
     expect(BANNER).toContain("LevelIcon");
+    expect(BANNER).not.toContain("noticeToneClass");
     // No bare colour literal: a second spelling is how `danger` ends up red on
     // one surface and grey on the next.
     expect(BANNER).not.toMatch(/bg-(red|green|yellow|blue)-\d/);
+  });
+
+  it("is a strip of window chrome, not a notice slab", () => {
+    // One quiet step off the shell's background plus one hairline, the same
+    // weight as the app header's rule — the strip sits directly on
+    // `bg-background`, so a card treatment would make it a floating white slab.
+    expect(BANNER).toContain("border-b border-border bg-muted/40");
+    // No tinted band: the four level washes belong to the notices themselves.
+    for (const level of ["info", "success", "warning", "destructive"]) {
+      expect(BANNER).not.toContain(`bg-${level}/10`);
+    }
   });
 });
 
@@ -139,6 +155,22 @@ describe("the level's look lives in exactly one place", () => {
     expect(READER_PAGE).toContain('from "@/components/announcements/level"');
     expect(ADMIN_PAGE).toContain("LevelBadge");
     expect(CATALOG).toContain('from "@/components/announcements/level"');
+  });
+
+  it("keeps the hairline for the card and the borderless wash for a region", () => {
+    // Two treatments, on purpose: a notice that *is* a panel gets the hairline
+    // plus the wash; a notice that is merely a region of an existing panel gets
+    // the wash alone, so the page never draws a box inside a box.
+    for (const level of ANNOUNCEMENT_LEVELS) {
+      expect(LEVEL).toContain(`border-${level === "danger" ? "destructive" : level}/30 bg-`);
+      expect(LEVEL).toContain(`  ${level}: "bg-`);
+    }
+    expect(LEVEL).toContain("export function noticeSurfaceClass");
+    // One weight of hairline across all four levels — `warning` used to be /40,
+    // which made one level's rule heavier than the other three for no reason a
+    // reader could see.
+    expect(LEVEL).toContain("border-warning/30");
+    expect(LEVEL).not.toContain("border-warning/40");
   });
 });
 
@@ -186,12 +218,26 @@ describe("the notice centre is a reader's history", () => {
 
   it("tints a live notice and mutes a finished one", () => {
     expect(READER_PAGE).toContain('announcementState(announcement, now) === "live"');
-    expect(READER_PAGE).toContain("live && noticeToneClass(announcement.level)");
-    expect(READER_PAGE).toContain("!live && \"bg-muted/30\"");
-    expect(READER_PAGE).toContain("live ? noticeTextClass(announcement.level) : \"text-muted-foreground\"");
+    // The wash goes on the card, because the card *is* the notice. Drawn as a
+    // bordered box inside a bordered card it gave one fact two hairlines and two
+    // radii.
+    expect(READER_PAGE).toContain("live ? noticeToneClass(announcement.level) : \"bg-muted/30\"");
+    expect(READER_PAGE).not.toMatch(/rounded-md border[^"]*noticeToneClass/);
+    // A finished notice also steps its body back, so the muted wash and the
+    // muted prose say the same thing rather than contradicting each other.
+    expect(READER_PAGE).toContain('!live && "text-muted-foreground"');
     // The wash is the level saying "this applies"; a red box around a finished
     // maintenance window is an alarm about nothing.
     expect(READER_PAGE).toContain('{!live && <Badge tone="neutral">{t("announcements.ended")}</Badge>}');
+    // No bare colour literal inside the card either: the wash is the shared map.
+    expect(READER_PAGE).not.toMatch(/bg-(red|green|yellow|blue)-\d/);
+  });
+
+  it("draws the level once per card, not twice", () => {
+    // `LevelChip` is the mark plus the word; a bare `LevelIcon` beside it put two
+    // warning triangles in one row.
+    expect(READER_PAGE).toContain("<LevelChip");
+    expect(READER_PAGE).not.toContain("<LevelIcon");
   });
 
   it("says when it was posted, and until when when it is still live", () => {
@@ -253,6 +299,15 @@ describe("the notice has a page of its own", () => {
     expect(DETAIL_PAGE).toContain('t("announcements.back")');
   });
 
+  it("wears the level on the card, the same way the centre does", () => {
+    // The detail page and the centre are the same notice at two lengths; a
+    // different frame on each would read as two different kinds of thing.
+    expect(DETAIL_PAGE).toContain("live ? noticeToneClass(announcement.level) : \"bg-muted/30\"");
+    expect(DETAIL_PAGE).not.toMatch(/rounded-md border[^"]*notice/);
+    expect(DETAIL_PAGE).toContain("<LevelChip");
+    expect(DETAIL_PAGE).not.toContain("<LevelIcon");
+  });
+
   it("has a 404 of its own, in words the reader can act on", () => {
     // `notFound()` alone falls through to Next's built-in English "This page
     // could not be found" — and this segment streams (dashboard/loading.tsx),
@@ -307,6 +362,17 @@ describe("the public docs page shows the newest active notice", () => {
 
   it("does not repeat it for a signed-in reader, who already has the strip", () => {
     expect(USER_DOCS).not.toContain("announcement");
+  });
+
+  it("washes the region instead of framing it in a second border", () => {
+    // The block sits inside the panel that also carries the site's name, so it
+    // takes the borderless wash — a `rounded-md border` here drew a box inside a
+    // box, in a third radius.
+    expect(CATALOG).toContain("noticeSurfaceClass(announcement.level)");
+    expect(CATALOG).not.toContain("noticeToneClass");
+    // One level mark: the chip's. A bare icon beside it drew the same fact twice.
+    expect(CATALOG).toContain("<LevelChip");
+    expect(CATALOG).not.toContain("<LevelIcon");
   });
 });
 

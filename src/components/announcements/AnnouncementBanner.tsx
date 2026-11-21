@@ -36,7 +36,7 @@ import { cn } from "@/lib/utils";
 import { useT } from "@/components/i18n/I18nProvider";
 import { announcementExcerpt } from "@/lib/announcements/excerpt";
 import { announcementHref, ANNOUNCEMENTS_HREF } from "@/lib/announcements/links";
-import { LevelIcon, noticeTextClass, noticeToneClass } from "./level";
+import { LevelIcon, noticeTextClass } from "./level";
 import { readDismissedIds, writeDismissedIds } from "@/lib/announcements/dismissal";
 import type { PublicAnnouncement } from "@/lib/announcements/types";
 
@@ -78,10 +78,15 @@ export function AnnouncementBanner({
   return (
     <div
       className={cn(
-        "flex items-center gap-2 border-b px-4 py-2 text-sm sm:px-6",
-        // The whole strip is clickable, so the wash is also the hover surface;
-        // the link's own hover only darkens the two lines of text.
-        noticeToneClass(current.level),
+        // Window chrome, not a notice slab. The strip sits on the shell's own
+        // background, directly above the page, so it takes one quiet step away
+        // from that background (`bg-muted/40`) and one hairline under it —
+        // the same weight as the app header's own rule. It used to carry the
+        // level's wash across its full width, which painted the padding, the
+        // 「还有 N 条」 link and the close button in an alarm colour: a coloured
+        // band pinned above every page, saying "urgent" for a maintenance note.
+        // The level now lives on the icon alone.
+        "flex items-center gap-2 border-b border-border bg-muted/40 px-4 py-2 text-sm sm:px-6",
       )}
     >
       <Link
@@ -90,6 +95,9 @@ export function AnnouncementBanner({
       >
         <LevelIcon
           level={current.level}
+          // The whole of the level's presence here. One coloured mark, and the
+          // text stays in the ordinary foreground colours so a notice reads like
+          // a line of the app rather than like a warning dialog.
           className={cn("h-4 w-4 shrink-0 self-center", noticeTextClass(current.level))}
         />
         {/*

@@ -40,12 +40,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { buttonVariants } from "@/components/ui/Button";
 import { AnnouncementMarkdown } from "@/components/announcements/AnnouncementMarkdown";
-import {
-  LevelChip,
-  LevelIcon,
-  noticeTextClass,
-  noticeToneClass,
-} from "@/components/announcements/level";
+import { LevelChip, noticeToneClass } from "@/components/announcements/level";
 import { ANNOUNCEMENTS_HREF } from "@/lib/announcements/links";
 import Link from "next/link";
 import { ArrowLeft, Pin } from "lucide-react";
@@ -88,55 +83,53 @@ export default async function AnnouncementDetailPage({
         {t("announcements.detail.description")}
       </SectionPageLayout.Description>
       <SectionPageLayout.Content>
-        <Card>
-          <div
-            className={cn(
-              "rounded-md border p-4",
-              // Same rule as the centre: the wash means "this applies now", so a
-              // finished notice is a plain card with a 「已结束」 badge instead.
-              live ? noticeToneClass(announcement.level) : "bg-muted/30",
-            )}
-          >
-            <div className="flex flex-wrap items-center gap-2">
-              <LevelIcon
-                level={announcement.level}
-                className={cn(
-                  "h-4 w-4 shrink-0",
-                  live ? noticeTextClass(announcement.level) : "text-muted-foreground",
-                )}
-              />
-              <LevelChip
-                level={announcement.level}
-                label={t(`announcements.level.${announcement.level}`)}
-              />
-              {announcement.pinned && (
-                <Badge tone="purple">
-                  <Pin className="h-3 w-3" aria-hidden="true" />
-                  {t("announcements.pinnedBadge")}
-                </Badge>
-              )}
-              {!live && <Badge tone="neutral">{t("announcements.ended")}</Badge>}
-            </div>
-            {/*
-              The body at full length, at reading width. It is the reason this
-              route exists, so nothing here truncates or folds it.
-            */}
-            <AnnouncementMarkdown
-              body={announcement.body}
-              className={cn("mt-3", !live && "text-muted-foreground")}
+        <Card
+          // Same as the centre: the card *is* the notice, so the level's wash
+          // goes on the card rather than on a bordered box inside it. Nesting it
+          // drew a `rounded-md` rectangle inside a `rounded-lg` one — two
+          // hairlines and two radii for a single fact.
+          className={cn(live ? noticeToneClass(announcement.level) : "bg-muted/30")}
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            {/* The chip brings the level's mark with it; a bare icon beside it
+                drew the same triangle twice. */}
+            <LevelChip
+              level={announcement.level}
+              label={t(`announcements.level.${announcement.level}`)}
             />
-            <p className="mt-4 text-xs text-muted-foreground">
-              {t("announcements.posted", {
-                date: formatDate(announcement.createdAt, timeZone),
-              })}
-              {live && announcement.endsAt
-                ? ` · ${t("announcements.until", {
-                    date: formatDate(announcement.endsAt, timeZone),
-                  })}`
-                : ""}
-            </p>
+            {announcement.pinned && (
+              <Badge tone="purple">
+                <Pin className="h-3 w-3" aria-hidden="true" />
+                {t("announcements.pinnedBadge")}
+              </Badge>
+            )}
+            {!live && <Badge tone="neutral">{t("announcements.ended")}</Badge>}
           </div>
+          {/*
+            The body at full length, at reading width. It is the reason this
+            route exists, so nothing here truncates or folds it.
+          */}
+          <AnnouncementMarkdown
+            body={announcement.body}
+            className={cn("mt-3", !live && "text-muted-foreground")}
+          />
+          <p className="mt-4 text-xs text-muted-foreground">
+            {t("announcements.posted", {
+              date: formatDate(announcement.createdAt, timeZone),
+            })}
+            {live && announcement.endsAt
+              ? ` · ${t("announcements.until", {
+                  date: formatDate(announcement.endsAt, timeZone),
+                })}`
+              : ""}
+          </p>
         </Card>
+        {/*
+          The way back sits *after* the body as well as in the breadcrumb above
+          it: the breadcrumb answers "where am I", this answers "I have finished
+          reading". Both say the same words, and after a long notice the reader
+          is at the bottom of the page, not the top.
+        */}
         <div className="mt-4">
           <Link href={ANNOUNCEMENTS_HREF} className={buttonVariants({ variant: "outline", size: "sm" })}>
             {t("announcements.back")}

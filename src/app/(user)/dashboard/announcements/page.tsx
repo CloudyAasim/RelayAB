@@ -33,12 +33,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/Table";
 import { AnnouncementMarkdown } from "@/components/announcements/AnnouncementMarkdown";
-import {
-  LevelChip,
-  LevelIcon,
-  noticeTextClass,
-  noticeToneClass,
-} from "@/components/announcements/level";
+import { LevelChip, noticeToneClass } from "@/components/announcements/level";
 import { Megaphone, Pin } from "lucide-react";
 import Link from "next/link";
 import { announcementHref } from "@/lib/announcements/links";
@@ -76,65 +71,60 @@ export default async function AnnouncementsPage() {
               return (
                 <Card
                   key={announcement.id}
+                  // The card *is* the notice, so the level's wash goes on the card
+                  // itself. It used to be a bordered tint drawn inside a bordered
+                  // card, which gave one fact two hairlines and two radii — the
+                  // only place in the app that stacked a box in a box.
+                  //
                   // Only a live notice is tinted: the wash is the level saying
                   // "this applies", so painting a finished one with it would say
                   // the opposite of the 「已结束」 badge beside it.
-                  className={cn(!live && "bg-muted/30")}
+                  className={cn(live ? noticeToneClass(announcement.level) : "bg-muted/30")}
                 >
-                  <div
-                    className={cn(
-                      live && "rounded-md border p-3",
-                      live && noticeToneClass(announcement.level),
-                    )}
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <LevelIcon
-                        level={announcement.level}
-                        className={cn(
-                          "h-4 w-4 shrink-0",
-                          live ? noticeTextClass(announcement.level) : "text-muted-foreground",
-                        )}
-                      />
-                      <span className="font-medium text-foreground">{announcement.title}</span>
-                      <LevelChip
-                        level={announcement.level}
-                        label={t(`announcements.level.${announcement.level}`)}
-                      />
-                      {announcement.pinned && (
-                        <Badge tone="purple">
-                          <Pin className="h-3 w-3" aria-hidden="true" />
-                          {t("announcements.pinnedBadge")}
-                        </Badge>
-                      )}
-                      {!live && <Badge tone="neutral">{t("announcements.ended")}</Badge>}
-                      {/*
-                        The whole card is not a link: it contains a rendered
-                        body, so wrapping it would make selecting the text of
-                        a notice open it instead. This one explicit affordance
-                        is where the reader gets the permalink.
-                      */}
-                      <Link
-                        href={announcementHref(announcement.id)}
-                        className="ml-auto text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                      >
-                        {t("announcements.read")}
-                      </Link>
-                    </div>
-                    <AnnouncementMarkdown
-                      body={announcement.body}
-                      className={cn("mt-2", !live && "text-muted-foreground")}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/*
+                      The chip already carries the level's mark, so there is no
+                      bare icon beside it: that drew the same triangle twice.
+                    */}
+                    <span className="font-medium text-foreground">{announcement.title}</span>
+                    <LevelChip
+                      level={announcement.level}
+                      label={t(`announcements.level.${announcement.level}`)}
                     />
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      {t("announcements.posted", {
-                        date: formatDate(announcement.createdAt, timeZone),
-                      })}
-                      {live && announcement.endsAt
-                        ? ` · ${t("announcements.until", {
-                            date: formatDate(announcement.endsAt, timeZone),
-                          })}`
-                        : ""}
-                    </p>
+                    {announcement.pinned && (
+                      <Badge tone="purple">
+                        <Pin className="h-3 w-3" aria-hidden="true" />
+                        {t("announcements.pinnedBadge")}
+                      </Badge>
+                    )}
+                    {!live && <Badge tone="neutral">{t("announcements.ended")}</Badge>}
+                    {/*
+                      The whole card is not a link: it contains a rendered
+                      body, so wrapping it would make selecting the text of
+                      a notice open it instead. This one explicit affordance
+                      is where the reader gets the permalink.
+                    */}
+                    <Link
+                      href={announcementHref(announcement.id)}
+                      className="ml-auto text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                    >
+                      {t("announcements.read")}
+                    </Link>
                   </div>
+                  <AnnouncementMarkdown
+                    body={announcement.body}
+                    className={cn("mt-2", !live && "text-muted-foreground")}
+                  />
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {t("announcements.posted", {
+                      date: formatDate(announcement.createdAt, timeZone),
+                    })}
+                    {live && announcement.endsAt
+                      ? ` · ${t("announcements.until", {
+                          date: formatDate(announcement.endsAt, timeZone),
+                        })}`
+                      : ""}
+                  </p>
                 </Card>
               );
             })}
