@@ -14,6 +14,15 @@
  * Anything else renders as plain text — and the source is always still
  * available verbatim through the copy buttons, which is what operators paste
  * into an AI assistant.
+ *
+ * Line breaks are CommonMark's by default: a single newline inside a paragraph
+ * is a *soft* break and joins with a space, a blank line starts a new one. That
+ * is right for the protocol files, which are hard-wrapped at 80 columns — kept
+ * as written, every file would break mid-sentence on screen. A surface that
+ * instead promises an operator "what you typed is what you get" opts in with
+ * `{ breaks: true }`; that is a GitHub-flavoured hard break, and it only ever
+ * changes a newline inside a paragraph (code fences, lists and tables never see
+ * one).
  */
 
 const CODE_FENCE = /```(\w*)\s*$/;
@@ -28,6 +37,28 @@ const BLOCK_START = /^(#{1,6}\s|```|>|\s*[-*]\s|\s*\d+\.\s|\|)/;
 
 /** Placeholder for extracted inline code; NUL cannot occur in Markdown input. */
 const CODE_TOKEN = (index: number) => `\u0000${index}\u0000`;
+
+/**
+ * Placeholder for a kept line break, which is why it is not a space.
+ *
+ * The paragraph text has to go through `renderInline`, and that escapes what it
+ * is given — a literal `<br />` written into the buffer would come out as text.
+ * A control character survives escaping untouched, is substituted only after
+ * the inline spans are done, and cannot be typed into a textarea, so it cannot
+ * collide with prose the way a printable sentinel would.
+ */
+const LINE_BREAK_TOKEN = "\u0001";
+
+export interface MarkdownOptions {
+  /**
+   * Keep a single newline inside a paragraph as a line break.
+   *
+   * Off by default: the protocol files are hard-wrapped, so honouring their
+   * newlines would shred every paragraph on the reference pages. On for a body
+   * an operator typed into a textarea and was told would keep its line breaks.
+   */
+  breaks?: boolean;
+}
 
 function escapeHtml(value: string): string {
   return value
@@ -103,7 +134,7 @@ function parseTableRow(line: string): string[] {
     .map((cell) => cell.trim());
 }
 
-export function markdownToHtml(markdown: string): string {
+export function markdownToHtml(markdown: string, options: MarkdownOptions = {}): string {
   const lines = markdown.replace(/\r\n/g, "\n").split("\n");
   const out: string[] = [];
   const codeBlocks: string[] = [];
@@ -173,7 +204,7 @@ export function markdownToHtml(markdown: string): string {
         buffer.push(m[1]);
         i += 1;
       }
-      out.push(`<blockquote>${markdownToHtml(buffer.join("\n"))}</blockquote>`);
+      out.push(`<blockquote>${markdownToHtml(buffer.join("\n"), options)}</blockquote>`);
       continue;
     }
 
@@ -209,7 +240,10 @@ export function markdownToHtml(markdown: string): string {
       i += 1;
     }
     if (buffer.length > 0) {
-      out.push(`<p>${renderInline(buffer.join(" "))}</p>`);
+      // CommonMark soft break (a space) unless the caller asked for hard ones.
+      // The token, not the tag: `renderInline` escapes everything it is given.
+      const text = buffer.join(options.breaks ? LINE_BREAK_TOKEN : " ");
+      out.push(`<p>${renderInline(text)}</p>`);
     } else {
       i += 1;
     }
@@ -217,6 +251,7 @@ export function markdownToHtml(markdown: string): string {
 
   return out
     .join("\n")
+    .replace(/\u0001/g, "<br />")
     .replace(/\u0000(\d+)\u0000/g, (_m, index: string) => codeBlocks[Number(index)] ?? "");
 }
 

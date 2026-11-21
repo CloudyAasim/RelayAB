@@ -40,6 +40,11 @@ const ADMIN_PAGE = read("app", "(admin)", "admin", "announcements", "page.tsx");
 const CATALOG = read("components", "docs", "ModelCatalog.tsx");
 const PUBLIC_FRAME = read("components", "docs", "PublicDocsFrame.tsx");
 const USER_DOCS = read("app", "(user)", "dashboard", "docs", "UserDocsScreen.tsx");
+const PROTOCOL_REFERENCE = read("components", "docs", "ProtocolReference.tsx");
+const DOCS_PARAMETERS = read("app", "(user)", "dashboard", "docs", "DocsParameters.tsx");
+
+const DICT_ZH = DICTS["zh-CN"];
+const DICT_EN = DICTS.en;
 
 const LOCALES = ["zh-CN", "en"] as const;
 
@@ -144,9 +149,28 @@ describe("the notice body is rendered, not escaped into prose", () => {
     // `markdownToHtml` escapes before it emits, so an operator's prose cannot
     // become markup; the component exists so the banner, the reader page and
     // the docs page cannot each invent their own treatment.
-    expect(MARKDOWN).toContain("markdownToHtml(body)");
+    expect(MARKDOWN).toContain("markdownToHtml(body, { breaks: true })");
     expect(MARKDOWN).toContain("prose prose-sm max-w-none text-foreground dark:prose-invert");
     expect(MARKDOWN).toContain("dangerouslySetInnerHTML");
+  });
+
+  it("keeps the operator's line breaks, because the form said it would", () => {
+    // `admin.announcements.bodyHint` tells the operator "line breaks are kept".
+    // They were not: a single newline is a CommonMark soft break, and the three
+    // lines of a maintenance notice arrived as one sentence with spaces where
+    // the line breaks had been. Either the promise or the behaviour had to go;
+    // the promise is in the UI, so the behaviour is what changed — and only
+    // here, because the protocol pages are hard-wrapped and must keep joining.
+    expect(MARKDOWN).toContain("{ breaks: true }");
+    expect(DICT_ZH["admin.announcements.bodyHint"]).toContain("换行");
+    expect(DICT_EN["admin.announcements.bodyHint"]).toContain("line breaks");
+  });
+
+  it("and the hard-wrapped protocol pages do not", () => {
+    // The other callers pass no options: their sources are wrapped at 80
+    // columns, so a kept newline would break every sentence mid-clause.
+    expect(PROTOCOL_REFERENCE).toContain("markdownToHtml(source)");
+    expect(DOCS_PARAMETERS).toContain("markdownToHtml(page.body)");
   });
 
   it("stays usable from a server component", () => {
