@@ -281,17 +281,19 @@ function SidebarShell({
       <SidebarInset>
         <AppHeader username={username} displayName={displayName} role={role} />
         {/*
-          The notice strip, above the page and below the header.
+          The notice, above the page and below the header.
 
           Not on the edge-to-edge routes. The assistant computes its height as
           "the viewport minus the app header" and pins its composer to the bottom
-          of it, so a strip inserted above the page does not push the content
+          of it, so a box inserted above the page does not push the content
           down — it pushes the composer *under the fold*, on the one screen whose
           height is exact. Skipping it there is the only arrangement where both
           the notice and the chat can be right; the notice centre still lists it.
 
           Inside `SidebarInset` rather than over the whole window: the panel is
-          the app's frame, and a bar crossing it would be a second frame.
+          the app's frame, and a card crossing it would be a second frame. The
+          component brings its own gutters, because it is a floating card on the
+          page now rather than a band under the header.
         */}
         {announcements.length > 0 && !EDGE_TO_EDGE_ROUTES.has(pathname) && (
           <AnnouncementBanner announcements={announcements} />

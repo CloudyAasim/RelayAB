@@ -112,15 +112,30 @@ describe("the announcement strip carries one notice, not a feed", () => {
     expect(BANNER).not.toMatch(/bg-(red|green|yellow|blue)-\d/);
   });
 
-  it("is a strip of window chrome, not a notice slab", () => {
-    // One quiet step off the shell's background plus one hairline, the same
-    // weight as the app header's rule — the strip sits directly on
-    // `bg-background`, so a card treatment would make it a floating white slab.
-    expect(BANNER).toContain("border-b border-border bg-muted/40");
+  it("is a card floating on the page, not a band under the header", () => {
+    // The floating-panel geometry, on purpose: `rounded-lg` + one hairline +
+    // the one shadow the app allows a lifted surface. The strip used to be
+    // `bg-muted/40` closed by a `border-b`, which read as the header's own
+    // bottom edge — a notice is temporary content, not window chrome, so it
+    // looks like a sheet of paper laid on the page.
+    expect(BANNER).toContain("rounded-lg border border-border bg-card");
+    expect(BANNER).toContain("shadow-float");
     // No tinted band: the four level washes belong to the notices themselves.
     for (const level of ["info", "success", "warning", "destructive"]) {
       expect(BANNER).not.toContain(`bg-${level}/10`);
     }
+  });
+
+  it("brings its own gutters, aligned with the page column", () => {
+    // The card is inset by the same numbers `main` pads with, and capped at the
+    // same `max-w-7xl` as `SectionPageLayout`, so its edges line up with the
+    // cards below it instead of running past them on a wide screen.
+    expect(BANNER).toContain("px-4 pt-4 sm:px-6 sm:pt-6 lg:px-8 lg:pt-8");
+    expect(BANNER).toContain("mx-auto flex w-full max-w-7xl");
+    // In the flow, not pinned: a sticky card would be a second bar under the
+    // narrow-screen header and would cover the first line of every page. The
+    // comments above say "sticky" in prose, so match the class, not the word.
+    expect(BANNER).not.toMatch(/className="[^"]*\b(?:sticky|fixed)\b/);
   });
 });
 
