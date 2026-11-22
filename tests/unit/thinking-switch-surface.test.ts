@@ -117,6 +117,31 @@ describe("the settings form does not let 'default' stand for 'off'", () => {
     // option they are about to pick is.
     expect(PANEL).toContain("reasoningDefaultIsNotOff");
   });
+
+  it("keeps the long label where there is room for it", () => {
+    // Shortening the option was a concession to a 97px column, not a
+    // preference. The model testers render the same two questions with
+    // full-width selects (they sit in a `sm:grid-cols-2` of the page, not in a
+    // three-across row), and there the bare 「默认」 sits directly above
+    // low/medium/high — where it reads as the lowest level instead of as the
+    // parameter being absent. They have their own keys so both can be true.
+    expect(DICT).toContain('"dashboard.models.tester.reasoningOff": "默认（不发送）",');
+    expect(DICT).toContain('"dashboard.models.tester.reasoningOff": "Default (not sent)",');
+
+    const page = read("src", "app", "(user)", "dashboard", "models", "page.tsx");
+    // Wired to the tester keys rather than to the shortened settings one — a
+    // dict entry nothing renders documents nothing.
+    expect(page).toContain('reasoningOff: t("dashboard.models.tester.reasoningOff")');
+    expect(page).toContain(
+      'thinkingVendorDefault: t("dashboard.models.tester.thinkingVendorDefault")',
+    );
+    expect(page, "the shortened settings option leaked back into a tester").not.toContain(
+      'reasoningOff: t("assistant.settings.reasoningOff")',
+    );
+    expect(page, "the shortened settings option leaked back into a tester").not.toContain(
+      'thinkingVendorDefault: t("assistant.settings.thinkingVendorDefault")',
+    );
+  });
 });
 
 describe("a model that ignores the effort parameter has its control switched off", () => {

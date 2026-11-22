@@ -174,10 +174,17 @@ export default async function ModelsPage() {
             },
             decidedBy: t("dashboard.models.tester.decidedBy"),
             endpoint: t("dashboard.models.probe.endpoint"),
+            // The blank option spells out "not sent" in both testers, unlike in
+            // the assistant settings. There the field sits in a 97px column and
+            // the long form measured 98px, so the row of three only fits the
+            // bare 「默认」 and the (i) badge carries the meaning. These selects
+            // are full width, and the option sits directly under
+            // low/medium/high, where a bare "Default" reads as the lowest level
+            // rather than as an absence.
             reasoning: t("assistant.settings.reasoning"),
-            reasoningOff: t("assistant.settings.reasoningOff"),
+            reasoningOff: t("dashboard.models.tester.reasoningOff"),
             thinkingMode: t("assistant.settings.thinkingMode"),
-            thinkingVendorDefault: t("assistant.settings.thinkingVendorDefault"),
+            thinkingVendorDefault: t("dashboard.models.tester.thinkingVendorDefault"),
             thinkingOn: t("assistant.settings.thinkingOn"),
             thinkingOff: t("assistant.settings.thinkingOff"),
             sampling: t("dashboard.models.sampling"),
@@ -306,9 +313,9 @@ export default async function ModelsPage() {
             path: t("dashboard.models.probe.path"),
             endpoint: t("dashboard.models.probe.endpoint"),
             reasoning: t("assistant.settings.reasoning"),
-            reasoningOff: t("assistant.settings.reasoningOff"),
+            reasoningOff: t("dashboard.models.tester.reasoningOff"),
             thinkingMode: t("assistant.settings.thinkingMode"),
-            thinkingVendorDefault: t("assistant.settings.thinkingVendorDefault"),
+            thinkingVendorDefault: t("dashboard.models.tester.thinkingVendorDefault"),
             thinkingOn: t("assistant.settings.thinkingOn"),
             thinkingOff: t("assistant.settings.thinkingOff"),
             sampling: t("dashboard.models.sampling"),
