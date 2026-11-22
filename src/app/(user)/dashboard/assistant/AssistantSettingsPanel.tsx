@@ -883,17 +883,24 @@ export function AssistantSettingsPanel({
         person chose rather than to the thing paying for it, and a setting that
         only works on one of the two is half a setting.
 
-        Two columns, not four: this is a 384px drawer, and four columns of number
-        inputs with their labels is the layout that made this form look thrown
-        together. The wire name goes under the Chinese name so the row reads as
-        one language and still says what to look up in the vendor's docs.
+        One row of three: the thinking level, the thinking switch and the context
+        window are what somebody opens this drawer to change, and they are the
+        three that fit side by side even in a 384px drawer — measured 97px each
+        once the two empty options stop repeating "not sent" in the option
+        itself. Those options never fitted: the select leaves 79px for its text
+        and 「默认（不发送）」 measures 98px, "Default (not sent)" 117px. What the
+        empty option means is what the (i) badges beside the labels say in full.
+        Four columns of number inputs was the layout that made this form look
+        thrown together; three is a row. The wire name goes under the Chinese
+        name so the row reads as one language and still says what to look up in
+        the vendor's docs.
       */}
       <fieldset className="rounded-md border border-border p-3">
         <legend className="flex items-center gap-1.5 px-1 text-sm font-medium text-foreground">
           {t("assistant.settings.modelParams")}
           <InfoHint text={t("assistant.settings.modelParamsHint")} />
         </legend>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-2">
           <div className="space-y-1">
             {/*
               Greyed when the operator has declared that this model's vendor
@@ -907,7 +914,24 @@ export function AssistantSettingsPanel({
               nothing anywhere would report that it did nothing. That is worse
               than a refusal, so the control is switched off and says why.
             */}
-            <div className="flex items-center gap-1.5">
+            {/*
+              This badge is now the only place the full answer lives. The option
+              in the picker below says just 「默认」: the select is 97px wide and
+              leaves 79px for its text once `px-2` is taken off, while
+              「默认（不发送）」 measures 98px in Chinese and "Default (not sent)"
+              117px in English, so the old label was clipped in all three
+              columns — here and in the two-column layout before it.
+            */}
+            {/*
+              `min-h-8` on all three label rows, and not on the siblings: the
+              badge makes this row 20px tall while a bare `text-xs` label is
+              16px, so the three controls below started at different heights —
+              measured 538 / 538 / 534 on the row this grid used to break across
+              two lines. One 32px label row per cell puts the selects and the
+              input on the same baseline, and gives a translated label that
+              wraps to two lines (en does) the height it needs.
+            */}
+            <div className="flex min-h-8 items-center gap-1.5">
               <label
                 htmlFor="assistant-reasoning"
                 className={cn(
@@ -920,7 +944,9 @@ export function AssistantSettingsPanel({
               <InfoHint
                 text={
                   <>
-                    <span className="block">\n                      <MarkdownText text={t("assistant.settings.reasoningDefaultIsNotOff")} />\n                    </span>
+                    <span className="block">
+                      <MarkdownText text={t("assistant.settings.reasoningDefaultIsNotOff")} />
+                    </span>
                     {mode === "account" &&
                       !effortUnsupported &&
                       (facts?.reasoningLevels?.length ?? 0) === 0 && (
@@ -947,7 +973,7 @@ export function AssistantSettingsPanel({
               disabled={effortUnsupported}
               levels={mode === "account" ? (facts?.reasoningLevels ?? []) : []}
             />
-            <p className="font-mono text-xs text-muted-foreground">reasoning_effort</p>
+            <p className="font-mono text-xs text-muted-foreground">{wireName("reasoning_effort")}</p>
             {effortUnsupported ? (
               // The one explanation that fits: not "there are no levels known"
               // but "this model does not read this parameter at all", and where
@@ -984,7 +1010,7 @@ export function AssistantSettingsPanel({
               request with a 400, which is the vendor's own words rather than a
               guess made here.
             */}
-            <div className="flex items-center gap-1.5">
+            <div className="flex min-h-8 items-center gap-1.5">
               <label htmlFor="assistant-thinking" className="text-xs font-medium text-foreground">
                 {t("assistant.settings.thinkingMode")}
               </label>
@@ -1007,7 +1033,7 @@ export function AssistantSettingsPanel({
               <option value="adaptive">{t("assistant.settings.thinkingOn")}</option>
               <option value="disabled">{t("assistant.settings.thinkingOff")}</option>
             </select>
-            <p className="font-mono text-xs text-muted-foreground">thinking.type</p>
+            <p className="font-mono text-xs text-muted-foreground">{wireName("thinking.type")}</p>
             {switchUnsupported ? (
               <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
                 <MarkdownText text={t("assistant.settings.thinkingSwitchNotSupported")} />
@@ -1610,9 +1636,17 @@ function ParamField({
 }) {
   return (
     <div className="space-y-1">
-      <label htmlFor={id} className="block text-xs font-medium text-foreground">
-        {label}
-      </label>
+      {/*
+        The same 32px label row the two dropdowns get, so this input starts on
+        the line theirs ends on: a `text-xs` label is 16px and the badge beside
+        the others is 20px, and the 4px difference showed as one box sitting
+        higher than its neighbours in the same row.
+      */}
+      <div className="flex min-h-8 items-center">
+        <label htmlFor={id} className="text-xs font-medium text-foreground">
+          {label}
+        </label>
+      </div>
       <input
         id={id}
         name={id}
@@ -1625,7 +1659,33 @@ function ParamField({
         onChange={(e) => onChange(blankToNull(e.target.value))}
         className="h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm tabular-nums"
       />
-      <p className="font-mono text-xs text-muted-foreground">{wire}</p>
+      <p className="font-mono text-xs text-muted-foreground">{wireName(wire)}</p>
     </div>
   );
+}
+
+/**
+ * The wire name, with a break opportunity after `_` and `.` and nowhere else.
+ *
+ * The stack in `tailwind.config.ts` names "JetBrains Mono" first, but nothing
+ * loads that font, so the browser falls back to its own `monospace` — and the
+ * fallback it picks is not the same in every language. The same 16 characters
+ * measured 96px under `lang="zh-CN"` and 105.6px under `lang="en"`, which is
+ * 8.6px wider than the 97px column this row now gives each parameter, so in
+ * English `reasoning_effort` ran straight into the caption beside it.
+ *
+ * A `<wbr>` is the break that only happens when it has to: where the text
+ * already fits (Chinese) it is not used at all, and where it does not, the name
+ * wraps at the underscore rather than losing its tail to an ellipsis or
+ * splitting `reasoning` into `reason` / `ing`. Underscores and dots are not
+ * break points in CSS, so they have to be marked.
+ */
+function wireName(wire: string) {
+  const parts = wire.split(/(?<=[_.])/);
+  return parts.map((part, index) => (
+    <span key={index}>
+      {part}
+      {index < parts.length - 1 ? <wbr /> : null}
+    </span>
+  ));
 }

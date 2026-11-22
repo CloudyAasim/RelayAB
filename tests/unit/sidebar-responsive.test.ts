@@ -127,6 +127,20 @@ describe("sidebar: collapsed rail layout & motion", () => {
     );
   });
 
+  it("anchors the collapsed group divider to the icon column, not to the centre", () => {
+    // The group's label turns into a 40px hairline when the rail narrows. It
+    // used to be centred inside a box that reached `left-[-0.75rem]` with
+    // `right-0 … justify-center`, which centres against the scroller's
+    // **content** box — so the real 10px scrollbar pulled the line 5px left
+    // of the icons (measured 15..55 against rows at 21..61). Anchoring the
+    // line to the row's own left edge keeps it on the icon axis: the row's
+    // left edge is the item column's left edge in both states.
+    expect(sidebar).toContain(
+      '"pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 transition-opacity duration-300 ease-sidebar motion-reduce:transition-none"',
+    );
+    expect(sidebar).not.toContain("left-[-0.75rem]");
+  });
+
   it("crossfades the toggle glyph instead of hard-swapping it", () => {
     expect(sidebar).toContain('collapsed ? "opacity-100" : "opacity-0"');
     expect(sidebar).toContain('collapsed ? "opacity-0" : "opacity-100"');

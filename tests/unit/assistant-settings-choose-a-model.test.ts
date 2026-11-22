@@ -58,11 +58,18 @@ describe("the settings offer the model's parameters, and only the caller's", () 
     ]) {
       expect(PANEL, `${id} has no input`).toMatch(new RegExp(`id="${id}"`));
     }
-    // Two columns, not four. This renders in a 384px drawer, and four columns
-    // of number inputs there is four ~80px fields with three-line labels — the
-    // layout that made this form look thrown together.
-    expect(PANEL, "the parameter grid is not two columns").toMatch(
-      /className="grid grid-cols-2 gap-3"/,
+    // Three across, not four. Three is what fits in a 384px drawer — the level,
+    // the switch and the context window are 97px columns — but only because the
+    // two empty options say 「默认」 rather than 「默认（不发送）」: the select
+    // leaves 79px for its text and the long form measures 98px (117px in
+    // English), so it was clipped. Four columns of number inputs at ~80px each,
+    // with three-line labels, is the layout that made this form look thrown
+    // together.
+    expect(PANEL, "the parameter row is not three columns").toMatch(
+      /className="grid grid-cols-3 gap-2"/,
+    );
+    expect(PANEL, "the thinking level, the switch and the window are not on one row").toMatch(
+      /grid grid-cols-3 gap-2[\s\S]*?assistant-reasoning[\s\S]*?assistant-thinking[\s\S]*?assistant-context-length/,
     );
     expect(PANEL, "something is still laying four out across a narrow drawer").not.toMatch(
       /grid-cols-4/,

@@ -266,10 +266,23 @@ export function SidebarGroup({
           >
             {label}
           </span>
+          {/*
+            The line is anchored to the row's own left edge and grows to the
+            right, instead of being centred in a box padded to compensate the
+            old layout.
+
+            Centring was the bug: the box was measured against the scroller's
+            **content** width, so a real (non-overlay) scrollbar took 10px off
+            the right and dragged the line's centre 5px left of the icon
+            column — 15..55 against items at 21..61. Anchor + fixed 40px width
+            cannot drift that way: the row's left edge already *is* the item
+            column's left edge in both states (16px panel margin + 12px
+            padding), so the line lands on 21..61 with or without a scrollbar.
+          */}
           <div
             aria-hidden
             className={cn(
-              "pointer-events-none absolute left-[-0.75rem] right-0 top-1/2 flex -translate-y-1/2 justify-center transition-opacity duration-300 ease-sidebar motion-reduce:transition-none",
+              "pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 transition-opacity duration-300 ease-sidebar motion-reduce:transition-none",
               collapsed ? "opacity-100" : "opacity-0",
             )}
           >

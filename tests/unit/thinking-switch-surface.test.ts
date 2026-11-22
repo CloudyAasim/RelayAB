@@ -94,11 +94,21 @@ describe("the settings form does not let 'default' stand for 'off'", () => {
   const DICT = read("src", "lib", "i18n", "dict.ts");
   const PANEL = read("src", "app", "(user)", "dashboard", "assistant", "AssistantSettingsPanel.tsx");
 
-  it("labels the empty option as what it is", () => {
+  it("labels the empty option as the default it is, and says the rest in the badge", () => {
     // "Off" would be a lie: the option sends nothing, and nothing is the
     // vendor's choice, which for some models is thinking at its deepest.
-    expect(DICT).toContain('"assistant.settings.reasoningOff": "默认（不发送）"');
-    expect(DICT).toContain('"assistant.settings.reasoningOff": "Default (not sent)"');
+    //
+    // The label itself is the short word, because this option now sits in one
+    // of three 97px columns: the select leaves 79px for its text once `px-2` is
+    // taken off, and 「默认（不发送）」 measures 98px (117px in English), so it
+    // was clipped. What "not sent" means is in the (i) badge beside the label —
+    // asserted in the next test, so shortening the option cannot quietly drop
+    // the explanation.
+    expect(DICT).toContain('"assistant.settings.reasoningOff": "默认",');
+    expect(DICT).toContain('"assistant.settings.reasoningOff": "Default",');
+    expect(DICT, "the long option label is back, and it does not fit").not.toContain(
+      '"assistant.settings.reasoningOff": "默认（不发送）"',
+    );
   });
 
   it("says so on the screen, next to the field", () => {
