@@ -97,8 +97,21 @@ export async function isAssistantCredentialEnabled(userId: string): Promise<bool
 }
 
 /**
- * Create the credential. Off by default: the user turning it on is a separate,
- * explicit act (see `setAssistantCredentialEnabled`).
+ * Create the credential, switched **on**.
+ *
+ * It used to be created off, on the reasoning that "created" is not consent.
+ * That held up as a principle and failed as a product: pressing the one button
+ * on the card left the feature it exists for still unusable, and the reader had
+ * no way to tell the difference between "created, ready to use" and "created,
+ * doing nothing" without reading the status pill. Creating a credential is
+ * already an explicit act by an authenticated user about their own quota, so
+ * the consent was in the click; the second switch only asked the same question
+ * twice.
+ *
+ * Rows that already exist are left exactly as they are, switched off included:
+ * a user who turned this off must not have it turned back on by a create they
+ * did not call. That is what the early return below guarantees — this is the
+ * default for new rows, not a migration.
  *
  * Idempotent in the sense that matters — calling it for a user who already has
  * one returns the existing credential rather than minting a second, so a double
@@ -108,6 +121,8 @@ export async function createAssistantCredential(userId: string): Promise<Assista
   const existing = await getAssistantCredential(userId);
   if (existing) return existing;
 
+  const createdAt = new Date().toISOString();
+
   // The api_keys row and the assistant_keys row must appear together: the
   // second is meaningless without the first, and an orphaned api_keys row would
   // be a key the user cannot see and nobody can explain.
@@ -115,14 +130,14 @@ export async function createAssistantCredential(userId: string): Promise<Assista
     const { key } = await createApiKey({ userId, label: ASSISTANT_KEY_LABEL });
     run(
       `INSERT INTO assistant_keys (user_id, api_key_id, enabled, created_at)
-       VALUES (?, ?, 0, ?)`,
-      [userId, key.id, new Date().toISOString()],
+       VALUES (?, ?, 1, ?)`,
+      [userId, key.id, createdAt],
     );
     return {
       userId,
       apiKeyId: key.id,
-      enabled: false,
-      createdAt: new Date().toISOString(),
+      enabled: true,
+      createdAt,
       key,
     };
   });

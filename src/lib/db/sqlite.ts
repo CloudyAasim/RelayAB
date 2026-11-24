@@ -345,12 +345,13 @@ CREATE TABLE IF NOT EXISTS assistant_settings (
 --
 -- One row per user: the primary key *is* the "at most one" rule, so the limit
 -- cannot drift from the data the way a checked-in counter could. Absent means
--- never created, and enabled defaults to 0, so the feature is off until the
--- user turns it on.
+-- never created. "enabled" defaults to 1 because creating one is the user's
+-- act of consent (see createAssistantCredential); the column still exists so
+-- that turning it back off is a state the row remembers.
 CREATE TABLE IF NOT EXISTS assistant_keys (
   user_id    TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   api_key_id TEXT NOT NULL REFERENCES api_keys(id) ON DELETE CASCADE,
-  enabled    INTEGER NOT NULL DEFAULT 0,
+  enabled    INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL
 );
 

@@ -840,11 +840,23 @@ describe("assistant: what the tools are allowed to spend", () => {
     expect(resolved).toEqual({ kind: "none", reason: "no_credential" });
   });
 
-  it("still has nothing after a credential is created but not switched on", async () => {
-    // The default is off, and "created" is not consent.
+  it("spends the account as soon as a credential is created", async () => {
+    // Creating one is the consent: it used to be created off and asked for a
+    // second click, which left the feature unusable right after the one button
+    // the card offers.
     const user = await makeUser("user", "u12");
     const created = await createAssistantCredential(user.id);
-    expect(created.enabled).toBe(false);
+    expect(created.enabled).toBe(true);
+    const resolved = await resolveToolCredential({ userId: user.id });
+    expect(resolved.kind).toBe("account");
+  });
+
+  it("still has nothing once the user switches it off", async () => {
+    // The default flipped; the off-switch is what the user's own "no" writes,
+    // and it has to keep working or this became an opt-out that cannot opt out.
+    const user = await makeUser("user", "u12b");
+    await createAssistantCredential(user.id);
+    await setAssistantCredentialEnabled(user.id, false);
     expect(await resolveToolCredential({ userId: user.id })).toEqual({
       kind: "none",
       reason: "switch_off",
@@ -1001,8 +1013,8 @@ describe("assistant: /api/assistant/credentials", () => {
     const created = await POST(post("create"));
     const createdBody = (await created.json()) as { data: { created: boolean; enabled: boolean; keyPrefix: string } };
     expect(createdBody.data.created).toBe(true);
-    // Off by default: creating is not consent.
-    expect(createdBody.data.enabled).toBe(false);
+    // Created enabled: the consent is in the create action itself.
+    expect(createdBody.data.enabled).toBe(true);
     expect(createdBody.data.keyPrefix).toBeTruthy();
 
     const enabled = (await (await POST(post("enable"))).json()) as { data: { enabled: boolean; usable: boolean } };
@@ -1221,6 +1233,7 @@ describe("assistant: a turn spent on the caller's own account", () => {
     const settings = (await getAssistantSettings(user.id))!;
     const thread = await createAssistantThread(user.id, "t");
     await createAssistantCredential(user.id); // created, deliberately not enabled
+    await setAssistantCredentialEnabled(user.id, false);
 
     const upstream: string[] = [];
     const turns = assistantTurns();

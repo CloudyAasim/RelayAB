@@ -1394,8 +1394,8 @@ const zhCN: Dict = {
   "assistant.credential.status.none": "未创建",
   "assistant.credential.status.off": "已创建 · 未开启",
   "assistant.credential.status.on": "已开启",
-  "assistant.credential.switchHint": "开启后，助手实测模型、生成图片/语音/视频时会以你的身份调用本部署，费用走你自己的额度。不需要也不会保存任何密钥。默认关闭。",
-  "assistant.credential.notCreated": "你还没有助手凭据。创建之后还需要手动开启，创建本身不会让它生效。",
+  "assistant.credential.switchHint": "开启后，助手实测模型、生成图片/语音/视频时会以你的身份调用本部署，费用走你自己的额度。不需要也不会保存任何密钥。创建时默认开启，随时可以在这里关掉。",
+  "assistant.credential.notCreated": "你还没有助手凭据。创建后立即生效，随时可以关掉。",
   "assistant.credential.create": "创建助手凭据",
   "assistant.credential.enableNow": "现在开启",
   "assistant.credential.creating": "创建中…",
@@ -3122,9 +3122,9 @@ const en: Dict = {
   "assistant.credential.status.off": "Created · off",
   "assistant.credential.status.on": "On",
   "assistant.credential.switchHint":
-    "When on, testing a model or generating an image, voice or video goes out as you against this deployment, charged to your own quota. No key is needed or stored. Off by default.",
+    "When on, testing a model or generating an image, voice or video goes out as you against this deployment, charged to your own quota. No key is needed or stored. On from the moment you create it; you can switch it off here at any time.",
   "assistant.credential.notCreated":
-    "You have no assistant credential yet. Creating one does not activate it — you still have to switch it on.",
+    "You have no assistant credential yet. Creating one takes effect immediately, and you can switch it off whenever you like.",
   "assistant.credential.create": "Create assistant credential",
   "assistant.credential.enableNow": "Turn it on now",
   "assistant.credential.creating": "Creating…",

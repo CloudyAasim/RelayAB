@@ -6,8 +6,10 @@
  *                                       | "rotate" | "remove" }
  *
  * The credential the assistant spends, authorised by the caller's session. It is
- * created here on the user's explicit request, off by default, and at most one
- * per account — a rule the schema enforces rather than a check in this file.
+ * created here on the user's explicit request, **switched on from the start**,
+ * and at most one per account — a rule the schema enforces rather than a check
+ * in this file. "disable" is still offered, and it is what the user's off-switch
+ * writes; only the initial state changed.
  *
  * There is no endpoint that returns the plaintext, because there is no
  * plaintext: the assistant holds the key object and calls the proxy in-process.

@@ -120,6 +120,7 @@ describe("the media test page, spending the caller's own identity", () => {
     // Adding a content type must not have loosened the credential check, which
     // is the thing that actually decides who pays.
     await createAssistantCredential(user.id);
+    await setAssistantCredentialEnabled(user.id, false);
     const res = await POST(sttUpload("asr-1.0"));
     expect(res.status).toBe(409);
     expect((await res.json()).error.code).toBe("no_credential");
