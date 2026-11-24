@@ -256,6 +256,33 @@ body {
   background: color-mix(in oklch, var(--muted-foreground) 55%, transparent);
 }
 
+/*
+ * The nav panel's scrollbar, hidden.
+ *
+ * A sidebar is the one scroller where the bar is pure chrome: it was drawn
+ * *inside* the panel, between the item column and the panel's right edge, and
+ * it came and went with the length of the list — so the column shifted
+ * sideways by its width whenever a group was added. The panel already reads as
+ * scrollable from the clipped list, and on a phone the drawer is the full
+ * height of the screen.
+ *
+ * Hiding it also makes the content box a fixed width no matter how long the
+ * list gets. The icon rail depends on that: its rows are a fixed 40px, and a
+ * bar that appears and disappears would have to be paid for out of them.
+ *
+ * `scrollbar-width` reaches Firefox, the pseudo-element the rest. Both are
+ * scoped to this class, so every other scroller keeps the 6px bar above — that
+ * one is still wanted on tables and long documents.
+ */
+.scrollbar-none {
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
 /* Focus ring (accessible) */
 :focus-visible {
   outline: 2px solid var(--ring);

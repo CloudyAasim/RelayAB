@@ -122,14 +122,29 @@ export function SidebarContent({ children, className }: { children: ReactNode; c
         // reaching its end must not start scrolling the page behind it — on a
         // phone the two scrolls chain and the page slides away under the
         // panel.
-        "flex-1 overflow-y-auto overscroll-contain px-3 py-4",
-        // In the icon rail the scrollbar would eat the right-hand side of the
-        // item column: the 6px it takes off the content box made the selected
-        // row's highlight 34px instead of 40px, and it ended up touching the
-        // scrollbar track with the icon no longer centred inside it. With no
-        // right padding the scrollbar moves out to the panel's own edge and
-        // the item column keeps its width — before and after the scrollbar
-        // appears.
+        //
+        // The bar is hidden, not the scrolling: the list still scrolls with
+        // the wheel, the trackpad, the keyboard and a drag on touch.
+        //
+        // It was drawn inside the panel, between the item column and the
+        // panel's right edge, and it appeared and disappeared with the length
+        // of the list — so the column shifted sideways whenever a group was
+        // added. A rail whose items move for a reason the eye cannot see is
+        // worse than a scroller whose position the clipped list already
+        // implies. Hiding it also makes the content box a fixed width, which
+        // is what the icon rail below relies on; globals.css keeps the 6px bar
+        // on every other scroller.
+        "flex-1 overflow-y-auto overscroll-contain px-3 py-4 scrollbar-none",
+        // The icon rail drops its right padding, and this is **not** about the
+        // scrollbar any more — that one is hidden now. It is about the row:
+        // the rail's interior is 64 − 2 (borders) = 62px, so `px-3` on both
+        // sides would leave 38px for a row that is a fixed `w-10` = 40px. Two
+        // pixels of overflow is enough to raise a horizontal scrollbar, and
+        // the items would slide under it.
+        //
+        // With `pr-0` the usable width is 62 − 12 = 50px, the 40px rows sit at
+        // 21..61 and the divider's `left-0` anchor puts the hairline at the
+        // same 21..61 — the axis the whole rail is built on.
         collapsed && "pr-0",
         className,
       )}

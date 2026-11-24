@@ -52,6 +52,7 @@ describe("sidebarStateForViewport", () => {
 describe("sidebar: collapsed rail layout & motion", () => {
   const layout = read("components/layouts/AuthenticatedLayout.tsx");
   const sidebar = read("components/layouts/sidebar/Sidebar.tsx");
+  const CSS = read("app/globals.css");
 
   it("eases the rail width with one shared curve and clips overflow", () => {
     expect(sidebar).toContain(
@@ -75,14 +76,36 @@ describe("sidebar: collapsed rail layout & motion", () => {
     expect(sidebar).not.toContain('collapsed && "justify-center px-2"');
   });
 
-  it("keeps the icon rail's rows a fixed width, scrollbar or not", () => {
-    // The scrollbar used to eat the right-hand side of the item column: the
-    // highlight shrank from 40px to 34px, ended up touching the scrollbar
-    // track, and the icon stopped being centred inside it. No right padding
-    // pushes the scrollbar out to the panel's edge, and a fixed row width
-    // keeps the highlight the same size either way.
+  it("hides the rail's scrollbar instead of letting it resize the column", () => {
+    // The bar used to be drawn inside the panel, between the item column and
+    // the panel's right edge, and it came and went with the length of the
+    // list — so the column shifted sideways whenever a group was added (the
+    // highlight went from 40px to 34px and touched the track).
+    //
+    // The fix hides the bar, not the scrolling: `overflow-y-auto` stays, so the
+    // wheel, the trackpad, the keyboard and a touch drag all still work.
+    expect(sidebar).toContain("overflow-y-auto overscroll-contain px-3 py-4 scrollbar-none");
+    // The icon rail keeps `pr-0`, and now for a reason that does not depend on
+    // the bar existing: 64 − 2 borders = 62px interior, and `px-3` both sides
+    // would leave 38px for a fixed 40px row. Measured 2px of overflow, which
+    // raises a horizontal scrollbar.
     expect(sidebar).toContain('collapsed && "pr-0"');
     expect(sidebar).toContain('collapsed && "w-10 gap-0"');
+  });
+
+  it("scopes the hidden bar to the rail, not to the whole app", () => {
+    // Hiding a scrollbar globally is an accessibility problem, not a style
+    // choice — a long table or a document page would give no sign that there
+    // is more below. The rule therefore lives on `.scrollbar-none`, which only
+    // the sidebar carries; the app-wide 6px bar is still there for everything
+    // else. `scrollbar-width` is what reaches Firefox, the pseudo-element is
+    // what reaches Chromium.
+    expect(CSS).toContain(".scrollbar-none {");
+    expect(CSS).toContain("scrollbar-width: none;");
+    expect(CSS).toContain(".scrollbar-none::-webkit-scrollbar {");
+    // The global bar is untouched.
+    expect(CSS).toContain("scrollbar-width: thin;");
+    expect(CSS).toContain("*::-webkit-scrollbar {");
   });
 
   it("fades the brand wordmark instead of unmounting it", () => {
