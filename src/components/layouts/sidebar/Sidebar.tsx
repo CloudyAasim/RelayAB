@@ -134,7 +134,15 @@ export function SidebarContent({ children, className }: { children: ReactNode; c
         // implies. Hiding it also makes the content box a fixed width, which
         // is what the icon rail below relies on; globals.css keeps the 6px bar
         // on every other scroller.
-        "flex-1 overflow-y-auto overscroll-contain px-3 py-4 scrollbar-none",
+        //
+        // `py-2` and not `py-4`: this padding is the strip of nothing above the
+        // first group and below the last row, and the list above it is already
+        // spaced — 4px of group padding plus the label's own half-leading. At
+        // 16px the panel opened with a band of blank wider than the gap between
+        // two groups, so the first row looked stranded under the header and the
+        // last looked stuck to the footer. `px-3` is untouched: that is the
+        // icon column's alignment, measured below.
+        "flex-1 overflow-y-auto overscroll-contain px-3 py-2 scrollbar-none",
         // The icon rail drops its right padding, and this is **not** about the
         // scrollbar any more — that one is hidden now. It is about the row:
         // the rail's interior is 64 − 2 (borders) = 62px, so `px-3` on both

@@ -84,7 +84,7 @@ describe("sidebar: collapsed rail layout & motion", () => {
     //
     // The fix hides the bar, not the scrolling: `overflow-y-auto` stays, so the
     // wheel, the trackpad, the keyboard and a touch drag all still work.
-    expect(sidebar).toContain("overflow-y-auto overscroll-contain px-3 py-4 scrollbar-none");
+    expect(sidebar).toContain("overflow-y-auto overscroll-contain px-3 py-2 scrollbar-none");
     // The icon rail keeps `pr-0`, and now for a reason that does not depend on
     // the bar existing: 64 − 2 borders = 62px interior, and `px-3` both sides
     // would leave 38px for a fixed 40px row. Measured 2px of overflow, which
