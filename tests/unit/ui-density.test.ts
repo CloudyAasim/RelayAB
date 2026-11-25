@@ -544,7 +544,7 @@ describe("secondary labels and descriptions that the layout already says", () =>
   const mediaPage = read("src", "app", "(admin)", "admin", "media-providers", "page.tsx");
   const modelsPage = read("src", "app", "(user)", "dashboard", "models", "page.tsx");
   const allocation = read("src", "app", "(user)", "dashboard", "AllocationSummary.tsx");
-  const editor = read("src", "app", "(admin)", "admin", "users", "AllocationEditor.tsx");
+  const editor = read("src", "app", "(admin)", "admin", "users", "UserConfig.tsx");
 
   it("an empty state does not tell the reader to click the button beside it", () => {
     // 「点击右上角「新建用户」创建第一个用户。」 under a card whose own action

@@ -684,13 +684,13 @@ const zhCN: Dict = {
   "admin.users.action.failed": "操作失败",
   "admin.users.action.confirmDelete": "确定删除这个用户？此操作不可撤销。",
   "admin.users.action.passwordResetHint": "明文仅显示一次，请立即复制并通过安全渠道转交给用户。",
-  "admin.users.action.editDisplayName": "编辑显示名",
-  "admin.users.editDisplayName.title": "编辑显示名",
   "admin.users.flash.deleted": "已删除 {name}",
 
 
   // ===== Admin Users: allocation editor =====
-  "admin.users.allocation.title": "用户额度配置",
+  "admin.users.config.title": "配置用户",
+  "admin.users.config.open": "配置",
+  "admin.users.config.identity": "账户信息",
   "admin.users.allocation.quota": "账号积分池",
   "admin.users.allocation.pool": "积分池总量",
   "admin.users.allocation.poolValue": "{amount} {unit}",
@@ -722,8 +722,6 @@ const zhCN: Dict = {
   "admin.users.allocation.maxActiveKeys": "活跃密钥上限",
   "admin.users.allocation.allModels": "全部可用模型",
   "admin.users.allocation.uncapped": "（无上限）",
-  "admin.users.allocation.edit": "配置额度",
-  "admin.users.allocation.editTitle": "配置用户额度",
   "admin.users.allocation.quotaType": "额度类型",
   "admin.users.allocation.quotaLimit": "积分总量",
   "admin.users.allocation.quotaLimitHint": "用户自建密钥时将自动使用此额度。",
@@ -2407,13 +2405,13 @@ const en: Dict = {
   "admin.users.action.failed": "Failed",
   "admin.users.action.confirmDelete": "Delete this user? This cannot be undone.",
   "admin.users.action.passwordResetHint": "The plaintext is shown only once — copy it now and deliver it over a secure channel.",
-  "admin.users.action.editDisplayName": "Edit Display Name",
-  "admin.users.editDisplayName.title": "Edit Display Name",
   "admin.users.flash.deleted": "Deleted {name}",
 
 
   // ===== Admin Users: allocation editor =====
-  "admin.users.allocation.title": "User Quota Allocation",
+  "admin.users.config.title": "Configure user",
+  "admin.users.config.open": "Configure",
+  "admin.users.config.identity": "Account",
   "admin.users.allocation.quota": "Account credit pool",
   "admin.users.allocation.pool": "Credit pool",
   "admin.users.allocation.poolValue": "{amount} {unit}",
@@ -2445,8 +2443,6 @@ const en: Dict = {
   "admin.users.allocation.maxActiveKeys": "Active-key cap",
   "admin.users.allocation.allModels": "All available models",
   "admin.users.allocation.uncapped": "(no cap)",
-  "admin.users.allocation.edit": "Configure",
-  "admin.users.allocation.editTitle": "Configure allocation",
   "admin.users.allocation.quotaType": "Quota type",
   "admin.users.allocation.quotaLimit": "Total credits",
   "admin.users.allocation.quotaLimitHint": "Inherited automatically when this user creates a key.",

@@ -19,66 +19,42 @@ function read(relative: string): string {
 
 describe("i18n keys — RB-003 / RB-004 new strings", () => {
   const dict = read("lib/i18n/dict.ts");
+  // Scope each locale to its own object. Matching the whole file would let a
+  // key present in zh pass the en assertion, which is the one thing these
+  // tests exist to catch.
+  const zh = dict.slice(0, dict.indexOf("const en: Dict = {"));
+  const en = dict.slice(dict.indexOf("const en: Dict = {"));
+
+  function nonEmpty(block: string, key: string): void {
+    const match = block.match(new RegExp(`"${key.replace(/\./g, "\\.")}":\\s*"([^"]+)"`));
+    expect(match?.[1]?.trim().length).toBeGreaterThan(0);
+  }
 
   // ---- zh-CN ----------------------------------------------------------------
-  it('zh-CN: admin.users.action.editDisplayName is non-empty', () => {
-    const match = dict.match(/"admin\.users\.action\.editDisplayName":\s*"([^"]+)"/);
-    expect(match?.[1]?.trim().length).toBeGreaterThan(0);
+  it('zh-CN: admin.users.config.* are non-empty', () => {
+    nonEmpty(zh, "admin.users.config.title");
+    nonEmpty(zh, "admin.users.config.open");
+    nonEmpty(zh, "admin.users.config.identity");
   });
 
-  it('zh-CN: admin.users.editDisplayName.title is non-empty', () => {
-    const match = dict.match(/"admin\.users\.editDisplayName\.title":\s*"([^"]+)"/);
-    expect(match?.[1]?.trim().length).toBeGreaterThan(0);
-  });
-
-  it('zh-CN: admin.keys.action.rename is non-empty', () => {
-    const match = dict.match(/"admin\.keys\.action\.rename":\s*"([^"]+)"/);
-    expect(match?.[1]?.trim().length).toBeGreaterThan(0);
-  });
-
-  it('zh-CN: admin.keys.rename.title is non-empty', () => {
-    const match = dict.match(/"admin\.keys\.rename\.title":\s*"([^"]+)"/);
-    expect(match?.[1]?.trim().length).toBeGreaterThan(0);
-  });
-
-  it('zh-CN: admin.keys.rename.errorEmpty is non-empty', () => {
-    const match = dict.match(/"admin\.keys\.rename\.errorEmpty":\s*"([^"]+)"/);
-    expect(match?.[1]?.trim().length).toBeGreaterThan(0);
-  });
-
-  it('zh-CN: admin.keys.rename.errorTooLong is non-empty', () => {
-    const match = dict.match(/"admin\.keys\.rename\.errorTooLong":\s*"([^"]+)"/);
-    expect(match?.[1]?.trim().length).toBeGreaterThan(0);
+  it('zh-CN: admin.keys.rename.* are non-empty', () => {
+    nonEmpty(zh, "admin.keys.action.rename");
+    nonEmpty(zh, "admin.keys.rename.title");
+    nonEmpty(zh, "admin.keys.rename.errorEmpty");
+    nonEmpty(zh, "admin.keys.rename.errorTooLong");
   });
 
   // ---- en-US ----------------------------------------------------------------
-  it('en-US: admin.users.action.editDisplayName is non-empty', () => {
-    const match = dict.match(/"admin\.users\.action\.editDisplayName":\s*"([^"]+)"/);
-    expect(match?.[1]?.trim().length).toBeGreaterThan(0);
+  it('en-US: admin.users.config.* are non-empty', () => {
+    nonEmpty(en, "admin.users.config.title");
+    nonEmpty(en, "admin.users.config.open");
+    nonEmpty(en, "admin.users.config.identity");
   });
 
-  it('en-US: admin.users.editDisplayName.title is non-empty', () => {
-    const match = dict.match(/"admin\.users\.editDisplayName\.title":\s*"([^"]+)"/);
-    expect(match?.[1]?.trim().length).toBeGreaterThan(0);
-  });
-
-  it('en-US: admin.keys.action.rename is non-empty', () => {
-    const match = dict.match(/"admin\.keys\.action\.rename":\s*"([^"]+)"/);
-    expect(match?.[1]?.trim().length).toBeGreaterThan(0);
-  });
-
-  it('en-US: admin.keys.rename.title is non-empty', () => {
-    const match = dict.match(/"admin\.keys\.rename\.title":\s*"([^"]+)"/);
-    expect(match?.[1]?.trim().length).toBeGreaterThan(0);
-  });
-
-  it('en-US: admin.keys.rename.errorEmpty is non-empty', () => {
-    const match = dict.match(/"admin\.keys\.rename\.errorEmpty":\s*"([^"]+)"/);
-    expect(match?.[1]?.trim().length).toBeGreaterThan(0);
-  });
-
-  it('en-US: admin.keys.rename.errorTooLong is non-empty', () => {
-    const match = dict.match(/"admin\.keys\.rename\.errorTooLong":\s*"([^"]+)"/);
-    expect(match?.[1]?.trim().length).toBeGreaterThan(0);
+  it('en-US: admin.keys.rename.* are non-empty', () => {
+    nonEmpty(en, "admin.keys.action.rename");
+    nonEmpty(en, "admin.keys.rename.title");
+    nonEmpty(en, "admin.keys.rename.errorEmpty");
+    nonEmpty(en, "admin.keys.rename.errorTooLong");
   });
 });

@@ -101,7 +101,7 @@ const SCENES = [
   ["admin-create-announcement", "/admin/announcements", "admin", clickButton(/发布公告/)],
   ["admin-announcement-menu", "/admin/announcements", "admin", clickTitle("编辑")],
   ["admin-key-menu", "/admin/keys", "admin", clickButton(/^操作$/)],
-  ["admin-allocation", "/admin/users", "admin", clickButton(/配置额度/)],
+  ["admin-allocation", "/admin/users", "admin", clickButton(/^配置$/)],
   ["models-media-tab", "/dashboard/models", "user", clickTab("媒体")],
   ["models-search-tab", "/dashboard/models", "admin", clickTab("搜索")],
   ["models-gateway-params", "/dashboard/models", "user", clickButton("请求参数")],

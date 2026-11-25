@@ -1,12 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { LegacyModal as Modal } from "@/components/ui/Modal";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover";
-import { Badge } from "@/components/ui/Badge";
 import { useT } from "@/components/i18n/I18nProvider";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";
 import { formatCredits, formatCreditsFloor, formatCreditsCeil, formatNumber } from "@/lib/utils";
@@ -15,7 +13,7 @@ import { formatUserIdentity } from "@/lib/user-identity";
 import type { ModelGroup, ModelGroupKind } from "@/lib/admin/model-groups";
 import { groupAllowedModels } from "@/lib/admin/model-groups";
 import type { PublicUser } from "@/lib/db/types";
-import { Settings2, Coins, ListChecks, KeyRound, Wallet, ChevronDown } from "lucide-react";
+import { Settings2, ListChecks, Pencil, Wallet, ChevronDown } from "lucide-react";
 
 /**
  * Format an amount in the unit the account is denominated in.
@@ -73,122 +71,35 @@ function groupLabel(t: (key: string) => string, kind: ModelGroupKind): string {
   }
 }
 
-interface Props {
-  /** Password-hash-free projection — see UsersPage. */
-  users: PublicUser[];
-  /**
-   * The client-visible models across all enabled providers, grouped by kind.
-   *
-   * Grouped rather than flat: "give this account the image models" is the
-   * gesture people actually make, and a flat alphabet turns it into a reading
-   * exercise.
-   */
-  modelGroups: ModelGroup[];
-}
-
-export function AllocationEditor({ users, modelGroups }: Props) {
+/**
+ * The account's quota pool, on one line.
+ *
+ * Identity used to live in the users table and the quota in a card grid below
+ * it, so one account's settings were two modals on two halves of a page. The
+ * pool and its consumption are now columns of that same row.
+ */
+export function UserPoolSummary({ user }: { user: PublicUser }) {
   const t = useT();
-  const [editing, setEditing] = useState<PublicUser | null>(null);
+
+  if (user.quotaLimit === 0) {
+    return <span className="text-muted-foreground">{t("admin.users.allocation.noPool")}</span>;
+  }
 
   return (
-    <>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {users.map((u) => (
-          <Card key={u.id} className="hover:border-primary/40 hover:shadow-md transition-all">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <div className="font-medium text-foreground">{u.username}</div>
-                <div className="text-xs text-muted-foreground">{u.displayName}</div>
-              </div>
-              <Badge tone={u.role === "admin" ? "primary" : "neutral"}>
-                {u.role === "admin" ? t("admin.users.role.admin") : t("admin.users.role.user")}
-              </Badge>
-            </div>
-            <dl className="mt-3 space-y-1.5 text-xs text-muted-foreground">
-              <Row
-                icon={<Coins className="h-3 w-3" />}
-                k={t("admin.users.allocation.pool")}
-                v={
-                  u.quotaLimit === 0
-                    ? t("admin.users.allocation.noPool")
-                    : t("admin.users.allocation.poolValue", {
-                        amount: amount(u.quotaType, u.quotaLimit),
-                        unit: u.quotaType === "tokens" ? "tokens" : t("admin.keys.create.quotaType.credits"),
-                      })
-                }
-              />
-              <Row
-                icon={<Wallet className="h-3 w-3" />}
-                k={t("admin.users.allocation.poolUsed")}
-                v={
-                  u.quotaLimit === 0
-                    ? "—"
-                    : t("admin.users.allocation.poolUsedValue", {
-                        used: amountCeil(u.quotaType, u.quotaUsed),
-                        total: amountFloor(u.quotaType, u.quotaLimit),
-                        remaining: amountFloor(
-                          u.quotaType,
-                          Math.max(0, u.quotaLimit - u.quotaUsed),
-                        ),
-                      })
-                }
-              />
-              <Row
-                icon={<ListChecks className="h-3 w-3" />}
-                k={t("admin.users.allocation.models")}
-                v={
-                  <AllowedModelsSummary
-                    allowedModels={u.allowedModels}
-                    groups={modelGroups}
-                  />
-                }
-              />
-              <Row
-                icon={<KeyRound className="h-3 w-3" />}
-                k={t("admin.users.allocation.maxActiveKeys")}
-                v={u.maxActiveKeys > 0 ? String(u.maxActiveKeys) : t("admin.users.allocation.uncapped")}
-              />
-            </dl>
-            <div className="mt-3 flex justify-end">
-              <Button size="sm" variant="secondary" onClick={() => setEditing(u)}>
-                <Settings2 className="mr-1 h-3.5 w-3.5" />
-                {t("admin.users.allocation.edit")}
-              </Button>
-            </div>
-          </Card>
-        ))}
+    <div className="space-y-1">
+      <div className="whitespace-nowrap">
+        {t("admin.users.allocation.poolValue", {
+          amount: amount(user.quotaType, user.quotaLimit),
+          unit: user.quotaType === "tokens" ? "tokens" : t("admin.keys.create.quotaType.credits"),
+        })}
       </div>
-      {editing && (
-        <AllocationModal
-          user={editing}
-          modelGroups={modelGroups}
-          onClose={() => setEditing(null)}
-          onSaved={() => {
-            setEditing(null);
-            window.location.reload();
-          }}
-        />
-      )}
-    </>
-  );
-}
-
-function Row({
-  icon,
-  k,
-  v,
-}: {
-  icon?: React.ReactNode;
-  k: string;
-  v: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-2">
-      <dt className="flex items-center gap-1.5 text-muted-foreground">
-        {icon}
-        {k}
-      </dt>
-      <dd className="text-right font-medium text-foreground break-all max-w-[60%]">{v}</dd>
+      <div className="whitespace-nowrap text-xs text-muted-foreground">
+        {t("admin.users.allocation.poolUsedValue", {
+          used: amountCeil(user.quotaType, user.quotaUsed),
+          total: amountFloor(user.quotaType, user.quotaLimit),
+          remaining: amountFloor(user.quotaType, Math.max(0, user.quotaLimit - user.quotaUsed)),
+        })}
+      </div>
     </div>
   );
 }
@@ -198,14 +109,13 @@ function Row({
  *
  * The list can be long. A deployment with a dozen text models and a few media
  * ones gives an account a list that wraps over three lines and pushes the rest
- * of the card down, and the card is in a three-column grid — so every account
- * with a generous whitelist was taller than its neighbours.
+ * of the row down.
  *
  * So the row shows how many models the account has, and the names live in a
  * menu behind it, grouped by kind — the same grouping the picker uses, so the
  * two never disagree about what a model is.
  */
-function AllowedModelsSummary({
+export function AllowedModelsSummary({
   allowedModels,
   groups,
 }: {
@@ -271,7 +181,33 @@ function AllowedModelsSummary({
   );
 }
 
-function AllocationModal({
+/** The row's 「配置」 button: identity, pool, models and key cap in one modal. */
+export function UserConfigButton({ user, modelGroups }: { user: PublicUser; modelGroups: ModelGroup[] }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>
+        <Settings2 className="mr-1 h-3.5 w-3.5" />
+        {t("admin.users.config.open")}
+      </Button>
+      {open && (
+        <UserConfigModal
+          user={user}
+          modelGroups={modelGroups}
+          onClose={() => setOpen(false)}
+          onSaved={() => {
+            setOpen(false);
+            window.location.reload();
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+function UserConfigModal({
   user,
   modelGroups,
   onClose,
@@ -283,6 +219,7 @@ function AllocationModal({
   onSaved: () => void;
 }) {
   const t = useT();
+  const [displayName, setDisplayName] = useState(user.displayName);
   const [quotaType, setQuotaType] = useState<"credits" | "tokens">(user.quotaType);
   // quotaLimit is stored in units; convert to credits for form display
   const [quotaLimit, setQuotaLimit] = useState(
@@ -328,6 +265,11 @@ function AllocationModal({
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const trimmedName = displayName.trim();
+    if (!trimmedName) {
+      setError(t("settings.displayName.errorEmpty"));
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -335,8 +277,11 @@ function AllocationModal({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          displayName: trimmedName,
           quotaType,
-          quotaLimit: user.quotaType === "credits"
+          // The box holds the number in the unit currently selected above it,
+          // so the conversion has to follow that unit — not the stored one.
+          quotaLimit: quotaType === "credits"
             ? Math.round(Number(quotaLimit) * CREDIT_SCALE)
             : Number(quotaLimit),
           ...(resetUsage ? { quotaUsed: 0 } : {}),
@@ -362,14 +307,32 @@ function AllocationModal({
       open
       onClose={onClose}
       wide
-      title={`${t("admin.users.allocation.editTitle")} · ${formatUserIdentity(user.username, user.displayName)}`}
+      title={`${t("admin.users.config.title")} · ${formatUserIdentity(user.username, user.displayName)}`}
     >
       <form onSubmit={onSubmit} className="space-y-4">
+        {/* ---- Identity ---- */}
+        <section className="space-y-3 rounded-lg border border-border bg-muted/20 p-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+            <Pencil className="h-4 w-4 text-muted-foreground" />
+            {t("admin.users.config.identity")}
+          </div>
+          <Input
+            label={t("settings.displayName.label")}
+            hint={t("settings.displayName.usernameHint", { username: user.username })}
+            value={displayName}
+            onChange={(e) => {
+              setDisplayName(e.target.value);
+              setError(null);
+            }}
+            maxLength={64}
+          />
+        </section>
+
         {/* ---- Credit pool ---- */}
         <section className="space-y-3 rounded-lg border border-border bg-muted/20 p-4">
           <div className="flex items-center gap-2 text-sm font-medium text-foreground">
             <Wallet className="h-4 w-4 text-muted-foreground" />
-            {t("admin.users.allocation.pool")}
+            {t("admin.users.allocation.quota")}
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">

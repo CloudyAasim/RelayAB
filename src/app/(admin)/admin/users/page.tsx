@@ -5,7 +5,7 @@ import { listUsers } from "@/lib/db/users";
 import { listProviders } from "@/lib/db/providers";
 import { listMediaProviders } from "@/lib/db/media-providers";
 import { toPublicUser } from "@/lib/db/types";
-import { Card, CardHeader } from "@/components/ui/Card";
+import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import {
   Table,
@@ -22,7 +22,7 @@ import { getT } from "@/lib/i18n/server";
 import { SectionPageLayout } from "@/components/layouts";
 import { CreateUserButton } from "./CreateUserButton";
 import { UserActions } from "./UserActions";
-import { AllocationEditor } from "./AllocationEditor";
+import { AllowedModelsSummary, UserConfigButton, UserPoolSummary } from "./UserConfig";
 import { groupModelsByKind } from "@/lib/admin/model-groups";
 import { Users as UsersIcon } from "lucide-react";
 
@@ -53,12 +53,21 @@ export default async function UsersPage() {
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t("admin.users.title")}</SectionPageLayout.Title>
-      {/* No description: the button above and the allocation card below say
-          what this page is for. */}
+      {/* No description: the table's own column headers and the row actions
+          say what this page is for. */}
       <SectionPageLayout.Actions>
         <CreateUserButton />
       </SectionPageLayout.Actions>
       <SectionPageLayout.Content>
+        {/*
+          One table, not a table plus a card grid.
+
+          The page used to list every account twice — identity in the table,
+          quota allocation in cards below it — so "change this person's pool
+          and their display name" was two modals on two halves of one page. The
+          allocation is now columns of the same row, and one modal holds every
+          per-account setting.
+        */}
         <Card data-users-table>
           {publicUsers.length === 0 ? (
             <EmptyState
@@ -71,8 +80,13 @@ export default async function UsersPage() {
                 <TR>
                   <TH>{t("admin.users.create.username")}</TH>
                   <TH>{t("admin.users.create.role")}</TH>
-                  <TH>{t("dashboard.table.time")}</TH>
-                  <TH className="w-48 text-right">{t("common.actions")}</TH>
+                  <TH>{t("admin.users.allocation.quota")}</TH>
+                  <TH>{t("admin.users.allocation.models")}</TH>
+                  <TH className="hidden xl:table-cell">
+                    {t("admin.users.allocation.maxActiveKeys")}
+                  </TH>
+                  <TH className="hidden lg:table-cell">{t("dashboard.table.time")}</TH>
+                  <TH className="w-44 text-right">{t("common.actions")}</TH>
                 </TR>
               </THead>
               <TBody>
@@ -89,33 +103,31 @@ export default async function UsersPage() {
                           : t("admin.users.role.user")}
                       </Badge>
                     </TD>
-                    <TD className="text-muted-foreground">{formatDate(u.createdAt, timeZone)}</TD>
+                    <TD>
+                      <UserPoolSummary user={u} />
+                    </TD>
+                    <TD>
+                      <AllowedModelsSummary allowedModels={u.allowedModels} groups={modelGroups} />
+                    </TD>
+                    <TD className="hidden whitespace-nowrap text-muted-foreground xl:table-cell">
+                      {u.maxActiveKeys > 0
+                        ? u.maxActiveKeys
+                        : t("admin.users.allocation.uncapped")}
+                    </TD>
+                    <TD className="hidden text-muted-foreground lg:table-cell">
+                      {formatDate(u.createdAt, timeZone)}
+                    </TD>
                     <TD className="text-right">
-                      <UserActions user={u} />
+                      <div className="flex items-center justify-end gap-1">
+                        <UserConfigButton user={u} modelGroups={modelGroups} />
+                        <UserActions user={u} />
+                      </div>
                     </TD>
                   </TR>
                 ))}
               </TBody>
             </Table>
           )}
-        </Card>
-
-        <Card className="mt-6">
-          <CardHeader
-            title={
-              <span className="flex items-center gap-2">
-                <UsersIcon className="h-4 w-4 text-muted-foreground" />
-                {t("admin.users.allocation.title")}
-              </span>
-            }
-          />
-          {/*
-            No description: the pool's own field says what the pool is, that
-            every key of the account draws from it, and what happens when it
-            runs out. Saying it here as well was the same sentence twice, a
-            card's worth apart.
-          */}
-          <AllocationEditor users={publicUsers} modelGroups={modelGroups} />
         </Card>
       </SectionPageLayout.Content>
     </SectionPageLayout>
