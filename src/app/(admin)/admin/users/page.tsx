@@ -22,8 +22,9 @@ import { getT } from "@/lib/i18n/server";
 import { SectionPageLayout } from "@/components/layouts";
 import { CreateUserButton } from "./CreateUserButton";
 import { UserActions } from "./UserActions";
-import { AllowedModelsSummary, UserConfigButton, UserPoolSummary } from "./UserConfig";
+import { UserConfigButton, UserPoolSummary } from "./UserConfig";
 import { groupModelsByKind } from "@/lib/admin/model-groups";
+import { AllowedModelsSummary } from "@/components/models/AllowedModelsSummary";
 import { Users as UsersIcon } from "lucide-react";
 
 export default async function UsersPage() {

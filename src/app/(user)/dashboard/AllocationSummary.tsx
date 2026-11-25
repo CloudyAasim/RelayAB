@@ -1,7 +1,9 @@
 "use client";
 
 import { useT } from "@/components/i18n/I18nProvider";
+import { AllowedModelsSummary } from "@/components/models/AllowedModelsSummary";
 import { formatCredits, formatCreditsFloor, formatCreditsCeil, formatNumber } from "@/lib/utils";
+import type { ModelGroup } from "@/lib/admin/model-groups";
 import { ListChecks, KeyRound, Wallet } from "lucide-react";
 
 interface Props {
@@ -9,6 +11,8 @@ interface Props {
   quotaLimit: number;
   quotaUsed: number;
   allowedModels: string[];
+  /** The catalogue's kinds, so the whitelist can be shown grouped by kind. */
+  modelGroups: ModelGroup[];
   maxActiveKeys: number;
   activeKeyCount: number;
 }
@@ -18,6 +22,7 @@ export function AllocationSummary({
   quotaLimit,
   quotaUsed,
   allowedModels,
+  modelGroups,
   maxActiveKeys,
   activeKeyCount,
 }: Props) {
@@ -91,7 +96,11 @@ export function AllocationSummary({
         <Field
           icon={<ListChecks className="h-4 w-4" />}
           label={t("dashboard.allocation.modelWhitelist")}
-          value={allowedModels.length > 0 ? allowedModels.join(", ") : t("dashboard.allocation.allModels")}
+          value={
+            // The names live behind the count: printed in full they run to three
+            // lines in this half-width panel and push the key list off the fold.
+            <AllowedModelsSummary allowedModels={allowedModels} groups={modelGroups} align="start" />
+          }
         />
         <Field
           icon={<KeyRound className="h-4 w-4" />}
@@ -103,7 +112,7 @@ export function AllocationSummary({
   );
 }
 
-function Field({ icon, label, value, hint }: { icon?: React.ReactNode; label: string; value: string; hint?: string }) {
+function Field({ icon, label, value, hint }: { icon?: React.ReactNode; label: string; value: React.ReactNode; hint?: string }) {
   return (
     <div className="rounded-lg border border-border bg-muted/20 p-4">
       <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">

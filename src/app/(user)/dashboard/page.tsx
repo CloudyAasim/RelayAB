@@ -14,6 +14,9 @@ import {
 import { formatCredits, formatNumber, formatDate } from "@/lib/utils";
 import { timezoneToIana } from "@/lib/timezone";
 import { getT } from "@/lib/i18n/server";
+import { listProviders } from "@/lib/db/providers";
+import { listMediaProviders } from "@/lib/db/media-providers";
+import { groupModelsByKind, type ModelGroup } from "@/lib/admin/model-groups";
 import { SectionPageLayout } from "@/components/layouts";
 import {
   CreateKeyButton,
@@ -41,6 +44,18 @@ export default async function DashboardPage() {
   ]);
   const keys = keyPage.keys;
   const agg = await cachedAggregateByUser(keys.map((k) => k.id));
+
+  // The whitelist is shown grouped by kind, which needs the catalogue. An
+  // account on "every model" has no list to group, so it skips the query
+  // entirely rather than paying for two provider reads it will not render.
+  let modelGroups: ModelGroup[] = [];
+  if (fullUser && fullUser.allowedModels.length > 0) {
+    const [providers, mediaProviders] = await Promise.all([
+      listProviders({ enabledOnly: true }),
+      listMediaProviders({ enabledOnly: true }),
+    ]);
+    modelGroups = groupModelsByKind(providers, mediaProviders);
+  }
 
   const allocation: UserAllocation | null = fullUser
     ? {
@@ -104,6 +119,7 @@ export default async function DashboardPage() {
               quotaLimit={fullUser.quotaLimit}
               quotaUsed={fullUser.quotaUsed}
               allowedModels={fullUser.allowedModels}
+              modelGroups={modelGroups}
               maxActiveKeys={fullUser.maxActiveKeys}
               activeKeyCount={keys.filter((k) => k.enabled).length}
             />

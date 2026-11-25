@@ -4,16 +4,15 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { LegacyModal as Modal } from "@/components/ui/Modal";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover";
+import { AllowedModelsSummary, groupLabel } from "@/components/models/AllowedModelsSummary";
 import { useT } from "@/components/i18n/I18nProvider";
 import { apiErrorMessage } from "@/lib/i18n/api-errors";
 import { formatCredits, formatCreditsFloor, formatCreditsCeil, formatNumber } from "@/lib/utils";
 import { CREDIT_SCALE } from "@/lib/quota/credits";
 import { formatUserIdentity } from "@/lib/user-identity";
-import type { ModelGroup, ModelGroupKind } from "@/lib/admin/model-groups";
-import { groupAllowedModels } from "@/lib/admin/model-groups";
+import type { ModelGroup } from "@/lib/admin/model-groups";
 import type { PublicUser } from "@/lib/db/types";
-import { Settings2, ListChecks, Pencil, Wallet, ChevronDown } from "lucide-react";
+import { Settings2, ListChecks, Pencil, Wallet } from "lucide-react";
 
 /**
  * Format an amount in the unit the account is denominated in.
@@ -39,37 +38,6 @@ function amountCeil(type: PublicUser["quotaType"], n: number): string {
   return type === "tokens" ? formatNumber(n) : formatCreditsCeil(n);
 }
 
-/**
- * The heading of one model group.
- *
- * Written as literal `t()` calls rather than a template string: the i18n
- * guard reads call sites, and a key it cannot see is a key nothing checks — a
- * typo in it would render as the raw key on the page and no test would say so.
- */
-function groupLabel(t: (key: string) => string, kind: ModelGroupKind): string {
-  switch (kind) {
-    case "chat":
-      return t("admin.users.allocation.group.chat");
-    case "embedding":
-      return t("admin.users.allocation.group.embedding");
-    case "rerank":
-      return t("admin.users.allocation.group.rerank");
-    case "moderation":
-      return t("admin.users.allocation.group.moderation");
-    case "image":
-      return t("admin.users.allocation.group.image");
-    case "video":
-      return t("admin.users.allocation.group.video");
-    case "tts":
-      return t("admin.users.allocation.group.tts");
-    case "stt":
-      return t("admin.users.allocation.group.stt");
-    case "translate":
-      return t("admin.users.allocation.group.translate");
-    case "music":
-      return t("admin.users.allocation.group.music");
-  }
-}
 
 /**
  * The account's quota pool, on one line.
@@ -101,83 +69,6 @@ export function UserPoolSummary({ user }: { user: PublicUser }) {
         })}
       </div>
     </div>
-  );
-}
-
-/**
- * The account's allowed models, on one line.
- *
- * The list can be long. A deployment with a dozen text models and a few media
- * ones gives an account a list that wraps over three lines and pushes the rest
- * of the row down.
- *
- * So the row shows how many models the account has, and the names live in a
- * menu behind it, grouped by kind — the same grouping the picker uses, so the
- * two never disagree about what a model is.
- */
-export function AllowedModelsSummary({
-  allowedModels,
-  groups,
-}: {
-  allowedModels: string[];
-  groups: ModelGroup[];
-}) {
-  const t = useT();
-  const [open, setOpen] = useState(false);
-
-  if (allowedModels.length === 0) {
-    return <span className="font-normal">{t("admin.users.allocation.allModels")}</span>;
-  }
-
-  // The kinds this account actually has, and the models the catalogue no
-  // longer knows about but the account can still call.
-  const { groups: used, others: orphans } = groupAllowedModels(allowedModels, groups);
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          className="inline-flex items-center gap-1 rounded-md px-1 py-0.5 font-medium text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          {t("admin.users.allocation.modelCount", { count: allowedModels.length })}
-          <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent align="end" sideOffset={6} className="max-h-80 w-72 overflow-y-auto p-2">
-        {used.map((group) => (
-          <section key={group.kind} className="space-y-1 py-1">
-            <h4 className="px-1 text-xs font-medium text-muted-foreground">
-              {groupLabel(t, group.kind)}
-              <span className="ml-1.5 font-normal text-muted-foreground/70">
-                {group.models.length}
-              </span>
-            </h4>
-            <ul className="space-y-1">
-              {group.models.map((model) => (
-                <li key={model} className="truncate px-1 font-mono text-xs text-foreground">
-                  {model}
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
-        {orphans.length > 0 && (
-          <section className="space-y-1 py-1">
-            <h4 className="px-1 text-xs font-medium text-muted-foreground">
-              {t("admin.users.allocation.group.other")}
-            </h4>
-            <ul className="space-y-1">
-              {orphans.map((model) => (
-                <li key={model} className="truncate px-1 font-mono text-xs text-foreground">
-                  {model}
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-      </PopoverContent>
-    </Popover>
   );
 }
 
