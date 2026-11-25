@@ -140,8 +140,8 @@ CREATE TABLE IF NOT EXISTS media_providers (
   encrypted_api_key TEXT NOT NULL,
   enabled           INTEGER NOT NULL,
   priority          INTEGER NOT NULL DEFAULT 0,
-  -- 'advanced' | 'simple' | 'passthrough' | 'restricted' (see MediaProviderMode)
-  mode              TEXT NOT NULL DEFAULT 'advanced',
+  -- 'spec' | 'passthrough' (legacy 'advanced' | 'simple' | 'restricted' still readable)
+  mode              TEXT NOT NULL DEFAULT 'spec',
   passthrough_paths TEXT NOT NULL DEFAULT '[]',
   models            TEXT NOT NULL DEFAULT '{}',
   specs             TEXT NOT NULL DEFAULT '[]',
@@ -1198,9 +1198,9 @@ export function rowToMediaProvider(row: Record<string, unknown>): MediaProvider 
     encryptedApiKey: String(row.encrypted_api_key),
     enabled: fromDbBool(row.enabled),
     priority: Number(row.priority ?? 0),
-    // Rows written before the mode column existed are specs: `advanced` is what
-    // they were.
-    mode: (typeof row.mode === "string" && row.mode ? row.mode : "advanced") as MediaProvider["mode"],
+    // Rows written before the mode column existed were specs, which is now
+    // spelled `spec`. Legacy aliases are read through canonicalMediaProviderMode().
+    mode: (typeof row.mode === "string" && row.mode ? row.mode : "spec") as MediaProvider["mode"],
     passthroughPaths: Array.isArray(parseJson(String(row.passthrough_paths ?? "[]"), []))
       ? (parseJson(String(row.passthrough_paths ?? "[]"), []) as string[])
       : [],

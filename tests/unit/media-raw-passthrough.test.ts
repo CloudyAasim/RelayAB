@@ -15,7 +15,7 @@
  *   - a path that escapes the provider origin is refused.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { __resetDbForTest } from "@/lib/db/sqlite";
+import { __resetDbForTest, run } from "@/lib/db/sqlite";
 import { createUser } from "@/lib/db/users";
 import { createApiKey } from "@/lib/db/keys";
 import { createMediaProvider } from "@/lib/db/media-providers";
@@ -35,7 +35,7 @@ interface Seen {
 }
 
 async function seed(
-  mode: "passthrough" | "restricted" | "advanced" = "passthrough",
+  mode: "spec" | "passthrough" | "restricted" | "advanced" = "passthrough",
   passthroughPaths: string[] = [],
 ): Promise<{ plain: string; keyId: string; providerId: string }> {
   const user = await createUser({
@@ -207,8 +207,8 @@ describe("raw media passthrough", () => {
       (await call(rawGET, { plain, providerId, sub: "/v1/x", query: "model=nope" })).status,
     ).toBe(404);
   });
-  it("refuses a spec-mode provider, and a restricted path outside the list", async () => {
-    const specMode = await seed("advanced");
+  it("refuses a spec provider and a path outside a passthrough allowlist", async () => {
+    const specMode = await seed("spec");
     const refused = await call(rawGET, {
       plain: specMode.plain,
       providerId: specMode.providerId,
@@ -216,25 +216,66 @@ describe("raw media passthrough", () => {
       query: "model=image-01",
     });
     expect(refused.status).toBe(400);
-    expect(((await refused.json()) as { error: { code: string } }).error.code).toBe("passthrough_disabled");
+    expect(((await refused.json()) as { error: { code: string } })).toMatchObject({
+      error: { code: "passthrough_disabled" },
+    });
 
-    const restricted = await seed("restricted", ["/v1/videos"]);
+    // A canonical passthrough with paths behaves as the old "restricted": the
+    // list narrows the route, matched by whole segments.
+    const narrowed = await seed("passthrough", ["/v1/videos"]);
     const allowed = await call(rawGET, {
-      plain: restricted.plain,
-      providerId: restricted.providerId,
+      plain: narrowed.plain,
+      providerId: narrowed.providerId,
       sub: "/v1/videos/up_1",
       query: "model=image-01",
     });
     expect(allowed.status).toBe(201);
 
     const blocked = await call(rawGET, {
-      plain: restricted.plain,
-      providerId: restricted.providerId,
+      plain: narrowed.plain,
+      providerId: narrowed.providerId,
       sub: "/v1/videos-admin",
       query: "model=image-01",
     });
     expect(blocked.status).toBe(403);
-    expect(((await blocked.json()) as { error: { code: string } }).error.code).toBe("path_not_allowed");
+    expect(((await blocked.json()) as { error: { code: string } })).toMatchObject({
+      error: { code: "path_not_allowed" },
+    });
+  });
+
+  it("rows already stored under a legacy value keep their meaning", async () => {
+    // New writes are canonical, so force the column back to what a row written
+    // before the collapse actually holds on disk.
+    const restricted = await seed("passthrough", ["/v1/videos"]);
+    run("UPDATE media_providers SET mode = 'restricted' WHERE id = ?", [restricted.providerId]);
+    const blocked = await call(rawGET, {
+      plain: restricted.plain,
+      providerId: restricted.providerId,
+      sub: "/v1/images",
+      query: "model=image-01",
+    });
+    expect(blocked.status).toBe(403);
+
+    const legacySpec = await seed("spec");
+    run("UPDATE media_providers SET mode = 'advanced' WHERE id = ?", [legacySpec.providerId]);
+    const refused = await call(rawGET, {
+      plain: legacySpec.plain,
+      providerId: legacySpec.providerId,
+      sub: "/v1/anything",
+      query: "model=image-01",
+    });
+    expect(refused.status).toBe(400);
+  });
+
+  it("lets an unrestricted passthrough through on any path", async () => {
+    const { plain, providerId } = await seed("passthrough");
+    const res = await call(rawGET, {
+      plain,
+      providerId,
+      sub: "/v1/some-vendor-specific/path",
+      query: "model=image-01",
+    });
+    expect(res.status).toBe(201);
   });
 
   it("keeps the spec routes closed for a passthrough provider", async () => {

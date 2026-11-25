@@ -1,7 +1,7 @@
 /**
  * tests/unit/assistant-media-proposal-mode.test.ts
  *
- * A media provider has a mode and, for the two passthrough modes, a path list.
+ * A media provider has a mode and, for passthrough, an optional path list.
  * The assistant could propose neither: a row could be created or edited in the
  * panel with a mode, and an assistant-built one was stuck on the route's
  * default. These are the two fields the gap was about.
@@ -27,6 +27,15 @@ describe("media provider proposals can carry the mode", () => {
     const gate = checkProposal("media_provider.create", {
       name: "assistant-made",
       models: { "img-1": { upstreamId: "img-1" } },
+      mode: "spec",
+    });
+    expect(gate.ok).toBe(true);
+  });
+
+  it("still accepts the legacy values an older proposal may carry", () => {
+    const gate = checkProposal("media_provider.create", {
+      name: "assistant-made",
+      models: { "img-1": { upstreamId: "img-1" } },
       mode: "restricted",
       passthroughPaths: ["/v1/images/generations"],
     });
@@ -42,6 +51,8 @@ describe("media provider proposals can carry the mode", () => {
     expect(TOOLS).toContain('t("propose_media_provider_update.mode")');
     expect(TOOLS).toContain('t("propose_media_provider_update.passthroughPaths")');
     expect(TOOLS).toContain('t("propose_media_provider_create.mode")');
+    // The two offered modes are in the enum the model sees.
+    expect(TOOLS).toContain('enum: ["spec", "passthrough", "advanced", "simple", "restricted"]');
     // And the executors copy them into the payload rather than dropping them.
     expect(TOOLS).toContain("patch.mode = args.mode");
     expect(TOOLS).toContain("patch.passthroughPaths = args.passthroughPaths");

@@ -3,10 +3,17 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Input, Textarea } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 import { FormFooter, FormStatus } from "@/components/ui/FormStatus";
 import { Button } from "@/components/ui/Button";
 import { Switch } from "@/components/ui/Switch";
 import { useT } from "@/components/i18n/I18nProvider";
+import {
+  canonicalMediaProviderMode,
+  MEDIA_PROVIDER_UI_MODES,
+  type MediaProviderMode,
+  type MediaProviderUiMode,
+} from "@/lib/media/spec";
 import { Save } from "lucide-react";
 
 export interface MediaTemplate {
@@ -17,7 +24,7 @@ export interface MediaTemplate {
   specs: unknown;
 }
 
-export type MediaProviderMode = "passthrough" | "restricted" | "simple" | "advanced";
+export type { MediaProviderMode };
 
 export interface MediaProviderRow {
   id: string;
@@ -58,16 +65,22 @@ export function MediaProviderForm({ provider, templates, onSaved }: Props) {
   const [apiKey, setApiKey] = useState("");
   const [enabled, setEnabled] = useState(provider?.enabled ?? true);
   const [priority, setPriority] = useState(String(provider?.priority ?? 1));
-  const [mode, setMode] = useState<MediaProviderMode>(provider?.mode ?? "advanced");
+  /**
+   * The row may carry a legacy value (`advanced` / `simple` / `restricted`) that
+   * the two-option select cannot show; fold it onto the mode it behaves as.
+   */
+  const [mode, setMode] = useState<MediaProviderUiMode>(
+    canonicalMediaProviderMode(provider?.mode ?? "spec"),
+  );
   const [passthroughPaths, setPassthroughPaths] = useState(
     (provider?.passthroughPaths ?? []).join("\n"),
   );
   /**
-   * Passthrough modes have no spec: there is no translation, so the JSON editor
-   * is not a field they can use. Showing it invited people to write a spec that
-   * would never be read.
+   * A passthrough provider has no spec: there is no translation, so the JSON
+   * editor is not a field it can use. Showing it invited people to write a spec
+   * that would never be read.
    */
-  const usesSpecs = mode === "advanced" || mode === "simple";
+  const usesSpecs = mode === "spec";
   const [models, setModels] = useState(JSON.stringify(provider?.models ?? {}, null, 2));
   const [specs, setSpecs] = useState(JSON.stringify(provider?.specs ?? [], null, 2));
   const [busy, setBusy] = useState(false);
@@ -141,21 +154,23 @@ export function MediaProviderForm({ provider, templates, onSaved }: Props) {
           onChange={(e) => setName(e.target.value)}
           required
         />
-        <div>
-          <label className="mb-1.5 block text-sm font-medium">
-            {t("admin.mediaProviders.mode")}
-          </label>
-          <select
-            value={mode}
-            onChange={(e) => setMode(e.target.value as MediaProviderMode)}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-          >
-            <option value="advanced">{t("admin.mediaProviders.mode.advanced")}</option>
-            <option value="simple">{t("admin.mediaProviders.mode.simple")}</option>
-            <option value="passthrough">{t("admin.mediaProviders.mode.passthrough")}</option>
-            <option value="restricted">{t("admin.mediaProviders.mode.restricted")}</option>
-          </select>
-        </div>
+        <Select
+          id="media-provider-mode"
+          label={t("admin.mediaProviders.mode")}
+          value={mode}
+          onChange={(e) => setMode(e.target.value as MediaProviderUiMode)}
+          hint={t(
+            mode === "spec"
+              ? "admin.mediaProviders.mode.specBody"
+              : "admin.mediaProviders.mode.passthroughBody",
+          )}
+        >
+          {MEDIA_PROVIDER_UI_MODES.map((value) => (
+            <option key={value} value={value}>
+              {t(`admin.mediaProviders.mode.${value}`)}
+            </option>
+          ))}
+        </Select>
       </div>
 
       <Input
@@ -197,9 +212,10 @@ export function MediaProviderForm({ provider, templates, onSaved }: Props) {
         </label>
       </div>
 
-      {mode === "restricted" && (
+      {mode === "passthrough" && (
         <Textarea
           label={t("admin.mediaProviders.passthroughPaths")}
+          hint={t("admin.mediaProviders.passthroughPaths.hint")}
           value={passthroughPaths}
           onChange={(e) => setPassthroughPaths(e.target.value)}
           rows={3}

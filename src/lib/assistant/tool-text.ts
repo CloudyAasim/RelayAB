@@ -1142,19 +1142,19 @@ export const TOOL_DESCRIPTIONS: Record<string, ToolText> = {
   },
   "propose_media_provider_update.mode": {
     "zh-CN":
-      "接入模式，不传则不改：advanced（按 spec 翻译）、simple（按接口路由）、" +
-      "passthrough（原样转发，不翻译）、restricted（只放行 passthroughPaths 列出的路径）。",
+      "接入模式，不传则不改：spec（适配协议，客户端按 OpenAI 形状调用，由 spec 翻译给供应商）、" +
+      "passthrough（原样透传，不翻译，走 /v1/raw/…）。",
     en:
-      "The access mode; omitted means no change: advanced (translated by spec), simple (routed by " +
-      "the surface table), passthrough (forwarded untouched), restricted (only the paths listed in " +
-      "passthroughPaths are let through).",
+      "The access mode; omitted means no change: spec (the client speaks the OpenAI shape and the " +
+      "spec translates it to the vendor), passthrough (no translation, served under /v1/raw/…).",
   },
   "propose_media_provider_update.passthroughPaths": {
     "zh-CN":
-      "passthrough / restricted 时放行的路径列表，例如 /v1/images/generations；不传则不改。",
+      "passthrough 模式下可选的路径前缀白名单，例如 /v1/images/generations；留空表示不限制，" +
+      "spec 模式下忽略；不传则不改。",
     en:
-      "The paths let through for passthrough / restricted, e.g. /v1/images/generations; omitted " +
-      "means no change.",
+      "Optional path prefixes a passthrough provider may forward, e.g. /v1/images/generations; " +
+      "empty means no limit, ignored by spec providers; omitted means no change.",
   },
   "propose_media_provider_update.specs": {
     "zh-CN":
@@ -1285,16 +1285,19 @@ export const TOOL_DESCRIPTIONS: Record<string, ToolText> = {
   },
   "propose_media_provider_create.mode": {
     "zh-CN":
-      "接入模式：advanced（按 spec 翻译）、simple（按接口路由）、passthrough（原样转发）、" +
-      "restricted（只放行 passthroughPaths 列出的路径）；不传按 advanced。",
+      "接入模式：spec（适配协议，客户端按 OpenAI 形状调用，由 spec 翻译给供应商）、" +
+      "passthrough（原样透传，不翻译，走 /v1/raw/…）；不传按 spec。",
     en:
-      "The access mode: advanced (translated by spec), simple (routed by the surface table), " +
-      "passthrough (forwarded untouched), restricted (only the paths listed in passthroughPaths); " +
-      "defaults to advanced.",
+      "The access mode: spec (the client speaks the OpenAI shape and the spec translates it to the " +
+      "vendor), passthrough (no translation, served under /v1/raw/…); defaults to spec.",
   },
   "propose_media_provider_create.passthroughPaths": {
-    "zh-CN": "passthrough / restricted 时放行的路径列表，例如 /v1/images/generations。",
-    en: "The paths let through for passthrough / restricted, e.g. /v1/images/generations.",
+    "zh-CN":
+      "passthrough 模式下可选的路径前缀白名单，例如 /v1/images/generations；留空表示不限制，" +
+      "spec 模式下忽略。",
+    en:
+      "Optional path prefixes a passthrough provider may forward, e.g. /v1/images/generations; " +
+      "empty means no limit, ignored by spec providers.",
   },
   "propose_media_provider_create": {
     "zh-CN":

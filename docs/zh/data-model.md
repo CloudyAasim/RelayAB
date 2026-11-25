@@ -309,6 +309,8 @@ function checkKeyStatus({ key, user, requestedModel }): KeyValidationResult {
 | `encryptedApiKey` | `encrypted_api_key` | TEXT NOT NULL | AES-256-GCM 加密的上游 Key |
 | `enabled` | `enabled` | INTEGER NOT NULL | 0/1 |
 | `priority` | `priority` | INTEGER NOT NULL DEFAULT 0 | 路由优先级（数字小优先） |
+| `mode` | `mode` | TEXT NOT NULL DEFAULT `'spec'` | 接入模式：`spec`（客户端按 OpenAI 形状调用，由 spec 翻译）或 `passthrough`（原样透传，走 `/v1/raw`）。历史值仍按语义读取：`advanced`/`simple` → `spec`，`restricted` → `passthrough` |
+| `passthroughPaths` | `passthrough_paths` | TEXT NOT NULL DEFAULT `'[]'` | 仅 `passthrough` 使用：允许的路径前缀，JSON 数组文本。留空 = 不限制；`spec` 忽略 |
 | `models` | `models` | TEXT NOT NULL DEFAULT `'{}'` | 客户端模型名 → `MediaModelConfig`（含 `pricePerItem`），JSON 对象文本 |
 | `specs` | `specs` | TEXT NOT NULL DEFAULT `'[]'` | `MediaSpec[]`，JSON 数组文本 —— 协议格式见 [模型适配协议/README.md](../模型适配协议/README.md) |
 | `createdAt` | `created_at` | TEXT NOT NULL | ISO 字符串 |

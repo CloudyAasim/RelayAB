@@ -406,30 +406,53 @@ export interface MediaModelConfig {
 /**
  * How a media provider is spoken to.
  *
- * The text side has had this split since the route table landed; media only had
- * the spec path, which forced every vendor through a mapping even when the
- * client already spoke the vendor's own API.
+ * There are only two behaviours in the engine, so there are only two modes:
  *
- *   - `advanced`    — a hand-written spec (the protocol).
- *   - `simple`      — a spec loaded from a template, adjusted only in its data.
- *   - `passthrough` — any vendor path, verbatim (`/v1/raw/<provider>/…`).
- *   - `restricted`  — verbatim, but only under `passthroughPaths`.
+ *   - `spec`        — every call is translated by a declarative spec
+ *                     (`/v1/images/*`, `/v1/videos/*`, …).
+ *   - `passthrough` — vendor paths are forwarded verbatim under
+ *                     `/v1/raw/<provider>/…`. `passthroughPaths` optionally
+ *                     narrows which prefixes may be called; an empty list means
+ *                     "any path".
  *
- * The two groups are exclusive on purpose: a passthrough provider has no spec to
+ * The two are exclusive on purpose: a passthrough provider has no spec to
  * translate through, and a spec provider has not promised that an arbitrary
  * vendor path is safe to forward.
+ *
+ * `advanced`, `simple` and `restricted` are the pre-collapse values. They remain
+ * readable and writable through the API so old clients and queued assistant
+ * proposals keep working, but nothing new writes them: `advanced` and `simple`
+ * are both `spec` (the engine never distinguished them — the text side's split
+ * describes how a protocol is authored, which media has no analogue for), and
+ * `restricted` is `passthrough` with a required allowlist.
  */
-export type MediaProviderMode = "passthrough" | "restricted" | "simple" | "advanced";
+export type MediaProviderMode = "spec" | "passthrough" | "advanced" | "simple" | "restricted";
 
+/** Every value a stored row or an API payload may carry, canonical ones first. */
 export const MEDIA_PROVIDER_MODES: readonly MediaProviderMode[] = [
+  "spec",
   "passthrough",
-  "restricted",
-  "simple",
   "advanced",
+  "simple",
+  "restricted",
 ];
 
+/** The two modes the admin panel offers; the rest are legacy aliases. */
+export const MEDIA_PROVIDER_UI_MODES = ["spec", "passthrough"] as const;
+export type MediaProviderUiMode = (typeof MEDIA_PROVIDER_UI_MODES)[number];
+
+/**
+ * Fold a stored mode onto the behaviour the engine implements.
+ *
+ * Reads go through this instead of comparing raw strings, so a row written
+ * before the collapse and a row written after behave identically.
+ */
+export function canonicalMediaProviderMode(mode: MediaProviderMode): MediaProviderUiMode {
+  return mode === "passthrough" || mode === "restricted" ? "passthrough" : "spec";
+}
+
 export function isPassthroughMode(mode: MediaProviderMode): boolean {
-  return mode === "passthrough" || mode === "restricted";
+  return canonicalMediaProviderMode(mode) === "passthrough";
 }
 
 /**
@@ -441,7 +464,7 @@ export function isPassthroughMode(mode: MediaProviderMode): boolean {
  * route that answers 400.
  */
 export function isSpecMode(mode: MediaProviderMode): boolean {
-  return mode === "simple" || mode === "advanced";
+  return canonicalMediaProviderMode(mode) === "spec";
 }
 
 export interface MediaProvider {
@@ -454,7 +477,10 @@ export interface MediaProvider {
   priority: number;
   /** See {@link MediaProviderMode}. */
   mode: MediaProviderMode;
-  /** Path prefixes allowed when `mode` is `restricted`; ignored otherwise. */
+  /**
+   * Prefixes `/v1/raw` may forward. Empty means "any path"; a non-empty list
+   * narrows it (segment-aware). Ignored entirely by `spec` providers.
+   */
   passthroughPaths: string[];
   models: Record<string, MediaModelConfig>;
   specs: MediaSpec[];

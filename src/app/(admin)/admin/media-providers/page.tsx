@@ -8,7 +8,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { listMediaProviders, toPublicMediaProvider } from "@/lib/db/media-providers";
 import { MEDIA_TEMPLATES } from "@/lib/media/seeds";
-import { isPassthroughMode, servedCapabilities } from "@/lib/media/spec";
+import { canonicalMediaProviderMode, isPassthroughMode, servedCapabilities } from "@/lib/media/spec";
 import { Card } from "@/components/ui/Card";
 import {
   Table,
@@ -80,16 +80,20 @@ export default async function MediaProvidersPage() {
                     <TD>
                       <div className="flex items-center gap-2 font-medium text-foreground">
                         {p.name}
-                        {/* Only the passthrough modes are worth a badge: they are
-                            the ones where the routes a client may use differ. */}
+                        {/* Only a passthrough provider is worth a badge: it is the
+                            one whose routes a client may use differ. */}
                         {isPassthroughMode(p.mode) && (
                           <Badge
                             tone="neutral"
                             title={
-                              p.mode === "restricted" ? p.passthroughPaths.join("、") : undefined
+                              p.passthroughPaths.length > 0
+                                ? p.passthroughPaths.join("、")
+                                : undefined
                             }
                           >
-                            {t(`admin.mediaProviders.mode.${p.mode}`)}
+                            {t(
+                              `admin.mediaProviders.mode.${canonicalMediaProviderMode(p.mode)}`,
+                            )}
                           </Badge>
                         )}
                       </div>

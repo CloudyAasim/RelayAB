@@ -334,6 +334,8 @@ instead carries an array of declarative specs.
 | `encryptedApiKey` | `encrypted_api_key` | TEXT NOT NULL | Upstream key encrypted with AES-256-GCM |
 | `enabled` | `enabled` | INTEGER NOT NULL | 0/1 |
 | `priority` | `priority` | INTEGER NOT NULL DEFAULT 0 | Routing priority (lower number wins) |
+| `mode` | `mode` | TEXT NOT NULL DEFAULT `'spec'` | How the provider is spoken to: `spec` (the client speaks the OpenAI shape and a spec translates it) or `passthrough` (the vendor's own paths under `/v1/raw`). Legacy values still read: `advanced`/`simple` → `spec`, `restricted` → `passthrough` |
+| `passthroughPaths` | `passthrough_paths` | TEXT NOT NULL DEFAULT `'[]'` | `passthrough` only: the allowed path prefixes as a JSON array. Empty = any path. Ignored by `spec` |
 | `models` | `models` | TEXT NOT NULL DEFAULT `'{}'` | Client model name → `MediaModelConfig` (which carries `pricePerItem`), as a JSON object |
 | `specs` | `specs` | TEXT NOT NULL DEFAULT `'[]'` | `MediaSpec[]` as a JSON array — see [模型适配协议/README.md](../模型适配协议/README.md) |
 | `createdAt` | `created_at` | TEXT NOT NULL | ISO string |

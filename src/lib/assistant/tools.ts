@@ -1045,7 +1045,7 @@ function adminTools(t: (key: string) => string): AssistantToolDef[] {
           },
           mode: {
             type: "string",
-            enum: ["advanced", "simple", "passthrough", "restricted"],
+            enum: ["spec", "passthrough", "advanced", "simple", "restricted"],
             description: t("propose_media_provider_update.mode"),
           },
           passthroughPaths: {
@@ -1160,7 +1160,7 @@ function adminTools(t: (key: string) => string): AssistantToolDef[] {
           },
           mode: {
             type: "string",
-            enum: ["advanced", "simple", "passthrough", "restricted"],
+            enum: ["spec", "passthrough", "advanced", "simple", "restricted"],
             description: t("propose_media_provider_create.mode"),
           },
           passthroughPaths: {

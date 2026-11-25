@@ -751,11 +751,15 @@ const zhCN: Dict = {
   "admin.mediaProviders.capabilities": "能力",
   "admin.mediaProviders.priority": "优先级",
   "admin.mediaProviders.mode": "接入模式",
-  "admin.mediaProviders.mode.advanced": "高级",
-  "admin.mediaProviders.mode.simple": "简易",
-  "admin.mediaProviders.mode.passthrough": "完全透传",
-  "admin.mediaProviders.mode.restricted": "限制透传",
-  "admin.mediaProviders.passthroughPaths": "允许透传的路径前缀",
+  "admin.mediaProviders.mode.spec": "适配协议",
+  "admin.mediaProviders.mode.specBody":
+    "客户端按 OpenAI 形状调用，适配协议负责翻译成供应商自己的 API。",
+  "admin.mediaProviders.mode.passthrough": "原样透传",
+  "admin.mediaProviders.mode.passthroughBody":
+    "不做翻译：客户端直接调用供应商自己的路径（/v1/raw/…），请求和响应原样转发。",
+  "admin.mediaProviders.passthroughPaths": "允许透传的路径前缀（可选）",
+  "admin.mediaProviders.passthroughPaths.hint":
+    "留空 = 不限制；填写后只放行这些前缀，按路径段匹配。",
   "admin.mediaProviders.saved": "已保存，立即生效。",
   "admin.mediaProviders.delete": "删除",
   "admin.mediaProviders.deleteConfirm": "确定删除这个媒体供应商？",
@@ -2470,11 +2474,15 @@ const en: Dict = {
   "admin.mediaProviders.loadTemplate": "Load MiniMax template",
   "admin.mediaProviders.priority": "Priority",
   "admin.mediaProviders.mode": "Mode",
-  "admin.mediaProviders.mode.advanced": "Advanced",
-  "admin.mediaProviders.mode.simple": "Simple",
-  "admin.mediaProviders.mode.passthrough": "Passthrough",
-  "admin.mediaProviders.mode.restricted": "Restricted",
-  "admin.mediaProviders.passthroughPaths": "Allowed path prefixes",
+  "admin.mediaProviders.mode.spec": "Adapter spec",
+  "admin.mediaProviders.mode.specBody":
+    "The client speaks the OpenAI shape; the adapter spec translates it to the vendor's API.",
+  "admin.mediaProviders.mode.passthrough": "Verbatim passthrough",
+  "admin.mediaProviders.mode.passthroughBody":
+    "No translation: the client calls the vendor's own paths (/v1/raw/…) and the request and response are forwarded untouched.",
+  "admin.mediaProviders.passthroughPaths": "Allowed path prefixes (optional)",
+  "admin.mediaProviders.passthroughPaths.hint":
+    "Empty means no limit; a non-empty list allows only those prefixes, matched by path segment.",
   "admin.mediaProviders.saved": "Saved — effective immediately.",
   "admin.mediaProviders.delete": "Delete",
   "admin.mediaProviders.deleteConfirm": "Delete this media provider?",

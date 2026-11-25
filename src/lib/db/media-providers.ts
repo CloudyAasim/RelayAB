@@ -35,7 +35,7 @@
 import { encryptSecret } from "../crypto/secrets";
 import { generateId } from "../crypto/hashing";
 import { getAll, getOne, rowToMediaProvider, run, toDbBool } from "./sqlite";
-import { MEDIA_PROVIDER_MODES, isPassthroughMode, parseMediaSpec, validateMediaSpecs, type MediaCapability, type MediaProvider, type MediaProviderMode, type MediaSpec, type PublicMediaProvider } from "../media/spec";
+import { MEDIA_PROVIDER_MODES, canonicalMediaProviderMode, isPassthroughMode, isSpecMode, parseMediaSpec, validateMediaSpecs, type MediaCapability, type MediaProvider, type MediaProviderMode, type MediaSpec, type PublicMediaProvider } from "../media/spec";
 import { compareText } from "../utils";
 
 export interface CreateMediaProviderInput {
@@ -44,9 +44,9 @@ export interface CreateMediaProviderInput {
   apiKey: string;
   enabled?: boolean;
   priority?: number;
-  /** Defaults to `advanced` (a hand-written spec), which is what every row was before modes. */
+  /** Defaults to `spec`. Legacy `advanced` / `simple` / `restricted` are still accepted. */
   mode?: MediaProviderMode;
-  /** Prefixes for `restricted`; ignored by the other modes. */
+  /** Path prefixes `passthrough` may forward; empty = no limit, ignored by `spec`. */
   passthroughPaths?: string[];
   models?: MediaProvider["models"];
   specs?: unknown[];
@@ -67,16 +67,22 @@ export interface UpdateMediaProviderInput {
 /**
  * Validate and normalize the mode + path allowlist.
  *
+ * Legacy `advanced` / `simple` are stored as `spec`, and `restricted` as
+ * `passthrough` — new rows therefore only ever hold the two canonical values,
+ * while old rows keep their old value and are read through
+ * `canonicalMediaProviderMode()`.
+ *
  * `restricted` without paths is a provider that forwards nothing — an operator
- * would set it and watch every call 403, so it is rejected at write time. A
- * prefix must be a path (`/v1/videos`), not a glob or a full URL: matching is
- * segment-aware and anything else would silently never match.
+ * would set it and watch every call 403, so it is rejected at write time. Plain
+ * `passthrough` with no paths is the opposite and is allowed: it means "any
+ * path". A prefix must be a path (`/v1/videos`), not a glob or a full URL:
+ * matching is segment-aware and anything else would silently never match.
  */
 export function normalizeProviderMode(
   mode: MediaProviderMode | undefined,
   paths: string[] | undefined,
 ): { mode: MediaProviderMode; passthroughPaths: string[] } {
-  const resolved = mode ?? "advanced";
+  const resolved = mode ?? "spec";
   if (!MEDIA_PROVIDER_MODES.includes(resolved)) {
     throw new MediaProviderValidationError([
       `mode must be one of: ${MEDIA_PROVIDER_MODES.join(", ")}`,
@@ -102,11 +108,10 @@ export function normalizeProviderMode(
   }
 
   return {
-    mode: resolved,
-    // The allowlist only means something for `restricted`; keeping stale paths
-    // on the other modes would make a later switch to `restricted` surprise the
-    // operator with rules they no longer remember writing.
-    passthroughPaths: resolved === "restricted" ? [...new Set(cleaned)] : [],
+    mode: canonicalMediaProviderMode(resolved),
+    // A spec provider translates, so a path list would be silently dead config;
+    // a passthrough provider keeps it either as the allowlist or as "no limit".
+    passthroughPaths: isSpecMode(resolved) ? [] : [...new Set(cleaned)],
   };
 }
 
@@ -222,7 +227,8 @@ export async function updateMediaProvider(
   run(
     `UPDATE media_providers SET
        name = ?, base_url = ?, encrypted_api_key = ?, enabled = ?,
-       priority = ?, models = ?, specs = ?, updated_at = ?
+       priority = ?, mode = ?, passthrough_paths = ?,
+       models = ?, specs = ?, updated_at = ?
      WHERE id = ?`,
     [
       merged.name,

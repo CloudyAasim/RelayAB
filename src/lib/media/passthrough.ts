@@ -22,7 +22,7 @@
  * response we do not parse cannot be counted per image.
  */
 import { decryptSecret } from "@/lib/crypto/secrets";
-import type { MediaProvider, MediaSpec } from "./spec";
+import { isSpecMode, type MediaProvider, type MediaSpec } from "./spec";
 
 export interface RawPassthroughTarget {
   url: URL;
@@ -167,13 +167,20 @@ export function specForRawCall(provider: MediaProvider, model: string): MediaSpe
 /**
  * Is this path inside what the provider allows?
  *
+ * A `passthrough` provider with no prefixes allows everything — that is the open
+ * escape hatch, and it is what the old `passthrough` value meant. Listing even one
+ * prefix narrows it, which is the old `restricted` value without the second mode.
+ *
  * Matching is segment-aware (`/v1/videos` allows `/v1/videos/up_1` but not
  * `/v1/videos-admin`), which is why prefixes are compared as path segments rather
  * than with a string `startsWith`.
  */
 export function isRawPathAllowed(provider: MediaProvider, suffix: string): boolean {
-  if (provider.mode === "passthrough") return true;
-  if (provider.mode !== "restricted") return false;
+  if (isSpecMode(provider.mode)) return false;
+  // Empty list on a `passthrough` row = unrestricted. A legacy `restricted` row
+  // always carried at least one path (write-time validation), and an empty list
+  // there keeps its old meaning of "nothing": deny.
+  if (provider.mode === "passthrough" && provider.passthroughPaths.length === 0) return true;
 
   const requested = suffix.split("?")[0]?.split("/").filter(Boolean) ?? [];
   return provider.passthroughPaths.some((prefix) => {
