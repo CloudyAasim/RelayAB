@@ -59,7 +59,7 @@ type PanelProps = Parameters<typeof AssistantSettingsPanel>[0];
  *
  * The **real** locale provider, not a stubbed `t`. A stub returning the key
  * would assert on a string nobody reads; the real one renders the Chinese
- * labels, so a field that shows up labelled "上游 API 密钥" is caught by the
+ * labels, so a field that shows up labelled "上游密钥" is caught by the
  * text on the page rather than by a token in the source.
  */
 function render(overrides: Partial<PanelProps> = {}): string {
@@ -308,10 +308,12 @@ describe("the account path shows no key field", () => {
     expect(countUpstreamKeyInputs(html), "a password field on the account path").toBe(0);
     expect(html, "the key field is present on the account path").not.toContain('name="apiKey"');
     expect(html, "the address field is present on the account path").not.toContain('name="baseUrl"');
-    expect(html, "the account model picker is missing").toContain("用哪个模型");
+    // The label is just 「模型」 now — the same word the key path uses — so the
+    // picker is asserted by its element rather than by a word it shares.
+    expect(html, "the account model picker is missing").toContain('id="assistant-account-model"');
     // The upstream form is genuinely absent, not merely hidden by a class, and
     // it is absent by its *label* — what a person would read.
-    expect(html, "the key field is labelled on the account path").not.toContain("上游 API 密钥");
+    expect(html, "the key field is labelled on the account path").not.toContain("上游密钥");
     expect(html, "the address field is labelled on the account path").not.toContain("API 地址");
   });
 
@@ -396,7 +398,7 @@ describe("the key path still asks for its own upstream", () => {
     });
     expect(countUpstreamKeyInputs(html), "the key path lost its key field").toBe(1);
     expect(html).toContain('name="baseUrl"');
-    expect(html, "the key path has no key label").toContain("上游 API 密钥");
+    expect(html, "the key path has no key label").toContain("上游密钥");
   });
 });
 
