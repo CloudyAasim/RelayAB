@@ -1,8 +1,10 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
+import { getUserById } from "@/lib/db/users";
+import { modelVisibility } from "@/lib/auth/model-access";
 import { getT } from "@/lib/i18n/server";
 import { resolvePublicUrl } from "@/lib/public-url";
-import { cachedBuildModelCatalog } from "@/lib/db/data-cache";
+import { buildModelCatalog } from "@/lib/docs/catalog";
 import { getSettings } from "@/lib/db/settings";
 import { SectionPageLayout } from "@/components/layouts";
 import { IntegrationDocs } from "@/components/docs/IntegrationDocs";
@@ -15,6 +17,10 @@ import { ModelCatalog } from "@/components/docs/ModelCatalog";
  * every request, so this page cannot advertise a model the gateway would not
  * serve. It sits above the tabs rather than inside one, because it answers
  * "what can I call here" and that is not any one chapter's question.
+ *
+ * Scoped to the account, because that is the question this page answers. The
+ * anonymous public docs still show the whole deployment; a signed-in reader is
+ * asking what *they* can call, and a name they cannot call is a wrong answer.
  */
 export async function UserDocsScreen({
   basePath,
@@ -28,12 +34,13 @@ export async function UserDocsScreen({
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  const [{ t }, catalog, publicUrl, { docPages }] = await Promise.all([
+  const [{ t }, owner, publicUrl, { docPages }] = await Promise.all([
     getT(),
-    cachedBuildModelCatalog(),
+    getUserById(user.id),
     resolvePublicUrl(),
     getSettings(),
   ]);
+  const catalog = await buildModelCatalog({ visible: modelVisibility(null, owner) });
 
   return (
     <SectionPageLayout>

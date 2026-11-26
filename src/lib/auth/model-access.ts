@@ -44,3 +44,20 @@ export function modelAllowedFor(
   const keyAllows = key.allowedModels.length === 0 || key.allowedModels.includes(model);
   return ownerAllows && keyAllows;
 }
+
+/**
+ * The same rule as a predicate, for surfaces that filter a whole catalogue
+ * instead of asking about one model.
+ *
+ * No key is not "no restriction": a listing built for a signed-in user has no
+ * key to intersect with, and the account's own list is the most that caller
+ * could ever invoke. An empty list still means "no additional restriction".
+ */
+export function modelVisibility(
+  key: ApiKey | null,
+  owner: User | null,
+): (model: string) => boolean {
+  if (key) return (model) => modelAllowedFor(model, key, owner);
+  return (model) =>
+    !owner || owner.allowedModels.length === 0 || owner.allowedModels.includes(model);
+}

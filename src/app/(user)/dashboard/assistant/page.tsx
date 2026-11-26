@@ -12,8 +12,10 @@
  */
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
+import { getUserById } from "@/lib/db/users";
+import { modelVisibility } from "@/lib/auth/model-access";
+import { buildModelCatalog } from "@/lib/docs/catalog";
 import { getPublicAssistantSettings } from "@/lib/db/assistant";
-import { cachedBuildModelCatalog } from "@/lib/db/data-cache";
 import { resolveAssistantConfig } from "@/lib/assistant/config";
 import { loadSearchConfig } from "@/lib/search/config";
 import { searchServices } from "@/lib/search/resolve";
@@ -35,14 +37,21 @@ export default async function AssistantPage() {
   const sessionUser = await getCurrentUser();
   if (!sessionUser) redirect("/login");
 
-  const [{ t }, settings, catalog, searchConfig, searchRows, publicUrl] = await Promise.all([
+  const [{ t }, settings, owner, searchConfig, searchRows, publicUrl] = await Promise.all([
     getT(),
     getPublicAssistantSettings(sessionUser.id),
-    cachedBuildModelCatalog(),
+    getUserById(sessionUser.id),
     loadSearchConfig(),
     listSearchProviders(),
     resolvePublicUrl(),
   ]);
+  /**
+   * Scoped to the account, because everything below is a suggestion about what
+   * this person can call: the model field's datalist and the facts the form
+   * fills in. Offering a model the proxy would refuse puts a name in front of
+   * someone who cannot use it.
+   */
+  const catalog = await buildModelCatalog({ visible: modelVisibility(null, owner) });
   const isAdmin = sessionUser.role === "admin";
   /**
    * Whether **this** account can search.

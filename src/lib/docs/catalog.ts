@@ -134,8 +134,18 @@ function specFor(provider: MediaProvider, modelId: string) {
  * Read live on every call. A cached catalogue is exactly the failure this
  * feature exists to prevent: an operator adds a model at 10:00 and the docs
  * still say it is not available at 11:00.
+ *
+ * `visible` narrows the catalogue to what one credential may call. A model the
+ * caller cannot invoke must not appear by name here, because every consumer of
+ * this list is presenting it as "what you can call": a name the proxy then
+ * refuses turns the list into a lie. Left out, the catalogue is the whole
+ * deployment — the anonymous public docs and the admin settings page ask for
+ * exactly that.
  */
-export async function buildModelCatalog(): Promise<ModelCatalog> {
+export async function buildModelCatalog(
+  options: { visible?: (modelId: string) => boolean } = {},
+): Promise<ModelCatalog> {
+  const visible = options.visible;
   const [providers, mediaProviders, settings] = await Promise.all([
     listProviders(),
     listMediaProviders(),
@@ -155,6 +165,17 @@ export async function buildModelCatalog(): Promise<ModelCatalog> {
   const isHidden = (id: string): boolean => notes[id]?.hidden === true;
 
   const models: CatalogModel[] = [];
+  /**
+   * How many models each provider contributed **to this build**. Only consulted
+   * when `visible` is set — an unfiltered catalogue's provider counts are the
+   * configured totals (`modelCount` there includes models hidden from the
+   * docs), and changing that would change the admin page's numbers.
+   */
+  const contributed = new Map<string, number>();
+  const count = (kind: "chat" | "media", providerId: string): void => {
+    const id = `${kind}:${providerId}`;
+    contributed.set(id, (contributed.get(id) ?? 0) + 1);
+  };
 
   for (const provider of providers) {
     const faces = providerFaces(provider);
@@ -178,6 +199,7 @@ export async function buildModelCatalog(): Promise<ModelCatalog> {
 
     for (const clientId of Object.keys(provider.modelMapping)) {
       if (isHidden(clientId)) continue;
+      if (visible && !visible(clientId)) continue;
       const cfg = provider.modelConfigs?.[clientId];
       const note = applyNote(clientId, clientId);
       // Read the raw config rather than `getModelContextLength()`, which
@@ -234,6 +256,7 @@ export async function buildModelCatalog(): Promise<ModelCatalog> {
         upstreamId: provider.modelMapping[clientId] ?? null,
         displayLabel: cfg?.displayName?.trim() || null,
       });
+      count("chat", provider.id);
     }
   }
 
@@ -245,6 +268,7 @@ export async function buildModelCatalog(): Promise<ModelCatalog> {
     for (const [clientId, model] of Object.entries(provider.models)) {
       if (model.enabled === false) continue;
       if (isHidden(clientId)) continue;
+      if (visible && !visible(clientId)) continue;
       const spec = specFor(provider, clientId);
       const note = applyNote(clientId, clientId);
       models.push({
@@ -290,6 +314,7 @@ export async function buildModelCatalog(): Promise<ModelCatalog> {
         upstreamId: (model as { upstreamId?: string }).upstreamId ?? null,
         displayLabel: null,
       });
+      count("media", provider.id);
     }
   }
 
@@ -301,29 +326,51 @@ export async function buildModelCatalog(): Promise<ModelCatalog> {
     return a.id.localeCompare(b.id);
   });
 
+  /**
+   * A provider row, or null when a filtered build left it with nothing to show.
+   *
+   * Without `visible` the count is the configured total, hidden models included:
+   * that is the admin page's number, and it answers "how many models did I
+   * configure". With `visible` it has to answer the reader's question instead —
+   * "how many of these can I call" — so it is the number this build actually
+   * emitted, and a provider that emitted none cannot stay on screen claiming
+   * zero, because its name is itself a hint about what the deployment serves.
+   */
+  const providerRow = (
+    id: string,
+    name: string,
+    kind: "chat" | "media",
+    baseUrl: string | null,
+    enabled: boolean,
+    configured: number,
+  ): ModelCatalog["providers"][number] | null => {
+    const modelCount = visible ? (contributed.get(`${kind}:${id}`) ?? 0) : configured;
+    if (visible && modelCount === 0) return null;
+    return { name, kind, baseUrl, enabled, modelCount };
+  };
+
   return {
     models,
     chatCount: models.filter((m) => m.kind === "chat").length,
     mediaCount: models.filter((m) => m.kind === "media").length,
     providers: [
-      ...providers.map((p) => ({
-        name: p.name,
+      ...providers.map((p) =>
         // The kind is what lets the docs list "MiniMax" twice — once for the
         // chat models, once for the media ones. Merged, they are two different
         // things behind one name, and a reader cannot tell which serves what.
-        kind: "chat" as const,
-        baseUrl: p.baseUrl ?? null,
-        enabled: p.enabled,
-        modelCount: Object.keys(p.modelMapping ?? {}).length,
-      })),
-      ...mediaProviders.map((p) => ({
-        name: p.name,
-        kind: "media" as const,
-        baseUrl: p.baseUrl ?? null,
-        enabled: p.enabled,
-        modelCount: Object.keys(p.models ?? {}).length,
-      })),
-    ],
+        providerRow(
+          p.id,
+          p.name,
+          "chat",
+          p.baseUrl ?? null,
+          p.enabled,
+          Object.keys(p.modelMapping ?? {}).length,
+        ),
+      ),
+      ...mediaProviders.map((p) =>
+        providerRow(p.id, p.name, "media", p.baseUrl ?? null, p.enabled, Object.keys(p.models ?? {}).length),
+      ),
+    ].filter((row): row is ModelCatalog["providers"][number] => row !== null),
     site: {
       name: settings.siteName?.trim() || "RelayAB",
       description: settings.siteDescription?.trim() || "",

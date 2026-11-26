@@ -108,22 +108,24 @@ export const TOOL_DESCRIPTIONS: Record<string, ToolText> = {
   },
   "list_gateway_models": {
     "zh-CN":
-      "列出这个 RelayAB 网关当前对外提供的所有模型（聊天与媒体），**并带上每个聊天模型的" +
+      "列出**当前这把凭据（账号或 API Key）确实可以调用**的模型（聊天与媒体），**并带上每个聊天模型的" +
       "上下文窗口、最大输出，以及思考能力**——思考那部分在 reasoning 字段里，" +
       "levels（可选档位）、effortSupported（能不能调深度）、switchSupported（能不能关掉）" +
       "**三者必须一起读、一起说**，缺一不可。回答「有哪些模型」「上下文多大」" +
       "「支持思考吗 / 能选哪几档 / 能不能关掉」这类问题时先调它，" +
-      "不要凭记忆报模型名，也不要因为看不到管理员配置就说查不到——数字就在这个返回值里。",
+      "不要凭记忆报模型名。白名单之外的模型不会出现在返回里：看不到就是当前身份没有权限，" +
+      "不要说成部署不支持，也不要说成管理员没配置——数字就在这个返回值里。",
     en:
-      "List every model this RelayAB gateway currently serves (chat and media), **together with " +
-      "each chat model's context window, maximum output and thinking capability** — the thinking " +
-      "part is in the reasoning field: levels (the optional tiers), effortSupported (whether the " +
-      "depth can be adjusted), switchSupported (whether it can be turned off). " +
+      "List the models **this credential (account or API key) may actually call** (chat and media), " +
+      "**together with each chat model's context window, maximum output and thinking capability** — " +
+      "the thinking part is in the reasoning field: levels (the optional tiers), effortSupported " +
+      "(whether the depth can be adjusted), switchSupported (whether it can be turned off). " +
       "**All three must be read together and reported together**; none of them may be left out. " +
-      "Call this first when answering questions like \"which models do you serve\" \"how big is the " +
+      "Call this first when answering questions like \"which models can I use\" \"how big is the " +
       "context\" \"do they support thinking / which tiers can I pick / can it be turned off\". Do not " +
-      "recite model names from memory, and do not claim you cannot find them because you cannot see " +
-      "the administrator's configuration — the numbers are right there in this result.",
+      "recite model names from memory. A model outside the whitelist is absent from this result: " +
+      "absent means this credential may not use it, not that the deployment lacks it and not that " +
+      "the administrator forgot to configure it — the numbers are right there in this result.",
   },
   "test_gateway_model": {
     "zh-CN":
@@ -1512,6 +1514,15 @@ export const TOOL_REFUSALS: Record<string, ToolText> = {
       "real call. Two ways to fix it: turn on \"call as my account\" in the assistant settings (the " +
       "system issues a credential only the assistant can use, and you never see the plaintext), or " +
       "paste in a gateway key that starts with sk-relay- yourself.",
+  },
+  invalidKey: {
+    "zh-CN":
+      "填的这把 sk-relay- 密钥在本部署里查不到，可能已删除、已停用或输错了。请重新填写，" +
+      "或改用账号凭据；不会退回到账号身份，因为你要的就是这把密钥的权限范围。",
+    en:
+      "The sk-relay- key you pasted does not exist on this deployment — it may have been deleted, " +
+      "disabled or mistyped. Enter it again, or switch to the account credential. It will not fall " +
+      "back to the account, because the point was to be limited to this key.",
   },
   missingModel: {
     "zh-CN": "缺少 model 参数。",

@@ -35,12 +35,17 @@ import { SEARCH_TEMPLATES } from "../search/templates";
 import { readSearchProtocolDoc } from "../docs/search-protocol-doc";
 import { readTextProtocolDoc } from "../docs/text-protocol-doc";
 import { getProviderById, listProviders } from "../db/providers";
-import { MODEL_PURPOSES } from "../db/types";
+import { MODEL_PURPOSES, providerFaces, type ApiKey, type User } from "../db/types";
+import { modelVisibility } from "../auth/model-access";
 import { collectVoiceCatalogue } from "../media/voices";
 import { DEFAULT_SPEC_TIMEOUT_MS, MAX_REFERENCE_IMAGES } from "@/lib/protocol/limits";
 import { listUsers, getUserById } from "../db/users";
 import { getAssistantCredential } from "../db/assistant-keys";
-import { listApiKeysByUser, listApiKeyIdsForUsage } from "../db/keys";
+import {
+  getApiKeyByPlaintext,
+  listApiKeysByUser,
+  listApiKeyIdsForUsage,
+} from "../db/keys";
 import { aggregateByKeyMany, listRecentUsage } from "../db/usage";
 import {
   createAssistantAction,
@@ -1517,19 +1522,55 @@ export async function executeTool(
  * So the tool answers the question it is asked most often in one call, rather
  * than leaving the assistant to go looking and then say it cannot find it.
  *
- * `chat` is filtered to what the caller may actually use. `chatModels` and
- * `providers` stay unfiltered and match `GET /v1/models`, because listing a
- * model and being allowed to call it are different questions and the gateway
- * answers them differently too.
+ * Every field is scoped to the credential that made the call, not to the
+ * deployment. A key that may not call a model must not read its name here
+ * either: the assistant reads this answer out to someone who then picks a
+ * model from it, and a name the proxy refuses is how "it is on the list" turns
+ * into a 403 one message later.
+ *
+ * Three scopes, narrowing in this order:
+ *  - the account credential, which carries the key it was issued under;
+ *  - a pasted `sk-relay-` key, resolved to its owner;
+ *  - neither — the signed-in account's own whitelist, which is the most that
+ *    caller could call and still an answer rather than a refusal.
+ *
+ * A pasted key that does not resolve is refused instead of widened to the
+ * account: the caller asked to be limited to it.
  */
 async function listGatewayModels(ctx: ToolContext): Promise<ToolResult> {
+  let key: ApiKey | null = null;
+  let owner: User | null = null;
+
+  if (ctx.account) {
+    key = ctx.account.apiKey;
+    owner = ctx.account.user;
+  } else if (ctx.relayKey) {
+    key = await getApiKeyByPlaintext(ctx.relayKey);
+    if (!key) return fail(ctx, "invalidKey");
+    owner = await getUserById(key.userId);
+  } else {
+    owner = await getUserById(ctx.user.id);
+  }
+
+  // One rule with the proxy and the catalogue: an empty list means no
+  // restriction, never "nothing". Without a key the account's list is the
+  // narrowest real boundary this caller has.
+  const allowed = modelVisibility(key, owner);
+
   const chat = await listProviders();
   const chatModels = new Set<string>();
   const byProvider: Array<{ name: string; baseUrl: string | null; models: string[] }> = [];
 
   for (const p of chat) {
     if (!p.enabled) continue;
-    const ids = Object.keys(p.modelMapping ?? {});
+    // A provider with both protocol faces switched off serves nothing, so its
+    // names are not an answer to "what can I call".
+    const faces = providerFaces(p);
+    if (!faces.openai && !faces.anthropic) continue;
+    const ids = Object.keys(p.modelMapping ?? {}).filter(allowed);
+    // A row with no models left would say the provider exists and serve
+    // nothing — the same leak in a different shape.
+    if (ids.length === 0) continue;
     ids.forEach((m) => chatModels.add(m));
     byProvider.push({ name: p.name, baseUrl: p.baseUrl ?? null, models: ids });
   }
@@ -1537,18 +1578,15 @@ async function listGatewayModels(ctx: ToolContext): Promise<ToolResult> {
   // Only spec-mode providers: a passthrough provider is not callable through
   // the tools, and listing it would make the assistant suggest a 400.
   const media = (await listMediaProviders()).filter((m) => m.enabled && isSpecMode(m.mode));
-  const mediaModels = media.flatMap((m) => Object.keys(m.models ?? {}));
+  const mediaModels = media.flatMap((m) =>
+    Object.entries(m.models ?? {})
+      .filter(([id, model]) => model.enabled !== false && allowed(id))
+      .map(([id]) => id),
+  );
 
-  // Same rule as `dashboard/models/page.tsx`: an empty list means no
-  // restriction, and a caller who may not use a model is not told its numbers.
-  // The session does not carry the whitelist, so it is read here rather than
-  // widened into `AuthedUser` for one call site.
-  const full = await getUserById(ctx.user.id);
-  const allowed = full?.allowedModels ?? [];
-  const visible = (id: string): boolean => allowed.length === 0 || allowed.includes(id);
-  const catalog = await buildModelCatalog();
+  const catalog = await buildModelCatalog({ visible: allowed });
   const details = catalog.models
-    .filter((m) => m.kind === "chat" && visible(m.id))
+    .filter((m) => m.kind === "chat")
     .map((m) => ({
       id: m.id,
       contextLength: m.contextLength,

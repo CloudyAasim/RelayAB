@@ -75,7 +75,10 @@ describe("the list it offers", () => {
     // models, and the probe replaces them with its own answer.
     expect(PANEL).toMatch(/suggestedModels\?: string\[\]/);
     expect(PANEL).toMatch(/useState<string\[\]>\(suggestedModels\)/);
-    expect(PAGE).toMatch(/cachedBuildModelCatalog\(\)/);
+    // Scoped to the account, so the list cannot offer a model this person's
+    // credential would be refused for — a suggestion that 403s is worse than
+    // an empty list.
+    expect(PAGE).toMatch(/buildModelCatalog\(\{ visible: modelVisibility\(null, owner\) \}\)/);
     expect(PAGE).toMatch(/suggestedModels=\{suggestedModels\}/);
     expect(PAGE).toMatch(/filter\(\(m\) => m\.kind === "chat"\)/);
   });
