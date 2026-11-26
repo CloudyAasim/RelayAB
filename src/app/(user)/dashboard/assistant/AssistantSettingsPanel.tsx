@@ -1212,7 +1212,6 @@ export function AssistantSettingsPanel({
             labelHint={
               <>
                 <span className="block">{t("assistant.settings.searchService.sourceDeploymentHint")}</span>
-                <span className="mt-1 block">{t("assistant.settings.searchService.sourceServiceKeyHint")}</span>
                 <span className="mt-1 block">{t("assistant.settings.searchService.sourceOwnHint")}</span>
               </>
             }
