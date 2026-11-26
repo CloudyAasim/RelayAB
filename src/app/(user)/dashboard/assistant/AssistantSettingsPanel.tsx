@@ -941,17 +941,38 @@ export function AssistantSettingsPanel({
               >
                 {t("assistant.settings.reasoning")}
               </label>
+              {/*
+                The badge holds what the field cannot say on screen.
+
+                "Default" is honest but means something different in each
+                direction: for a model whose default is its deepest level it is
+                the most expensive choice on the list, and for a model that
+                thinks unless told otherwise it means thinking stays on. A user
+                who wants to spend less and picks the default gets the opposite,
+                and nothing on screen says so. When the operator has declared
+                that the vendor ignores the parameter, that reading is moot and
+                the badge answers "why is this grey" instead.
+              */}
               <InfoHint
                 text={
                   <>
-                    <span className="block">
-                      <MarkdownText text={t("assistant.settings.reasoningDefaultIsNotOff")} />
-                    </span>
-                    {mode === "account" &&
-                      !effortUnsupported &&
-                      (facts?.reasoningLevels?.length ?? 0) === 0 && (
-                        <span className="mt-1 block">{t("assistant.settings.reasoningUnknown")}</span>
-                      )}
+                    {!effortUnsupported && (
+                      <>
+                        <span className="block">
+                          <MarkdownText text={t("assistant.settings.reasoningDefaultIsNotOff")} />
+                        </span>
+                        {mode === "account" && (facts?.reasoningLevels?.length ?? 0) === 0 && (
+                          <span className="mt-1 block">
+                            {t("assistant.settings.reasoningUnknown")}
+                          </span>
+                        )}
+                      </>
+                    )}
+                    {effortUnsupported && (
+                      <span className="block">
+                        <MarkdownText text={t("assistant.settings.reasoningNotSupportedDetail")} />
+                      </span>
+                    )}
                   </>
                 }
               />
@@ -974,27 +995,6 @@ export function AssistantSettingsPanel({
               levels={mode === "account" ? (facts?.reasoningLevels ?? []) : []}
             />
             <p className="font-mono text-xs text-muted-foreground">{wireName("reasoning_effort")}</p>
-            {effortUnsupported ? (
-              // The one explanation that fits: not "there are no levels known"
-              // but "this model does not read this parameter at all", and where
-              // to go instead. Without the second half the user is left looking
-              // for the setting that does it.
-              <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                <MarkdownText text={t("assistant.settings.reasoningNotSupported")} />
-              </p>
-            ) : (
-              <>
-                {/*
-                  Next to the field, because the option list cannot say it. The
-                  empty option is labelled "default" and is honest, but "default"
-                  is a different claim in each direction: for a model whose default
-                  is its deepest level it is the most expensive choice on this
-                  list, and for a model that thinks unless told otherwise it means
-                  thinking stays on. A user who wants to spend less and picks the
-                  default gets the opposite, and nothing on screen says so.
-                */}
-              </>
-            )}
           </div>
           <div className="space-y-1">
             {/*
@@ -1014,7 +1014,18 @@ export function AssistantSettingsPanel({
               <label htmlFor="assistant-thinking" className="text-xs font-medium text-foreground">
                 {t("assistant.settings.thinkingMode")}
               </label>
-              <InfoHint text={t("assistant.settings.thinkingModeHint")} />
+              {/*
+                The control is greyed when the operator says the vendor refuses
+                the request; a dead control with the ordinary explanation reads
+                as a bug, so the badge answers why instead.
+              */}
+              {switchUnsupported ? (
+                <InfoHint
+                  text={<MarkdownText text={t("assistant.settings.thinkingSwitchNotSupportedDetail")} />}
+                />
+              ) : (
+                <InfoHint text={t("assistant.settings.thinkingModeHint")} />
+              )}
             </div>
             <select
               id="assistant-thinking"
@@ -1034,11 +1045,6 @@ export function AssistantSettingsPanel({
               <option value="disabled">{t("assistant.settings.thinkingOff")}</option>
             </select>
             <p className="font-mono text-xs text-muted-foreground">{wireName("thinking.type")}</p>
-            {switchUnsupported ? (
-              <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                <MarkdownText text={t("assistant.settings.thinkingSwitchNotSupported")} />
-              </p>
-            ) : null}
           </div>
           {/*
             The context window stays on the open form.
@@ -1058,6 +1064,22 @@ export function AssistantSettingsPanel({
             onChange={setContextLength}
           />
         </div>
+
+        {/*
+          One short line per disabled control, at the width of the form.
+
+          These sentences used to sit in their own column of the grid — about a
+          hundred pixels wide, five or six characters to a line, ten lines tall
+          — and pushed the row out of shape while saying one thing. What has to
+          stay on the page is only that the greyed control is not broken; the
+          reasoning lives in the (i) badge beside the label.
+        */}
+        {(effortUnsupported || switchUnsupported) && (
+          <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+            {effortUnsupported && <p>{t("assistant.settings.reasoningNotSupported")}</p>}
+            {switchUnsupported && <p>{t("assistant.settings.thinkingSwitchNotSupported")}</p>}
+          </div>
+        )}
 
         {/*
           The sampling parameters, folded away.
