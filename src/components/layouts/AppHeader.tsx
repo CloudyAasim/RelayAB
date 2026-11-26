@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { LogOut, Menu, Settings, ChevronDown, LayoutDashboard, Palette } from "lucide-react";
+import { LogOut, Menu, ChevronDown, LayoutDashboard, Palette } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover";
@@ -209,14 +209,9 @@ export function UserMenu({
                 {t("nav.user.adminPanel")}
               </Link>
             )}
-            <Link
-              href="/dashboard/settings"
-              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground"
-              onClick={() => setOpen(false)}
-            >
-              <Settings className="h-4 w-4 text-muted-foreground" />
-              {t("nav.user.accountSettings")}
-            </Link>
+            {/* No settings entry: the sidebar already carries that page for
+                every role, and a second door to the same page in the account
+                menu only made the menu longer. */}
             <form action={logoutAction}>
               <button
                 type="submit"

@@ -78,6 +78,23 @@ describe("the panel and its menu share one width", () => {
   });
 });
 
+/**
+ * The settings page is in the sidebar for both roles, so the account menu is
+ * not a second door to it: the same destination twice makes the menu longer
+ * and tells the reader nothing the sidebar did not.
+ */
+describe("the account menu does not repeat the sidebar's settings entry", () => {
+  const NAV = read("src", "components", "layouts", "AuthenticatedLayout.tsx");
+
+  it("both roles reach the settings page from the sidebar", () => {
+    expect(NAV.match(/href: "\/dashboard\/settings"/g)).toHaveLength(2);
+  });
+
+  it("and the menu no longer links to it", () => {
+    expect(HEADER).not.toContain("/dashboard/settings");
+  });
+});
+
 describe("the phone's drawer keeps the wide panel", () => {
   it("the icon rail is a desktop idea", () => {
     // On a phone the sidebar is a 240px drawer, so the account button is the
