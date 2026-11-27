@@ -52,9 +52,6 @@ export default async function AnnouncementsPage() {
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t("announcements.title")}</SectionPageLayout.Title>
-      <SectionPageLayout.Description>
-        {t("announcements.description")}
-      </SectionPageLayout.Description>
       <SectionPageLayout.Content>
         {announcements.length === 0 ? (
           <Card>

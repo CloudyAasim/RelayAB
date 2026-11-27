@@ -438,7 +438,6 @@ describe("the retirement of settings.announcement is complete", () => {
 describe("the announcement words exist in both locales", () => {
   const KEYS = [
     "announcements.title",
-    "announcements.description",
     "announcements.empty",
     "announcements.empty.description",
     "announcements.bannerDismiss",

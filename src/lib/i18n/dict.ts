@@ -825,7 +825,6 @@ const zhCN: Dict = {
 
   // ===== 公告（用户端） =====
   "announcements.title": "公告",
-  "announcements.description": "发布过的通知都留在这里，进行中的排在最前。",
   "announcements.empty": "还没有公告。",
   "announcements.empty.description": "有维护、变更或者需要注意的事时，会出现在这里。",
   "announcements.bannerDismiss": "关闭这条公告",
@@ -2546,7 +2545,6 @@ const en: Dict = {
 
   // ===== Announcements (reader side) =====
   "announcements.title": "Announcements",
-  "announcements.description": "Everything that has been published stays here, with the live ones first.",
   "announcements.empty": "No announcements yet.",
   "announcements.empty.description": "Maintenance, changes and anything worth knowing will show up here.",
   "announcements.bannerDismiss": "Dismiss this announcement",
