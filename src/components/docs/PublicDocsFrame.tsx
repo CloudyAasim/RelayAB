@@ -85,7 +85,6 @@ export async function PublicDocsFrame({
       <main className="flex-1 px-4 py-8 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-5xl">
           <h1 className="text-2xl font-semibold tracking-tight">{t("docs.title")}</h1>
-          <p className="mt-2 text-muted-foreground">{t("docs.intro")}</p>
           <div className="mt-6">
             <IntegrationDocs
               basePath={basePath}

@@ -222,7 +222,6 @@ const zhCN: Dict = {
 
   // ===== Docs page =====
   "docs.title": "接入文档",
-  "docs.intro": "用任何 OpenAI / Anthropic 兼容的客户端即可调用本服务。",
   "docs.help.contactAdmin": "还有疑问？联系你的管理员。",
   // ===== 接入文档导航（多页）=====
   "docs.nav.start": "开始使用",
@@ -1938,7 +1937,6 @@ const en: Dict = {
 
   // ===== Docs page =====
   "docs.title": "Integration Docs",
-  "docs.intro": "Any OpenAI- or Anthropic-compatible client works against this service.",
   "docs.help.contactAdmin": "Questions? Contact your admin.",
   // ===== Integration docs navigation (multi-page) =====
   "docs.nav.start": "Getting started",

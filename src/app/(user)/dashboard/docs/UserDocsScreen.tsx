@@ -45,7 +45,6 @@ export async function UserDocsScreen({
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t("docs.title")}</SectionPageLayout.Title>
-      <SectionPageLayout.Description>{t("docs.intro")}</SectionPageLayout.Description>
       <SectionPageLayout.Content>
         <IntegrationDocs
           basePath={basePath}

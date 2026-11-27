@@ -37,7 +37,7 @@ export const WEB_DOC_SECTIONS: WebDocSection[] = [
     surface: "user",
     id: "start",
     summary: "快速开始：这是什么、需要什么环境变量、第一个请求怎么发",
-    keys: ["docs.title","docs.intro","docs.basics.title","docs.basics.desc","docs.basics.line1","docs.basics.line2","docs.basics.line3","docs.basics.line4","docs.basics.warning"],
+    keys: ["docs.title","docs.basics.title","docs.basics.desc","docs.basics.line1","docs.basics.line2","docs.basics.line3","docs.basics.line4","docs.basics.warning"],
     chrome: ["docs.unknown.title","docs.unknown.desc","docs.copy.failed","docs.copy.copied","common.copy"],
   },
   {
