@@ -34,7 +34,7 @@ type Dict = Record<string, string>;
 const zhCN: Dict = {
   // ===== Welcome / landing page =====
   "welcome.title": "自托管 AI API 网关",
-  "welcome.subtitle": "把上游模型能力安全地分发给你的团队：管理员分配积分与可用模型，用户自行创建密钥，所有用量一目了然。",
+  "welcome.subtitle": "把上游模型能力分发给团队：管理员分配积分与模型，用户自建密钥，用量一目了然。",
   "welcome.signIn": "登录",
   "welcome.enterConsole": "进入控制台",
   "welcome.readDocs": "查看接入文档",
@@ -254,14 +254,14 @@ const zhCN: Dict = {
   "admin.modelNotes.nav": "模型说明",
   "admin.providers.modeLabel": "接入模式",
   "admin.textSpec.mode.simple": "简易模式",
-  "admin.textSpec.mode.simpleBody": "在这里配完整条服务商：端点、接口路由、模型。绝大多数 OpenAI 兼容中转选这个。",
+  "admin.textSpec.mode.simpleBody": "配整条服务商：端点、接口路由、模型。多数 OpenAI 兼容厂商选这个。",
   "admin.textSpec.mode.advanced": "高级模式（协议）",
-  "admin.textSpec.mode.advancedBody": "也在这里配完整条服务商，只是协议按兼容接口分开写。厂商和 OpenAI 不一样时才需要。",
+  "admin.textSpec.mode.advancedBody": "同样配整条服务商，协议按兼容接口分开写；厂商与 OpenAI 不同才需要。",
   "admin.textSpec.mode.configured": "已配置 {n} 个接口",
   "admin.textSpec.mode.brokenEntry": "这条有问题",
 
   "admin.textSpec.title": "上游协议",
-  "admin.textSpec.desc": "按兼容接口分别声明：网关拿到请求参数后怎么处理。留空则原样透传——这是中转站该有的默认。",
+  "admin.textSpec.desc": "按兼容接口声明网关怎么处理请求参数；留空则原样透传。",
   "admin.textSpec.none": "尚未配置：客户端传的参数原样送到上游。",
   "admin.textSpec.add": "写一条",
   "admin.textSpec.remove": "删除这条规则",
@@ -286,7 +286,7 @@ const zhCN: Dict = {
   "admin.modelConfig.purpose.moderation": "内容审核（/v1/moderations）",
   "admin.modelConfig.purposeHint": "决定它在「账号可用模型」里归到哪一组；不选即对话模型。",
   "admin.modelConfig.factsHint": "这些值直接决定计费和文档展示。",
-  "admin.modelConfig.mediaReadonly": "媒体模型由 spec 驱动：能力 {capability}，端点 {endpoint}，每件 {price} 积分。这里只改文档说明。",
+  "admin.modelConfig.mediaReadonly": "媒体模型由 spec 驱动：{capability}、{endpoint}、每件 {price} 积分；这里只改文档说明。",
   "admin.modelConfig.fixFirst": "先修好标红的模型再保存。",
   "admin.docsSettings.pagesDesc": "写给自己的用户看的参数参考，展示为文档里的「参数指南」，和「接入指南」并列。一页只写一类。",
   "admin.docsSettings.pagesEmpty": "还没有自定义页面。",
@@ -306,7 +306,7 @@ const zhCN: Dict = {
   "admin.docsSettings.pageInvalidId": "标识只能用小写字母、数字和中划线",
   "dashboard.models.gateway.parameters": "请求参数",
   "dashboard.models.gateway.parametersHint":
-    "用来验证这个厂商到底认不认这些参数。比如上游的思考等级叫别的名字，只有真发一次才知道。测出来的档位请填到模型配置的「思考等级」里，助手设置的下拉才会列出它们。",
+    "验证厂商认不认这些参数；上游的等级叫法不同，只能真发一次才知道。测出的档位填进模型配置的「思考等级」，助手的下拉才会列出。",
   "dashboard.models.gateway.extraParameters": "其他参数（原始 JSON）",
   "dashboard.models.gateway.extraParametersHint":
     "上面四个之外的任何参数，原样放进请求体。厂商私有参数写在这里。",
@@ -607,7 +607,7 @@ const zhCN: Dict = {
   "usage.stat.balanceHint": "总额度 {limit}",
   "usage.stat.used": "累计消耗",
   "usage.webSearch.title": "网页搜索",
-  "usage.webSearch.description": "所选时间范围内 /v1/search 的用量。助手对话里的搜索不经过计费接口，不计入这里。",
+  "usage.webSearch.description": "所选时间范围内 /v1/search 的用量；助手对话里的搜索不计费，不计入这里。",
   "usage.webSearch.calls": "调用次数",
   "usage.webSearch.credits": "消耗积分",
   "usage.webSearch.share": "占所选范围",
@@ -623,7 +623,7 @@ const zhCN: Dict = {
   "usage.chart.grainHour": "小时",
   "usage.chart.grainDay": "天",
   "usage.empty": "所选范围内还没有用量。",
-  "usage.truncated": "部分密钥的日志已达上限（每个密钥保留最近 {max} 条），较早的记录可能未计入下方明细；累计消耗来自计数器，仍然准确。",
+  "usage.truncated": "部分密钥日志已达上限（每个密钥保留最近 {max} 条），较早记录可能不在下方明细里；累计消耗来自计数器，仍准确。",
   "usage.breakdown.byUser": "按用户",
   "usage.breakdown.byKey": "按密钥",
   "usage.breakdown.byModel": "按模型",
@@ -647,7 +647,7 @@ const zhCN: Dict = {
   "admin.overview.recentUsageModel": "模型",
   "admin.overview.recentUsageTokens": "词元",
   "admin.overview.recentUsageCredits": "积分",
-  "admin.overview.recentUsageDesc": "计费方式为「估算」表示流式请求结束时上游没有返回用量帧，词元数按文本长度推算（约 4 字符 1 词元）。缓存列显示上游报告的提示缓存命中与写入——「—」表示这家上游根本不报缓存，不是命中率为零。",
+  "admin.overview.recentUsageDesc": "「估算」= 上游没返回用量帧，词元按约 4 字符 1 个推算。缓存列的「—」表示上游不报缓存，不是没命中。",
   "admin.overview.recentUsageEmpty": "暂无调用记录",
   "admin.overview.usageCache": "缓存",
   "admin.overview.usageCacheHint": "上游提示缓存的词元数。读是省下来的，写是要付的。",
@@ -756,7 +756,7 @@ const zhCN: Dict = {
     "客户端按 OpenAI 形状调用，适配协议负责翻译成供应商自己的 API。",
   "admin.mediaProviders.mode.passthrough": "原样透传",
   "admin.mediaProviders.mode.passthroughBody":
-    "不做翻译：客户端直接调用供应商自己的路径（/v1/raw/…），请求和响应原样转发。",
+    "不翻译：客户端直接调用供应商自己的路径（/v1/raw/…），原样收发。",
   "admin.mediaProviders.passthroughPaths": "允许透传的路径前缀（可选）",
   "admin.mediaProviders.passthroughPaths.hint":
     "留空 = 不限制；填写后只放行这些前缀，按路径段匹配。",
@@ -796,7 +796,7 @@ const zhCN: Dict = {
 
   // ===== Announcements =====
   "admin.announcements.title": "公告",
-  "admin.announcements.description": "发布后，登录用户会在页面顶部看到；公开文档页显示最新一条。停用的、还没开始的、已经结束的，只有这里看得到。",
+  "admin.announcements.description": "发布后，登录用户在页面顶部看到，公开文档页显示最新一条；停用、未开始、已结束的只在这里可见。",
   "admin.announcements.new": "发布公告",
   "admin.announcements.edit": "编辑公告",
   "admin.announcements.empty": "还没有公告。",
@@ -880,7 +880,7 @@ const zhCN: Dict = {
     "上游是 Google 原生 Gemini 接口。网关把请求转成 Gemini 的形状（contents / systemInstruction / generationConfig），上游答完再转回客户端要的那一套。流式回答会整段一次送到。",
 
   "admin.providers.routes.anthropicBaseUrl": "Anthropic 基址",
-  "admin.providers.routes.anthropicBaseUrlHint": "留空则由上面的 API 地址推导（去掉结尾的 /v1）。厂商的 Anthropic 端点与 OpenAI 不同时请显式填写：MiniMax 是 https://api.minimaxi.com/anthropic，不是 https://api.minimaxi.com/v1。",
+  "admin.providers.routes.anthropicBaseUrlHint": "留空则从上面的 API 地址推导（去掉结尾的 /v1）。端点不同时必填，例如 MiniMax 用 https://api.minimaxi.com/anthropic，不是 …/v1。",
 
   "admin.providers.routes.title": "接口路由",
   "admin.providers.routes.unsupported": "不支持",
@@ -889,10 +889,10 @@ const zhCN: Dict = {
   "admin.providers.routes.mode.passthrough": "透传模式",
   "admin.providers.routes.mode.passthroughBody": "所有接口都按自己的协议原样发给上游，网关不翻译协议。",
   "admin.providers.routes.passthroughNote":
-    "透传模式：每个接口都按它自己的协议原样发给上游。前提是这家厂家四种协议都会说 —— 少一种，那个接口就调不通。",
+    "透传模式：每个接口按自己的协议原样发给上游；厂家少会说一种，那个接口就调不通。",
   "admin.providers.routes.upstream.title": "上游接口",
   "admin.providers.routes.upstream.hint":
-    "这家厂家自己的 API 会说哪几种协议。说得上的接口直接走，说不上的由网关改写 —— 声明其中一种，这条 Provider 就能连上。",
+    "厂家自己的 API 会说哪几种协议。会说的直接走，不会的由网关改写；声明一种就能连上。",
   "admin.providers.routes.upstream.none":
     "还没选任何协议 —— 这样这条 Provider 不会响应任何请求。",
 
@@ -911,7 +911,7 @@ const zhCN: Dict = {
   "admin.searchProviders.name": "名称",
   "admin.searchProviders.serviceId": "客户端名称",
   "admin.searchProviders.noDefault":
-    "**点名才算数**：客户端在请求里带 service 字段（目录在 GET /v1/search/services），助手那边由每个账号在设置里选。没有点名时，由管理员指定的默认服务应答 —— 面板上带「默认」标记的那一行就是；没有默认、却有多个服务可用时，请求会直接失败，并把可选的那几个列出来。",
+    "**点名才算数**：客户端用 `service` 字段指定（目录在 GET /v1/search/services），助手账号在设置里各自选。没点名时用带「默认」标记的服务；没有默认且有多个可用，请求直接失败并列出选项。",
   "admin.searchProviders.unusable": "不可用",
   "admin.searchProviders.defaultBadge": "默认",
   "admin.searchProviders.setDefault": "设为默认搜索服务",
@@ -949,8 +949,8 @@ const zhCN: Dict = {
   "admin.docs.searchProtocol.desc":
     "搜索后端的声明式协议全文，与仓库里的文件同源。新增一个厂商只改这份 JSON，不改代码、不重新部署。",
   "admin.search.title": "搜索设置",
-  "admin.search.desc": "助手和 /v1/search 共用的搜索能力。提供商的启用/停用就是总开关：至少有一条启用的记录时搜索可用，全部停用时两个入口都会拒绝。",
-  "admin.search.status.backendMissing": "未配置：先添加一个搜索提供商，或设置 SEARXNG_URL / TAVILY_API_KEY / BRAVE_SEARCH_API_KEY",
+  "admin.search.desc": "助手与 /v1/search 共用的搜索：有一条提供商启用就可用，全部停用则两个入口都拒绝。",
+  "admin.search.status.backendMissing": "未配置：添加搜索提供商，或设置 SEARXNG_URL / TAVILY_API_KEY / BRAVE_SEARCH_API_KEY",
   "admin.search.fallback.title": "环境回退",
   "admin.search.fallback.configured":
     "还没有搜索提供商记录时，搜索走环境变量里的后端。下面是那条路径的价格。",
@@ -1154,7 +1154,7 @@ const zhCN: Dict = {
   "admin.providers.create.maxOutput": "输出",
   "admin.providers.create.reasoningLevels": "思考等级",
   "admin.providers.create.reasoningLevelsHint": "用逗号分隔，按厂商文档填；不确定可用「测试」页实测确认。",
-  "admin.providers.create.reasoningEffortSupported": "这个模型支持 reasoning_effort 思考等级；取消勾选则助手设置里的对应下拉置灰。",
+  "admin.providers.create.reasoningEffortSupported": "这个模型支持 reasoning_effort；取消勾选会让助手设置的思考等级置灰。",
   "admin.providers.create.thinkingSwitchSupported": "这个模型接受思考开关；取消勾选则助手设置里的开关置灰。",
   "admin.providers.create.inputCost": "输入积分",
   "admin.providers.create.outputCost": "输出积分",
@@ -1272,7 +1272,7 @@ const zhCN: Dict = {
   "dashboard.models.test.assistant": "模型",
   "dashboard.models.probe.endpoint": "请求地址",
   "dashboard.models.probe.raw": "原始请求",
-  "dashboard.models.probe.rawHint": "绕过上面的表单，直接发一条 HTTP 请求：方法、地址、请求头、请求体都自己写。密钥不会保存。",
+  "dashboard.models.probe.rawHint": "绕过表单，直接写一条 HTTP 请求：方法、地址、请求头、请求体。密钥不保存。",
   "dashboard.models.probe.method": "方法",
   "dashboard.models.probe.url": "URL",
   "dashboard.models.probe.headers": "请求头（JSON）",
@@ -1345,7 +1345,7 @@ const zhCN: Dict = {
   "dashboard.models.media.promptPlaceholder": "想生成什么？",
   "dashboard.models.media.size": "尺寸",
   "dashboard.models.media.voice": "音色",
-  "dashboard.models.media.voiceHint": "上游必填。留空会被拒（missing required parameter），所以这里已预填一个可用的；手动填的 id 厂商那边没有的话会被上游拒。",
+  "dashboard.models.media.voiceHint": "上游必填，留空会被拒（missing required parameter），这里已预填一个可用的；填厂商不认识的 id 也会被拒。",
   "dashboard.models.media.voiceCustom": "手动填写…",
   "dashboard.models.media.voiceLoading": "正在取本部署的音色列表…",
   "dashboard.models.media.voiceEmpty": "这个模型没有可用的音色列表：请手动填写音色 id，或检查服务商的音色查询接口。",
@@ -1398,7 +1398,7 @@ const zhCN: Dict = {
   "assistant.credential.status.none": "未创建",
   "assistant.credential.status.off": "已创建 · 未开启",
   "assistant.credential.status.on": "已开启",
-  "assistant.credential.switchHint": "开启后，助手实测模型、生成图片/语音/视频时会以你的身份调用本部署，费用走你自己的额度。不需要也不会保存任何密钥。创建时默认开启，随时可以在这里关掉。",
+  "assistant.credential.switchHint": "开启后，助手测试模型、生成图片/语音/视频都以你的身份调用本部署，费用记在你的额度。不需要也不保存任何密钥。",
   "assistant.credential.notCreated": "你还没有助手凭据。创建后立即生效，随时可以关掉。",
   "assistant.credential.create": "创建助手凭据",
   "assistant.credential.enableNow": "现在开启",
@@ -1421,14 +1421,14 @@ const zhCN: Dict = {
   "assistant.expand": "展开",
   "assistant.collapse": "收起",
   "assistant.streamInterrupted":
-    "连接中断了，这一轮没有跑完。上面这些是已经收到的部分——可以就着它继续问，或者重发一次。",
+    "连接中断，这一轮没跑完。上面是已收到的部分，可以接着问或重发。",
   "assistant.question.placeholder": "在这里回答…",
   "assistant.question.send": "发送",
   "assistant.question.answered": "已回答，等助手继续。",
   "assistant.loadFailed":
-    "这段对话没能加载出来（服务暂时不可用），上面显示的是上一次读到的内容，不是空白。稍后点开一次就好。",
+    "这段对话没能加载（服务暂时不可用），上面是上次读到的内容。稍后再点开一次。",
   "assistant.pretty.switch": "输出美化",
-  "assistant.pretty.hint": "把回答按 Markdown 排版，思考过程默认折叠起来，生成的图片/语音附带类型与下载。关掉就是模型原样的纯文本。",
+  "assistant.pretty.hint": "回答按 Markdown 排版，思考过程默认折叠，生成的图片/语音带类型与下载。关掉则显示模型原样文本。",
   "assistant.artifact.download": "下载",
   "assistant.artifact.type": "类型",
   "assistant.artifact.format": "格式",
@@ -1477,9 +1477,9 @@ const zhCN: Dict = {
   "assistant.error.credentialOff":
     "「用我的账号身份」已关闭。请到设置里打开，或改用「用我自己配置的密钥」。",
   "assistant.error.credentialMissing":
-    "还没有开启「用我的账号身份」。请到设置里创建并打开它，或者改用「用我自己配置的密钥」。",
+    "还没开启「用我的账号身份」。到设置里创建并打开，或改用「用我自己配置的密钥」。",
   "assistant.error.modelNotAllowed":
-    "你选的模型现在不可用了：{model}。可能是这个模型已经下线，也可能是你的账号没有它的权限。请到助手设置里换一个。",
+    "你选的模型现在不可用：{model}（已下线，或你的账号没有权限）。请到助手设置里换一个。",
   "assistant.error.noModels": "当前没有可用模型，请先让管理员配置提供商。",
   "assistant.error.threadNotFound": "对话不存在",
   "assistant.error.attachmentsNotArray": "attachments 必须是数组",
@@ -1752,7 +1752,7 @@ const zhCN: Dict = {
 const en: Dict = {
   // ===== Welcome / landing page =====
   "welcome.title": "Self-hosted AI API gateway",
-  "welcome.subtitle": "Share upstream model access with your team safely: an admin allocates credits and picks the models, users mint their own keys, and every request is accounted for.",
+  "welcome.subtitle": "Share upstream model access with your team: an admin allocates credits and models, users mint their own keys, and every request is accounted for.",
   "welcome.signIn": "Sign in",
   "welcome.enterConsole": "Open the console",
   "welcome.readDocs": "Read the docs",
@@ -1971,15 +1971,15 @@ const en: Dict = {
   "admin.providers.modeLabel": "Mode",
   "admin.textSpec.mode.simple": "Simple",
   "admin.textSpec.mode.simpleBody":
-    "Declare the whole provider here: endpoint, route table, models. Right for nearly every OpenAI-compatible vendor.",
+    "The whole provider in one place: endpoint, routes, models. Right for most OpenAI-compatible vendors.",
   "admin.textSpec.mode.advanced": "Advanced (protocol)",
   "admin.textSpec.mode.advancedBody":
-    "Declare the whole provider here, with the protocol rules written per compatibility interface. Only needed when the vendor is not quite OpenAI.",
+    "The same whole provider, with the protocol rules written per compatibility interface. Only when the vendor is not quite OpenAI.",
   "admin.textSpec.mode.configured": "{n} interfaces configured",
   "admin.textSpec.mode.brokenEntry": "this one is wrong",
 
   "admin.textSpec.title": "Upstream protocols",
-  "admin.textSpec.desc": "Per compatibility interface: what the gateway does with the request parameters. Left empty, everything is forwarded as sent — the right default for a relay.",
+  "admin.textSpec.desc": "Per compatibility interface: what the gateway does with the request parameters. Empty forwards them as sent.",
   "admin.textSpec.none": "Not configured: the client's parameters are forwarded to the upstream as sent.",
   "admin.textSpec.add": "Write one",
   "admin.textSpec.remove": "Remove this rule",
@@ -2004,7 +2004,7 @@ const en: Dict = {
   "admin.modelConfig.purpose.moderation": "Moderation (/v1/moderations)",
   "admin.modelConfig.purposeHint": "Which group it is filed under in an account's model list; unset means a conversation model.",
   "admin.modelConfig.factsHint": "These values drive billing and what the documentation shows.",
-  "admin.modelConfig.mediaReadonly": "A media model is driven by its spec: capability {capability}, endpoint {endpoint}, {price} credits per item. Only its documentation is edited here.",
+  "admin.modelConfig.mediaReadonly": "A media model is driven by its spec: {capability}, {endpoint}, {price} credits per item. Only its documentation is edited here.",
   "admin.modelConfig.fixFirst": "Fix the highlighted model before saving.",
   "admin.docsSettings.pagesDesc": "Prose you write for your users. Pick the chapter it belongs to and it appears at the end of that chapter.",
   "admin.docsSettings.pagesEmpty": "No custom pages yet.",
@@ -2024,7 +2024,7 @@ const en: Dict = {
   "admin.docsSettings.pageInvalidId": "An id may only contain lowercase letters, digits and dashes",
   "dashboard.models.gateway.parameters": "Request parameters",
   "dashboard.models.gateway.parametersHint":
-    "Use these to find out whether a vendor actually honours them. If the vendor spells the reasoning level differently, only a real call tells you — put the levels you found into the model configuration’s “Thinking levels” and the assistant’s picker will offer them.",
+    "Use these to check whether a vendor honours them; if it spells the reasoning level differently, only a real call tells you. Put the levels you found into the model configuration’s “Thinking levels” and the assistant’s picker will offer them.",
   "dashboard.models.gateway.extraParameters": "Other parameters (raw JSON)",
   "dashboard.models.gateway.extraParametersHint":
     "Anything outside the four above, put into the request body as typed. Vendor-specific parameters go here.",
@@ -2329,7 +2329,7 @@ const en: Dict = {
   "usage.stat.balanceHint": "of {limit} total",
   "usage.stat.used": "Lifetime spend",
   "usage.webSearch.title": "Web search",
-  "usage.webSearch.description": "Usage of /v1/search in the selected range. Searches inside assistant conversations do not go through the billed endpoint and are not counted here.",
+  "usage.webSearch.description": "Usage of /v1/search in the selected range. Searches inside assistant conversations are not billed and not counted here.",
   "usage.webSearch.calls": "Calls",
   "usage.webSearch.credits": "Credits",
   "usage.webSearch.share": "Share of range",
@@ -2347,7 +2347,7 @@ const en: Dict = {
   "usage.chart.grainHour": "hour",
   "usage.chart.grainDay": "day",
   "usage.empty": "No usage in this window yet.",
-  "usage.truncated": "Some keys have reached the {max}-row log cap, so older records may be missing from the breakdown below; lifetime spend comes from cumulative counters and stays accurate.",
+  "usage.truncated": "Some keys have hit the {max}-row log cap, so older records may be missing from the breakdown below; lifetime spend comes from counters and stays accurate.",
   "usage.breakdown.byUser": "By user",
   "usage.breakdown.byKey": "By key",
   "usage.breakdown.byModel": "By model",
@@ -2371,7 +2371,7 @@ const en: Dict = {
   "admin.overview.recentUsageModel": "Model",
   "admin.overview.recentUsageTokens": "Tokens",
   "admin.overview.recentUsageCredits": "Credits",
-  "admin.overview.recentUsageDesc": "A billing mode of \"estimated\" means the stream ended without an upstream usage frame, so tokens were derived from text length (roughly 4 characters per token). The cache column shows what the upstream reported against its prompt cache — a dash means it reports no cache at all, not a zero hit rate.",
+  "admin.overview.recentUsageDesc": "\"Estimated\" means no upstream usage frame arrived, so tokens were derived from text length (about 4 characters per token). A dash in the cache column means the upstream reports no cache, not a zero hit rate.",
   "admin.overview.recentUsageEmpty": "No requests recorded yet",
   "admin.overview.usageCache": "Cache",
   "admin.overview.usageCacheHint": "Tokens the upstream reported against its prompt cache. A read is a saving; a write is a cost.",
@@ -2478,7 +2478,7 @@ const en: Dict = {
     "The client speaks the OpenAI shape; the adapter spec translates it to the vendor's API.",
   "admin.mediaProviders.mode.passthrough": "Verbatim passthrough",
   "admin.mediaProviders.mode.passthroughBody":
-    "No translation: the client calls the vendor's own paths (/v1/raw/…) and the request and response are forwarded untouched.",
+    "No translation: the client calls the vendor's own paths (/v1/raw/…) and both directions pass through untouched.",
   "admin.mediaProviders.passthroughPaths": "Allowed path prefixes (optional)",
   "admin.mediaProviders.passthroughPaths.hint":
     "Empty means no limit; a non-empty list allows only those prefixes, matched by path segment.",
@@ -2518,7 +2518,7 @@ const en: Dict = {
 
   // ===== Announcements =====
   "admin.announcements.title": "Announcements",
-  "admin.announcements.description": "Once published, signed-in users see it above the page; the public docs show the latest one. Disabled, not-yet-started and finished notices are only visible here.",
+  "admin.announcements.description": "Once published, signed-in users see it above the page and the public docs show the latest one. Disabled, not-yet-started and finished notices appear here only.",
   "admin.announcements.new": "Publish announcement",
   "admin.announcements.edit": "Edit announcement",
   "admin.announcements.empty": "No announcements yet.",
@@ -2602,7 +2602,7 @@ const en: Dict = {
     "The upstream is Google's own Gemini API. The gateway rewrites the request into Gemini's shape (contents / systemInstruction / generationConfig) and the answer back into the one the client asked for. A streamed answer arrives in one piece.",
 
   "admin.providers.routes.anthropicBaseUrl": "Anthropic base URL",
-  "admin.providers.routes.anthropicBaseUrlHint": "Leave empty to derive it from the API URL above (one trailing /v1 is stripped). Set it explicitly when the vendor's Anthropic endpoint differs from its OpenAI one: MiniMax is https://api.minimaxi.com/anthropic, not https://api.minimaxi.com/v1.",
+  "admin.providers.routes.anthropicBaseUrlHint": "Empty derives it from the API URL above (one trailing /v1 is stripped). Required when the endpoint differs — MiniMax uses https://api.minimaxi.com/anthropic, not …/v1.",
 
   "admin.providers.routes.title": "Interface routing",
   "admin.providers.routes.unsupported": "Not supported",
@@ -2611,10 +2611,10 @@ const en: Dict = {
   "admin.providers.routes.mode.passthrough": "Passthrough",
   "admin.providers.routes.mode.passthroughBody": "Every interface goes out in its own protocol, with no translation by the gateway.",
   "admin.providers.routes.passthroughNote":
-    "Passthrough: every interface goes out in its own protocol, untouched. That needs a vendor who speaks all four — with one missing, that interface cannot be reached.",
+    "Passthrough: every interface goes out in its own protocol, untouched. A vendor that misses one protocol leaves that interface unreachable.",
   "admin.providers.routes.upstream.title": "Upstream interfaces",
   "admin.providers.routes.upstream.hint":
-    "Which protocols this vendor's own API speaks. An interface it speaks is served directly; one it does not is rewritten by the gateway — declare one and this provider is reachable.",
+    "Which protocols this vendor's own API speaks. Interfaces it speaks are served directly, the rest rewritten by the gateway; one declared is enough to connect.",
   "admin.providers.routes.upstream.none":
     "No protocol declared yet — this provider would answer nothing.",
 
@@ -2633,7 +2633,7 @@ const en: Dict = {
   "admin.searchProviders.name": "Name",
   "admin.searchProviders.serviceId": "Client name",
   "admin.searchProviders.noDefault":
-    "**Naming it is what counts**: a client names the service in the request (`service`; the catalogue is at GET /v1/search/services), and the assistant side is chosen by each account in their own settings. With no name, the service the operator marked as the default answers — the row carrying the \"default\" badge in the panel. With no default and several services able to answer, the request is refused and the options are listed.",
+    "**Naming it is what counts**: a client names the service in the request (`service`; the catalogue is at GET /v1/search/services), and each account picks its own for the assistant in settings. With no name, the service marked as the default answers; with no default and several available, the request is refused and the options listed.",
   "admin.searchProviders.unusable": "Cannot answer",
   "admin.searchProviders.defaultBadge": "Default",
   "admin.searchProviders.setDefault": "Make this the default search service",
@@ -2673,7 +2673,7 @@ const en: Dict = {
   "admin.searchProviders.disable": "Disable",
   "admin.searchProviders.editTitle": "Edit {name}",
   "admin.search.title": "Search settings",
-  "admin.search.desc": "The search capability shared by the assistant and /v1/search. The providers' enable switch is the switch: search works while at least one record is enabled, and both entry points refuse once they are all disabled.",
+  "admin.search.desc": "Search shared by the assistant and /v1/search: works while any provider is enabled, and both entry points refuse once all are disabled.",
   "admin.search.status.backendMissing": "Not configured: add a search provider, or set SEARXNG_URL / TAVILY_API_KEY / BRAVE_SEARCH_API_KEY",
   "admin.search.fallback.title": "Environment fallback",
   "admin.search.fallback.configured":
@@ -2878,7 +2878,7 @@ const en: Dict = {
   "admin.providers.create.maxOutput": "Output",
   "admin.providers.create.reasoningLevels": "Thinking levels",
   "admin.providers.create.reasoningLevelsHint": "Comma-separated, as the vendor documents them; the model tester can confirm them.",
-  "admin.providers.create.reasoningEffortSupported": "This model supports reasoning_effort levels; unticking greys the assistant’s dropdown out.",
+  "admin.providers.create.reasoningEffortSupported": "This model supports reasoning_effort; unticking greys out the assistant’s thinking-level picker.",
   "admin.providers.create.thinkingSwitchSupported": "This model accepts the thinking switch; unticking greys the assistant’s switch out.",
   "admin.providers.create.inputCost": "Input Credits",
   "admin.providers.create.outputCost": "Output Credits",
@@ -2998,7 +2998,7 @@ const en: Dict = {
   "dashboard.models.test.assistant": "Model",
   "dashboard.models.probe.endpoint": "Endpoint",
   "dashboard.models.probe.raw": "Raw request",
-  "dashboard.models.probe.rawHint": "Skip the form: send an HTTP request exactly as written — method, URL, headers and body. The key is not stored.",
+  "dashboard.models.probe.rawHint": "Skip the form: send an HTTP request exactly as written — method, URL, headers, body. The key is not stored.",
   "dashboard.models.probe.method": "Method",
   "dashboard.models.probe.url": "URL",
   "dashboard.models.probe.headers": "Headers (JSON)",
@@ -3074,7 +3074,7 @@ const en: Dict = {
   "dashboard.models.media.promptPlaceholder": "What should it make?",
   "dashboard.models.media.size": "Size",
   "dashboard.models.media.voice": "Voice",
-  "dashboard.models.media.voiceHint": "The vendor requires it. An empty value is rejected with 'missing required parameter', so one that is known to work is pre-filled; an id the vendor does not know is rejected upstream.",
+  "dashboard.models.media.voiceHint": "Required by the vendor; empty is rejected with 'missing required parameter', so a working one is pre-filled. An id the vendor does not know is rejected upstream too.",
   "dashboard.models.media.voiceCustom": "Type one in…",
   "dashboard.models.media.voiceLoading": "Loading this deployment's voice list…",
   "dashboard.models.media.voiceEmpty": "No voice list for this model: type a voice id in, or check the provider's voice listing.",
@@ -3129,7 +3129,7 @@ const en: Dict = {
   "assistant.credential.status.off": "Created · off",
   "assistant.credential.status.on": "On",
   "assistant.credential.switchHint":
-    "When on, testing a model or generating an image, voice or video goes out as you against this deployment, charged to your own quota. No key is needed or stored. On from the moment you create it; you can switch it off here at any time.",
+    "When on, testing a model or generating an image, voice or video goes out as you against this deployment, charged to your own quota. No key is needed or stored.",
   "assistant.credential.notCreated":
     "You have no assistant credential yet. Creating one takes effect immediately, and you can switch it off whenever you like.",
   "assistant.credential.create": "Create assistant credential",
@@ -3156,15 +3156,15 @@ const en: Dict = {
   "assistant.expand": "Expand",
   "assistant.collapse": "Collapse",
   "assistant.streamInterrupted":
-    "The connection dropped before this turn finished. What is above is the part that arrived — you can carry on from it, or send the request again.",
+    "The connection dropped before this turn finished. What is above is the part that arrived — carry on from it, or send again.",
   "assistant.question.placeholder": "Answer here…",
   "assistant.question.send": "Send",
   "assistant.question.answered": "Answered — waiting for the assistant to continue.",
   "assistant.loadFailed":
-    "This conversation could not be loaded (the service is temporarily unavailable). What is on screen is what the last successful read produced, not an empty thread — try opening it again in a moment.",
+    "This conversation could not be loaded (the service is temporarily unavailable). What is on screen is what the last successful read produced — try opening it again in a moment.",
   "assistant.pretty.switch": "Pretty output",
   "assistant.pretty.hint":
-    "Lay answers out as Markdown, fold the reasoning away by default, and label generated images and audio with their type and a download button. Turn it off for the model's raw text exactly as written.",
+    "Lay answers out as Markdown, fold the reasoning away by default, and label generated images and audio with their type and a download button. Off shows the model's raw text.",
   "assistant.artifact.download": "Download",
   "assistant.artifact.type": "Type",
   "assistant.artifact.format": "Format",
@@ -3211,9 +3211,9 @@ const en: Dict = {
   "assistant.error.credentialOff":
     "\"Use my account identity\" is switched off. Turn it on in settings, or use \"my own configured key\" instead.",
   "assistant.error.credentialMissing":
-    "\"Use my account identity\" is not switched on yet. Create and switch it on in settings, or use \"my own configured key\" instead.",
+    "\"Use my account identity\" is not switched on yet. Create and switch it on in settings, or use \"my own configured key\".",
   "assistant.error.modelNotAllowed":
-    "The model you picked is no longer available: {model}. It may have been withdrawn, or your account may not have access to it. Pick another one in the assistant settings.",
+    "The model you picked is no longer available: {model} (withdrawn, or your account has no access). Pick another one in the assistant settings.",
   "assistant.error.noModels": "No models are available — ask an administrator to configure a provider first.",
   "assistant.error.threadNotFound": "That conversation does not exist.",
   "assistant.error.attachmentsNotArray": "attachments must be an array.",
