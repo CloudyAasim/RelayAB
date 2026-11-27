@@ -438,9 +438,10 @@ describe("the assistant screen says a thing once", () => {
     // about the changes being stored under that.
     expect(CHAT).not.toContain("assistant.settings.drawerTitle");
     expect(CHAT).not.toContain("assistant.settings.drawerDesc");
-    // The one thing the form cannot show is that a change is kept, so that
-    // is said once, in the drawer's own description.
-    expect(DICTS["zh-CN"]["assistant.settings.desc"]).toContain("存下来了");
+    // The description now only says what the drawer configures. "Changes are
+    // saved" was a sentence about the form itself, not about the assistant,
+    // so it was cut: a save button that works is not worth a line of copy.
+    expect(DICTS["zh-CN"]["assistant.settings.desc"]).not.toContain("存下来了");
   });
 
   it("the per-turn key section does not repeat the field's own hint", () => {

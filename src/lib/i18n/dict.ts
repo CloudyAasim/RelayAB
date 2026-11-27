@@ -1519,7 +1519,7 @@ const zhCN: Dict = {
 
   "assistant.settings.title": "助手设置",
   "assistant.settings.desc":
-    "可自行配置其他服务商密钥，也可使用本服务。改动直接存下来了。",
+    "可自行配置其他服务商密钥，也可使用本服务。",
   "assistant.settings.baseUrl": "API 地址",
   "assistant.settings.baseUrlHint": "OpenAI 兼容的基址，通常以 /v1 结尾。",
   "assistant.settings.apiKey": "上游密钥",
@@ -3256,7 +3256,7 @@ const en: Dict = {
 
   "assistant.settings.title": "Assistant settings",
   "assistant.settings.desc":
-    "Use this deployment or your own upstream key; changes are saved as you go.",
+    "Use this deployment or your own upstream key.",
   "assistant.settings.baseUrl": "API base URL",
   "assistant.settings.baseUrlHint": "An OpenAI-compatible base, usually ending in /v1.",
   "assistant.settings.apiKey": "Upstream key",
