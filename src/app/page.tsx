@@ -17,8 +17,12 @@ import {
 } from "lucide-react";
 import { CopyEndpoint } from "./CopyEndpoint";
 
+// The canonical lives here rather than in the root layout: inherited from
+// there, every other page would claim to *be* the landing page. (Open Graph is
+// replaced wholesale rather than merged, so its fields stay in the layout.)
 export const metadata = {
   title: { absolute: "RelayAB" },
+  alternates: { canonical: "/" },
 };
 
 /**

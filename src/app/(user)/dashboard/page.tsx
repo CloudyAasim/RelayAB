@@ -13,7 +13,6 @@ import {
   TR,
   TH,
   TD,
-  EmptyState,
 } from "@/components/ui/Table";
 import { formatCredits, formatNumber, formatDate, cn } from "@/lib/utils";
 import { timezoneToIana, timezoneLabelKey, timezoneOffsetMinutes } from "@/lib/timezone";
@@ -48,7 +47,7 @@ import {
 } from "./CreateKeyButton";
 import { UserKeyActions } from "./UserKeyActions";
 import { AllocationSummary } from "./AllocationSummary";
-import { Coins, Activity, Sparkles, Database } from "lucide-react";
+import { Coins, Activity, Database } from "lucide-react";
 import {
   cachedGetUserById,
   cachedListApiKeysByUser,
@@ -207,6 +206,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   );
 
   const metricLabel = t(`usage.table.${metric}`);
+  /** Whether the selected window has anything to chart or break down at all. */
+  const hasUsage = report.summary.requests > 0;
   const scopeParams =
     scope === "key"
       ? { scope: "key", keyId: effectiveKeyId }
@@ -225,10 +226,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       <SectionPageLayout.Content>
         {/*
           One rhythm for the whole page: every block below is a section of its
-          own, separated by the same 16px, so the page reads as a stack of
+          own, separated by the same 12px, so the page reads as a stack of
           titled cards rather than as a pile of boxes that happen to touch.
         */}
-        <div className="space-y-4">
+        <div className="space-y-3">
           {/*
             Balance, spend and the whitelist come from one panel. The usage page
             used to repeat the balance and the active-key count in its own
@@ -270,10 +271,18 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           <Card padded={false} className="p-3 sm:p-4">
             <CardHeader title={t("dashboard.apiKeys.title")} />
             {keys.length === 0 ? (
-              <EmptyState
-                icon={<Sparkles className="h-5 w-5" />}
-                title={t("dashboard.apiKeys.empty.title")}
-              />
+              /*
+                One line, not a 300px empty card. An account with no keys has
+                nothing to read in this table either; the only useful thing is
+                where the button is, and that is a sentence.
+              */
+              <p className="rounded-md border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">
+                  {t("dashboard.apiKeys.empty.title")}
+                </span>
+                {" · "}
+                {t("dashboard.apiKeys.empty.hint")}
+              </p>
             ) : (
               <div className="overflow-x-auto -mx-3 sm:mx-0">
                 <Table bare>
@@ -328,27 +337,38 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
           {/* Usage: the trend, where the credits went, and the filters for both. */}
           <section>
-            <h2 className="text-base font-semibold tracking-tight text-foreground">
-              {t("usage.title")}
-            </h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {t("usage.tzNote", { zone: t(timezoneLabelKey(sessionUser.timezone)) })}
-            </p>
+            {/* The zone note is a footnote, not a subtitle: beside the title it costs
+                no line of its own above the tab bar. */}
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+              <h2 className="text-base font-semibold tracking-tight text-foreground">
+                {t("usage.title")}
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                {t("usage.tzNote", { zone: t(timezoneLabelKey(sessionUser.timezone)) })}
+              </p>
+            </div>
 
-            <div className="mt-3 space-y-3 sm:space-y-4">
-              <UsageWebSearchCard
-                summary={report.webSearch.summary}
-                totalCredits={report.summary.creditsUsed}
-                labels={{
-                  title: t("usage.webSearch.title"),
-                  description: t("usage.webSearch.description"),
-                  calls: t("usage.webSearch.calls"),
-                  credits: t("usage.webSearch.credits"),
-                  share: t("usage.webSearch.share"),
-                  empty: t("usage.webSearch.empty"),
-                  subsetHint: t("usage.webSearch.subsetHint"),
-                }}
-              />
+            <div className="mt-3 space-y-3">
+              {/*
+                Web search is a side channel: most accounts never call it, and a
+                card that reads "0" on every visit still costs a third of the
+                fold. It appears once the chosen period actually has a call.
+              */}
+              {report.webSearch.summary.requests > 0 && (
+                <UsageWebSearchCard
+                  summary={report.webSearch.summary}
+                  totalCredits={report.summary.creditsUsed}
+                  labels={{
+                    title: t("usage.webSearch.title"),
+                    description: t("usage.webSearch.description"),
+                    calls: t("usage.webSearch.calls"),
+                    credits: t("usage.webSearch.credits"),
+                    share: t("usage.webSearch.share"),
+                    empty: t("usage.webSearch.empty"),
+                    subsetHint: t("usage.webSearch.subsetHint"),
+                  }}
+                />
+              )}
 
               <Card padded={false} className="space-y-2.5 p-3 sm:p-4">
                 <UsageScopePicker
@@ -411,84 +431,97 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                     {t("usage.viewReset")}
                   </Link>
                 </div>
-              </Card>
 
-              <Card padded={false} className="p-3 sm:p-4">
-                <CardHeader title={t("usage.chart.title")} description={rangeLabel} />
                 {/*
-                    The cache hit rate, next to the trend it explains.
-
-                    A trend of "input tokens" on its own says nothing about how
-                    much of it was free: the same bar is 100% billed or 40%
-                    billed depending on cache, and the reader has no way to tell
-                    which they are looking at.
-
-                    `cacheHitRate` returns null when nothing in the period
-                    reported a cache, and null is shown as 「未上报」 rather than
-                    as 0%. Those are different facts — "no prompt was ever
-                    cached" is a claim about a vendor, and "this vendor does not
-                    report a cache" is what an empty column has actually told us.
+                  The answer sits in the same card as the controls that choose
+                  it. Two cards put the filters in one box and the trend in the
+                  next, so the reader had to look back up to check which window
+                  the bars belonged to — and the range label was printed twice.
                 */}
-                {(() => {
-                  const hit = cacheHitRate(report.summary);
-                  return (
-                    <div className="mb-3 flex items-start gap-2.5">
-                      <span
-                        className={cn(
-                          "flex h-8 w-8 shrink-0 items-center justify-center rounded-md",
-                          hit === null
-                            ? "bg-muted text-muted-foreground"
-                            : hit.rate > 0
-                              ? "bg-success/10 text-success"
-                              : "bg-muted text-muted-foreground",
-                        )}
-                      >
-                        <Database className="h-4 w-4" />
-                      </span>
-                      <div className="min-w-0">
-                        <div className="text-xs uppercase tracking-wider text-muted-foreground">
-                          {t("usage.stat.cacheHit")}
+                {hasUsage ? (
+                  <div className="border-t border-border pt-2.5">
+                    <CardHeader title={t("usage.chart.title")} />
+                    {/*
+                      The cache hit rate, above the trend it explains.
+
+                      A trend of "input tokens" on its own says nothing about
+                      how much of it was free: the same bar is 100% billed or
+                      40% billed depending on cache, and the reader has no way
+                      to tell which they are looking at.
+
+                      `cacheHitRate` returns null when nothing in the period
+                      reported a cache, and null is shown as 「未上报」 rather
+                      than as 0%. Those are different facts — "no prompt was
+                      ever cached" is a claim about a vendor, and "this vendor
+                      does not report a cache" is what an empty column has
+                      actually told us.
+
+                      One line, not a 40px tile: the rate is a caption to the
+                      bars, and a tile this size beside them was read as one of
+                      the page's top-level figures.
+                    */}
+                    {(() => {
+                      const hit = cacheHitRate(report.summary);
+                      return (
+                        <div className="mb-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                          <span
+                            className={cn(
+                              "flex h-5 w-5 shrink-0 items-center justify-center rounded",
+                              hit !== null && hit.rate > 0
+                                ? "bg-success/10 text-success"
+                                : "bg-muted text-muted-foreground",
+                            )}
+                          >
+                            <Database className="h-3.5 w-3.5" />
+                          </span>
+                          <span className="uppercase tracking-wider text-muted-foreground">
+                            {t("usage.stat.cacheHit")}
+                          </span>
+                          <span className="font-semibold tabular-nums text-foreground">
+                            {hit === null
+                              ? t("usage.stat.cacheUnreported")
+                              : `${(hit.rate * 100).toFixed(1)}%`}
+                          </span>
+                          <span className="text-muted-foreground">
+                            {hit === null
+                              ? t("usage.stat.cacheUnreportedHint")
+                              : t("usage.stat.cacheHitHint", {
+                                  cached: formatNumber(hit.cachedTokens),
+                                  // The denominator the rate was computed from,
+                                  // taken from the same object. Printing the
+                                  // whole period's prompt tokens here put two
+                                  // different fractions on screen at once.
+                                  prompt: formatNumber(hit.reportedPromptTokens),
+                                  reported: formatNumber(hit.reportedRequests),
+                                })}
+                          </span>
                         </div>
-                        <div className="mt-0.5 truncate text-base font-semibold tracking-tight text-foreground sm:text-lg">
-                          {hit === null
-                            ? t("usage.stat.cacheUnreported")
-                            : `${(hit.rate * 100).toFixed(1)}%`}
-                        </div>
-                        <div className="mt-0.5 text-xs text-muted-foreground">
-                          {hit === null
-                            ? t("usage.stat.cacheUnreportedHint")
-                            : t("usage.stat.cacheHitHint", {
-                                cached: formatNumber(hit.cachedTokens),
-                                // The denominator the rate was computed from,
-                                // taken from the same object. Printing the whole
-                                // period's prompt tokens here put two different
-                                // fractions on screen at once.
-                                prompt: formatNumber(hit.reportedPromptTokens),
-                                reported: formatNumber(hit.reportedRequests),
-                              })}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
-                <UsageBarChart
-                  points={report.series}
-                  grain={range.grain}
-                  metric={metric}
-                  metricLabel={metricLabel}
-                  summary={report.summary}
-                  labels={labels}
-                  paceLabel={t("usage.chart.average", {
-                    unit: t(
-                      range.grain === "hour"
-                        ? "usage.chart.grainHour"
-                        : "usage.chart.grainDay",
-                    ),
-                    value: formatUsageMetric(pace.average, metric),
-                    peak: formatUsageMetric(pace.peak, metric),
-                  })}
-                  emptyLabel={t("usage.empty")}
-                />
+                      );
+                    })()}
+                    <UsageBarChart
+                      points={report.series}
+                      grain={range.grain}
+                      metric={metric}
+                      metricLabel={metricLabel}
+                      summary={report.summary}
+                      labels={labels}
+                      paceLabel={t("usage.chart.average", {
+                        unit: t(
+                          range.grain === "hour"
+                            ? "usage.chart.grainHour"
+                            : "usage.chart.grainDay",
+                        ),
+                        value: formatUsageMetric(pace.average, metric),
+                        peak: formatUsageMetric(pace.peak, metric),
+                      })}
+                      emptyLabel={t("usage.empty")}
+                    />
+                  </div>
+                ) : (
+                  <p className="border-t border-border pt-2.5 text-xs text-muted-foreground">
+                    {t("usage.empty")}
+                  </p>
+                )}
               </Card>
 
               {report.truncatedKeys > 0 && (
@@ -497,15 +530,22 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                 </p>
               )}
 
-              <Card padded={false} className="p-3 sm:p-4">
-                <CardHeader title={t("usage.breakdown.title")} description={rangeLabel} />
-                <UsageBreakdownTable
-                  rows={rows}
-                  headers={headers}
-                  emphasis={metric}
-                  emptyLabel={t("usage.empty")}
-                />
-              </Card>
+              {/*
+                No rows, no card. The table's own empty state was a bordered
+                box holding one sentence directly under the chart, which had
+                just said the same sentence.
+              */}
+              {rows.length > 0 && (
+                <Card padded={false} className="p-3 sm:p-4">
+                  <CardHeader title={t("usage.breakdown.title")} description={rangeLabel} />
+                  <UsageBreakdownTable
+                    rows={rows}
+                    headers={headers}
+                    emphasis={metric}
+                    emptyLabel={t("usage.empty")}
+                  />
+                </Card>
+              )}
             </div>
           </section>
 

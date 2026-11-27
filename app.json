@@ -2,7 +2,7 @@
   "name": "relay-ab",
   "description": "Self-hosted AI API relay: proxies OpenAI / Anthropic requests with per-key quota, expiry and usage accounting. Data lives in a local SQLite file — no external database service required.",
   "keywords": ["ai", "gateway", "proxy", "openai", "anthropic", "self-hosted", "sqlite"],
-  "website": "https://github.com/CloudyAasim/RelayAB",
+  "website": "https://api.aasim.l.cd",
   "repository": "https://github.com/CloudyAasim/RelayAB",
   "env": {
     "RELAY_AUTH": {
