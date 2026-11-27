@@ -38,7 +38,7 @@ export function UsageBreakdownTable({
 }: Props) {
   if (rows.length === 0) {
     return (
-      <p className="py-8 text-center text-sm text-muted-foreground">{emptyLabel}</p>
+      <p className="py-6 text-center text-sm text-muted-foreground">{emptyLabel}</p>
     );
   }
 
@@ -46,7 +46,7 @@ export function UsageBreakdownTable({
     emphasis === metric ? "font-semibold text-foreground" : undefined;
 
   return (
-    <Table>
+    <Table bare>
       <THead>
         <TR>
           <TH>{headers.item}</TH>

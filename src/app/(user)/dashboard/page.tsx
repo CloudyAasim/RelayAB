@@ -225,10 +225,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       <SectionPageLayout.Content>
         {/*
           One rhythm for the whole page: every block below is a section of its
-          own, separated by the same 24px, so the page reads as a stack of
+          own, separated by the same 16px, so the page reads as a stack of
           titled cards rather than as a pile of boxes that happen to touch.
         */}
-        <div className="space-y-6">
+        <div className="space-y-4">
           {/*
             Balance, spend and the whitelist come from one panel. The usage page
             used to repeat the balance and the active-key count in its own
@@ -251,7 +251,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             Lifetime totals only: the balance above is the quota figure, so a
             "keys" tile and a second "used" tile would restate the panel.
           */}
-          <div className="grid grid-cols-2 gap-3 sm:gap-6">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4">
             <StatCard
               label={t("dashboard.stat.tokensUsed")}
               value={formatNumber(agg.totalTokens)}
@@ -267,7 +267,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </div>
 
           {/* API Keys list */}
-          <Card>
+          <Card padded={false} className="p-3 sm:p-4">
             <CardHeader title={t("dashboard.apiKeys.title")} />
             {keys.length === 0 ? (
               <EmptyState
@@ -335,7 +335,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
               {t("usage.tzNote", { zone: t(timezoneLabelKey(sessionUser.timezone)) })}
             </p>
 
-            <div className="mt-4 space-y-4 sm:space-y-6">
+            <div className="mt-3 space-y-3 sm:space-y-4">
               <UsageWebSearchCard
                 summary={report.webSearch.summary}
                 totalCredits={report.summary.creditsUsed}
@@ -350,7 +350,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                 }}
               />
 
-              <Card className="space-y-3">
+              <Card padded={false} className="space-y-2.5 p-3 sm:p-4">
                 <UsageScopePicker
                   basePath={BASE_PATH}
                   params={{ range: range.key, metric, group }}
@@ -372,7 +372,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                     apply: t("usage.scope.apply"),
                   }}
                 />
-                <div className="flex flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-6">
+                <div className="flex flex-col gap-2 border-t border-border pt-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-5">
                   <UsageViewTabs
                     basePath={BASE_PATH}
                     params={{ ...scopeParams, metric, group }}
@@ -413,7 +413,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                 </div>
               </Card>
 
-              <Card>
+              <Card padded={false} className="p-3 sm:p-4">
                 <CardHeader title={t("usage.chart.title")} description={rangeLabel} />
                 {/*
                     The cache hit rate, next to the trend it explains.
@@ -432,10 +432,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                 {(() => {
                   const hit = cacheHitRate(report.summary);
                   return (
-                    <div className="mb-4 flex items-start gap-3">
+                    <div className="mb-3 flex items-start gap-2.5">
                       <span
                         className={cn(
-                          "flex h-9 w-9 shrink-0 items-center justify-center rounded-md",
+                          "flex h-8 w-8 shrink-0 items-center justify-center rounded-md",
                           hit === null
                             ? "bg-muted text-muted-foreground"
                             : hit.rate > 0
@@ -449,7 +449,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                         <div className="text-xs uppercase tracking-wider text-muted-foreground">
                           {t("usage.stat.cacheHit")}
                         </div>
-                        <div className="mt-0.5 truncate text-lg font-semibold tracking-tight text-foreground sm:text-xl">
+                        <div className="mt-0.5 truncate text-base font-semibold tracking-tight text-foreground sm:text-lg">
                           {hit === null
                             ? t("usage.stat.cacheUnreported")
                             : `${(hit.rate * 100).toFixed(1)}%`}
@@ -497,7 +497,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                 </p>
               )}
 
-              <Card>
+              <Card padded={false} className="p-3 sm:p-4">
                 <CardHeader title={t("usage.breakdown.title")} description={rangeLabel} />
                 <UsageBreakdownTable
                   rows={rows}

@@ -47,7 +47,7 @@ export function UsageBarChart({
 }: Props) {
   if (points.length === 0) {
     return (
-      <p className="py-10 text-center text-sm text-muted-foreground">{emptyLabel}</p>
+      <p className="py-8 text-center text-sm text-muted-foreground">{emptyLabel}</p>
     );
   }
 
@@ -57,7 +57,7 @@ export function UsageBarChart({
   return (
     <div>
       {summary && (
-        <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        <div className="mb-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
           <span className={cn(metric === "requests" && "font-semibold text-foreground")}>
             {labels.requests}{" "}
             <span className="tabular-nums">{formatNumber(summary.requests)}</span>
@@ -86,20 +86,20 @@ export function UsageBarChart({
         file is still moving. Two numbers, because one is not enough: the
         average is the pace, the peak is the worst bucket you will have.
       */}
-      <p className="mb-2 text-xs text-muted-foreground">
+      <p className="mb-1.5 text-xs text-muted-foreground">
         <span className="tabular-nums">{paceLabel}</span>
       </p>
 
       <div className="flex gap-2">
         {/* Y axis: max / mid / 0 */}
-        <div className="flex h-40 w-16 shrink-0 flex-col justify-between text-right text-xs tabular-nums text-muted-foreground sm:w-20">
+        <div className="flex h-28 w-16 shrink-0 flex-col justify-between text-right text-xs tabular-nums text-muted-foreground sm:h-36 sm:w-20">
           <span>{formatMetric(max, metric)}</span>
           <span>{formatMetric(max / 2, metric)}</span>
           <span>0</span>
         </div>
 
         <div className="min-w-0 flex-1">
-          <div className="relative flex h-40 items-end gap-[2px] border-b border-border">
+          <div className="relative flex h-28 items-end gap-[2px] border-b border-border sm:h-36">
             <div className="pointer-events-none absolute inset-x-0 top-1/2 border-t border-border/40" />
             {points.map((point) => {
               const value = metricValue(point, metric);
@@ -138,7 +138,7 @@ export function UsageBarChart({
               );
             })}
           </div>
-          <div className="mt-1.5 flex justify-between text-xs text-muted-foreground">
+          <div className="mt-1 flex justify-between text-xs text-muted-foreground">
             <span>{bucketLabel(points[0].bucket, grain)}</span>
             {points.length > 1 && (
               <span>{bucketLabel(points[points.length - 1].bucket, grain)}</span>

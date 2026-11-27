@@ -32,7 +32,7 @@ export function UsageWebSearchCard({ summary, totalCredits, labels }: Props) {
     totalCredits > 0 ? Math.min(100, (summary.creditsUsed / totalCredits) * 100) : null;
 
   return (
-    <Card>
+    <Card padded={false} className="p-3 sm:p-4">
       <CardHeader
         title={
           <span className="flex items-center gap-1.5">
@@ -42,27 +42,27 @@ export function UsageWebSearchCard({ summary, totalCredits, labels }: Props) {
         }
       />
       {summary.requests === 0 ? (
-        <p className="text-sm text-muted-foreground">{labels.empty}</p>
+        <p className="text-xs text-muted-foreground">{labels.empty}</p>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-3">
           <div>
             <p className="text-xs text-muted-foreground">{labels.calls}</p>
-            <p className="mt-1 text-lg font-medium">{formatNumber(summary.requests)}</p>
+            <p className="mt-0.5 text-base font-medium">{formatNumber(summary.requests)}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">{labels.credits}</p>
-            <p className="mt-1 text-lg font-medium">{formatCredits(summary.creditsUsed)}</p>
+            <p className="mt-0.5 text-base font-medium">{formatCredits(summary.creditsUsed)}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">{labels.share}</p>
-            <p className="mt-1 text-lg font-medium">
+            <p className="mt-0.5 text-base font-medium">
               {share === null ? "—" : `${share.toFixed(1)}%`}
             </p>
           </div>
         </div>
       )}
       {summary.requests > 0 && (
-        <p className="mt-3 text-xs text-muted-foreground">{labels.subsetHint}</p>
+        <p className="mt-2 text-xs text-muted-foreground">{labels.subsetHint}</p>
       )}
     </Card>
   );
