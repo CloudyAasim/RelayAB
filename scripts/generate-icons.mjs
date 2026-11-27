@@ -1,4 +1,5 @@
-// Generates the bitmap icons search engines and touch screens actually read.
+// Rasterises the mark from src/app/icon.svg into the bitmap formats browsers
+// and crawlers read.
 //
 // Node has no image encoder here (no sharp/canvas), so this writes PNG by hand:
 // zlib.deflateSync for the pixel data, our own CRC32 for the chunk trailers.
@@ -9,8 +10,9 @@
 //   src/app/apple-icon.png   180×180  — apple-touch-icon
 //   src/app/favicon.ico       48+96   — PNG payloads inside an ICO container
 //
-// A transparent, stroke-only SVG is why Google's results showed the generic
-// globe: its favicon crawler wants an opaque bitmap of at least 48px. These do.
+// The drawing is the SVG's: a #3b82f6 outline on a transparent background.
+// Bitmaps exist only because Google's favicon crawler ignores SVG and wants at
+// least 48px; the shape stays identical to the vector.
 import { deflateSync } from "node:zlib";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -19,44 +21,54 @@ import { fileURLToPath } from "node:url";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const APP = join(ROOT, "src", "app");
 
-const BLUE = [0x25, 0x63, 0xeb];
-const WHITE = [0xff, 0xff, 0xff];
+const BLUE = [0x3b, 0x82, 0xf6];
 
-/* ---------- vector shape, described in unit coordinates (0..1) ---------- */
+/* ---------- geometry, in the SVG's 56×56 viewBox units ------------------ */
 
-const BG_RADIUS = 0.22;
+const VIEWBOX = 56;
+const HALF = 3.5 / 2; // stroke-width 3.5 is centred on the path
+
+// Two 40×16 rounded rectangles with rx=3, stroked rather than filled.
 const BARS = [
-  { x0: 0.16, y0: 0.2, x1: 0.84, y1: 0.42, r: 0.055 },
-  { x0: 0.16, y0: 0.58, x1: 0.84, y1: 0.8, r: 0.055 },
+  { x: 8, y: 10, w: 40, h: 16, rx: 3 },
+  { x: 8, y: 30, w: 40, h: 16, rx: 3 },
 ];
-const PIPS = [
-  { cx: 0.293, cy: 0.31, r: 0.037 },
-  { cx: 0.293, cy: 0.69, r: 0.037 },
+// The two zero-length, round-capped lines: circles of radius half the stroke.
+const DOTS = [
+  { cx: 16, cy: 18, r: HALF },
+  { cx: 16, cy: 38, r: HALF },
 ];
 
 function insideRoundRect(px, py, x0, y0, x1, y1, r) {
+  if (r <= 0) return px >= x0 && px <= x1 && py >= y0 && py <= y1;
   // Distance from the rounded rectangle: clamp the point to the inner box,
   // measure to it, then compare against the corner radius.
   const qx = Math.max(x0 + r, Math.min(px, x1 - r));
   const qy = Math.max(y0 + r, Math.min(py, y1 - r));
   const dx = px - qx;
   const dy = py - qy;
-  if (dx * dx + dy * dy <= r * r) return true;
-  return px >= x0 && px <= x1 && py >= y0 + r && py <= y1 - r;
+  return dx * dx + dy * dy <= r * r;
 }
 
-function sample(px, py) {
-  if (!insideRoundRect(px, py, 0, 0, 1, 1, BG_RADIUS)) return [0, 0, 0, 0];
-  let color = BLUE;
-  for (const bar of BARS) {
-    if (insideRoundRect(px, py, bar.x0, bar.y0, bar.x1, bar.y1, bar.r)) color = WHITE;
+function insideBar(px, py, bar) {
+  const outerR = bar.rx + HALF;
+  if (!insideRoundRect(px, py, bar.x - HALF, bar.y - HALF, bar.x + bar.w + HALF, bar.y + bar.h + HALF, outerR)) {
+    return false;
   }
-  for (const pip of PIPS) {
-    const dx = px - pip.cx;
-    const dy = py - pip.cy;
-    if (dx * dx + dy * dy <= pip.r * pip.r) color = BLUE;
+  // Subtracting the hole is what turns a stroked rect into an outline; its
+  // corner radius is the outer one reduced by the stroke on both sides.
+  const innerR = bar.rx - HALF;
+  return !insideRoundRect(px, py, bar.x + HALF, bar.y + HALF, bar.x + bar.w - HALF, bar.y + bar.h - HALF, innerR);
+}
+
+function covered(px, py) {
+  for (const bar of BARS) if (insideBar(px, py, bar)) return true;
+  for (const dot of DOTS) {
+    const dx = px - dot.cx;
+    const dy = py - dot.cy;
+    if (dx * dx + dy * dy <= dot.r * dot.r) return true;
   }
-  return [color[0], color[1], color[2], 255];
+  return false;
 }
 
 /* ------------------------------- PNG ------------------------------------ */
@@ -86,7 +98,7 @@ function chunk(type, data) {
   return Buffer.concat([length, typeAndData, crc]);
 }
 
-function png(size, samples = 4) {
+function png(size, samples = 8) {
   const header = Buffer.alloc(13);
   header.writeUInt32BE(size, 0);
   header.writeUInt32BE(size, 4);
@@ -98,22 +110,26 @@ function png(size, samples = 4) {
 
   const stride = size * 4;
   const raw = Buffer.alloc((stride + 1) * size);
+  const perPixel = samples * samples;
   for (let y = 0; y < size; y++) {
     raw[y * (stride + 1)] = 0; // filter: none
     for (let x = 0; x < size; x++) {
-      let r = 0, g = 0, b = 0, a = 0;
+      let hits = 0;
       for (let sy = 0; sy < samples; sy++) {
         for (let sx = 0; sx < samples; sx++) {
-          const c = sample((x + (sx + 0.5) / samples) / size, (y + (sy + 0.5) / samples) / size);
-          r += c[0]; g += c[1]; b += c[2]; a += c[3];
+          const ux = (x + (sx + 0.5) / samples) * (VIEWBOX / size);
+          const uy = (y + (sy + 0.5) / samples) * (VIEWBOX / size);
+          if (covered(ux, uy)) hits++;
         }
       }
-      const n = samples * samples;
+      // The ink is one flat colour, so the supersampled coverage is the alpha
+      // and the RGB stays exact. Averaging RGB with it would darken the edges.
       const offset = y * (stride + 1) + 1 + x * 4;
-      raw[offset] = Math.round(r / n);
-      raw[offset + 1] = Math.round(g / n);
-      raw[offset + 2] = Math.round(b / n);
-      raw[offset + 3] = Math.round(a / n);
+      if (hits === 0) continue; // leaves the pixel transparent black
+      raw[offset] = BLUE[0];
+      raw[offset + 1] = BLUE[1];
+      raw[offset + 2] = BLUE[2];
+      raw[offset + 3] = Math.round((hits / perPixel) * 255);
     }
   }
 

@@ -1,12 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 56 56">
-  <!-- Same mark as the bitmaps in this folder: opaque blue tile, white bars. -->
-  <rect width="56" height="56" rx="12.3" fill="#2563eb"/>
-  <g fill="#fff">
-    <rect x="8.96" y="11.2" width="38.08" height="12.32" rx="3.08"/>
-    <rect x="8.96" y="32.48" width="38.08" height="12.32" rx="3.08"/>
-  </g>
-  <g fill="#2563eb">
-    <circle cx="16.41" cy="17.36" r="2.07"/>
-    <circle cx="16.41" cy="38.64" r="2.07"/>
+  <rect width="56" height="56" rx="12" fill="none"/>
+  <g fill="none" stroke="#3b82f6" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="8" y="10" width="40" height="16" rx="3" ry="3"/>
+    <rect x="8" y="30" width="40" height="16" rx="3" ry="3"/>
+    <line x1="16" x2="16.02" y1="18" y2="18"/>
+    <line x1="16" x2="16.02" y1="38" y2="38"/>
   </g>
 </svg>
