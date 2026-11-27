@@ -118,6 +118,7 @@ describe("db types - toPublic helpers", () => {
       quotaUsed: 0,
       maxActiveKeys: 0,
       allowedModels: [],
+      allowedSearchProviders: [],
     };
     const pub = toPublicUser(u);
     expect("passwordHash" in pub).toBe(false);

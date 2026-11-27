@@ -57,6 +57,7 @@ function makeUser(overrides: Partial<User> = {}): User {
     quotaUsed: 0,
     maxActiveKeys: 0,
     allowedModels: [],
+    allowedSearchProviders: [],
     ...overrides,
   };
 }

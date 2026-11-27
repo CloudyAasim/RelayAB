@@ -22,6 +22,7 @@ const PostSchema = z.object({
   quotaLimit: z.number().int().nonnegative().optional(),
   maxActiveKeys: z.number().int().nonnegative().optional(),
   allowedModels: z.array(z.string()).optional(),
+  allowedSearchProviders: z.array(z.string()).optional(),
 });
 
 export async function GET(req: Request): Promise<Response> {
@@ -85,6 +86,7 @@ export async function POST(req: Request): Promise<Response> {
       quotaLimit: parsed.data.quotaLimit,
       maxActiveKeys: parsed.data.maxActiveKeys,
       allowedModels: parsed.data.allowedModels,
+      allowedSearchProviders: parsed.data.allowedSearchProviders,
     });
     return NextResponse.json({
       ok: true,

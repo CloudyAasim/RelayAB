@@ -44,7 +44,10 @@ export async function GET(req: Request): Promise<Response> {
   }
 
   const rows = await listSearchProviders();
-  const data = searchServices(rows).map((service) => ({
+  // The catalogue is per caller: a service this account may not use is not
+  // offered, because naming one it cannot have would be a promise the relay
+  // would then refuse.
+  const data = searchServices(rows, auth.user?.allowedSearchProviders).map((service) => ({
     id: service.id,
     object: "search_service" as const,
     /** The operator's own name for it. */

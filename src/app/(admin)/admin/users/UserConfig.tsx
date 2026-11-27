@@ -12,7 +12,17 @@ import { CREDIT_SCALE } from "@/lib/quota/credits";
 import { formatUserIdentity } from "@/lib/user-identity";
 import type { ModelGroup } from "@/lib/admin/model-groups";
 import type { PublicUser } from "@/lib/db/types";
-import { Settings2, ListChecks, Pencil, Wallet } from "lucide-react";
+import { Settings2, ListChecks, Pencil, Search, Wallet } from "lucide-react";
+
+/** A search service the administrator can grant to an account. */
+export interface SearchServiceOption {
+  /** The client-visible name a caller uses to select it. */
+  serviceId: string;
+  /** The operator's own label, shown to the administrator. */
+  name: string;
+  /** The vendor it talks to. */
+  kind: string;
+}
 
 /**
  * Format an amount in the unit the account is denominated in.
@@ -73,7 +83,15 @@ export function UserPoolSummary({ user }: { user: PublicUser }) {
 }
 
 /** The row's 「配置」 button: identity, pool, models and key cap in one modal. */
-export function UserConfigButton({ user, modelGroups }: { user: PublicUser; modelGroups: ModelGroup[] }) {
+export function UserConfigButton({
+  user,
+  modelGroups,
+  searchServices,
+}: {
+  user: PublicUser;
+  modelGroups: ModelGroup[];
+  searchServices: SearchServiceOption[];
+}) {
   const t = useT();
   const [open, setOpen] = useState(false);
 
@@ -87,6 +105,7 @@ export function UserConfigButton({ user, modelGroups }: { user: PublicUser; mode
         <UserConfigModal
           user={user}
           modelGroups={modelGroups}
+          searchServices={searchServices}
           onClose={() => setOpen(false)}
           onSaved={() => {
             setOpen(false);
@@ -101,11 +120,13 @@ export function UserConfigButton({ user, modelGroups }: { user: PublicUser; mode
 function UserConfigModal({
   user,
   modelGroups,
+  searchServices,
   onClose,
   onSaved,
 }: {
   user: PublicUser;
   modelGroups: ModelGroup[];
+  searchServices: SearchServiceOption[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -125,6 +146,12 @@ function UserConfigModal({
   // "Every model" is stored as an empty array, which is distinct from an
   // empty selection (which would lock the account out of everything).
   const [allModels, setAllModels] = useState(user.allowedModels.length === 0);
+  // Same semantics as the model list: an empty array means "no restriction",
+  // so a stored `[]` is shown as "every service", not as "none selected".
+  const [selectedSearch, setSelectedSearch] = useState<Set<string>>(
+    new Set(user.allowedSearchProviders),
+  );
+  const [allSearch, setAllSearch] = useState(user.allowedSearchProviders.length === 0);
   const [maxActiveKeys, setMaxActiveKeys] = useState(String(user.maxActiveKeys));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -132,12 +159,24 @@ function UserConfigModal({
   const usedLabel =
     user.quotaType === "tokens" ? formatNumber(user.quotaUsed) : formatCredits(user.quotaUsed);
   const selectionEmpty = !allModels && selectedModels.size === 0;
+  // An empty search grant is not "none" but "all": submitting it unticked would
+  // silently open every service to the account, the opposite of narrowing.
+  const searchSelectionEmpty = !allSearch && selectedSearch.size === 0;
 
   function toggleModel(model: string) {
     setSelectedModels((prev) => {
       const next = new Set(prev);
       if (next.has(model)) next.delete(model);
       else next.add(model);
+      return next;
+    });
+  }
+
+  function toggleSearch(serviceId: string) {
+    setSelectedSearch((prev) => {
+      const next = new Set(prev);
+      if (next.has(serviceId)) next.delete(serviceId);
+      else next.add(serviceId);
       return next;
     });
   }
@@ -177,6 +216,7 @@ function UserConfigModal({
             : Number(quotaLimit),
           ...(resetUsage ? { quotaUsed: 0 } : {}),
           allowedModels: allModels ? [] : Array.from(selectedModels),
+          allowedSearchProviders: allSearch ? [] : Array.from(selectedSearch),
           maxActiveKeys: Number(maxActiveKeys),
         }),
       });
@@ -371,7 +411,61 @@ function UserConfigModal({
           )}
         </section>
 
-        {/* ---- Key cap ---- */}
+        {/* ---- Search access ---- */}
+        <section className="space-y-3 rounded-lg border border-border bg-muted/20 p-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <Search className="h-4 w-4 text-muted-foreground" />
+              {t("admin.users.allocation.searchTitle")}
+            </div>
+            <label className="flex items-center gap-2 text-xs text-foreground">
+              <input
+                type="checkbox"
+                checked={allSearch}
+                onChange={(e) => setAllSearch(e.target.checked)}
+                className="h-3.5 w-3.5 rounded border-input text-primary focus:ring-ring"
+              />
+              {t("admin.users.allocation.allSearchServicesToggle")}
+            </label>
+          </div>
+
+          {allSearch ? null : searchServices.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              {t("admin.users.allocation.noSearchServicesConfigured")}
+            </p>
+          ) : (
+            /*
+             * The label is the service's name, because that is what the account
+             * sees in its own picker — granting a row by an id it never sees
+             * would make the two lists unreadable side by side.
+             */
+            <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+              {searchServices.map((service) => (
+                <label
+                  key={service.serviceId}
+                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedSearch.has(service.serviceId)}
+                    onChange={() => toggleSearch(service.serviceId)}
+                    className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
+                  />
+                  <span className="truncate">{service.name}</span>
+                  <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                    {service.kind}
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+
+          {searchSelectionEmpty && (
+            <p className="text-xs text-destructive">
+              {t("admin.users.allocation.searchSelectionEmpty")}
+            </p>
+          )}
+        </section>
         <Input
           label={t("admin.users.allocation.maxActiveKeysLabel")}
           type="number"
@@ -392,7 +486,7 @@ function UserConfigModal({
           <Button type="button" variant="ghost" onClick={onClose}>
             {t("common.cancel")}
           </Button>
-          <Button type="submit" loading={saving} disabled={selectionEmpty}>
+          <Button type="submit" loading={saving} disabled={selectionEmpty || searchSelectionEmpty}>
             {t("common.save")}
           </Button>
         </div>

@@ -63,6 +63,8 @@ export interface CreateUserInput {
   quotaLimit?: number;
   maxActiveKeys?: number;
   allowedModels?: string[];
+  /** The deployment's search services this account may use (see UserSchema). */
+  allowedSearchProviders?: string[];
 }
 
 export interface UpdateUserInput {
@@ -77,6 +79,7 @@ export interface UpdateUserInput {
   quotaUsed?: number;
   maxActiveKeys?: number;
   allowedModels?: string[];
+  allowedSearchProviders?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -109,6 +112,8 @@ export async function createUser(input: CreateUserInput): Promise<User> {
     quotaUsed: 0,
     maxActiveKeys: input.maxActiveKeys ?? DEFAULT_USER_ALLOCATION.maxActiveKeys,
     allowedModels: input.allowedModels ?? [],
+    allowedSearchProviders:
+      input.allowedSearchProviders ?? DEFAULT_USER_ALLOCATION.allowedSearchProviders,
   });
 
   // ATOMIC CONFLICT CHECK + INSERT.
@@ -123,8 +128,8 @@ export async function createUser(input: CreateUserInput): Promise<User> {
       `INSERT INTO users
          (id, username, password_hash, role, display_name, timezone,
           created_at, updated_at, last_login_at, quota_type, quota_limit,
-          quota_used, max_active_keys, allowed_models)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          quota_used, max_active_keys, allowed_models, allowed_search_providers)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         user.id,
         user.username,
@@ -140,6 +145,7 @@ export async function createUser(input: CreateUserInput): Promise<User> {
         user.quotaUsed,
         user.maxActiveKeys,
         JSON.stringify(user.allowedModels),
+        JSON.stringify(user.allowedSearchProviders),
       ],
     );
   } catch (err) {
@@ -233,6 +239,8 @@ export async function updateUser(
     quotaUsed: patch.quotaUsed ?? existing.quotaUsed,
     maxActiveKeys: patch.maxActiveKeys ?? existing.maxActiveKeys,
     allowedModels: patch.allowedModels ?? existing.allowedModels,
+    allowedSearchProviders:
+      patch.allowedSearchProviders ?? existing.allowedSearchProviders,
     updatedAt: now,
   };
   // Re-validate.
@@ -242,7 +250,7 @@ export async function updateUser(
     `UPDATE users SET
        display_name = ?, timezone = ?, role = ?, quota_type = ?,
        quota_limit = ?, quota_used = ?, max_active_keys = ?,
-       allowed_models = ?, updated_at = ?
+       allowed_models = ?, allowed_search_providers = ?, updated_at = ?
      WHERE id = ?`,
     [
       validated.displayName,
@@ -253,6 +261,7 @@ export async function updateUser(
       validated.quotaUsed,
       validated.maxActiveKeys,
       JSON.stringify(validated.allowedModels),
+      JSON.stringify(validated.allowedSearchProviders),
       validated.updatedAt,
       userId,
     ],

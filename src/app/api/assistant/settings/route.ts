@@ -18,6 +18,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth/session";
 import { listSearchProviders } from "@/lib/db/search-providers";
+import { getUserById } from "@/lib/db/users";
+import { searchServiceAllowed } from "@/lib/search/resolve";
 import {
   getPublicAssistantSettings,
   getAssistantSettings,
@@ -287,6 +289,28 @@ export async function PUT(req: Request): Promise<Response> {
           },
         },
         { status: 400 },
+      );
+    }
+    /**
+     * And it has to be this account's to choose.
+     *
+     * The picker only offers granted services, but the picker is not the only
+     * way to send this body. Saving one outside the grant would store a
+     * setting that every search afterwards refuses by name — the account would
+     * see "chosen" in its form and a refusal at every call — so it is refused
+     * here, where the mistake can still be explained.
+     */
+    const owner = await getUserById(me.id);
+    if (!searchServiceAllowed(owner?.allowedSearchProviders, wantedService)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: {
+            code: "search_service_not_allowed",
+            message: `这个搜索服务还没有授权给当前账号，请联系管理员开通「${wantedService}」。`,
+          },
+        },
+        { status: 403 },
       );
     }
   }

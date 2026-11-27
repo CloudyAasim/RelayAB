@@ -117,12 +117,17 @@ export type OpenAIFaceFormat = UpstreamFormat;
  *  - `maxActiveKeys`  cap on simultaneously enabled keys. `0` = no cap.
  *  - `allowedModels`  models this user may call. `[]` = every model exposed
  *                     by the configured providers.
+ *  - `allowedSearchProviders`  the deployment's search services this user may
+ *                     use, by their client-visible `serviceId`. `[]` = every
+ *                     enabled one. A service's price is its own, so this is
+ *                     also the list of vendors the account can be charged by.
  */
 export const DEFAULT_USER_ALLOCATION = Object.freeze({
   quotaType: "credits" as QuotaType,
   quotaLimit: 0,     // nothing granted yet — admin must allocate
   maxActiveKeys: 0,  // 0 = no cap
   allowedModels: [] as string[],
+  allowedSearchProviders: [] as string[],
 });
 
 export const UserSchema = z.object({
@@ -150,6 +155,9 @@ export const UserSchema = z.object({
     .nonnegative()
     .default(DEFAULT_USER_ALLOCATION.maxActiveKeys),
   allowedModels: z
+    .array(z.string())
+    .default([]),
+  allowedSearchProviders: z
     .array(z.string())
     .default([]),
 });

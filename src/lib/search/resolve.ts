@@ -43,6 +43,7 @@ import {
   type SearchProviderRecord,
 } from "../db/search-providers";
 import { getAssistantSettings } from "../db/assistant";
+import { getUserById } from "../db/users";
 import { getSettings } from "../db/settings";
 import { effectiveSearchConfig } from "./effective";
 import { userSearchBackend } from "./user";
@@ -181,18 +182,36 @@ export function namedSearchProvider(
  */
 export function backendForRows(
   rows: readonly SearchProviderRecord[],
-  opts: { defaultServiceId?: string | null } = {},
+  opts: { defaultServiceId?: string | null; allowed?: readonly string[] | null } = {},
 ): { backend: SearchBackend | null; row: SearchProviderRecord | null; reason: string | null } {
-  const usable = searchServices(rows);
+  const usable = searchServices(rows, opts.allowed);
   if (usable.length === 0) {
     // Nothing can answer. The reason is the most specific one available: a row
     // that is enabled but broken says which one and what is wrong with it.
-    const enabled = rows.filter((row) => row.enabled);
+    const enabled = rows.filter(
+      (row) => row.enabled && searchServiceAllowed(opts.allowed, row.serviceId),
+    );
     for (const row of enabled) {
       const usability = searchServiceUsability(row);
       if (!usability.usable) {
         return { backend: null, row, reason: usability.reason };
       }
+    }
+    // Healthy services exist but none is on this account's list. The fix is the
+    // administrator's, so saying "nothing is enabled" would send the user to a
+    // setting they cannot reach.
+    const outsideGrant = rows.some(
+      (row) =>
+        row.enabled &&
+        searchServiceUsability(row).usable &&
+        !searchServiceAllowed(opts.allowed, row.serviceId),
+    );
+    if (outsideGrant) {
+      return {
+        backend: null,
+        row: null,
+        reason: "这个账号没有权限使用这个部署的任何搜索服务，请联系管理员。",
+      };
     }
     return { backend: null, row: null, reason: "没有启用任何搜索服务" };
   }
@@ -212,18 +231,37 @@ export function backendForRows(
 }
 
 /**
+ * Whether an account may use a service it names.
+ *
+ * An empty list means **no restriction**, the same rule `allowedModels` follows:
+ * every account that predates this policy carries `[]`, and reading that as
+ * "nothing is allowed" would switch search off for all of them at once.
+ */
+export function searchServiceAllowed(
+  allowed: readonly string[] | null | undefined,
+  serviceId: string,
+): boolean {
+  const list = allowed ?? [];
+  return list.length === 0 || list.includes(serviceId);
+}
+
+/**
  * The services that can answer, by their client-visible names.
  *
  * Only the ones that **can** answer: a service that is switched off, or
  * missing its key, is not offered — offering it would be a promise the
  * deployment cannot keep, and the whole point of the catalogue is that
  * everything in it can be named and will work.
+ *
+ * `allowed` narrows the list to one account's grant. Naming a service outside
+ * it is refused by name, never answered by another vendor — the prices differ.
  */
 export function searchServices(
   rows: readonly SearchProviderRecord[],
+  allowed?: readonly string[] | null,
 ): Array<{ id: string; name: string; kind: string }> {
   return rows
-    .filter((row) => row.enabled)
+    .filter((row) => row.enabled && searchServiceAllowed(allowed, row.serviceId))
     .map((row) => ({ row, usability: searchServiceUsability(row) }))
     .filter((entry) => entry.usability.usable)
     .map(({ row }) => ({
@@ -264,9 +302,9 @@ export function searchServices(
  */
 export function unnamedSearchProvider(
   rows: readonly SearchProviderRecord[],
-  opts: { defaultServiceId?: string | null } = {},
+  opts: { defaultServiceId?: string | null; allowed?: readonly string[] | null } = {},
 ): { row: SearchProviderRecord | null; problem: string | null } {
-  const usable = searchServices(rows);
+  const usable = searchServices(rows, opts.allowed);
   if (usable.length === 0) {
     return { row: null, problem: null };
   }
@@ -281,6 +319,12 @@ export function unnamedSearchProvider(
       return {
         row: null,
         problem: `默认搜索服务「${wanted}」已经不存在了，请在「管理 → 网页搜索」里重新指定。`,
+      };
+    }
+    if (!searchServiceAllowed(opts.allowed, marked.serviceId)) {
+      return {
+        row: null,
+        problem: `管理员指定的默认搜索服务「${marked.serviceId}」不在这个账号的可用范围内，请自己指定一个。`,
       };
     }
     if (!marked.enabled) {
@@ -314,8 +358,9 @@ export function unnamedSearchProvider(
 
 export async function resolveActiveSearchBackend(
   env: NodeJS.ProcessEnv = process.env,
+  opts: { allowed?: readonly string[] | null } = {},
 ): Promise<SearchBackend | null> {
-  return (await resolveActiveSearchBackendWithReason(env)).backend;
+  return (await resolveActiveSearchBackendWithReason(env, opts)).backend;
 }
 
 /**
@@ -327,9 +372,19 @@ export async function resolveActiveSearchBackend(
  */
 export async function resolveActiveSearchBackendWithReason(
   env: NodeJS.ProcessEnv = process.env,
+  opts: { allowed?: readonly string[] | null } = {},
 ): Promise<{ backend: SearchBackend | null; row: SearchProviderRecord | null; reason: string | null }> {
   const rows = await listSearchProviders();
   if (rows.length === 0) {
+    // The environment fallback is not one of the deployment's services, so an
+    // account restricted to a named list has no claim on it.
+    if (opts.allowed && opts.allowed.length > 0) {
+      return {
+        backend: null,
+        row: null,
+        reason: "这个账号没有权限使用这个部署的任何搜索服务，请联系管理员。",
+      };
+    }
     const backend = resolveSearchBackend(env);
     return {
       backend,
@@ -343,7 +398,10 @@ export async function resolveActiveSearchBackendWithReason(
   // passed in, because this is the one place that decides, and a caller that
   // could pass its own default would be a second way to answer.
   const settings = await getSettings();
-  return backendForRows(rows, { defaultServiceId: settings.searchDefaultServiceId ?? null });
+  return backendForRows(rows, {
+    defaultServiceId: settings.searchDefaultServiceId ?? null,
+    ...(opts.allowed ? { allowed: opts.allowed } : {}),
+  });
 }
 
 /**
@@ -354,7 +412,18 @@ export async function resolveActiveSearchBackendWithReason(
  */
 export async function resolveSearchBackendByServiceId(
   serviceId: string,
+  allowed?: readonly string[] | null,
 ): Promise<{ backend: SearchBackend | null; row: SearchProviderRecord | null; problem: string | null }> {
+  const wanted = serviceId.trim();
+  // A name outside the account's grant is refused by name, for the same reason
+  // a disabled one is: substituting another vendor would change the price.
+  if (!searchServiceAllowed(allowed, wanted)) {
+    return {
+      backend: null,
+      row: null,
+      problem: `这个账号没有权限使用搜索服务「${wanted}」`,
+    };
+  }
   const rows = await listSearchProviders();
   const { row, problem } = namedSearchProvider(rows, serviceId);
   if (!row) {
@@ -397,9 +466,19 @@ export async function resolveSearchBackendForUser(
   const own = await userSearchBackend(userId);
   if (own) return own;
 
+  // The administrator's grant for this account; `[]` means no restriction.
+  const owner = await getUserById(userId);
+  const allowed = owner?.allowedSearchProviders ?? [];
+
   const wanted = opts.serviceId?.trim();
   if (wanted) {
-    const named = await resolveSearchBackendByServiceId(wanted);
+    if (!searchServiceAllowed(allowed, wanted)) {
+      throw new WebSearchError(
+        `你的账号没有权限使用搜索服务「${wanted}」，请到「AI 助手 → 设置」里换一个。`,
+        "not_configured",
+      );
+    }
+    const named = await resolveSearchBackendByServiceId(wanted, allowed);
     if (named.backend) return named.backend;
     // The choice cannot be honoured. Say so, by name.
     throw new WebSearchError(
@@ -409,7 +488,7 @@ export async function resolveSearchBackendForUser(
     );
   }
 
-  return resolveActiveSearchBackend(env);
+  return resolveActiveSearchBackend(env, { allowed });
 }
 
 /**

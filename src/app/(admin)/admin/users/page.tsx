@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { listUsers } from "@/lib/db/users";
 import { listProviders } from "@/lib/db/providers";
 import { listMediaProviders } from "@/lib/db/media-providers";
+import { listSearchProviders } from "@/lib/db/search-providers";
 import { toPublicUser } from "@/lib/db/types";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -35,10 +36,11 @@ export default async function UsersPage() {
   const timeZone = timezoneToIana(user.timezone);
 
   const { t } = await getT();
-  const [{ users }, providers, mediaProviders] = await Promise.all([
+  const [{ users }, providers, mediaProviders, searchProviders] = await Promise.all([
     listUsers({ limit: 200 }),
     listProviders({ enabledOnly: true }),
     listMediaProviders({ enabledOnly: true }),
+    listSearchProviders({ enabledOnly: true }),
   ]);
 
   // Media models are authorized through the same per-account whitelist, so
@@ -48,6 +50,19 @@ export default async function UsersPage() {
   // The picker groups them by kind (text, image, video, speech, music), so the
   // page hands it groups rather than one flat alphabet.
   const modelGroups = groupModelsByKind(providers, mediaProviders);
+
+  /**
+   * The search services an account can be granted.
+   *
+   * A row without a client-visible name cannot be named by a client, so it is
+   * not a grantable choice — offering it would put a checkbox in the form whose
+   * tick nothing downstream could honour. Disabled rows are excluded the same
+   * way: the catalogue already refuses to list them, and granting one would be
+   * a promise that stops holding the moment it is switched off.
+   */
+  const searchServices = searchProviders
+    .filter((row) => row.serviceId.trim() !== "")
+    .map((row) => ({ serviceId: row.serviceId, name: row.name, kind: row.kind }));
 
   const publicUsers = users.map(toPublicUser);
 
@@ -120,7 +135,11 @@ export default async function UsersPage() {
                     </TD>
                     <TD className="text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <UserConfigButton user={u} modelGroups={modelGroups} />
+                        <UserConfigButton
+                          user={u}
+                          modelGroups={modelGroups}
+                          searchServices={searchServices}
+                        />
                         <UserActions user={u} />
                       </div>
                     </TD>

@@ -1,7 +1,7 @@
 /**
  * app/api/admin/users/[id]/route.ts
  *
- * PATCH  /api/admin/users/[id]  body: { displayName?, role?, quotaType?, quotaLimit?, quotaUsed?, maxActiveKeys?, allowedModels? }
+ * PATCH  /api/admin/users/[id]  body: { displayName?, role?, quotaType?, quotaLimit?, quotaUsed?, maxActiveKeys?, allowedModels?, allowedSearchProviders? }
  * DELETE /api/admin/users/[id]
  */
 import { NextResponse } from "next/server";
@@ -21,6 +21,7 @@ const PatchSchema = z.object({
   quotaUsed: z.number().int().nonnegative().optional(),
   maxActiveKeys: z.number().int().nonnegative().optional(),
   allowedModels: z.array(z.string()).optional(),
+  allowedSearchProviders: z.array(z.string()).optional(),
 });
 
 export async function PATCH(

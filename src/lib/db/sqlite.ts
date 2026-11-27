@@ -938,6 +938,11 @@ const ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; type: string
   // before this existed: they are still the deployment's service, they just
   // cannot be named yet.
   { table: "search_providers", column: "service_id", type: "TEXT NOT NULL DEFAULT ''" },
+  // Which of the deployment's search services this account may use, by their
+  // client-visible names. Empty means "no additional restriction" — the same
+  // statement `allowed_models` makes — so every existing row keeps the access it
+  // already had and an upgrade cannot quietly take search away from anybody.
+  { table: "users", column: "allowed_search_providers", type: "TEXT NOT NULL DEFAULT '[]'" },
 ];
 
 function addColumnIfMissing(
@@ -1085,6 +1090,10 @@ export function rowToUser(row: Record<string, unknown>): User {
     quotaUsed: row.quota_used,
     maxActiveKeys: row.max_active_keys,
     allowedModels: parseJson<string[]>(String(row.allowed_models ?? "[]"), []),
+    allowedSearchProviders: parseJson<string[]>(
+      String(row.allowed_search_providers ?? "[]"),
+      [],
+    ),
   });
 }
 

@@ -164,11 +164,19 @@ export async function runBilledSearch(args: BilledSearchArgs): Promise<BilledSea
     backend = await backendForProvider(args.providerId);
     problem = backend ? null : PROVIDER_INCOMPLETE_MESSAGE;
   } else if (args.serviceId?.trim()) {
-    const named = await resolveSearchBackendByServiceId(args.serviceId);
+    // The account's grant travels with the name: asking for a service the
+    // administrator did not give this account is refused, not served by
+    // another vendor at another price.
+    const named = await resolveSearchBackendByServiceId(
+      args.serviceId,
+      args.user.allowedSearchProviders,
+    );
     backend = named.backend;
     problem = named.problem;
   } else {
-    const active = await resolveActiveSearchBackendWithReason(args.env);
+    const active = await resolveActiveSearchBackendWithReason(args.env, {
+      allowed: args.user.allowedSearchProviders,
+    });
     backend = active.backend;
     problem = active.reason;
   }

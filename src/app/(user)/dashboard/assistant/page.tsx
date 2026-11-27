@@ -70,9 +70,24 @@ export default async function AssistantPage() {
   const ownSearch = useOwnSearchService(settings);
   const credential = await getAssistantCredential(sessionUser.id);
   const accountSearchAvailable = Boolean(credential?.enabled);
+  /**
+   * The deployment's side of it is per account as well.
+   *
+   * A service the administrator did not grant is not this person's to call, so
+   * a deployment whose every service lies outside the grant has nothing to
+   * offer them — and saying "search is available" there would be advice the
+   * endpoint then refuses. With no rows at all the environment fallback
+   * answers, and that fallback belongs to the deployment rather than to any
+   * granted service, so it is refused whenever the grant is not empty.
+   */
+  const allowedSearch = owner?.allowedSearchProviders ?? [];
+  const allowedServices = searchServices(searchRows, allowedSearch);
+  const deploymentSearchAllowed =
+    searchRows.length === 0 ? allowedSearch.length === 0 : allowedServices.length > 0;
   const webSearchAvailable =
     searchConfig.enabled &&
-    (ownSearch || (searchConfig.backendConfigured && accountSearchAvailable));
+    (ownSearch ||
+      (searchConfig.backendConfigured && accountSearchAvailable && deploymentSearchAllowed));
   const webSearchDefault = settings?.webSearchDefault ?? true;
   const webSearchLimit = settings?.webSearchLimit ?? DEFAULT_WEB_SEARCH_LIMIT;
 
@@ -182,8 +197,10 @@ export default async function AssistantPage() {
                 // The server's own answer about which backend is live, so the
                 // form and the assistant cannot disagree about it.
                 ownInUse: useOwnSearchService(settings),
-                // The services the deployment offers, for the picker.
-                services: searchServices(searchRows),
+                // The services the deployment offers **this account**, for the
+                // picker. Offering one it cannot name would be a promise the
+                // endpoint then refuses by name.
+                services: allowedServices,
                 // And the one the operator marked as the default, so the panel
                 // can say which service is actually in effect for an account
                 // that has not chosen one.

@@ -705,6 +705,10 @@ const zhCN: Dict = {
   "admin.users.allocation.modelSelectionEmpty": "请至少勾选一个模型，否则该用户无法调用任何东西。",
   "admin.users.allocation.models": "可用模型",
   "admin.users.allocation.groupSelectAll": "本组全选",
+  "admin.users.allocation.searchTitle": "可访问的搜索服务",
+  "admin.users.allocation.allSearchServicesToggle": "允许全部搜索服务",
+  "admin.users.allocation.noSearchServicesConfigured": "还没有配置搜索提供商。",
+  "admin.users.allocation.searchSelectionEmpty": "请至少勾选一个搜索服务。",
 
   // ===== Shared: allowed-model summary (admin users table + user dashboard) =====
   // Neutral namespace: both surfaces render the same component, so the keys
@@ -2428,6 +2432,10 @@ const en: Dict = {
   "admin.users.allocation.modelSelectionEmpty": "Select at least one model, otherwise this account cannot call anything.",
   "admin.users.allocation.models": "Allowed models",
   "admin.users.allocation.groupSelectAll": "Select all in this group",
+  "admin.users.allocation.searchTitle": "Search access",
+  "admin.users.allocation.allSearchServicesToggle": "Allow every search service",
+  "admin.users.allocation.noSearchServicesConfigured": "No search providers configured.",
+  "admin.users.allocation.searchSelectionEmpty": "Select at least one search service.",
 
   // ===== Shared: allowed-model summary (admin users table + user dashboard) =====
   "models.summary.group.chat": "Text & chat models",
