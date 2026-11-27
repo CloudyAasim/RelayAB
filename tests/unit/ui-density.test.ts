@@ -276,9 +276,13 @@ describe("the phone layout is two up, not one", () => {
     expect(overview).toMatch(/grid grid-cols-2[^"]*lg:grid-cols-4/);
   });
 
-  it("and so do the account's three", () => {
+  it("and so do the account's two", () => {
+    // Two figures, not three: the active-key count would restate the balance
+    // panel above it, so the tile went and the grid no longer grows a third
+    // column to hold nothing.
     const dashboard = read("src", "app", "(user)", "dashboard", "page.tsx");
-    expect(dashboard).toMatch(/grid grid-cols-2[^"]*lg:grid-cols-3/);
+    expect(dashboard).toMatch(/grid grid-cols-2[^"]*gap-3/);
+    expect(dashboard).not.toMatch(/lg:grid-cols-3/);
   });
 
   it("and the tile drops its icon on a narrow screen", () => {

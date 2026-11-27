@@ -1,4 +1,8 @@
 import { redirect } from "next/navigation";
+export const dynamic = "force-dynamic";
+
+import Link from "next/link";
+
 import { getCurrentUser } from "@/lib/auth/session";
 import { Card, StatCard, CardHeader } from "@/components/ui/Card";
 import { KeyStatusBadge } from "@/components/keys/KeyStatusBadge";
@@ -11,36 +15,88 @@ import {
   TD,
   EmptyState,
 } from "@/components/ui/Table";
-import { formatCredits, formatNumber, formatDate } from "@/lib/utils";
-import { timezoneToIana } from "@/lib/timezone";
+import { formatCredits, formatNumber, formatDate, cn } from "@/lib/utils";
+import { timezoneToIana, timezoneLabelKey, timezoneOffsetMinutes } from "@/lib/timezone";
 import { getT } from "@/lib/i18n/server";
 import { listProviders } from "@/lib/db/providers";
 import { listMediaProviders } from "@/lib/db/media-providers";
 import { groupModelsByKind, type ModelGroup } from "@/lib/admin/model-groups";
+import { listApiKeyIdsForUsage } from "@/lib/db/keys";
+import { MAX_LOGS_PER_KEY } from "@/lib/db/usage";
 import { SectionPageLayout } from "@/components/layouts";
+import { UsageScopePicker } from "@/components/usage/UsageScopePicker";
+import { UsageViewTabs } from "@/components/usage/UsageViewTabs";
+import { UsageWebSearchCard } from "@/components/usage/UsageWebSearchCard";
+import { UsageBarChart } from "@/components/usage/UsageBarChart";
+import {
+  UsageBreakdownTable,
+  type UsageBreakdownRow,
+} from "@/components/usage/UsageBreakdownTable";
+import {
+  parseUsageMetric,
+  resolveRange,
+  sortByMetric,
+  cacheHitRate,
+  formatUsageMetric,
+  usagePace,
+  type UsageGroupRow,
+} from "@/lib/usage/report";
+import { loadUsageReportCached, type UsageReport } from "@/lib/usage/load";
 import {
   CreateKeyButton,
   type UserAllocation,
 } from "./CreateKeyButton";
 import { UserKeyActions } from "./UserKeyActions";
 import { AllocationSummary } from "./AllocationSummary";
-import { KeyRound, Coins, Activity, Sparkles } from "lucide-react";
+import { Coins, Activity, Sparkles, Database } from "lucide-react";
 import {
   cachedGetUserById,
   cachedListApiKeysByUser,
   cachedAggregateByUser,
 } from "@/lib/db/data-cache";
 
-export default async function DashboardPage() {
+const BASE_PATH = "/dashboard";
+
+type Scope = "all" | "key" | "model";
+
+interface DashboardPageProps {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}
+
+/**
+ * The whole account in one page: allocation, keys, and usage.
+ *
+ * "How much have I left?", "which keys do I have?" and "where did it go?" are
+ * asked one after another about the same account, so they are answered on the
+ * same screen. The usage view used to live at `/dashboard/usage`, which meant
+ * opening a second page to answer the question the balance panel had just
+ * raised.
+ */
+export default async function DashboardPage({ searchParams }: DashboardPageProps) {
   const sessionUser = await getCurrentUser();
   if (!sessionUser) redirect("/login");
 
+  // Usage buckets in the reader's own display timezone; everything else on the
+  // page formats dates with the same zone.
   const timeZone = timezoneToIana(sessionUser.timezone);
+  const tzOffsetMinutes = timezoneOffsetMinutes(sessionUser.timezone);
 
-  const [{ t }, fullUser, keyPage] = await Promise.all([
+  const sp = await searchParams;
+  const first = (value: string | string[] | undefined) =>
+    typeof value === "string" ? value : undefined;
+
+  const range = resolveRange({ key: first(sp.range), tzOffsetMinutes });
+  const metric = parseUsageMetric(first(sp.metric));
+  const group = first(sp.group) === "model" ? "model" : "key";
+  const requestedScope = first(sp.scope);
+  const scope: Scope =
+    requestedScope === "key" || requestedScope === "model" ? requestedScope : "all";
+
+  const [{ t }, fullUser, keyPage, usageKeyIds] = await Promise.all([
     getT(),
     cachedGetUserById(sessionUser.id),
     cachedListApiKeysByUser(sessionUser.id, 200),
+    listApiKeyIdsForUsage(sessionUser.id),
   ]);
   const keys = keyPage.keys;
   const agg = await cachedAggregateByUser(keys.map((k) => k.id));
@@ -65,6 +121,99 @@ export default async function DashboardPage() {
       }
     : null;
 
+  /**
+   * The scope picker offers the keys this person can actually use. The report
+   * covers every key their balance can be charged through — the assistant
+   * credential included, because `settleUsage` draws its calls from the same
+   * pool. Deriving both from one list is what left the assistant's spending
+   * taken from the balance and absent from the page that reports the balance.
+   */
+  const universeIds = usageKeyIds;
+
+  const requestedKeyId = first(sp.keyId);
+  const requestedModel = first(sp.model);
+  const effectiveKeyId =
+    scope === "key"
+      ? keys.find((key) => key.id === requestedKeyId)?.id ?? keys[0]?.id
+      : undefined;
+  const effectiveModel = scope === "model" ? requestedModel : undefined;
+
+  let report: UsageReport;
+  let modelOptionRows: UsageGroupRow[];
+
+  if (scope === "key" && effectiveKeyId) {
+    report = await loadUsageReportCached({
+      keyIds: [effectiveKeyId],
+      tzOffsetMinutes: tzOffsetMinutes,
+      range,
+    });
+    modelOptionRows = report.byModel;
+  } else if (scope === "model" && effectiveModel) {
+    const universeReport = await loadUsageReportCached({
+      keyIds: universeIds,
+      tzOffsetMinutes: tzOffsetMinutes,
+      range,
+    });
+    report = await loadUsageReportCached({
+      keyIds: universeIds,
+      tzOffsetMinutes: tzOffsetMinutes,
+      range,
+      model: effectiveModel,
+    });
+    modelOptionRows = universeReport.byModel;
+  } else {
+    report = await loadUsageReportCached({
+      keyIds: universeIds,
+      tzOffsetMinutes: tzOffsetMinutes,
+      range,
+    });
+    modelOptionRows = report.byModel;
+  }
+
+  /** The pace over the selected range: the average per bucket, and the peak. */
+  const pace = usagePace(report.series, metric);
+
+  const labels = {
+    credits: t("usage.table.credits"),
+    tokens: t("usage.table.tokens"),
+    requests: t("usage.table.requests"),
+    images: t("usage.table.images"),
+  };
+  const headers = {
+    item: t("usage.table.item"),
+    requests: t("usage.table.requests"),
+    tokens: t("usage.table.tokens"),
+    credits: t("usage.table.credits"),
+    images: t("usage.table.images"),
+    actions: t("usage.table.actions"),
+  };
+  const rangeOptions = [
+    { value: "today", label: t("usage.range.today") },
+    { value: "7d", label: t("usage.range.7d") },
+    { value: "30d", label: t("usage.range.30d") },
+    { value: "all", label: t("usage.range.all") },
+  ];
+  const rangeLabel =
+    rangeOptions.find((option) => option.value === range.key)?.label ?? range.key;
+
+  const sourceRows = group === "model" ? report.byModel : report.byKey;
+  const rows: UsageBreakdownRow[] = sortByMetric(
+    sourceRows.map((row) => {
+      if (group === "model") return { ...row, label: row.id };
+      const key = keys.find((candidate) => candidate.id === row.id);
+      return { ...row, label: key?.label ?? row.id, sublabel: key?.keyPrefix };
+    }),
+    metric,
+  );
+
+  const metricLabel = t(`usage.table.${metric}`);
+  const scopeParams =
+    scope === "key"
+      ? { scope: "key", keyId: effectiveKeyId }
+      : scope === "model"
+        ? { scope: "model", model: effectiveModel }
+        : { scope: "all" };
+
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>
@@ -80,39 +229,12 @@ export default async function DashboardPage() {
           titled cards rather than as a pile of boxes that happen to touch.
         */}
         <div className="space-y-6">
-          {/* Stats row - responsive: 2 cols → 2 cols → 3 cols */}
           {/*
-            Two up on a phone, like the admin overview's four.
-
-            One column meant three tiles stood in a stack before the balance
-            panel, and each of them was 84 pixels tall for a label and a
-            figure. The third tile spans the row because three do not divide
-            into two — and a tile wider than its neighbours reads as the
-            summary it is.
+            Balance, spend and the whitelist come from one panel. The usage page
+            used to repeat the balance and the active-key count in its own
+            summary card, and the dashboard repeated the count again as a stat
+            tile — the same three facts, three times, on one screen.
           */}
-          <div className="grid grid-cols-2 gap-3 sm:gap-6 lg:grid-cols-3">
-            <StatCard
-              label={t("dashboard.stat.activeKeys")}
-              value={formatNumber(keys.filter((k) => k.enabled).length)}
-              icon={<KeyRound className="h-4 w-4" />}
-              tone="primary"
-            />
-            <StatCard
-              label={t("dashboard.stat.tokensUsed")}
-              value={formatNumber(agg.totalTokens)}
-              icon={<Activity className="h-4 w-4" />}
-              tone="info"
-            />
-            <StatCard
-              label={t("dashboard.stat.creditsUsed")}
-              value={formatCredits(agg.creditsUsed)}
-              icon={<Coins className="h-4 w-4" />}
-              tone="orange"
-              className="col-span-2 sm:col-span-1"
-            />
-          </div>
-
-          {/* Allocation banner */}
           {fullUser && (
             <AllocationSummary
               quotaType={fullUser.quotaType}
@@ -125,11 +247,28 @@ export default async function DashboardPage() {
             />
           )}
 
+          {/*
+            Lifetime totals only: the balance above is the quota figure, so a
+            "keys" tile and a second "used" tile would restate the panel.
+          */}
+          <div className="grid grid-cols-2 gap-3 sm:gap-6">
+            <StatCard
+              label={t("dashboard.stat.tokensUsed")}
+              value={formatNumber(agg.totalTokens)}
+              icon={<Activity className="h-4 w-4" />}
+              tone="info"
+            />
+            <StatCard
+              label={t("dashboard.stat.creditsUsed")}
+              value={formatCredits(agg.creditsUsed)}
+              icon={<Coins className="h-4 w-4" />}
+              tone="orange"
+            />
+          </div>
+
           {/* API Keys list */}
           <Card>
-            <CardHeader
-              title={t("dashboard.apiKeys.title")}
-            />
+            <CardHeader title={t("dashboard.apiKeys.title")} />
             {keys.length === 0 ? (
               <EmptyState
                 icon={<Sparkles className="h-5 w-5" />}
@@ -186,6 +325,189 @@ export default async function DashboardPage() {
               </div>
             )}
           </Card>
+
+          {/* Usage: the trend, where the credits went, and the filters for both. */}
+          <section>
+            <h2 className="text-base font-semibold tracking-tight text-foreground">
+              {t("usage.title")}
+            </h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {t("usage.tzNote", { zone: t(timezoneLabelKey(sessionUser.timezone)) })}
+            </p>
+
+            <div className="mt-4 space-y-4 sm:space-y-6">
+              <UsageWebSearchCard
+                summary={report.webSearch.summary}
+                totalCredits={report.summary.creditsUsed}
+                labels={{
+                  title: t("usage.webSearch.title"),
+                  description: t("usage.webSearch.description"),
+                  calls: t("usage.webSearch.calls"),
+                  credits: t("usage.webSearch.credits"),
+                  share: t("usage.webSearch.share"),
+                  empty: t("usage.webSearch.empty"),
+                  subsetHint: t("usage.webSearch.subsetHint"),
+                }}
+              />
+
+              <Card className="space-y-3">
+                <UsageScopePicker
+                  basePath={BASE_PATH}
+                  params={{ range: range.key, metric, group }}
+                  scope={scope}
+                  keyId={effectiveKeyId}
+                  model={effectiveModel}
+                  keys={keys.map((key) => ({
+                    value: key.id,
+                    label: `${key.label} · ${key.keyPrefix}`,
+                  }))}
+                  models={modelOptionRows.map((row) => ({ value: row.id, label: row.id }))}
+                  labels={{
+                    scope: t("usage.scope.label"),
+                    all: t("usage.scope.all"),
+                    key: t("usage.scope.key"),
+                    model: t("usage.scope.model"),
+                    keyPlaceholder: t("usage.scope.keyPlaceholder"),
+                    modelPlaceholder: t("usage.scope.modelPlaceholder"),
+                    apply: t("usage.scope.apply"),
+                  }}
+                />
+                <div className="flex flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-6">
+                  <UsageViewTabs
+                    basePath={BASE_PATH}
+                    params={{ ...scopeParams, metric, group }}
+                    param="range"
+                    active={range.key}
+                    label={t("usage.range.label")}
+                    options={rangeOptions}
+                  />
+                  <UsageViewTabs
+                    basePath={BASE_PATH}
+                    params={{ ...scopeParams, range: range.key, group }}
+                    param="metric"
+                    active={metric}
+                    label={t("usage.view.metric")}
+                    options={[
+                      { value: "credits", label: labels.credits },
+                      { value: "tokens", label: labels.tokens },
+                      { value: "requests", label: labels.requests },
+                    ]}
+                  />
+                  <UsageViewTabs
+                    basePath={BASE_PATH}
+                    params={{ ...scopeParams, range: range.key, metric }}
+                    param="group"
+                    active={group}
+                    label={t("usage.group.label")}
+                    options={[
+                      { value: "key", label: t("usage.breakdown.byKey") },
+                      { value: "model", label: t("usage.breakdown.byModel") },
+                    ]}
+                  />
+                  <Link
+                    href={`${BASE_PATH}?reset=1`}
+                    className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+                  >
+                    {t("usage.viewReset")}
+                  </Link>
+                </div>
+              </Card>
+
+              <Card>
+                <CardHeader title={t("usage.chart.title")} description={rangeLabel} />
+                {/*
+                    The cache hit rate, next to the trend it explains.
+
+                    A trend of "input tokens" on its own says nothing about how
+                    much of it was free: the same bar is 100% billed or 40%
+                    billed depending on cache, and the reader has no way to tell
+                    which they are looking at.
+
+                    `cacheHitRate` returns null when nothing in the period
+                    reported a cache, and null is shown as 「未上报」 rather than
+                    as 0%. Those are different facts — "no prompt was ever
+                    cached" is a claim about a vendor, and "this vendor does not
+                    report a cache" is what an empty column has actually told us.
+                */}
+                {(() => {
+                  const hit = cacheHitRate(report.summary);
+                  return (
+                    <div className="mb-4 flex items-start gap-3">
+                      <span
+                        className={cn(
+                          "flex h-9 w-9 shrink-0 items-center justify-center rounded-md",
+                          hit === null
+                            ? "bg-muted text-muted-foreground"
+                            : hit.rate > 0
+                              ? "bg-success/10 text-success"
+                              : "bg-muted text-muted-foreground",
+                        )}
+                      >
+                        <Database className="h-4 w-4" />
+                      </span>
+                      <div className="min-w-0">
+                        <div className="text-xs uppercase tracking-wider text-muted-foreground">
+                          {t("usage.stat.cacheHit")}
+                        </div>
+                        <div className="mt-0.5 truncate text-lg font-semibold tracking-tight text-foreground sm:text-xl">
+                          {hit === null
+                            ? t("usage.stat.cacheUnreported")
+                            : `${(hit.rate * 100).toFixed(1)}%`}
+                        </div>
+                        <div className="mt-0.5 text-xs text-muted-foreground">
+                          {hit === null
+                            ? t("usage.stat.cacheUnreportedHint")
+                            : t("usage.stat.cacheHitHint", {
+                                cached: formatNumber(hit.cachedTokens),
+                                // The denominator the rate was computed from,
+                                // taken from the same object. Printing the whole
+                                // period's prompt tokens here put two different
+                                // fractions on screen at once.
+                                prompt: formatNumber(hit.reportedPromptTokens),
+                                reported: formatNumber(hit.reportedRequests),
+                              })}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+                <UsageBarChart
+                  points={report.series}
+                  grain={range.grain}
+                  metric={metric}
+                  metricLabel={metricLabel}
+                  summary={report.summary}
+                  labels={labels}
+                  paceLabel={t("usage.chart.average", {
+                    unit: t(
+                      range.grain === "hour"
+                        ? "usage.chart.grainHour"
+                        : "usage.chart.grainDay",
+                    ),
+                    value: formatUsageMetric(pace.average, metric),
+                    peak: formatUsageMetric(pace.peak, metric),
+                  })}
+                  emptyLabel={t("usage.empty")}
+                />
+              </Card>
+
+              {report.truncatedKeys > 0 && (
+                <p className="text-xs text-warning">
+                  {t("usage.truncated", { max: MAX_LOGS_PER_KEY })}
+                </p>
+              )}
+
+              <Card>
+                <CardHeader title={t("usage.breakdown.title")} description={rangeLabel} />
+                <UsageBreakdownTable
+                  rows={rows}
+                  headers={headers}
+                  emphasis={metric}
+                  emptyLabel={t("usage.empty")}
+                />
+              </Card>
+            </div>
+          </section>
 
           <p className="text-center text-xs text-muted-foreground">
             {t("dashboard.help.contactAdmin")}

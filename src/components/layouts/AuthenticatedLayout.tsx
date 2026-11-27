@@ -76,8 +76,9 @@ export const USER_NAV: NavSection[] = [
   {
     labelKey: "nav.sidebar.workspace",
     items: [
+      // Usage is a section of this page rather than a page beside it, so there
+      // is no second entry to send the reader somewhere the balance is repeated.
       { href: "/dashboard", labelKey: "nav.dashboard", titleKey: "dashboard.title", icon: LayoutDashboard, exact: true },
-      { href: "/dashboard/usage", labelKey: "nav.usage", titleKey: "usage.title", icon: BarChart3 },
       { href: "/dashboard/models", labelKey: "nav.models", titleKey: "dashboard.models.title", icon: FlaskConical },
       { href: "/dashboard/assistant", labelKey: "nav.assistant", titleKey: "assistant.title", icon: Sparkles },
       { href: "/dashboard/docs", labelKey: "nav.docs", titleKey: "docs.title", icon: BookOpen },
@@ -122,7 +123,6 @@ export const ADMIN_NAV: NavSection[] = [
     labelKey: "nav.sidebar.personal",
     items: [
       { href: "/dashboard", labelKey: "nav.myDashboard", titleKey: "dashboard.title", icon: Wallet, exact: true },
-      { href: "/dashboard/usage", labelKey: "nav.usage", titleKey: "usage.title", icon: BarChart3 },
       { href: "/dashboard/models", labelKey: "nav.models", titleKey: "dashboard.models.title", icon: FlaskConical },
       { href: "/dashboard/assistant", labelKey: "nav.assistant", titleKey: "assistant.title", icon: Sparkles },
       { href: "/dashboard/announcements", labelKey: "announcements.title", titleKey: "announcements.title", icon: Megaphone },

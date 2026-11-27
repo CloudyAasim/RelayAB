@@ -59,8 +59,9 @@ const ROUTES = [
   ["admin-usage", "/admin/usage", "admin"],
   ["admin-docs", "/admin/docs", "admin"],
   ["admin-docs-provider", "/admin/docs/provider", "admin"],
+  // Usage is a section of the dashboard now, so it has no route of its own to
+  // capture: a second entry would only photograph the same page twice.
   ["user-dashboard", "/dashboard", "user"],
-  ["user-usage", "/dashboard/usage", "user"],
   ["user-models", "/dashboard/models", "user"],
   ["user-announcements", "/dashboard/announcements", "user"],
   ["user-settings", "/dashboard/settings", "user"],

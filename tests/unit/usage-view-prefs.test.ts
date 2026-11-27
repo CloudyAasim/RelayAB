@@ -6,14 +6,17 @@ import {
 } from "@/lib/usage/view-prefs";
 
 describe("usage view prefs", () => {
-  it("maps the two usage paths to distinct cookies", () => {
+  it("maps the admin usage path to its cookie", () => {
     expect(usageViewCookieName("/admin/usage")).toBe("relay_usage_view_admin");
-    expect(usageViewCookieName("/dashboard/usage")).toBe("relay_usage_view_user");
   });
 
+  // The user view is a section of `/dashboard`, which also has to open on its
+  // own defaults. Remembering a view for it would replay yesterday's filters
+  // onto every visit to the dashboard.
   it("returns null for paths that are not usage screens", () => {
     expect(usageViewCookieName("/admin/users")).toBeNull();
     expect(usageViewCookieName("/dashboard")).toBeNull();
+    expect(usageViewCookieName("/dashboard/usage")).toBeNull();
     expect(usageViewCookieName("/dashboard/usage/extra")).toBeNull();
   });
 

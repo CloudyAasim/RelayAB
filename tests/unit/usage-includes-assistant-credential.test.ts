@@ -32,7 +32,7 @@ import { resolveRange } from "@/lib/usage/report";
 
 const ROOT = process.cwd();
 const USER_USAGE_ROUTE = join(ROOT, "src/app/api/user/usage/route.ts");
-const USER_USAGE_PAGE = join(ROOT, "src/app/(user)/dashboard/usage/page.tsx");
+const USER_USAGE_PAGE = join(ROOT, "src/app/(user)/dashboard/page.tsx");
 const USER_USAGE_TOOL = join(ROOT, "src/lib/assistant/tools.ts");
 
 const OWN_CREDITS = 3;
@@ -136,8 +136,9 @@ describe("both user-facing entry points ask the right question", () => {
 
   it("the page separates the picker from the report", () => {
     const src = readFileSync(USER_USAGE_PAGE, "utf8");
-    // The picker still offers only usable keys…
-    expect(src).toMatch(/listApiKeysByUser\(sessionUser\.id/);
+    // The picker still offers only usable keys… (read through the request-scoped
+    // cache, hence the prefix, which this pattern tolerates on purpose).
+    expect(src).toMatch(/ListApiKeysByUser\(sessionUser\.id/);
     // …while the report's universe is the chargeable set, not `keys.map(...)`.
     expect(src).toMatch(/listApiKeyIdsForUsage\(sessionUser\.id\)/);
     expect(src).toMatch(/const universeIds = usageKeyIds;/);

@@ -20,10 +20,17 @@ export const USAGE_VIEW_KEYS = [
   "group",
 ] as const;
 
-/** Cookie name for a usage-screen path, or null when the path is not one. */
+/**
+ * Cookie name for a usage-screen path, or null when the path is not one.
+ *
+ * The user view now shares `/dashboard` with the balance and the key list, and
+ * that page has to open on its own defaults: replaying yesterday's `metric` and
+ * `scope` onto every visit to the dashboard would make the landing page depend
+ * on what the reader filtered last time. So only the admin screen, which is a
+ * usage screen and nothing else, keeps a remembered view.
+ */
 export function usageViewCookieName(pathname: string): string | null {
   if (pathname === "/admin/usage") return "relay_usage_view_admin";
-  if (pathname === "/dashboard/usage") return "relay_usage_view_user";
   return null;
 }
 

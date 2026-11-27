@@ -207,7 +207,7 @@ describe("the two views of the same deployment agree", () => {
 
 describe("the page", () => {
   const page = () =>
-    readFileSync(`${process.cwd()}/src/app/(user)/dashboard/usage/page.tsx`, "utf-8");
+    readFileSync(`${process.cwd()}/src/app/(user)/dashboard/page.tsx`, "utf-8");
 
   it("puts the rate in the same card as the trend", () => {
     const src = page();

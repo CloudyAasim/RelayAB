@@ -233,7 +233,7 @@ three protocol documents directly.
 - **Admin panel** (`/admin`): users, keys, providers (each of the four client
   surfaces routed on its own), model configuration and prices, media providers,
   search providers, usage statistics, system settings
-- **Usage statistics** (`/dashboard/usage`, `/admin/usage`): balance on top,
+- **Usage statistics** (the usage section of `/dashboard`, `/admin/usage`): balance on top,
   scope filters (by key / model / provider), metric switching, bar charts and
   detail tables; per-user timezone (UTC / Shanghai)
 - **Multilingual UI**: Chinese (default) / English, one click to switch in the

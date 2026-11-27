@@ -641,7 +641,7 @@ Realtime 客户端调到**。**只服务文本**：音频事件（`input_audio_b
 响应字段为 `range` / `summary` / `series` / `byKey` / `byModel` / `byProvider` / `truncatedKeys`
 （不含 `byUser`）。
 
-对应的界面：用户 `/dashboard/usage`，管理员 `/admin/usage`（可按 `userId` 下钻）。
+对应的界面：用户 `/dashboard`（用量区块），管理员 `/admin/usage`（可按 `userId` 下钻）。
 
 ### 2.6 媒体端点（图片 / 视频 / 语音 / 音乐）
 

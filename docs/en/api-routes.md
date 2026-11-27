@@ -694,8 +694,8 @@ Same parameters (`range` / `from` / `to` / `tzOffset`), scoped to all keys of th
 logged-in account. The response fields are `range` / `summary` / `series` / `byKey` /
 `byModel` / `byProvider` / `truncatedKeys` (no `byUser`).
 
-Matching UI: `/dashboard/usage` for users, `/admin/usage` for admins (with drill-down by
-`userId`).
+Matching UI: the usage section of `/dashboard` for users, `/admin/usage` for admins (with
+drill-down by `userId`).
 
 ### 2.6 Media Endpoints (image / video / speech / music)
 
