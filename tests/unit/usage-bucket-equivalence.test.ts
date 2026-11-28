@@ -293,6 +293,19 @@ describe("the increment that happens as traffic arrives", () => {
     rebuildUsageBuckets();
     expect(stored()).toEqual(before);
   });
+
+  it("a rebuild never drops a bucket whose rows were pruned", async () => {
+    await call();
+    await call({ promptTokens: 50, completionTokens: 1, creditsUsed: 3 });
+    const before = stored();
+    // The per-key cap removes older rows. A rebuild that re-derived the table
+    // from the surviving rows would then delete the hours those rows no longer
+    // cover — the exact loss that made the chart empty while the counters above
+    // it still read correctly.
+    run("DELETE FROM usage_logs");
+    rebuildUsageBuckets();
+    expect(stored()).toEqual(before);
+  });
 });
 
 describe("what the buckets buy", () => {
@@ -324,6 +337,7 @@ describe("what the buckets buy", () => {
     expect(report.summary.creditsUsed).toBe(45);
     expect(report.byModel).toEqual([expect.objectContaining({ id: "m-a", creditsUsed: 45 })]);
     // The point of the table: nothing was cut, so the warning does not appear.
+    expect(report.source).toBe("buckets");
     expect(report.truncatedKeys).toBe(0);
   });
 
@@ -346,6 +360,8 @@ describe("what the buckets buy", () => {
     // ever counted.
     expect(viaBuckets.summary.requests).toBe(MAX_LOGS_PER_KEY);
     expect(viaRows.summary.requests).toBe(MAX_LOGS_PER_KEY);
+    expect(viaBuckets.source).toBe("buckets");
+    expect(viaRows.source).toBe("retained-logs");
     expect(viaBuckets.truncatedKeys).toBe(0);
     expect(viaRows.truncatedKeys).toBe(1);
   });
@@ -368,5 +384,25 @@ describe("what the buckets buy", () => {
     expect(report.summary.requests).toBe(1);
     expect(report.summary.creditsUsed).toBe(3);
     expect(report.byModel).toEqual([expect.objectContaining({ id: "m-a", creditsUsed: 3 })]);
+    // The report says which path it took, so a fallback figure is never printed
+    // as if it were the kept record.
+    expect(report.source).toBe("retained-logs");
+  });
+
+  it("keeps history older than any retention window", async () => {
+    seed({ at: "2024-01-02T04:12:00.000Z", credits: 9 });
+    rebuildUsageBuckets();
+    prepareUsageBuckets();
+
+    const report = await loadUsageReport({
+      keyIds: ["k1"],
+      tzOffsetMinutes: TZ,
+      range: range("2024-01-02", "2024-01-02"),
+    });
+
+    // Nothing prunes old buckets any more, so a range that predates the log cap
+    // still reads from the kept record rather than an empty row scan.
+    expect(report.source).toBe("buckets");
+    expect(report.summary.creditsUsed).toBe(9);
   });
 });

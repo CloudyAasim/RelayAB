@@ -81,6 +81,7 @@ describe("loadUsageReport", () => {
       expect.objectContaining({ id: "k1", requests: 2, creditsUsed: 10 }),
     ]);
     // And nothing is being cut: these figures were summed as traffic arrived.
+    expect(report.source).toBe("buckets");
     expect(report.truncatedKeys).toBe(0);
   });
 

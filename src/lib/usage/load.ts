@@ -28,6 +28,11 @@
  * behaviour, truncated and flagged. That fallback is why `truncatedKeys` is
  * still computed and still shown: it is true of the fallback, and false of the
  * path that is normally taken.
+ *
+ * The report also carries `source`, because the two paths look identical from
+ * the outside and one of them cannot see past the per-key row cap. A screen
+ * that shows a fallback figure without saying so turns "the rows were pruned"
+ * into "nothing happened", which is the more dangerous of the two errors.
  */
 import { unstable_cache } from "next/cache";
 import { mapWithConcurrency } from "@/lib/db/concurrency";
@@ -70,6 +75,19 @@ export interface UsageWebSearchReport {
   byProvider: UsageGroupRow[];
 }
 
+/**
+ * Where the figures came from.
+ *
+ * The two paths do not answer the same question. `buckets` is the kept record —
+ * one row per key/provider/model/hour, summed as the traffic arrived. The
+ * log fallback reads rows that are capped per key, so within a range its
+ * numbers are what survived the cap, not what happened. A page that prints
+ * either without saying which is printing a smaller number as if it were the
+ * whole number, which is exactly what the empty chart looked like from the
+ * outside: correct arithmetic over the wrong set.
+ */
+export type UsageReportSource = "buckets" | "retained-logs";
+
 export interface UsageReport {
   range: UsageRange;
   summary: UsageSummary;
@@ -80,7 +98,13 @@ export interface UsageReport {
   byUser: UsageGroupRow[];
   /** A filtered view of the figures above, never an addition to them. */
   webSearch: UsageWebSearchReport;
-  /** Keys whose retained log window was full, so range figures may undercount. */
+  /** Which of the two paths produced the range figures above. */
+  source: UsageReportSource;
+  /**
+   * Keys whose retained log window was full, so range figures may undercount.
+   * Always 0 on the `buckets` path; on `retained-logs` it is a floor, not a
+   * count — a key can have lost rows without its window still being full.
+   */
   truncatedKeys: number;
 }
 
@@ -118,10 +142,11 @@ export async function loadUsageReport(
 
   if (bucketRows.length > 0) {
     // "All time" totals are lifetime, from the running counters; the series and
-    // the breakdowns below cover the bucket retention window. The two have
-    // always been able to disagree — they were previously bounded by how many
-    // rows survived, now by how many hours were kept — and a bounded chart
-    // under a lifetime number is the same claim as ever, not a new one.
+    // the breakdowns below come from the buckets, which are never pruned. The
+    // two still disagree in one case: a deployment whose buckets were pruned
+    // before this change. A chart under a lifetime number is the same claim as
+    // ever, not a new one — and the missing hours cannot be re-derived from
+    // rows that are already gone.
     const summary =
       range.key === "all" && !input.model
         ? await sumAllTime(keyIds)
@@ -149,6 +174,7 @@ export async function loadUsageReport(
         byProvider: groupBuckets(searchRows, "providerId"),
       },
       // Nothing was cut: these figures were summed as the traffic arrived.
+      source: "buckets",
       truncatedKeys: 0,
     };
   }
@@ -191,6 +217,10 @@ export async function loadUsageReport(
       ),
       byProvider: group(searchLogs, "providerId", range.fromIso, range.toIso),
     },
+    // The kept record was empty for this window, so these figures are a
+    // survival count. Say so out loud: the caller cannot tell a quiet week from
+    // a pruned one by looking at the numbers.
+    source: "retained-logs",
     truncatedKeys,
   };
 }

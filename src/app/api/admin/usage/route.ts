@@ -70,6 +70,9 @@ export async function GET(req: Request): Promise<Response> {
       byProvider: report.byProvider,
       // A subset of the figures above, for the web-search card. Not additive.
       webSearch: report.webSearch,
+      // Which path produced the range figures: `buckets` is the kept record,
+      // `retained-logs` means the rows survived a per-key cap and may undercount.
+      source: report.source,
       truncatedKeys: report.truncatedKeys,
     },
   });

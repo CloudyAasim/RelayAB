@@ -22,7 +22,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { __resetDbForTest } from "@/lib/db/sqlite";
+import { __resetDbForTest, run } from "@/lib/db/sqlite";
 import { createUser } from "@/lib/db/users";
 import {
   createApiKey,
@@ -34,7 +34,7 @@ import {
 } from "@/lib/db/keys";
 import { ASSISTANT_KEY_LABEL, createAssistantCredential, setAssistantCredentialEnabled } from "@/lib/db/assistant-keys";
 import { recordUsage, __resetBucketPreparationForTest } from "@/lib/db/usage";
-import { loadUsageReport } from "@/lib/usage/load";
+import { loadUsageReport, sumAllTime } from "@/lib/usage/load";
 import { resolveRange } from "@/lib/usage/report";
 
 const ROOT = process.cwd();
@@ -299,6 +299,41 @@ describe("the deployment-wide universe keeps the same history", () => {
     const ids = await listAllApiKeyIdsForUsage({ userId: payerId });
     expect(ids).toContain(deletedKeyId);
     expect(ids).not.toContain(strangerKeyId);
+  });
+});
+
+describe("the universe also reaches a key that only has a lifetime counter", () => {
+  it("an id whose rows and buckets are both gone still counts", async () => {
+    __resetDbForTest();
+    __resetBucketPreparationForTest();
+    const payer = await createUser({ username: "payer-c", password: "longenoughpw" });
+    const { key } = await createApiKey({ userId: payer.id, label: "gone" });
+    await recordUsage(usage({ apiKeyId: key.id, userId: payer.id, creditsUsed: 4 }));
+
+    // A deployment that ran the old rebuild on a pruned log window: the rows
+    // are gone, the bucket was deleted with them, and so was the key itself.
+    // The lifetime counter is the only thing left that knows money moved.
+    run("DELETE FROM usage_logs WHERE api_key_id = ?", [key.id]);
+    run("DELETE FROM usage_buckets WHERE api_key_id = ?", [key.id]);
+    await deleteApiKey(key.id);
+
+    const ids = await listAllApiKeyIdsForUsage();
+    expect(ids).toEqual([key.id]);
+    expect(await sumAllTime(ids)).toMatchObject({ requests: 1, creditsUsed: 4 });
+
+    // The "all" total comes from the counter, so the money is still in the
+    // figure at the top of the page. No time dimension survives it, so the
+    // breakdown cannot show it — which is exactly why the report has to say
+    // which path produced the figures instead of leaving a blank chart to be
+    // read as "nothing happened".
+    const report = await loadUsageReport({
+      keyIds: ids,
+      tzOffsetMinutes: 480,
+      range: resolveRange({ key: "all", tzOffsetMinutes: 480 }),
+    });
+    expect(report.summary.creditsUsed).toBe(4);
+    expect(report.byKey).toHaveLength(0);
+    expect(report.source).toBe("retained-logs");
   });
 });
 

@@ -673,6 +673,7 @@ truncated (cap of 1000 entries).
     "byModel": [{"id": "deepseek-flash", "requests": 1, "totalTokens": 1500, "creditsUsed": 2000}],
     "byUser": [{"id": "<userId>", "requests": 1, "totalTokens": 1500, "creditsUsed": 2000}],
     "byProvider": [{"id": "<providerId>", "requests": 1, "totalTokens": 1500, "creditsUsed": 2000}],
+    "source": "buckets",
     "truncatedKeys": 0
   }
 }
@@ -680,6 +681,9 @@ truncated (cap of 1000 entries).
 
 > `totals` / `breakdown` are v1 compatibility fields; the admin panel's **Usage** page uses
 > `summary` / `series` / `by*`.
+> `source` says which path produced the range figures: `buckets` is the complete
+> per-hour pre-aggregation; `retained-logs` means the window has no aggregated records and
+> fell back to a log scan capped at 1000 rows per key, which may understate usage.
 > `truncatedKeys > 0` means some keys have hit the per-key log cap, so the range breakdown
 > may underestimate; `bucket` in `series` is `YYYY-MM-DD` when `grain=day` and
 > `YYYY-MM-DDTHH` when `grain=hour`.
@@ -692,7 +696,7 @@ truncated (cap of 1000 entries).
 #### `GET /api/user/usage`
 Same parameters (`range` / `from` / `to` / `tzOffset`), scoped to all keys of the currently
 logged-in account. The response fields are `range` / `summary` / `series` / `byKey` /
-`byModel` / `byProvider` / `truncatedKeys` (no `byUser`).
+`byModel` / `byProvider` / `source` / `truncatedKeys` (no `byUser`).
 
 Matching UI: the usage section of `/dashboard` for users, `/admin/usage` for admins (with
 drill-down by `userId`).

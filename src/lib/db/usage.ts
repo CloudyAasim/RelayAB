@@ -328,45 +328,35 @@ function rowToUsageBucket(row: Record<string, unknown>): UsageBucketRow {
   };
 }
 
-/**
- * Hourly buckets for these keys inside a window.
- *
- * With no `fromIso` this is every retained bucket — the "all time" range, which
- * no longer has to read the capped log rows at all.
- */
-/**
- * How long hourly buckets are kept.
- *
- * A day of buckets for one key/model/provider is one row of about two hundred
- * bytes, so a year of them costs a few megabytes per key — which is what makes
- * keeping them out of the row cap worth doing at all. 400 days rather than 365 so
- * that "a year ago" is inside the window whatever day you look.
- */
-export const BUCKET_RETENTION_DAYS = 400;
-
 let bucketsPrepared = false;
 
 /**
- * Backfill from the retained rows, then drop what has aged out. Once per process.
+ * Backfill the buckets from the retained rows. Once per process.
  *
- * The backfill is idempotent because it replaces the window it covers rather
- * than adding to it, so a restart cannot double-count. What it recovers is only
- * the rows still retained: the point is that a deployment upgraded today keeps
- * the history it has instead of starting every chart from nothing, not that
- * anything older is recovered.
+ * This used to also delete: every bucket at or after the oldest retained log row
+ * was dropped first, and everything older than 400 days after that. Both were
+ * losses the deployment could not recover from. The buckets are the complete
+ * record — the log rows behind them are capped per key — so a cold start that
+ * pruned them erased history the reports then could not show, and the lifetime
+ * totals directly above the chart kept the right number. The hourly bucket is
+ * already the compaction: a day of a key's traffic is a handful of rows instead
+ * of thousands of requests, which is what keeps this affordable to retain.
  *
- * Both halves live here rather than in `getDb` because this module imports the
- * database and not the other way round.
+ * The backfill is idempotent without deleting anything, because `INSERT OR
+ * IGNORE` leaves an existing bucket alone and an absent one is filled from the
+ * rows still retained. A restart can therefore neither double-count nor take
+ * away what it had already banked.
+ *
+ * Lives here rather than in `getDb` because this module imports the database and
+ * not the other way round.
  */
-export function prepareUsageBuckets(now = new Date()): void {
+export function prepareUsageBuckets(): void {
   if (bucketsPrepared) return;
-  // Claim it first: `rebuildUsageBuckets` runs two statements, and a report
-  // running twice at once on a cold process would otherwise interleave them.
+  // Claim it first: a report running twice at once on a cold process would
+  // otherwise run the backfill twice.
   bucketsPrepared = true;
   try {
     rebuildUsageBuckets();
-    const cutoff = utcHourOf(new Date(now.getTime() - BUCKET_RETENTION_DAYS * 86_400_000).toISOString());
-    run("DELETE FROM usage_buckets WHERE bucket < ?", [cutoff]);
   } catch (err) {
     bucketsPrepared = false;
     throw err;
@@ -378,6 +368,12 @@ export function __resetBucketPreparationForTest(): void {
   bucketsPrepared = false;
 }
 
+/**
+ * Hourly buckets for these keys inside a window.
+ *
+ * With no `fromIso` this is every retained bucket — the "all time" range, which
+ * no longer has to read the capped log rows at all.
+ */
 export async function listUsageBuckets(
   apiKeyIds: readonly string[],
   opts: { fromIso?: string; toIso?: string } = {},
@@ -414,26 +410,27 @@ export async function listUsageBuckets(
 }
 
 /**
- * Rebuild the buckets from the retained log rows.
+ * Fill in the hourly buckets that the retained rows can still describe.
  *
- * Idempotent, so it is safe to run on every open: it replaces the window rather
- * than adding to it. What it can recover is only the rows still retained — the
- * point is that a deployment upgraded today keeps the history it has instead of
- * starting the charts from nothing, not that anything older is recovered.
+ * `INSERT OR IGNORE`, not delete-then-insert. SQLite makes one statement
+ * atomic, so there is no half-applied window; and the buckets already stored are
+ * the kept record, which the rows are not — deleting them to re-derive them from
+ * a capped log is how the history got lost in the first place.
+ *
+ * The grouping has no `user_id` because the primary key has none: it is
+ * functionally dependent on `api_key_id` (a key has exactly one owner, as the
+ * schema comment says), so grouping by it would only split one hour of one key
+ * across rows that collide on the same key. `MAX(user_id)` satisfies the NOT NULL
+ * column when the retained rows disagree.
  */
 export function rebuildUsageBuckets(): void {
   run(
-    `DELETE FROM usage_buckets WHERE bucket >= (
-       SELECT MIN(substr(created_at, 1, 13)) FROM usage_logs
-     )`,
-  );
-  run(
-    `INSERT INTO usage_buckets
+    `INSERT OR IGNORE INTO usage_buckets
        (api_key_id, provider_id, model, bucket, user_id,
         prompt_tokens, completion_tokens, total_tokens, credits_used, images, requests,
         cached_prompt_tokens, cache_reported_prompt_tokens, cache_reported_requests)
      SELECT
-       api_key_id, provider_id, model, substr(created_at, 1, 13), user_id,
+       api_key_id, provider_id, model, substr(created_at, 1, 13), MAX(user_id),
        SUM(prompt_tokens), SUM(completion_tokens), SUM(total_tokens),
        SUM(credits_used), SUM(COALESCE(images, 0)), COUNT(*),
        SUM(COALESCE(cached_prompt_tokens, 0)),
@@ -441,7 +438,7 @@ export function rebuildUsageBuckets(): void {
        COUNT(cached_prompt_tokens)
      FROM usage_logs
      WHERE status = 'success'
-     GROUP BY api_key_id, provider_id, model, substr(created_at, 1, 13), user_id`,
+     GROUP BY api_key_id, provider_id, model, substr(created_at, 1, 13)`,
   );
 }
 

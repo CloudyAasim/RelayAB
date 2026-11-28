@@ -317,13 +317,15 @@ export default async function AdminUsagePage({ searchParams }: UsagePageProps) {
               value: formatUsageMetric(pace.average, metric),
               peak: formatUsageMetric(pace.peak, metric),
             })}
-            emptyLabel={t("usage.empty")}
+            emptyLabel={report.source === "retained-logs" ? t("usage.emptyPruned", { max: MAX_LOGS_PER_KEY }) : t("usage.empty")}
           />
         </Card>
 
-        {report.truncatedKeys > 0 && (
+        {(report.truncatedKeys > 0 || report.source === "retained-logs") && (
           <p className="mt-3 text-xs text-warning">
-            {t("usage.truncated", { max: MAX_LOGS_PER_KEY })}
+            {report.source === "retained-logs"
+              ? t("usage.sourceRetainedLogs", { max: MAX_LOGS_PER_KEY })
+              : t("usage.truncated", { max: MAX_LOGS_PER_KEY })}
           </p>
         )}
 
@@ -333,7 +335,7 @@ export default async function AdminUsagePage({ searchParams }: UsagePageProps) {
             rows={rows}
             headers={headers}
             emphasis={metric}
-            emptyLabel={t("usage.empty")}
+            emptyLabel={report.source === "retained-logs" ? t("usage.emptyPruned", { max: MAX_LOGS_PER_KEY }) : t("usage.empty")}
           />
         </Card>
       </SectionPageLayout.Content>

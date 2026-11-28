@@ -623,12 +623,15 @@ Realtime 客户端调到**。**只服务文本**：音频事件（`input_audio_b
     "byModel": [{"id": "deepseek-flash", "requests": 1, "totalTokens": 1500, "creditsUsed": 2000}],
     "byUser": [{"id": "<userId>", "requests": 1, "totalTokens": 1500, "creditsUsed": 2000}],
     "byProvider": [{"id": "<providerId>", "requests": 1, "totalTokens": 1500, "creditsUsed": 2000}],
+    "source": "buckets",
     "truncatedKeys": 0
   }
 }
 ```
 
 > `totals` / `breakdown` 是 v1 兼容字段；管理台「用量」页使用 `summary` / `series` / `by*`。
+> `source` 表示区间数字来自哪条路径：`buckets` 是逐小时预聚合的完整记录；
+> `retained-logs` 表示该区间没有聚合记录、退回到每密钥上限 1000 条的日志扫描，数字可能低估。
 > `truncatedKeys > 0` 表示有密钥的日志已达到每密钥上限，区间明细可能低估；
 > `series` 的 `bucket` 在 `grain=day` 时为 `YYYY-MM-DD`，`grain=hour` 时为 `YYYY-MM-DDTHH`。
 >
@@ -638,7 +641,7 @@ Realtime 客户端调到**。**只服务文本**：音频事件（`input_audio_b
 
 #### `GET /api/user/usage`
 参数同上（`range` / `from` / `to` / `tzOffset`），范围限定为当前登录账号的所有密钥。
-响应字段为 `range` / `summary` / `series` / `byKey` / `byModel` / `byProvider` / `truncatedKeys`
+响应字段为 `range` / `summary` / `series` / `byKey` / `byModel` / `byProvider` / `source` / `truncatedKeys`
 （不含 `byUser`）。
 
 对应的界面：用户 `/dashboard`（用量区块），管理员 `/admin/usage`（可按 `userId` 下钻）。

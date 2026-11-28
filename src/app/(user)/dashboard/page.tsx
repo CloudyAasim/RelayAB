@@ -540,14 +540,18 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                   </div>
                 ) : (
                   <p className="border-t border-border pt-2.5 text-xs text-muted-foreground">
-                    {t("usage.empty")}
+                    {report.source === "retained-logs"
+                      ? t("usage.emptyPruned", { max: MAX_LOGS_PER_KEY })
+                      : t("usage.empty")}
                   </p>
                 )}
               </Card>
 
-              {report.truncatedKeys > 0 && (
+              {(report.truncatedKeys > 0 || report.source === "retained-logs") && (
                 <p className="text-xs text-warning">
-                  {t("usage.truncated", { max: MAX_LOGS_PER_KEY })}
+                  {report.source === "retained-logs"
+                    ? t("usage.sourceRetainedLogs", { max: MAX_LOGS_PER_KEY })
+                    : t("usage.truncated", { max: MAX_LOGS_PER_KEY })}
                 </p>
               )}
 

@@ -314,6 +314,12 @@ export async function listApiKeyIdsForUsage(userId: string): Promise<string[]> {
  * through are again two different questions: the key picker on the usage page
  * still offers only the former (a deleted key has no label to show and nothing
  * to revoke), while the report's universe is the latter.
+ *
+ * The third arm is the lifetime counter, which carries no time dimension and so
+ * cannot be grouped — but it is the only place a key's spend survives when a
+ * deployment's buckets were pruned before buckets stopped being pruned. Without
+ * it, that key's money left the "used" figure at the top of the page even though
+ * `usage_totals` still had it.
  */
 export async function listAllApiKeyIdsForUsage(
   opts: { userId?: string } = {},
@@ -323,6 +329,8 @@ export async function listAllApiKeyIdsForUsage(
     `SELECT id FROM api_keys
      UNION
      SELECT api_key_id AS id FROM usage_buckets
+     UNION
+     SELECT api_key_id AS id FROM usage_totals
      ORDER BY 1 ASC`,
     [],
     (row) => ({ id: String(row.id) }),
