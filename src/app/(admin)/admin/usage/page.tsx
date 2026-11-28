@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 
 import { getCurrentUser } from "@/lib/auth/session";
-import { listAllApiKeys } from "@/lib/db/keys";
+import { listAllApiKeys, listAllApiKeyIdsForUsage } from "@/lib/db/keys";
 import { listUsers } from "@/lib/db/users";
 import { getT } from "@/lib/i18n/server";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -74,13 +74,16 @@ export default async function AdminUsagePage({ searchParams }: UsagePageProps) {
   const scope: Scope =
     requestedScope === "key" || requestedScope === "model" ? requestedScope : "all";
 
-  const [{ t }, allKeys, userPage] = await Promise.all([
+  const [{ t }, allKeys, userPage, universeIds] = await Promise.all([
     getT(),
     listAllApiKeys(),
     listUsers({ limit: 200 }),
+    // The report's universe, not the picker's: a key deleted after it was
+    // charged keeps its ledger rows, so reading ids from `allKeys` alone made
+    // the deployment's totals smaller than the balances they sum.
+    listAllApiKeyIdsForUsage(),
   ]);
   const users = userPage.users;
-  const universeIds = allKeys.map((key) => key.id);
 
   const requestedKeyId = first(sp.keyId);
   const requestedModel = first(sp.model);

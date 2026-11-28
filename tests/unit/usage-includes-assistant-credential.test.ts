@@ -27,6 +27,8 @@ import { createUser } from "@/lib/db/users";
 import {
   createApiKey,
   deleteApiKey,
+  listAllApiKeyIdsForUsage,
+  listAllApiKeys,
   listApiKeysByUser,
   listApiKeyIdsForUsage,
 } from "@/lib/db/keys";
@@ -39,6 +41,9 @@ const ROOT = process.cwd();
 const USER_USAGE_ROUTE = join(ROOT, "src/app/api/user/usage/route.ts");
 const USER_USAGE_PAGE = join(ROOT, "src/app/(user)/dashboard/page.tsx");
 const USER_USAGE_TOOL = join(ROOT, "src/lib/assistant/tools.ts");
+const ADMIN_USAGE_PAGE = join(ROOT, "src/app/(admin)/admin/usage/page.tsx");
+const ADMIN_USAGE_ROUTE = join(ROOT, "src/app/api/admin/usage/route.ts");
+const ADMIN_OVERVIEW_PAGE = join(ROOT, "src/app/(admin)/admin/page.tsx");
 
 const OWN_CREDITS = 3;
 const ASSISTANT_CREDITS = 7;
@@ -210,5 +215,114 @@ describe("both user-facing entry points ask the right question", () => {
     expect(src).toMatch(/aggregateByKeyMany\(chargeableIds\)/);
     expect(src).toMatch(/listRecentUsage\(chargeableIds/);
     expect(src).not.toMatch(/aggregateByKeyMany\(keys\.map/);
+  });
+});
+
+describe("the deployment-wide universe keeps the same history", () => {
+  let payerId: string;
+  let liveKeyId: string;
+  let deletedKeyId: string;
+  let strangerId: string;
+  let strangerKeyId: string;
+
+  const STRANGER_CREDITS = 5;
+
+  beforeEach(async () => {
+    __resetDbForTest();
+    __resetBucketPreparationForTest();
+
+    const payer = await createUser({ username: "payer-b", password: "longenoughpw" });
+    payerId = payer.id;
+    const { key: live } = await createApiKey({ userId: payerId, label: "live" });
+    liveKeyId = live.id;
+    const { key: doomed } = await createApiKey({ userId: payerId, label: "doomed" });
+    deletedKeyId = doomed.id;
+
+    const stranger = await createUser({ username: "stranger-b", password: "longenoughpw" });
+    strangerId = stranger.id;
+    const { key: theirs } = await createApiKey({ userId: strangerId, label: "theirs" });
+    strangerKeyId = theirs.id;
+
+    await recordUsage(usage({ apiKeyId: liveKeyId, userId: payerId, creditsUsed: OWN_CREDITS }));
+    await recordUsage(
+      usage({ apiKeyId: deletedKeyId, userId: payerId, creditsUsed: ASSISTANT_CREDITS }),
+    );
+    await recordUsage(
+      usage({ apiKeyId: strangerKeyId, userId: strangerId, creditsUsed: STRANGER_CREDITS }),
+    );
+
+    // The spending happened; the `api_keys` row did not survive it.
+    await deleteApiKey(deletedKeyId);
+  });
+
+  it("an id deleted from `api_keys` is still in the universe", async () => {
+    expect(await listAllApiKeyIdsForUsage()).toContain(deletedKeyId);
+    // The contrast that made the admin totals wrong: the management list no
+    // longer knows the id exists.
+    expect((await listAllApiKeys()).map((key) => key.id)).not.toContain(deletedKeyId);
+  });
+
+  it("so the report still totals what the deleted key spent", async () => {
+    const range = resolveRange({ key: "all", tzOffsetMinutes: 480 });
+    const report = await loadUsageReport({
+      keyIds: await listAllApiKeyIdsForUsage(),
+      tzOffsetMinutes: 480,
+      range,
+    });
+
+    expect(report.summary.requests).toBe(3);
+    expect(report.summary.creditsUsed).toBe(
+      OWN_CREDITS + ASSISTANT_CREDITS + STRANGER_CREDITS,
+    );
+    expect(report.byKey.map((row) => row.id)).toContain(deletedKeyId);
+  });
+
+  it("an id present in both arms is summed once", async () => {
+    // `api_keys` and `usage_buckets` both name every live key, so the union —
+    // not a concatenation — is what keeps the deployment total from doubling.
+    const ids = await listAllApiKeyIdsForUsage();
+    expect(new Set(ids).size).toBe(ids.length);
+
+    const range = resolveRange({ key: "all", tzOffsetMinutes: 480 });
+    const report = await loadUsageReport({ keyIds: ids, tzOffsetMinutes: 480, range });
+    expect(report.summary.creditsUsed).toBe(
+      OWN_CREDITS + ASSISTANT_CREDITS + STRANGER_CREDITS,
+    );
+    expect(report.byKey.filter((row) => row.id === liveKeyId)).toHaveLength(1);
+  });
+
+  it("filtering to one user answers exactly what that user's page answers", async () => {
+    expect(await listAllApiKeyIdsForUsage({ userId: payerId })).toEqual(
+      await listApiKeyIdsForUsage(payerId),
+    );
+    // …and that set still reaches the deleted key, while leaving the stranger out.
+    const ids = await listAllApiKeyIdsForUsage({ userId: payerId });
+    expect(ids).toContain(deletedKeyId);
+    expect(ids).not.toContain(strangerKeyId);
+  });
+});
+
+describe("the admin entry points read the same universe", () => {
+  it("the usage page reports over every id spending touched", () => {
+    const src = readFileSync(ADMIN_USAGE_PAGE, "utf8");
+    expect(src).toMatch(/listAllApiKeyIdsForUsage\(\)/);
+    // `allKeys` still feeds the scope picker — a deleted key has no label and
+    // nothing to revoke — but it is no longer the report's universe.
+    expect(src).toMatch(/universeIds/);
+    expect(src).not.toMatch(/const universeIds = allKeys\.map/);
+  });
+
+  it("the admin usage API filters the universe by user, not by the key list", () => {
+    const src = readFileSync(ADMIN_USAGE_ROUTE, "utf8");
+    expect(src).toMatch(/listAllApiKeyIdsForUsage\(\{ userId \}\)/);
+    expect(src).not.toMatch(/keyIds: keys\.map/);
+  });
+
+  it("the overview totals and recent requests cover the same set", () => {
+    const src = readFileSync(ADMIN_OVERVIEW_PAGE, "utf8");
+    expect(src).toMatch(/aggregateByKeyMany\(usageKeyIds\)/);
+    expect(src).toMatch(/listRecentUsage\(usageKeyIds/);
+    expect(src).not.toMatch(/aggregateByKeyMany\(keys\.map/);
+    expect(src).not.toMatch(/listRecentUsage\(keys\.map/);
   });
 });

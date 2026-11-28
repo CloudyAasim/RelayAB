@@ -13,7 +13,7 @@
  * consumes. See docs/api-routes.md.
  */
 import { NextResponse } from "next/server";
-import { listAllApiKeys } from "@/lib/db/keys";
+import { listAllApiKeyIdsForUsage } from "@/lib/db/keys";
 import { getCurrentUser } from "@/lib/auth/session";
 import { loadUsageReportCached } from "@/lib/usage/load";
 import { parseTzOffset, rangeToJson, resolveRange } from "@/lib/usage/report";
@@ -37,10 +37,12 @@ export async function GET(req: Request): Promise<Response> {
     tzOffsetMinutes,
   });
 
-  const allKeys = await listAllApiKeys();
-  const keys = userId ? allKeys.filter((key) => key.userId === userId) : allKeys;
+  // Every id the money can be traced through, deleted keys included — their
+  // ledger rows outlive the `api_keys` row, so a set built from the key list
+  // alone under-reported the very spending this endpoint exists to report.
+  const keyIds = await listAllApiKeyIdsForUsage({ userId });
   const report = await loadUsageReportCached({
-    keyIds: keys.map((key) => key.id),
+    keyIds,
     tzOffsetMinutes,
     range,
     includeUsers: true,

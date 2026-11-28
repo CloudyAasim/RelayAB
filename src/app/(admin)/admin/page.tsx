@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { listUsers } from "@/lib/db/users";
-import { listAllApiKeys } from "@/lib/db/keys";
+import { listAllApiKeyIdsForUsage, listAllApiKeys } from "@/lib/db/keys";
 import { listProviders } from "@/lib/db/providers";
 import { aggregateByKeyMany, listRecentUsage } from "@/lib/db/usage";
 import { Card, CardHeader, StatCard } from "@/components/ui/Card";
@@ -36,16 +36,19 @@ export default async function AdminOverviewPage() {
 
   const timeZone = timezoneToIana(user.timezone);
 
-  const [{ t }, { users }, keys, providers] = await Promise.all([
+  const [{ t }, { users }, keys, providers, usageKeyIds] = await Promise.all([
     getT(),
     listUsers({ limit: 200 }),
     listAllApiKeys({}),
     listProviders(),
+    // Spending is read over every id the money passed through, deleted keys
+    // included; `keys` stays the management list the key counter is drawn from.
+    listAllApiKeyIdsForUsage(),
   ]);
 
   // Best-effort usage aggregate. Fetched as one pipeline for the whole table —
   // a per-key `aggregateByKey` loop was a Redis round trip per key.
-  const aggTotals = (await aggregateByKeyMany(keys.map((k) => k.id))).reduce(
+  const aggTotals = (await aggregateByKeyMany(usageKeyIds)).reduce(
     (acc, x) => ({
       totalTokens: acc.totalTokens + x.totalTokens,
       creditsUsed: acc.creditsUsed + x.creditsUsed,
@@ -60,7 +63,7 @@ export default async function AdminOverviewPage() {
   // Recent requests, with the billing mode surfaced. `estimated` means the
   // stream ended before an upstream usage frame arrived, so the tokens were
   // derived from text length rather than measured.
-  const recentUsage = await listRecentUsage(keys.map((k) => k.id), { limit: 8 });
+  const recentUsage = await listRecentUsage(usageKeyIds, { limit: 8 });
   // Recent-usage rows reference an account by id. Show the unique username
   // first (with the display name as a secondary hint) so an operator can tell
   // two accounts apart even when they share a display name.

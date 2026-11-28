@@ -300,6 +300,37 @@ export async function listApiKeyIdsForUsage(userId: string): Promise<string[]> {
 }
 
 /**
+ * The same question, asked deployment-wide: every key id any spending can be
+ * attributed to, including ids whose `api_keys` row has since been deleted.
+ *
+ * The admin pages used to assemble their universe from `listAllApiKeys`, which
+ * had the same blind spot the user page had. Deleting a key does not cascade
+ * its ledger rows — the spending already happened — so a set read only from
+ * `api_keys` dropped that history from the overview totals, the ranged usage
+ * report and the recent-requests table. An operator could no longer account for
+ * a balance that had already moved.
+ *
+ * The keys an operator can *manage* and the set of keys any money can be traced
+ * through are again two different questions: the key picker on the usage page
+ * still offers only the former (a deleted key has no label to show and nothing
+ * to revoke), while the report's universe is the latter.
+ */
+export async function listAllApiKeyIdsForUsage(
+  opts: { userId?: string } = {},
+): Promise<string[]> {
+  if (opts.userId) return listApiKeyIdsForUsage(opts.userId);
+  const rows = await getAll<{ id: string }>(
+    `SELECT id FROM api_keys
+     UNION
+     SELECT api_key_id AS id FROM usage_buckets
+     ORDER BY 1 ASC`,
+    [],
+    (row) => ({ id: String(row.id) }),
+  );
+  return rows.map((row) => row.id);
+}
+
+/**
  * List all keys (admin view). Newest first.
  *
  * The Redis version SCANned the keyspace and had to filter its own index keys
