@@ -167,7 +167,11 @@ export default async function AdminUsagePage({ searchParams }: UsagePageProps) {
       if (group === "user") return { ...row, label: userLabel(row.id) };
       if (group === "model") return { ...row, label: row.id };
       const key = keyById.get(row.id);
-      return { ...row, label: key?.label ?? row.id, sublabel: key?.keyPrefix };
+      // The assistant credential's label is stored in Chinese (it is minted
+      // before anyone knows who will read it), so the detail rows need the same
+      // translation the scope picker above already applies.
+      if (key) return { ...row, label: assistantKeyLabel(key.label, t), sublabel: key.keyPrefix };
+      return { ...row, label: t("usage.table.removedKey") };
     }),
     metric,
   );

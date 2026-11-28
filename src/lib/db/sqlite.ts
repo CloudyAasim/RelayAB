@@ -244,6 +244,10 @@ CREATE TABLE IF NOT EXISTS usage_buckets (
 );
 -- The one direction a range query goes.
 CREATE INDEX IF NOT EXISTS idx_usage_buckets_bucket ON usage_buckets(bucket);
+-- The other direction, keyed by whose money was spent rather than by key:
+-- listApiKeyIdsForUsage has to find every id this person was charged through,
+-- including ids whose api_keys row has since been deleted.
+CREATE INDEX IF NOT EXISTS idx_usage_buckets_user ON usage_buckets(user_id);
 
 -- Running per-key totals. Kept as a separate table rather than recomputed with
 -- a SUM over usage_logs on every request: the proxy path reads it on every

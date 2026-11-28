@@ -276,12 +276,24 @@ export async function listApiKeysByUser(
  * through are two different questions. This answers the second. The assistant
  * credential is still not offered in the first, so it does not become
  * selectable in the usage scope picker either.
+ *
+ * The second arm is what makes the answer *complete* rather than merely
+ * current. Rotating the assistant credential deletes its `api_keys` row, and
+ * deleting a key deletes its own; the ledger is never cascaded, because the
+ * spending already happened. Reading only `api_keys` therefore dropped exactly
+ * the history whose key no longer exists — the calls a user can least explain
+ * from the page that is supposed to explain them. `usage_buckets.user_id` still
+ * knows whose money it was, and UNION dedupes, so an id that appears in both
+ * arms is summed once and nothing is counted twice.
  */
 export async function listApiKeyIdsForUsage(userId: string): Promise<string[]> {
   if (!userId) return [];
   const rows = await getAll<{ id: string }>(
-    "SELECT id FROM api_keys WHERE user_id = ? ORDER BY id ASC",
-    [userId],
+    `SELECT id FROM api_keys WHERE user_id = ?
+     UNION
+     SELECT api_key_id AS id FROM usage_buckets WHERE user_id = ?
+     ORDER BY 1 ASC`,
+    [userId, userId],
     (row) => ({ id: String(row.id) }),
   );
   return rows.map((row) => row.id);

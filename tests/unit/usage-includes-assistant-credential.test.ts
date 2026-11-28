@@ -24,7 +24,12 @@ import { join } from "node:path";
 
 import { __resetDbForTest } from "@/lib/db/sqlite";
 import { createUser } from "@/lib/db/users";
-import { createApiKey, listApiKeysByUser, listApiKeyIdsForUsage } from "@/lib/db/keys";
+import {
+  createApiKey,
+  deleteApiKey,
+  listApiKeysByUser,
+  listApiKeyIdsForUsage,
+} from "@/lib/db/keys";
 import { ASSISTANT_KEY_LABEL, createAssistantCredential, setAssistantCredentialEnabled } from "@/lib/db/assistant-keys";
 import { recordUsage, __resetBucketPreparationForTest } from "@/lib/db/usage";
 import { loadUsageReport } from "@/lib/usage/load";
@@ -123,6 +128,45 @@ describe("a user's own usage report covers what the assistant spent for them", (
     const { key } = await createApiKey({ userId: other.id, label: "theirs" });
     expect(await listApiKeyIdsForUsage(userId)).not.toContain(key.id);
   });
+
+  it("an id listed by both sources is summed once, not twice", async () => {
+    // Both the `api_keys` arm and the `usage_buckets` arm can produce the same
+    // id for a key that still exists, so the union — not a concatenation — is
+    // what keeps the total from doubling.
+    const ids = await listApiKeyIdsForUsage(userId);
+    expect(new Set(ids).size).toBe(ids.length);
+
+    const range = resolveRange({ key: "all", tzOffsetMinutes: 480 });
+    const report = await loadUsageReport({ keyIds: ids, tzOffsetMinutes: 480, range });
+    expect(report.summary.creditsUsed).toBe(OWN_CREDITS + ASSISTANT_CREDITS);
+    expect(report.byKey.filter((row) => row.id === ownKeyId)).toHaveLength(1);
+  });
+
+  it("a key deleted after it was charged keeps its history in the report", async () => {
+    // Rotating a credential deletes its `api_keys` row, and deleting a key
+    // deletes its own. The ledger is never cascaded — the spending already
+    // happened — so a set read only from `api_keys` would drop exactly the
+    // history the page exists to explain.
+    const range = resolveRange({ key: "all", tzOffsetMinutes: 480 });
+    const before = await loadUsageReport({
+      keyIds: await listApiKeyIdsForUsage(userId),
+      tzOffsetMinutes: 480,
+      range,
+    });
+
+    await deleteApiKey(ownKeyId);
+
+    expect((await listApiKeysByUser(userId, { limit: 200 })).keys).toHaveLength(0);
+    expect(await listApiKeyIdsForUsage(userId)).toContain(ownKeyId);
+
+    const after = await loadUsageReport({
+      keyIds: await listApiKeyIdsForUsage(userId),
+      tzOffsetMinutes: 480,
+      range,
+    });
+    expect(after.summary.requests).toBe(before.summary.requests);
+    expect(after.summary.creditsUsed).toBe(before.summary.creditsUsed);
+  });
 });
 
 describe("both user-facing entry points ask the right question", () => {
@@ -143,6 +187,14 @@ describe("both user-facing entry points ask the right question", () => {
     expect(src).toMatch(/listApiKeyIdsForUsage\(sessionUser\.id\)/);
     expect(src).toMatch(/const universeIds = usageKeyIds;/);
     expect(src).not.toMatch(/const universeIds = keys\.map/);
+    // The lifetime tiles at the top of the same page read the same universe; a
+    // `keys.map` there reported less spending than the balance beside it.
+    expect(src).toMatch(/cachedAggregateByUser\(usageKeyIds\)/);
+    expect(src).not.toMatch(/cachedAggregateByUser\(keys\.map/);
+    // Every row gets a name: the assistant credential through its label, and a
+    // deleted key through translated copy instead of its uuid.
+    expect(src).toMatch(/assistantKeyLabel\(ASSISTANT_KEY_LABEL, t\)/);
+    expect(src).toMatch(/t\("usage\.table\.removedKey"\)/);
   });
 
   it("the assistant's own usage tool does not contradict itself", () => {

@@ -21,6 +21,8 @@ import { listProviders } from "@/lib/db/providers";
 import { listMediaProviders } from "@/lib/db/media-providers";
 import { groupModelsByKind, type ModelGroup } from "@/lib/admin/model-groups";
 import { listApiKeyIdsForUsage } from "@/lib/db/keys";
+import { getAssistantCredential } from "@/lib/db/assistant-keys";
+import { ASSISTANT_KEY_LABEL, assistantKeyLabel } from "@/lib/assistant-key-label";
 import { MAX_LOGS_PER_KEY } from "@/lib/db/usage";
 import { SectionPageLayout } from "@/components/layouts";
 import { UsageScopePicker } from "@/components/usage/UsageScopePicker";
@@ -91,14 +93,22 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const scope: Scope =
     requestedScope === "key" || requestedScope === "model" ? requestedScope : "all";
 
-  const [{ t }, fullUser, keyPage, usageKeyIds] = await Promise.all([
+  const [{ t }, fullUser, keyPage, usageKeyIds, assistantCredential] = await Promise.all([
     getT(),
     cachedGetUserById(sessionUser.id),
     cachedListApiKeysByUser(sessionUser.id, 200),
     listApiKeyIdsForUsage(sessionUser.id),
+    getAssistantCredential(sessionUser.id),
   ]);
   const keys = keyPage.keys;
-  const agg = await cachedAggregateByUser(keys.map((k) => k.id));
+  // Lifetime totals are reported over the same universe as the usage section
+  // below, not over `keys`. That list is the management view and deliberately
+  // omits the assistant credential, so aggregating it put two figures on one
+  // screen that disagreed about the same account: the panel showed a balance
+  // the assistant had already spent, and the "used" tile beside it did not
+  // include the spending that lowered it.
+  const agg = await cachedAggregateByUser(usageKeyIds);
+  const assistantKeyId = assistantCredential?.apiKeyId;
 
   // The whitelist is shown grouped by kind, which needs the catalogue. An
   // account on "every model" has no list to group, so it skips the query
@@ -196,11 +206,22 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     rangeOptions.find((option) => option.value === range.key)?.label ?? range.key;
 
   const sourceRows = group === "model" ? report.byModel : report.byKey;
+  /*
+    Every row the report contains gets a name here. Three kinds can appear:
+    a key from `keys`; the assistant credential, which is a real key but absent
+    from `keys` by design; and the id of a key that has since been deleted —
+    rotation included — whose spending is still in the ledger. Only the first
+    has a label to read, so the other two fell back to a uuid, which reads as a
+    row belonging to somebody else rather than as one of the reader's own calls.
+  */
+  const assistantRowLabel = assistantKeyLabel(ASSISTANT_KEY_LABEL, t);
   const rows: UsageBreakdownRow[] = sortByMetric(
     sourceRows.map((row) => {
       if (group === "model") return { ...row, label: row.id };
       const key = keys.find((candidate) => candidate.id === row.id);
-      return { ...row, label: key?.label ?? row.id, sublabel: key?.keyPrefix };
+      if (key) return { ...row, label: key.label, sublabel: key.keyPrefix };
+      if (row.id === assistantKeyId) return { ...row, label: assistantRowLabel };
+      return { ...row, label: t("usage.table.removedKey") };
     }),
     metric,
   );
